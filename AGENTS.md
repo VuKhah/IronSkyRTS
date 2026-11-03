@@ -6,6 +6,7 @@ Bộ nhớ kỹ thuật của dự án. Đọc hết trước khi sửa code.
 - **Iron Sky: Tư Lệnh Chiến Thuật & Hậu Cần**: game chiến thuật thời gian thực (RTS) **3D** chạy trên trình duyệt, chơi được cả trên điện thoại.
 - **Đang làm lại từ đầu (từ 03/11/2026)** bằng web. Bản Unity 6 cũ chỉ là bản thử, đã bỏ. Mã nguồn cũ được sao lưu ở `D:\workspaces\game-with-khanh\IronSkyRTS_Unity_Backup_2026-11-03.zip` để tham khảo logic, **không port từng dòng**.
 - **Game tham chiếu:** Battle Drones của Simon Willison. Xem `Docs/BATTLEDRONES_REFERENCE.md`. Ta chỉ học **cơ chế thể loại**. Tên quân, mô hình, chỉ số, bối cảnh và code đều là của Iron Sky; không chép tên, art hay code của họ.
+- **Khung tính năng:** `Docs/FEATURE_FRAMEWORK.md` là danh sách việc cần làm chính, có ưu tiên P1–P3 và trạng thái. Cập nhật trạng thái mỗi khi xong một tính năng.
 - **Tài liệu thiết kế:** `Docs/GAME_DESIGN_DOCUMENT.md` và `Docs/GAME_CONTENT.md` được viết cho bản Unity; nội dung thiết kế vẫn dùng được, còn các chi tiết riêng của Unity thì bỏ qua.
 - **Ngôn ngữ:** tiếng Việt có dấu đầy đủ, cả trong game lẫn khi giao tiếp.
 

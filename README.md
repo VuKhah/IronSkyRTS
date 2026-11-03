@@ -5,6 +5,7 @@ Game chiến thuật thời gian thực 3D chạy ngay trên trình duyệt. Hai
 > 🚧 Đang dựng lại từ đầu bằng TypeScript + Three.js.
 
 ## Tài liệu
+- [Khung tính năng (danh sách việc cần làm chính)](Docs/FEATURE_FRAMEWORK.md)
 - [Thiết kế game (GDD)](Docs/GAME_DESIGN_DOCUMENT.md)
 - [Nội dung game](Docs/GAME_CONTENT.md)
 - [Phân tích game tham chiếu và lộ trình](Docs/BATTLEDRONES_REFERENCE.md)
