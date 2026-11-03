@@ -13,7 +13,7 @@ Trạng thái: ⬜ chưa làm · 🟨 đang làm · ✅ xong
 
 | # | Tính năng | Phiên bản Iron Sky | Ưu tiên | Trạng thái |
 |---|---|---|---|---|
-| A1 | **Toàn bộ là mô hình 3D**: công trình, xe mặt đất, máy bay, bộ binh, kèm trang xem mô hình | Mô hình dựng bằng code Three.js, có trang `models.html` để xem từng mô hình | P1 | ⬜ |
+| A1 | **Toàn bộ là mô hình 3D**: công trình, xe mặt đất, máy bay, bộ binh, kèm trang xem mô hình | Mô hình dựng bằng code Three.js, có trang `models.html` để xem từng mô hình. **Đã có Xưởng Mô Hình và 16 mô hình bản nhẹ; chờ bản chi tiết** | P1 | 🟨 |
 | A2 | **Sương mù chiến tranh** | Tính theo địa hình 3D: đồi che tầm nhìn, đứng trên cao nhìn xa hơn. Thêm Trạm Radar | P1 | ⬜ |
 | A3 | **Vũ khí khác nhau cho mục tiêu trên không và mặt đất** | Ma trận *loại sát thương × lớp giáp*, cờ "bắn được: đất / không / cả hai" | P1 | ⬜ |
 | A4 | **Chế độ giao tranh**: Xanh đấu Đỏ trên bản đồ đối xứng xoay | Liên Minh Lam đấu Tập Đoàn Đỏ, đối xứng 180° qua dòng sông chéo | P1 | ⬜ |

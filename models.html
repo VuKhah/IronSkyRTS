@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b0f16" />
+    <title>Xưởng Mô Hình · Iron Sky</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./src/models-page/style.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="title">
+        <a class="brand" href="./">IRON SKY</a>
+        <h1>Xưởng Mô Hình</h1>
+      </div>
+      <p class="lede">
+        Mô hình 3D của từng binh chủng và công trình, kèm vai trò và chỉ số trong trận. Kéo để xoay, cuộn hoặc chụm hai ngón để thu phóng,
+        rồi bật hoạt ảnh: chạy, ngắm, khai hỏa, cất cánh, vận hành. Chiến trường dùng chính những mô hình này.
+      </p>
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" data-tab="units">Quân đội</button>
+        <button type="button" role="tab" data-tab="buildings">Công trình</button>
+      </div>
+    </header>
+    <main class="layout">
+      <aside class="roster" aria-label="Danh sách"></aside>
+      <section class="stage">
+        <div class="viewer">
+          <span class="hint">Kéo để xoay · cuộn để thu phóng</span>
+          <span class="draft" title="Mô hình bản nhẹ, sẽ được thay bằng bản chi tiết">BẢN NHẸ</span>
+        </div>
+        <div class="controls"></div>
+      </section>
+      <article class="sheet" aria-live="polite"></article>
+    </main>
+    <script type="module" src="./src/models-page/main.ts"></script>
+  </body>
+</html>

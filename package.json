@@ -1,0 +1,26 @@
+{
+  "name": "iron-sky-rts",
+  "version": "1.0.0",
+  "description": "Game chiến thuật thời gian thực 3D chạy ngay trên trình duyệt. Hai phe Liên Minh Lam và Tập Đoàn Đỏ tranh giành dòng sông chéo với 7 cây cầu, các mỏ Vàng, Dầu và Sắt. Trong game có mạng lưới điện, đường ray tiếp đạn phòng không và không quân phải nạp dầu.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "check": "tsc",
+    "test": "vitest run"
+  },
+  "author": "",
+  "license": "UNLICENSED",
+  "type": "module",
+  "dependencies": {
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/three": "^0.187.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^4.1.12"
+  },
+  "private": true
+}

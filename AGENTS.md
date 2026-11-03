@@ -35,6 +35,20 @@ Bộ nhớ kỹ thuật của dự án. Đọc hết trước khi sửa code.
 2. **AI** chỉ ra lệnh qua cùng kênh lệnh với người chơi và chỉ nhìn thấy phần không bị sương mù che.
 3. Có thể cho **AI đấu với AI không cần giao diện** bằng Node, để cân bằng chỉ số.
 
-## 4. Quy trình
-- Sau mỗi thay đổi, chạy kiểm tra kiểu và kiểm thử (lệnh cụ thể sẽ ghi vào đây khi dựng xong khung dự án).
+## 4. Cấu trúc mã nguồn
+- `src/sim/content.ts`: chỉ số của mọi binh chủng và công trình (dữ liệu thuần). Là nguồn số liệu duy nhất cho sim, AI và UI.
+- `src/render/models/`: mô hình 3D dựng bằng code. Mỗi mô hình là một `Rig` gồm `root`, `actions`, `defaultOn`, `radius` và `update()`. Điểm vào duy nhất là `buildModel(id, faction)`.
+  - `kit.ts`: vật liệu theo phe (dùng chung, không dispose), các khối hình, `FireClock`, `approach`.
+  - `units.ts`: 6 binh chủng. `buildings.ts`: 10 công trình.
+  - Mô hình hiện là **BẢN NHẸ**. Bản chi tiết sẽ thay thế, nhưng phải giữ nguyên giao diện `Rig` và tên hoạt ảnh (`move`, `aim`, `fire`, `fly`, `work`…).
+- `models.html` + `src/models-page/`: **Xưởng Mô Hình**. Gồm `stage.ts` (renderer, đèn, OrbitControls, chụp ảnh thu nhỏ) và `main.ts` (danh sách, phiếu thông số, nút hoạt ảnh). URL `models.html?act=fly,fire&f=do#valkyrie` mở thẳng một mô hình với hoạt ảnh và phe chọn sẵn.
+- `index.html`: trang game (hiện là trang chờ).
+
+## 5. Quy trình và lệnh
+- `npm run dev`: server phát triển, tự tải lại khi sửa code (http://localhost:5173).
+- `npm run check`: kiểm tra kiểu TypeScript. `npm test`: chạy kiểm thử Vitest.
+- `npm run build`: kiểm tra kiểu rồi build ra `dist/`. `npm run preview`: chạy thử bản build (http://localhost:4173).
+- **Tự xem kết quả bằng Chrome không giao diện** (WebGL qua SwiftShader):
+  `"/c/Program Files/Google/Chrome/Application/chrome.exe" --headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --hide-scrollbars --window-size=1280,800 --virtual-time-budget=5000 --screenshot=<file.png> "http://localhost:4173/models.html#titan"`
+- Sau mỗi thay đổi phải chạy `npm run check` và `npm test`. Khi đụng tới phần hiển thị thì chụp màn hình để kiểm tra.
 - Commit nhỏ, thông điệp rõ ràng. Chỉ push khi người dùng yêu cầu.
