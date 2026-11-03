@@ -1,4 +1,4 @@
-# NỘI DUNG GAME CHI TIẾT — IRON SKY: TƯ LỆNH CHIẾN THUẬT & HẬU CẦN 2.5D
+# NỘI DUNG GAME CHI TIẾT — IRON SKY: TƯ LỆNH CHIẾN THUẬT & HẬU CẦN 3D
 
 Tài liệu này tổng hợp **toàn bộ nội dung, bối cảnh, binh chủng, kỹ năng, công trình, tài nguyên và thông số cân bằng** đang vận hành thực tế trong mã nguồn (`Assets/Scripts/Core/RTSTypes.cs`, `BattlefieldMap.cs`, `TacticalBuilding.cs`, `RTSGameManager.cs`). Dùng làm chuẩn tham chiếu nội dung cho các phiên phát triển và cân bằng tiếp theo.
 

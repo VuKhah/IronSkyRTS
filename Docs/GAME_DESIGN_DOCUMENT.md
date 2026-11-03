@@ -1,8 +1,8 @@
-# TÀI LIỆU THIẾT KẾ GAME (GDD) — IRON SKY: TƯ LỆNH CHIẾN THUẬT & HẬU CẦN 2.5D
+# TÀI LIỆU THIẾT KẾ GAME (GDD) — IRON SKY: TƯ LỆNH CHIẾN THUẬT & HẬU CẦN 3D
 
 **Phiên bản thiết kế:** v2.0 (Bản nâng cấp Hậu cần Không quân Sân đáp, Đào Dầu, Lưới Điện & Đường Ray Phòng Không)  
-**Thể loại:** Chiến thuật Thời gian thực 2.5D (2.5D Tactical & Logistics RTS)  
-**Nền tảng:** PC (Windows) — Unity 6 (`6000.4.1f1`)  
+**Thể loại:** Chiến thuật Thời gian thực 3D (3D Tactical & Logistics RTS)  
+**Nền tảng:** Trình duyệt web (PC + điện thoại) — TypeScript + Three.js. *(Tài liệu này viết cho bản Unity thử nghiệm cũ; từ 03/11/2026 game chuyển sang 3D trên web. Thiết kế vẫn dùng được, chi tiết riêng của Unity thì bỏ qua.)*  
 **Thời lượng chuẩn mỗi ván:** Tối đa **15 phút** (`900 giây`)
 
 ---
@@ -14,7 +14,7 @@
 2. **Không Quân Khí Động Học Thông Minh & Giới Hạn Nhiên Liệu Thật (*Smart Aerodynamics & Physical Fuel*):**
    Máy bay không đứng yên bắn như trực thăng giả lập mà bay theo quỹ đạo vật lý mượt mà (vòng lượn tiếp tuyến CAP, lượn sườn né phòng không, bổ nhào rải bom, bật tăng lực thoát ly). Đồng thời, sức mạnh bầu trời bị neo chặt vào mặt đất thông qua **Sân Đáp Không Quân** và **bình Dầu trên thân máy bay** (`>= 35%` mới được cất cánh, trừ dần từng giây khi bay).
 3. **Hậu Cần Trực Quan Tạo Chiều Sâu Phản Khắc Chế (*Visible Physical Logistics*):**
-   Mọi hệ thống hậu cần đều hiển thị vật lý trên không gian 2.5D: **dây cáp điện võng 3D** nối từ Nhà máy Điện qua Trạm truyền tải, và **đường ray thép đôi có Xe Goòng 3D** chở thùng đạn chạy từ Kho đạn tới từng Tháp Phòng Không. Đối phương nhìn thấy cấu trúc hậu cần và có thể đánh chặt mắt xích yếu nhất (bắn sập 1 cột điện hoặc 1 kho đạn để làm tê liệt cả cụm Patriot SAM / EMP!).
+   Mọi hệ thống hậu cần đều hiển thị vật lý trên không gian 3D: **dây cáp điện võng 3D** nối từ Nhà máy Điện qua Trạm truyền tải, và **đường ray thép đôi có Xe Goòng 3D** chở thùng đạn chạy từ Kho đạn tới từng Tháp Phòng Không. Đối phương nhìn thấy cấu trúc hậu cần và có thể đánh chặt mắt xích yếu nhất (bắn sập 1 cột điện hoặc 1 kho đạn để làm tê liệt cả cụm Patriot SAM / EMP!).
 4. **Nhịp Độ 15 Phút Đa Mục Tiêu (*High-Stakes 15-Minute Victory Triangle*):**
    Ba con đường chiến thắng (*Công phá Căn cứ*, *Trảm thủ Tư lệnh*, *Độc quyền 3/3 Mỏ tài nguyên trong 45s*) buộc người chơi liên tục đọc thế trận, không thể "bo nhà" thụ động.
 
@@ -39,7 +39,7 @@ flowchart TD
 
 ---
 
-## 3. Thiết Kế Bản Đồ 2.5D & Địa Hình Chiến Thuật (`Level Design`)
+## 3. Thiết Kế Bản Đồ 3D & Địa Hình Chiến Thuật (`Level Design`)
 
 ### 3.1. Cấu trúc Hình học Đối xứng Tâm 180°
 - Kích thước mặt phẳng chiến đấu: `[-86, +86]` theo cả trục `X` và `Z` (`172m x 172m` vùng hoạt động trong khung nền `184m x 184m`).
@@ -53,7 +53,7 @@ flowchart TD
   6. Cầu Tiền đồn Đông Nam `(34, -34)` — gắn liền *Căn Cứ Tiền Đồn Đông Nam*.
   7. Cầu Hạ lưu Đông Nam `(62, -62)` — gắn liền *Giàn Khoan Dầu Thung Lũng*.
 
-### 3.2. Ý đồ Chiến thuật của Địa hình 2.5D
+### 3.2. Ý đồ Chiến thuật của Địa hình 3D
 - **Thiết giáp mặt đất (`Tank`)** bắt buộc phải định tuyến qua 1 trong 7 cây cầu và vòng qua 8 cụm núi đá chắn (`RockRidge`), tạo nên các nút thắt cổ chai lý tưởng để phục kích pháo kích `[R]` hoặc dàn Tăng Titan.
 - **Không quân (`Falcon`, `Valkyrie`)** bay ở cao độ `12.5m – 15.0m` vượt thẳng qua sông và núi đá, nhưng lại bị giới hạn bởi **bán kính nhiên liệu Dầu** và **ô hỏa lực 38.5m của Tên lửa Patriot SAM / Tháp EMP**.
 
@@ -161,7 +161,7 @@ $$\text{TacticalScore} = 300 \times N_{\text{Căn cứ}} + 150 \times N_{\text{M
 
 ---
 
-## 8. Thiết Kế Bố Cục HUD 2.5D (`1920 x 1080` — Không Chồng Lấn)
+## 8. Thiết Kế Bố Cục HUD 3D (`1920 x 1080` — Không Chồng Lấn)
 
 ```text
 +--------------------------------------------------------------------------------------------------+
@@ -170,7 +170,7 @@ $$\text{TacticalScore} = 300 \times N_{\text{Căn cứ}} + 150 \times N_{\text{M
 |                          [BANNER ĐẾM NGƯỢC ĐỘC QUYỀN 3/3 MỎ — 45.0s (Ẩn khi bình thường)]        |
 |                          [THANH THÔNG BÁO CHIẾN THUẬT & PREVIEW NỐI ĐIỆN / ĐƯỜNG RAY]            |
 |                                                                                                  |
-|                                     KHÔNG GIAN CHIẾN TRƯỜNG 2.5D                                 |
+|                                     KHÔNG GIAN CHIẾN TRƯỜNG 3D                                 |
 |                     (Cáp điện võng 3D • Đường ray & Xe Goòng • Đường bay dự đoán)                |
 |                                                                                                  |
 +--------------------+---------------------------------------------+-------------------------------+
@@ -187,6 +187,6 @@ $$\text{TacticalScore} = 300 \times N_{\text{Căn cứ}} + 150 \times N_{\text{M
 
 Các tính năng dưới đây tương thích trực tiếp với kiến trúc `TacticalBuilding`, `LogisticsNetworkManager` và `RTSTypes` hiện tại nếu người dùng muốn nâng cấp tiếp:
 1. **Pháo Binh Đường Ray Hạng Nặng (`RailArtillery`):** Công trình hoặc toa pháo chạy trên chính hệ thống Đường ray của `AmmoDepot`, tiêu thụ lượng lớn đạn ray & điện MW để pháo kích tầm siêu xa.
-2. **Sương Mù Chiến Tranh (`Fog of War` 2.5D) & Trạm Radar Cảnh Giới:** Tận dụng chỉ số `visionRange` đã khai báo sẵn trên toàn bộ `UnitSpec` để ẩn quân địch ngoài tầm nhìn và cho phép xây Đài Radar mở sáng bản đồ.
+2. **Sương Mù Chiến Tranh (`Fog of War` 3D) & Trạm Radar Cảnh Giới:** Tận dụng chỉ số `visionRange` đã khai báo sẵn trên toàn bộ `UnitSpec` để ẩn quân địch ngoài tầm nhìn và cho phép xây Đài Radar mở sáng bản đồ.
 3. **Nâng Cấp Cấp Độ Công Nghệ (`Tech Tiers` tại Tổng Hành Dinh):** Mở khóa Giáp phản ứng nổ cho Titan MBT, Bình dầu phụ tầm xa (`+35% MaxFuel`) cho Không quân, và Lò phản ứng nhiệt hạch (`+100 MW`).
 4. **Chế Độ Chiến Dịch Nhiều Màn (`Campaign Missions`):** Chuỗi 3–5 bản đồ với địa hình sông/đảo/hẻm núi khác nhau và mục tiêu nhiệm vụ chuyên biệt.
