@@ -1,14 +1,15 @@
 # Thiết Kế MVP — Iron Sky
 
-> Chốt ngày 04/11/2026 qua 3 vòng hỏi đáp với người dùng.
+> Chốt ngày 04/11/2026 qua 3 vòng hỏi đáp với người dùng, rồi chỉnh lần 2 cùng ngày (Dầu, điều kiện thắng, lực lượng ban đầu).
 > **MVP** (Minimum Viable Product) là phiên bản nhỏ nhất **chơi được trọn một trận**, đủ để biết game có vui không.
 > Mọi thứ không có trong tài liệu này đều để sau MVP (xem `FEATURE_FRAMEWORK.md`).
-> Con số trong tài liệu là **điểm xuất phát**: sẽ cân bằng lại bằng các trận AI đấu AI chạy không giao diện.
+> ⚠️ **Mọi chỉ số quân và công trình ở đây là SỐ TẠM** để dựng bản demo. Người dùng sẽ bàn kỹ lại khi bản demo hoàn tất, có số đo từ các trận AI đấu AI chạy không giao diện.
 
 ## 1. Câu chốt
 
-> Hai đạo quân, Liên Minh Lam và Tập Đoàn Đỏ, tranh nhau các mỏ Sắt dọc một dòng sông chéo có 3 cây cầu.
-> Chiếm mỏ, cho Xe Khai Thác chở Sắt về, đúc xe tăng và tiêm kích, rồi **phá sập Tổng Hành Dinh địch**.
+> Hai đạo quân, Liên Minh Lam và Tập Đoàn Đỏ, tranh nhau mỏ **Sắt** và giàn **Dầu** dọc một dòng sông chéo có 3 cây cầu.
+> Sắt dùng để xây và đúc quân. Dầu là **nhiên liệu tiêu hao** của không quân: máy bay rất mạnh nhưng bay ngắn, phải liên tục về Sân Đáp đốt Dầu để xuất kích tiếp.
+> Thắng bằng một trong ba cách: **diệt Xe Tư Lệnh địch**, **phá hết công trình địch**, hoặc **giữ trọn một loại mỏ trong 30 giây**.
 > Chơi được cả trên điện thoại (cảm ứng) lẫn máy tính (chuột, bàn phím). Một trận dài 15–20 phút.
 
 ## 2. Các quyết định đã chốt
@@ -16,90 +17,117 @@
 | Câu hỏi | Lựa chọn | Hệ quả thiết kế |
 |---|---|---|
 | Thiết bị | **Cảm ứng và chuột ngang nhau** | Mọi thao tác phải làm được bằng một ngón tay. Phím tắt chỉ là lối tắt |
-| Kinh tế | **Chiếm mỏ rồi Xe Khai Thác chở về** | Hai lớp tranh chấp: giành mỏ và chặn tuyến xe chở |
-| Tài nguyên | **1 loại: Sắt** | Mọi chi phí tính bằng Sắt. Vàng và Dầu để sau |
+| Kinh tế | **Chiếm mỏ rồi Xe Vận Tải chở về** | Hai lớp tranh chấp: giành mỏ và chặn tuyến xe chở |
+| Tài nguyên | **2 loại: Sắt và Dầu** *(sửa lần 2: trước đó là 1 loại)* | Sắt để xây và đúc quân. Dầu là nhiên liệu tiêu hao của máy bay |
 | Hậu cần | **Sân Đáp và nhiên liệu máy bay** | Lưới điện và đường ray đạn để sau |
-| Nạp dầu | **Miễn phí, chỉ tốn thời gian** | Dầu là một giới hạn về thời gian bay, không phải chi phí |
-| Quân chiến | **4 loại: Lynx, Titan, SkyGuard, Falcon** + Xe Khai Thác | Xe Tư Lệnh và Valkyrie để sau |
-| Thắng trận | **Phá Tổng Hành Dinh địch** | Không có điều kiện thắng nào khác |
+| Dầu *(sửa lần 2)* | **Tiêu hao thật:** mỗi lần nạp trừ vào kho Dầu | Không quân **rất mạnh, xuất kích dày, áp lực lớn**, nhưng bị giới hạn bởi thời gian bay và kho Dầu |
+| Quân chiến | **Lynx, Titan, SkyGuard, Falcon** + Xe Vận Tải + **Xe Tư Lệnh** | Xe Tư Lệnh có mặt vì là điều kiện thắng. Kỹ năng của nó để sau. Valkyrie để sau |
+| Thắng trận *(sửa lần 2)* | **3 điều kiện**, đạt điều nào trước thì thắng | Diệt Tư Lệnh, phá hết công trình, độc quyền một loại mỏ trong 30s |
+| Lực lượng ban đầu *(sửa lần 2)* | **2 Xe Vận Tải + 1 xe trinh sát Lynx** + Xe Tư Lệnh, kèm **1 mỏ Sắt sát nhà** đã thuộc sở hữu | Mở trận là có kinh tế chạy ngay và có xe đi dò đường |
 | Sương mù | **Có, bản đơn giản** | Tầm nhìn hình tròn, chưa tính đồi che |
 | Bản đồ | **1 bản đồ cố định, sông chéo, 3 cầu** | Đối xứng xoay 180°, có đồi thấp |
 | Công trình | **4 công trình cốt lõi** | Tổng Hành Dinh, Xưởng Xe, Sân Đáp, Tháp Phòng Thủ |
 | Đối thủ | **1 AI, 1 độ khó + chế độ AI đấu AI** | AI phải chơi bằng đúng các lệnh của người chơi |
 | Nhịp trận | **15–20 phút** | Mỏ có trữ lượng hữu hạn, nên trận tự dồn về giao tranh cuối |
+| Chỉ số *(sửa lần 2)* | **Số tạm, bàn lại sau bản demo** | Không tối ưu cân bằng trước khi có demo |
 
 ## 3. Vòng lặp chơi
 
 ```
- Chiếm mỏ ──► Xe Khai Thác đào ──► chở Sắt về HQ ──► Kho Sắt
-     ▲                                                  │
-     │                                                  ▼
- Giữ/đánh mỏ ◄── quân chiến ◄── Xưởng Xe / Sân Đáp ◄── xây và đúc
-     │
-     └──► đẩy qua cầu ──► phá Tháp Phòng Thủ ──► phá Tổng Hành Dinh = THẮNG
+ Chiếm mỏ Sắt / giàn Dầu ──► Xe Vận Tải đào ──► chở về HQ ──► Kho Sắt + Kho Dầu
+        ▲                                                      │        │
+        │                                     xây & đúc ◄──────┘        │ nạp nhiên liệu
+        │                                         │                     ▼
+   giữ / đánh mỏ ◄── quân mặt đất ◄── Xưởng Xe    └──► Sân Đáp ──► Falcon xuất kích
+        │                                                        (bay ngắn, đánh mạnh,
+        │                                                         về nạp, xuất kích lại)
+        ▼
+  THẮNG: diệt Xe Tư Lệnh địch  |  phá hết công trình địch  |  giữ trọn 1 loại mỏ 30s
 ```
 
-- **Đầu trận (0–3 phút):** đúc thêm Xe Khai Thác, đưa Lynx đi chiếm 2 mỏ phía mình, xây Xưởng Xe.
-- **Giữa trận (3–12 phút):** tranh 2 mỏ giữa sông, đánh tuyến xe chở của địch, xây Sân Đáp, dựng Tháp Phòng Thủ.
-- **Cuối trận (12–20 phút):** mỏ gần cạn, hai bên dồn quân qua cầu đánh vào căn cứ.
+- **Đầu trận (0–3 phút):** 2 Xe Vận Tải chạy ngay ra mỏ Sắt nhà. Lynx đi trinh sát và chiếm mỏ gần. Xây Xưởng Xe.
+- **Giữa trận (3–12 phút):** tranh giàn Dầu, xây Sân Đáp. Falcon xuất kích dồn dập, săn Xe Vận Tải và đánh quân đang chiếm mỏ.
+- **Cuối trận (12–20 phút):** mỏ gần cạn. Có ba hướng: dồn quân qua cầu phá căn cứ, săn Xe Tư Lệnh, hoặc gom trọn một loại mỏ.
 
-## 4. Kinh tế
+## 4. Kinh tế: Sắt và Dầu
 
-| Thông số | Giá trị khởi điểm | Ghi chú |
+| Thông số | Giá trị tạm | Ghi chú |
 |---|---|---|
-| Sắt lúc đầu trận | **600** | |
-| Thu nhập gốc của HQ | **+2 Sắt/s** | Để bên cạn mỏ vẫn còn đường gỡ, giống `hqTrickle` của game tham chiếu |
-| Số mỏ | **6** | Mỗi bên 1 mỏ nhà (có sẵn) và 1 mỏ tiền tuyến; 2 mỏ tranh chấp ở giữa sông |
-| Trữ lượng mỗi mỏ | **6.000 Sắt** (mỏ giữa sông: **9.000**) | Hữu hạn: hết là cạn, nên trận không kéo dài vô tận |
-| Chiếm mỏ | Đứng trong bán kính **8m**, mất **10s** với 1 quân; thêm quân thì nhanh hơn, tối đa ×3 | Có quân địch trong vùng thì việc chiếm tạm dừng. Mỏ trung lập thì phải chiếm trước rồi mới đào được |
-| Xe Khai Thác | Chở **100 Sắt** mỗi chuyến, đào **20 Sắt/s**, dỡ hàng tại HQ mất **1.5s** | Chỉ đào được ở mỏ phe mình. Mỗi mỏ cho tối đa 3 xe đào cùng lúc |
-| Giới hạn quân | **40** quân (Xe Khai Thác tính chung) | |
+| Kho lúc đầu trận | **500 Sắt • 100 Dầu** | |
+| Thu nhập gốc của HQ | **+2 Sắt/s** (không có Dầu) | Để bên cạn mỏ vẫn còn đường gỡ. Dầu chỉ có từ giàn Dầu |
+| Mỏ Sắt | **4 mỏ**: mỗi bên 1 mỏ nhà (sở hữu từ đầu) và 1 mỏ tiền tuyến | Trữ lượng **6.000** mỗi mỏ |
+| Giàn Dầu | **3 giàn**: 1 ở giữa sông (cầu giữa) và 2 ở đầu cầu cánh | Trữ lượng **3.000** mỗi giàn. Đều trung lập lúc đầu, đều là điểm nóng |
+| Chiếm mỏ | Đứng trong bán kính **8m**, mất **10s** với 1 quân; thêm quân thì nhanh hơn, tối đa ×3 | Có quân địch trong vùng thì tạm dừng. Mỏ trung lập phải chiếm trước rồi mới đào được |
+| Xe Vận Tải | Chở **100** mỗi chuyến (Sắt hoặc Dầu), đào **20/s**, dỡ hàng tại HQ mất **1.5s** | Chỉ đào ở mỏ phe mình. Mỗi mỏ tối đa 3 xe cùng lúc |
+| Giới hạn quân | **40** quân (Xe Vận Tải tính chung) | |
 
 ## 5. Quân đội (MVP)
 
-Chi phí quy đổi sang một tài nguyên là Sắt. Máu, tốc độ, tầm bắn lấy từ `content.ts` hiện tại.
-
-| Quân | Vai trò | Chi phí | Thời gian | Bắn |
+| Quân | Vai trò | Chi phí tạm | Thời gian | Bắn |
 |---|---|---|---|---|
-| **Xe Khai Thác** *(mới)* | Đào và chở Sắt. Không vũ khí, máu 300 | 150 | 6s (tại HQ) | — |
-| **Lynx** | Nhanh, chiếm mỏ, săn Xe Khai Thác | 150 | 4.5s | Đất |
-| **Titan** | Tăng nặng, phá công trình | 350 | 7.5s | Đất |
-| **SkyGuard** | Phòng không cơ động | 250 | 6s | Đất (yếu) + Không |
-| **Falcon** | Tiêm kích, cần Sân Đáp | 300 | 6.5s | Đất + Không |
+| **Xe Tư Lệnh** | Có sẵn, không đúc thêm. Hào quang hỗ trợ quân quanh nó. **Bị diệt là thua** | — | — | Đất + Không |
+| **Xe Vận Tải** *(mới)* | Đào và chở Sắt hoặc Dầu. Không vũ khí | 150 Sắt | 6s (tại HQ) | — |
+| **Lynx** | Trinh sát nhanh, chiếm mỏ, săn Xe Vận Tải | 150 Sắt | 4.5s | Đất |
+| **Titan** | Tăng nặng, phá công trình | 350 Sắt | 7.5s | Đất |
+| **SkyGuard** | Phòng không cơ động | 250 Sắt | 6s | Đất (yếu) + Không |
+| **Falcon** | Tiêm kích **rất mạnh**, cần Sân Đáp và Dầu | 300 Sắt + 50 Dầu | 6.5s | Đất + Không |
 
-**Vòng khắc chế:** Lynx thắng SkyGuard và Xe Khai Thác. Titan thắng Lynx và công trình. Falcon thắng Titan và Lynx từ trên không. SkyGuard thắng Falcon.
+**Vòng khắc chế:** Lynx thắng SkyGuard và Xe Vận Tải. Titan thắng Lynx và công trình. Falcon đánh mạnh mọi thứ trên mặt đất nhưng chỉ bay được một lúc. SkyGuard và Tháp Phòng Thủ là câu trả lời cho Falcon.
 
-**Falcon và Sân Đáp:**
-- Mỗi Sân Đáp có **4 bãi đậu**, nên nuôi tối đa 4 Falcon.
-- Bình dầu **65L**, đốt **1.05L/s**, tức khoảng 60 giây bay.
-- Chỉ cất cánh khi còn **≥ 35%** dầu. Xuống **≤ 24%** thì tự động bay về hạ cánh.
-- Đậu trên bãi thì nạp **10L/s** và sửa **25 HP/s**, miễn phí.
-- Hết dầu giữa trời mà không còn bãi trống thì **rơi**. Sân Đáp bị phá thì các máy bay của nó phải tìm sân khác.
-- Khi đang đậu trên bãi, máy bay là mục tiêu **mặt đất**.
+### Không quân: mạnh, xuất kích dày, áp lực lớn
+
+Ý đồ thiết kế: Falcon là **đòn đánh mạnh nhất trận**, nhưng mỗi lần chỉ bay được ít giây. Người chơi luôn phải tính: **xuất kích lúc nào, đánh vào đâu, còn đủ Dầu không.** Mất giàn Dầu thì không quân tê liệt, nên giàn Dầu luôn là điểm nóng.
+
+| Thông số | Giá trị tạm | Ý nghĩa |
+|---|---|---|
+| Sát thương Falcon | Cao hơn hẳn quân mặt đất cùng giá | Mỗi lần xuất kích phải để lại hậu quả rõ rệt |
+| Bình dầu | **40L**, đốt **1.2L/s** | Khoảng **33 giây** bay mỗi lần xuất kích |
+| Cất cánh | Chỉ khi bình còn **≥ 35%** | |
+| Tự về | Khi bình xuống **≤ 24%**, máy bay tự bay về Sân Đáp | Người chơi cũng có thể gọi về sớm |
+| Nạp dầu | **Vài giây** (~**4s** cho một bình đầy) tại bãi đậu, **trừ vào kho Dầu**: 1 Dầu kho = 1L | Đầy một bình khoảng 40 Dầu. Đậu trên bãi cũng được sửa 25 HP/s |
+| Sân Đáp | **4 bãi đậu**, nuôi tối đa 4 Falcon mỗi sân | |
+
+**Khi hết Dầu:**
+- **Hết dầu giữa trời** mà không về kịp bãi trống: máy bay **rơi**.
+- **Kho Dầu cạn:** máy bay đậu trên bãi **không nạp được nữa**, nằm chờ ở sân. Lúc này nó là mục tiêu mặt đất, dễ bị phá.
+- **Kho Dầu còn ít:** máy bay chỉ nạp được một phần bình. Nếu chưa đủ 35% thì không cất cánh được.
+- **Sân Đáp bị phá:** máy bay của sân đó phải tìm bãi trống ở sân khác, không có thì rơi khi hết dầu.
 
 ## 6. Công trình (MVP)
 
-| Công trình | Chi phí | Thời gian xây | Máu | Chức năng |
+| Công trình | Chi phí tạm | Thời gian xây | Máu | Chức năng |
 |---|---|---|---|---|
-| **Tổng Hành Dinh** | Có sẵn | — | 3.600 | Đúc Xe Khai Thác, nhận Sắt, pháo tự vệ. **Mất là thua** |
-| **Xưởng Xe** *(mới)* | 300 | 10s | 1.000 | Đúc Lynx, Titan, SkyGuard |
-| **Sân Đáp** | 400 | 12s | 1.150 | Đúc Falcon, 4 bãi đậu, nạp dầu và sửa |
-| **Tháp Phòng Thủ** *(mới)* | 250 | 8s | 700 | Pháo tự động, bắn cả đất lẫn không, tầm 20m |
+| **Tổng Hành Dinh** | Có sẵn | — | 3.600 | Đúc Xe Vận Tải, nhận Sắt và Dầu, pháo tự vệ |
+| **Xưởng Xe** *(mới)* | 300 Sắt | 10s | 1.000 | Đúc Lynx, Titan, SkyGuard |
+| **Sân Đáp** | 400 Sắt | 12s | 1.150 | Đúc Falcon, 4 bãi đậu, nạp Dầu và sửa |
+| **Tháp Phòng Thủ** *(mới)* | 250 Sắt | 8s | 700 | Pháo tự động, bắn cả đất lẫn không, tầm 20m |
 
-- Chỉ được xây trong bán kính **14m** quanh công trình phe mình (giống `buildRadius` của thể loại RTS).
+- Chỉ được xây trong bán kính **14m** quanh công trình phe mình.
 - Mỗi công trình sản xuất có hàng chờ tối đa **5** quân và một **điểm tập kết** (đặt bằng cách chạm hoặc chuột phải).
 - Bán công trình được hoàn lại **50%**.
 
-## 7. Bản đồ MVP: "Thung Lũng Sông Sắt"
+## 7. Điều kiện thắng (đạt điều nào trước thì thắng ngay)
+
+| # | Điều kiện | Chi tiết |
+|---|---|---|
+| 1 | **Diệt Xe Tư Lệnh địch** | Xe Tư Lệnh không đúc lại được. Nên giữ nó an toàn, nhưng hào quang của nó lại rất mạnh khi đi cùng quân |
+| 2 | **Phá hết công trình địch** | Mọi công trình, kể cả Tổng Hành Dinh. Xe còn sống không cứu được trận |
+| 3 | **Độc quyền tài nguyên** | Sở hữu **trọn 4/4 mỏ Sắt** hoặc **trọn 3/3 giàn Dầu** liên tục **30 giây**. Mất một mỏ là đồng hồ về 0. Cả hai bên thấy đồng hồ đếm ngược trên HUD |
+
+- Độc quyền Dầu (3 giàn, đều trung lập lúc đầu) là con đường **tranh giành giữa bản đồ**. Độc quyền Sắt buộc phải chiếm cả **mỏ nhà của địch**, nên thực chất là thắng áp đảo.
+- Hòa: hai bên cùng đạt điều kiện trong cùng một tick (rất hiếm) thì tính hòa.
+
+## 8. Bản đồ MVP: "Thung Lũng Sông Sắt"
 
 - Kích thước khoảng **160 × 160m**. Sông chạy chéo từ Tây Bắc xuống Đông Nam. Bản đồ **đối xứng xoay 180°** quanh tâm.
 - **3 cây cầu:** cầu giữa ở tâm bản đồ và 2 cầu cánh. Xe mặt đất chỉ qua sông bằng cầu; máy bay bay qua mọi nơi.
 - **Đồi thấp** làm cảnh và chắn đường. Ở MVP, đồi chưa ảnh hưởng tới tầm nhìn hay tầm bắn.
 - **HQ Lam** ở góc Tây Nam, **HQ Đỏ** ở góc Đông Bắc.
-- **6 mỏ:** mỗi bên có 1 mỏ nhà sát căn cứ (sở hữu từ đầu) và 1 mỏ tiền tuyến gần sông; thêm 2 mỏ lớn ở hai đầu cầu cánh.
-- **Lực lượng ban đầu mỗi bên:** HQ, 1 Xe Khai Thác, 2 Lynx.
+- **4 mỏ Sắt:** mỗi bên 1 mỏ nhà sát căn cứ và 1 mỏ tiền tuyến gần sông.
+- **3 giàn Dầu:** 1 ở cầu giữa (tâm đối xứng) và 2 ở đầu cầu cánh (mỗi đầu cầu nghiêng về một phe).
+- **Lực lượng ban đầu mỗi bên:** Tổng Hành Dinh, Xe Tư Lệnh, **2 Xe Vận Tải, 1 Lynx trinh sát**, mỏ Sắt nhà đã thuộc sở hữu.
 
-## 8. Điều khiển (cảm ứng ngang hàng chuột)
+## 9. Điều khiển (cảm ứng ngang hàng chuột)
 
 | Thao tác | Cảm ứng | Chuột / bàn phím |
 |---|---|---|
@@ -107,6 +135,7 @@ Chi phí quy đổi sang một tài nguyên là Sắt. Máu, tốc độ, tầm 
 | Chọn nhiều | **Giữ ~0.3s rồi kéo** để vẽ khung | Kéo chuột trái |
 | Chọn mọi quân cùng loại đang thấy | Chạm đúp | Nhấp đúp |
 | Ra lệnh đi / tấn công | Chạm mặt đất / chạm quân địch khi đang chọn quân | Nhấp phải |
+| Gọi máy bay về Sân Đáp | Nút "Về sân" trên thanh lệnh | Phím B |
 | Bỏ chọn | Nút ✕ trên thanh lệnh | Esc |
 | Kéo màn hình | Một ngón kéo | WASD, phím mũi tên, đưa chuột sát mép, hoặc kéo chuột giữa |
 | Thu phóng | Chụm hai ngón | Lăn chuột |
@@ -115,26 +144,28 @@ Chi phí quy đổi sang một tài nguyên là Sắt. Máu, tốc độ, tầm 
 | Nhóm quân | Nút "Tất cả quân chiến" | Ctrl+1..5 để lưu, 1..5 để gọi |
 
 - Camera là **3D tự do**, nhưng giới hạn góc nghiêng (30°–75°) để trận luôn dễ đọc.
-- **Giao diện:** thanh tài nguyên ở trên, minimap ở góc dưới, thanh lệnh và thanh xây ở dưới. Nút cỡ ít nhất 44px cho ngón tay.
+- **Giao diện:** thanh tài nguyên ở trên (Sắt, Dầu, số quân, đồng hồ độc quyền khi có), minimap ở góc dưới, thanh lệnh và thanh xây ở dưới. Mỗi máy bay có **thanh nhiên liệu** riêng. Nút cỡ ít nhất 44px cho ngón tay.
+- **Cảnh báo:** Xe Tư Lệnh bị tấn công, máy bay sắp hết dầu, kho Dầu cạn, đối phương sắp độc quyền.
 
-## 9. Sương mù chiến tranh (bản đơn giản)
+## 10. Sương mù chiến tranh (bản đơn giản)
 
 - Mỗi quân và công trình nhìn trong một **vòng tròn** (lấy chỉ số tầm nhìn trong `content.ts`).
 - Ba trạng thái ô: **chưa khám phá** (đen), **đã khám phá** (tối, nhớ địa hình và công trình địch lần cuối thấy), **đang thấy**.
-- Quân địch chỉ hiện khi nằm trong vùng đang thấy.
+- Quân địch chỉ hiện khi nằm trong vùng đang thấy. Riêng **chủ sở hữu của mỗi mỏ** thì luôn biết, để HUD hiện được đồng hồ độc quyền.
 - **AI cũng chịu sương mù:** AI chỉ được đọc phần mà phe nó đang thấy.
 
-## 10. AI và chế độ AI đấu AI
+## 11. AI và chế độ AI đấu AI
 
-- **1 độ khó.** AI xây theo thứ tự gần đúng: Xe Khai Thác → Xưởng Xe → chiếm mỏ → quân hỗn hợp → Sân Đáp → Tháp Phòng Thủ → đánh theo đợt.
+- **1 độ khó.** AI xây theo thứ tự gần đúng: Xe Vận Tải → Xưởng Xe → chiếm mỏ và giàn Dầu → quân hỗn hợp → Sân Đáp → Tháp Phòng Thủ → đánh theo đợt.
+- AI biết cả 3 điều kiện thắng: giữ Xe Tư Lệnh của mình an toàn, săn Xe Tư Lệnh địch khi có cơ hội, và **phá thế độc quyền** khi đối phương đang đếm ngược.
 - AI ra lệnh **qua cùng kênh lệnh** với người chơi (`{ tick, playerId, order }`), không chạm trực tiếp vào trạng thái game.
-- **AI đấu AI:** xem hai AI đánh nhau, có nút tốc độ ×1, ×2, ×4. Chế độ này cũng chạy được **không giao diện** bằng Node, để cho hàng trăm trận tự động và cân bằng chỉ số.
+- **AI đấu AI:** xem hai AI đánh nhau, có nút tốc độ ×1, ×2, ×4. Chế độ này cũng chạy được **không giao diện** bằng Node, dùng để đo chỉ số trước buổi bàn cân bằng sau bản demo.
 
-## 11. Ngoài phạm vi MVP (để sau)
+## 12. Ngoài phạm vi MVP (để sau)
 
-Xe Tư Lệnh và kỹ năng, Valkyrie, Vàng và Dầu, lưới điện, đường ray đạn, CIWS/SAM/EMP, bộ binh, đồi che tầm nhìn, tiền đồn, nhiều bản đồ, trình tạo bản đồ ngẫu nhiên, Last Stand, multiplayer, nhạc thích ứng (MVP chỉ có hiệu ứng âm thanh cơ bản).
+Kỹ năng Xe Tư Lệnh [Q][E][R], Valkyrie, Vàng, lưới điện, đường ray đạn, CIWS/SAM/EMP, bộ binh, đồi che tầm nhìn, tiền đồn, nhiều bản đồ, trình tạo bản đồ ngẫu nhiên, Last Stand, multiplayer, nhạc thích ứng (MVP chỉ có hiệu ứng âm thanh cơ bản).
 
-## 12. Lộ trình xây MVP
+## 13. Lộ trình xây MVP
 
 | Mốc | Nội dung | "Xong" nghĩa là |
 |---|---|---|
@@ -142,9 +173,9 @@ Xe Tư Lệnh và kỹ năng, Valkyrie, Vàng và Dầu, lưới điện, đư�
 | **M1** | Bản đồ: heightmap, sông, 3 cầu, đồi; camera cảm ứng và chuột | Mở game là thấy bản đồ 3D, xoay, zoom, kéo được trên cả điện thoại |
 | **M2** | Di chuyển: tìm đường (lưới + flow field), qua cầu; chọn quân và ra lệnh | Chọn Lynx, chạm bên kia sông thì xe tự tìm cầu mà đi |
 | **M3** | Chiến đấu: tự nhắm, bắn đất/không, đạn bay, máu, nổ | 2 nhóm quân đánh nhau ra kết quả hợp lý |
-| **M4** | Kinh tế: chiếm mỏ, Xe Khai Thác, HQ đúc xe | Sắt tăng đúng theo số mỏ và số xe |
-| **M5** | Xây công trình, hàng chờ sản xuất, điểm tập kết | Xây Xưởng Xe và đúc Titan được |
-| **M6** | Không quân: Sân Đáp, cất và hạ cánh, nhiên liệu | Falcon bay đánh, hết dầu thì tự về nạp |
+| **M4** | Kinh tế: chiếm mỏ và giàn Dầu, Xe Vận Tải chở 2 loại, HQ đúc xe | Sắt và Dầu tăng đúng theo số mỏ và số xe |
+| **M5** | Xây công trình, hàng chờ sản xuất, điểm tập kết; **3 điều kiện thắng** | Xây Xưởng Xe, đúc Titan, thắng được bằng cả 3 cách |
+| **M6** | Không quân: Sân Đáp, cất và hạ cánh, nhiên liệu tiêu hao Dầu | Falcon xuất kích, tự về nạp, kho Dầu cạn thì nằm sân |
 | **M7** | Sương mù chiến tranh | Không thấy quân địch ngoài tầm nhìn |
 | **M8** | AI, chế độ AI đấu AI, chạy không giao diện | AI tự chơi trọn trận và có lúc thắng được người |
-| **M9** | Hoàn thiện: HUD, minimap, âm thanh, màn thắng/thua, đăng GitHub Pages | Gửi link là người khác chơi được |
+| **M9** | Hoàn thiện: HUD, minimap, cảnh báo, âm thanh, màn thắng/thua, đăng GitHub Pages | Gửi link là người khác chơi được. **Sau mốc này: buổi bàn kỹ chỉ số** |
