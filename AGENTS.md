@@ -36,20 +36,40 @@ Bộ nhớ kỹ thuật của dự án. Đọc hết trước khi sửa code.
 2. **AI** chỉ ra lệnh qua cùng kênh lệnh với người chơi và chỉ nhìn thấy phần không bị sương mù che.
 3. Có thể cho **AI đấu với AI không cần giao diện** bằng Node, để cân bằng chỉ số.
 
-## 4. Cấu trúc mã nguồn
-- `src/sim/content.ts`: chỉ số của mọi binh chủng và công trình (dữ liệu thuần). Là nguồn số liệu duy nhất cho sim, AI và UI.
-- `src/render/models/`: mô hình 3D dựng bằng code. Mỗi mô hình là một `Rig` gồm `root`, `actions`, `defaultOn`, `radius` và `update()`. Điểm vào duy nhất là `buildModel(id, faction)`.
-  - `kit.ts`: vật liệu theo phe (dùng chung, không dispose), các khối hình, `FireClock`, `approach`.
-  - `units.ts`: 6 binh chủng. `buildings.ts`: 10 công trình.
-  - Mô hình hiện là **BẢN NHẸ**. Bản chi tiết sẽ thay thế, nhưng phải giữ nguyên giao diện `Rig` và tên hoạt ảnh (`move`, `aim`, `fire`, `fly`, `work`…).
-- `models.html` + `src/models-page/`: **Xưởng Mô Hình**. Gồm `stage.ts` (renderer, đèn, OrbitControls, chụp ảnh thu nhỏ) và `main.ts` (danh sách, phiếu thông số, nút hoạt ảnh). URL `models.html?act=fly,fire&f=do#valkyrie` mở thẳng một mô hình với hoạt ảnh và phe chọn sẵn.
-- `index.html`: trang game (hiện là trang chờ).
+## 4. Cấu trúc mã nguồn (bản v1 — MVP chơi được, từ 04/11/2026)
+- **`src/sim/` — lõi mô phỏng tất định** (không import Three.js / DOM):
+  - `content.ts`: chỉ số binh chủng, công trình và `RULES` (luật MVP). Nguồn số liệu duy nhất. **Mọi số là số tạm** chờ buổi bàn chỉ số sau bản demo.
+  - `fmath.ts`: `dsin/dcos` tự viết, `turnToward` (ngoặt không dùng góc), `Rng` (mulberry32).
+  - `map.ts`: bản đồ "Thung Lũng Sông Sắt" 160×160 m (hệ trục sông u/v, 3 lối qua, đá, đồi, 7 mỏ, vị trí HQ), `staticBlocked`, `terrainHeight`/`groundY` (cho phần vẽ).
+  - `grid.ts`: lưới 2 m (80×80), A* 8 hướng + kéo thẳng đường bằng LOS, `nearestFree`.
+  - `types.ts`: `Unit`, `Building`, `Mine`, `Order` (lệnh), `SimEvent` (sự kiện cho phần vẽ / âm thanh).
+  - `world.ts`: `World.step(cmds)` — 1 tick = 0.1 s; kinh tế, chiếm mỏ, Xe Vận Tải, sản xuất, chiến đấu, không quân + nhiên liệu, sương mù, 3 điều kiện thắng; `hashWorld()`.
+  - `ai.ts`: AI 1 độ khó, chỉ ra lệnh và chỉ đọc phần mình thấy; dùng seed trận để mỗi trận một khác.
+  - Kiểm thử: `content.test.ts`, `sim.test.ts` (tất định, tìm đường, kinh tế, AI đấu AI trọn trận).
+- **`src/render/models/`**: mô hình 3D bằng code. Mỗi mô hình là một `Rig` (`root`, `actions`, `defaultOn`, `radius`, `update()`, tùy chọn `setAim()` cho tháp pháo và `setFlight()` cho máy bay do chiến trường điều khiển). Điểm vào: `buildModel(id, faction, showcase)`; mỏ: `buildNode(res)` trong `nodes.ts`.
+  - Mô hình hiện là **BẢN NHẸ**. Bản chi tiết sẽ thay thế nhưng phải giữ giao diện `Rig` và tên hoạt ảnh (`move`, `aim`, `fire`, `fly`, `work`, `load`, `loadOil`…).
+- **`src/game/` — trận đấu trên trình duyệt** (`index.html`):
+  - `main.ts` (menu, vòng lặp, màn kết thúc), `match.ts` (tick cố định + nội suy, gom lệnh, nhật ký lệnh), `scene.ts` (địa hình, nước, cầu, cây, sương mù), `views.ts` (sim → mô hình, nội suy), `fx.ts` (đạn, nổ, khói), `controller.ts` (chọn, ra lệnh theo ngữ cảnh, đặt công trình, phím tắt), `input.ts` (cử chỉ chạm/chuột), `camera.ts`, `hud.ts`, `overlay.ts` (thanh máu/dầu 2D), `minimap.ts`, `audio.ts` (âm thanh tổng hợp).
+- **`src/tools/simulate.ts`**: chạy nhiều trận AI đấu AI không giao diện (`npm run simulate -- 20`).
+- `models.html` + `src/models-page/`: **Xưởng Mô Hình**. URL `models.html?act=fly,fire&f=do#valkyrie`; `?flight=1` thử chế độ bay do chiến trường điều khiển.
+
+### Tham số URL để thử nghiệm trận (`index.html`)
+`?play=vsai|aivai` vào thẳng trận · `&seed=N` · `&skip=N` tua nhanh N giây đầu · `&cam=x,z,dist` đặt camera · `&script=1` kịch bản tự chơi (đặt Xưởng Xe, chiếm mỏ, đúc Titan) và in log `[script]` · `&debug=1` in log vài khung hình đầu · `&nooverlay=1`, `&nofx=1`, `&noshadow=1` tắt từng lớp để khoanh vùng lỗi hình.
+
+### Bài học đã gặp (đừng lặp lại)
+- **`dt` của khung hình phải chặn trong [0, 0.1]** và đo bằng `performance.now()`: mốc thời gian của `requestAnimationFrame` có thể sớm hơn mốc khởi tạo → `dt` âm làm nổ các phép nội suy `exp()` (càng máy bay dài hàng chục mét).
+- CSS `display: flex` đè thuộc tính `hidden` → đã có luật `[hidden] { display: none !important; }`.
+- Three.js 0.187 đã bỏ `PCFSoftShadowMap` → dùng `PCFShadowMap`.
+- Chrome không giao diện vẽ bằng CPU nên ~1–2 giây mỗi khung hình: muốn xem giữa trận thì dùng `skip`/`script`, đừng chờ thời gian thật.
+- `tsconfig` tắt `noUncheckedIndexedAccess`: mã lưới / mảng kiểu (typed array) truy cập chỉ số liên tục, bật lên thì toàn dấu `!` mà không an toàn hơn.
 
 ## 5. Quy trình và lệnh
-- `npm run dev`: server phát triển, tự tải lại khi sửa code (http://localhost:5173).
-- `npm run check`: kiểm tra kiểu TypeScript. `npm test`: chạy kiểm thử Vitest.
+- `npm run dev`: server phát triển, tự tải lại khi sửa code (http://localhost:5173 — game; /models.html — Xưởng Mô Hình).
+- `npm run check`: kiểm tra kiểu TypeScript. `npm test`: chạy kiểm thử Vitest (gồm 1 trận AI đấu AI trọn vẹn).
+- `npm run simulate -- N`: N trận AI đấu AI không giao diện, in kết quả và thống kê (dùng để cân bằng).
 - `npm run build`: kiểm tra kiểu rồi build ra `dist/`. `npm run preview`: chạy thử bản build (http://localhost:4173).
 - **Tự xem kết quả bằng Chrome không giao diện** (WebGL qua SwiftShader):
-  `"/c/Program Files/Google/Chrome/Application/chrome.exe" --headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --hide-scrollbars --window-size=1280,800 --virtual-time-budget=5000 --screenshot=<file.png> "http://localhost:4173/models.html#titan"`
+  `"/c/Program Files/Google/Chrome/Application/chrome.exe" --headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --hide-scrollbars --window-size=1280,800 --virtual-time-budget=5000 --screenshot=<file.png> "http://localhost:4173/?play=aivai&seed=3&skip=170"`
+  Đọc log console: thêm `--enable-logging=stderr --v=0` và lọc dòng `CONSOLE`.
 - Sau mỗi thay đổi phải chạy `npm run check` và `npm test`. Khi đụng tới phần hiển thị thì chụp màn hình để kiểm tra.
 - Commit nhỏ, thông điệp rõ ràng. Chỉ push khi người dùng yêu cầu.

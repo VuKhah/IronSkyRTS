@@ -137,9 +137,9 @@
 | Ra lệnh đi / tấn công | Chạm mặt đất / chạm quân địch khi đang chọn quân | Nhấp phải |
 | Gọi máy bay về Sân Đáp | Nút "Về sân" trên thanh lệnh | Phím B |
 | Bỏ chọn | Nút ✕ trên thanh lệnh | Esc |
-| Kéo màn hình | Một ngón kéo | WASD, phím mũi tên, đưa chuột sát mép, hoặc kéo chuột giữa |
+| Kéo màn hình | Một ngón kéo | Phím mũi tên, đưa chuột sát mép, hoặc kéo chuột giữa (A / S dành cho Tấn công-di chuyển / Dừng) |
 | Thu phóng | Chụm hai ngón | Lăn chuột |
-| Xoay camera | Hai ngón xoay | Q/E hoặc Alt + kéo |
+| Xoay camera | Hai ngón xoay | Q/E hoặc kéo chuột phải |
 | Xây | Chọn công trình trên thanh xây, chạm vị trí, bấm ✓ | Chọn, nhấp đặt |
 | Nhóm quân | Nút "Tất cả quân chiến" | Ctrl+1..5 để lưu, 1..5 để gọi |
 
@@ -179,3 +179,22 @@ Kỹ năng Xe Tư Lệnh [Q][E][R], Valkyrie, Vàng, lưới điện, đường 
 | **M7** | Sương mù chiến tranh | Không thấy quân địch ngoài tầm nhìn |
 | **M8** | AI, chế độ AI đấu AI, chạy không giao diện | AI tự chơi trọn trận và có lúc thắng được người |
 | **M9** | Hoàn thiện: HUD, minimap, cảnh báo, âm thanh, màn thắng/thua, đăng GitHub Pages | Gửi link là người khác chơi được. **Sau mốc này: buổi bàn kỹ chỉ số** |
+
+## 14. Trạng thái bản v1 (04/11/2026)
+
+Bản v1 đã dựng đủ M0–M9 ở mức chơi được (chưa đăng GitHub Pages vì chưa có repo):
+
+| Mốc | Trạng thái | Ghi chú |
+|---|---|---|
+| M0 Lõi sim tất định | ✅ | Kiểm thử băm: cùng seed + lệnh → cùng mã băm |
+| M1 Bản đồ, camera | ✅ | Chạm + chuột, xoay / nghiêng / thu phóng |
+| M2 Di chuyển | ✅ | A* + kéo thẳng đường, qua cầu / bãi cạn, đội hình |
+| M3 Chiến đấu | ✅ | Đạn bay theo thời gian, nổ lan, đất / không |
+| M4 Kinh tế | ✅ | Chiếm mỏ, Xe Vận Tải chở Sắt / Dầu |
+| M5 Công trình, 3 điều kiện thắng | ✅ | Đặt có bóng mờ xanh / đỏ, hàng chờ, tập kết, bán |
+| M6 Không quân | ✅ | Cất / hạ cánh, đốt dầu, tự về sân, nạp trừ kho Dầu, rơi khi cạn |
+| M7 Sương mù | ✅ | Bản đơn giản; AI cũng bị che |
+| M8 AI, AI đấu AI | ✅ | Xem trực tiếp (×1 / ×2 / ×4) và chạy không giao diện |
+| M9 Hoàn thiện | 🟨 | HUD, minimap, cảnh báo, âm thanh, màn kết thúc ✅ — đăng web ⬜ |
+
+**Phát hiện từ máy giả lập (dữ liệu cho buổi bàn chỉ số):** 10 trận AI đấu AI đều kết thúc trong 3–8 phút, đa số bằng **độc quyền tài nguyên** (giàn Dầu đổi chủ liên tục; 30 giây là ngắn). Dầu dư (chỉ máy bay dùng) trong khi Sắt luôn cạn.

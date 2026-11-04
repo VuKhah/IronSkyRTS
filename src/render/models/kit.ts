@@ -22,6 +22,16 @@ export interface Rig {
   /** Bán kính bao quanh, để camera tự canh khung hình. */
   radius: number;
   update(dt: number, time: number, active: ReadonlySet<string>): void;
+  /**
+   * Chiến trường điều khiển tháp pháo: góc quay (rad) so với thân, null = tự do (hoạt ảnh "Ngắm" trên Xưởng Mô Hình).
+   * Chỉ có ở mô hình có tháp pháo.
+   */
+  setAim?(yaw: number | null): void;
+  /**
+   * Chiến trường điều khiển máy bay: độ cao do sim quyết định (đặt vào root.position.y),
+   * rig chỉ lo càng, lửa động cơ và độ nghiêng cánh.
+   */
+  setFlight?(airborne: boolean, roll: number): void;
 }
 
 export interface Palette {
@@ -165,6 +175,18 @@ export class FireClock {
 /** Nội suy mượt về giá trị đích (không phụ thuộc tốc độ khung hình). */
 export function approach(current: number, target: number, rate: number, dt: number): number {
   return target + (current - target) * Math.exp(-rate * dt);
+}
+
+/** Đưa góc về khoảng [-π, π]. */
+export function wrapAngle(a: number): number {
+  a = (a + Math.PI) % (Math.PI * 2);
+  if (a < 0) a += Math.PI * 2;
+  return a - Math.PI;
+}
+
+/** Như approach nhưng cho góc: luôn quay theo đường ngắn nhất. */
+export function approachAngle(current: number, target: number, rate: number, dt: number): number {
+  return current + wrapAngle(target - current) * (1 - Math.exp(-rate * dt));
 }
 
 /** Giải phóng hình học của một mô hình (vật liệu dùng chung nên giữ lại). */

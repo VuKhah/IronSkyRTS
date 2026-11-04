@@ -4,7 +4,7 @@
  */
 import * as THREE from "three";
 import { BUILDINGS, type BuildingId, type Faction } from "../../sim/content";
-import { approach, box, cyl, FireClock, group, muzzleFlash, palette, sphere, tubeZ, type Palette, type Rig, type RigAction } from "./kit";
+import { approach, approachAngle, box, cyl, FireClock, group, muzzleFlash, palette, sphere, tubeZ, type Palette, type Rig, type RigAction } from "./kit";
 import { buildUnit } from "./units";
 
 const WORK: RigAction = { id: "work", label: "Vận hành" };
@@ -14,8 +14,13 @@ const POWER: RigAction = { id: "power", label: "Vùng phủ điện" };
 
 type Update = (dt: number, t: number, a: ReadonlySet<string>) => void;
 
-function rig(root: THREE.Group, actions: RigAction[], radius: number, updates: Update[], defaultOn: string[] = ["work"]): Rig {
-  return {
+/** Góc ngắm do chiến trường đặt (null = để hoạt ảnh tự quét). */
+interface AimRef {
+  yaw: number | null;
+}
+
+function rig(root: THREE.Group, actions: RigAction[], radius: number, updates: Update[], defaultOn: string[] = ["work"], aim?: AimRef): Rig {
+  const r: Rig = {
     root,
     actions,
     defaultOn,
@@ -24,6 +29,8 @@ function rig(root: THREE.Group, actions: RigAction[], radius: number, updates: U
       for (const u of updates) u(dt, t, a);
     }
   };
+  if (aim) r.setAim = (y) => (aim.yaw = y);
+  return r;
 }
 
 /** Nền móng bê tông có viền màu phe. */
@@ -59,14 +66,16 @@ function blinker(mat: THREE.MeshStandardMaterial, rate: number, phase = 0): Upda
 }
 
 /** Tháp pháo quét ngắm và bắn theo chu kỳ của vũ khí trong content.ts. */
-function turretUpdate(turret: THREE.Object3D, gun: THREE.Object3D | null, flashes: THREE.Mesh[], cooldown: number, aimPitch: number, sweep = 1.2): Update {
+function turretUpdate(turret: THREE.Object3D, gun: THREE.Object3D | null, flashes: THREE.Mesh[], cooldown: number, aimPitch: number, sweep = 1.2, aim?: AimRef): Update {
   const clock = new FireClock(Math.max(0.12, cooldown));
   let yaw = 0;
   let pitch = 0;
   let i = 0;
   return (dt, t, a) => {
-    const aiming = a.has("aim") || a.has("fire");
-    yaw = approach(yaw, a.has("aim") ? Math.sin(t * 0.6) * sweep : 0, 3, dt);
+    const held = aim !== undefined && aim.yaw !== null;
+    const aiming = held || a.has("aim") || a.has("fire");
+    const target = held ? (aim.yaw as number) : a.has("aim") ? Math.sin(t * 0.6) * sweep : 0;
+    yaw = approachAngle(yaw, target, held ? 7 : 3, dt);
     pitch = approach(pitch, aiming ? aimPitch : 0, 3, dt);
     turret.rotation.y = yaw;
     if (gun) gun.rotation.x = -pitch;
@@ -80,7 +89,7 @@ function turretUpdate(turret: THREE.Object3D, gun: THREE.Object3D | null, flashe
 
 // ----------------------------------------------------------------------------
 
-function buildHQ(p: Palette, faction: Faction): Rig {
+function buildHQ(p: Palette): Rig {
   const root = group(foundation(p, 6.6, 6.6));
   root.add(
     box(4.6, 2.2, 4.6, p.hull, 0, 1.35, 0),
@@ -114,14 +123,99 @@ function buildHQ(p: Palette, faction: Faction): Rig {
   root.add(turret);
   const ring = groundRing(p, 6.2, "power");
   root.add(ring.mesh);
-  void faction;
   const w = BUILDINGS.hq.weapon!;
-  return rig(root, [WORK, AIM, FIRE, POWER], 4.6, [
-    (dt, _t, a) => a.has("work") && (dish.rotation.y += dt * 1.4),
-    blinker(lamp, 5),
-    turretUpdate(turret, gun, flashes, w.cooldown, 0.1),
-    ring.update
+  const aim: AimRef = { yaw: null };
+  return rig(
+    root,
+    [WORK, AIM, FIRE, POWER],
+    4.6,
+    [(dt, _t, a) => a.has("work") && (dish.rotation.y += dt * 1.4), blinker(lamp, 5), turretUpdate(turret, gun, flashes, w.cooldown, 0.1, 1.2, aim), ring.update],
+    ["work"],
+    aim
+  );
+}
+
+/** Xưởng Xe: nhà xưởng mái răng cưa, cửa cuốn mở khi đang đúc xe, ống khói và cầu trục. */
+function buildFactory(p: Palette): Rig {
+  const root = group(foundation(p, 7, 6.2));
+  root.add(box(5.4, 2.6, 4.4, p.hull, -0.2, 1.55, -0.5), box(5.44, 0.18, 4.44, p.team, -0.2, 2.15, -0.5));
+  // mái răng cưa: 3 tấm nghiêng có dải kính lấy sáng
+  for (let i = 0; i < 3; i++) {
+    const x = -1.95 + i * 1.75;
+    const roof = box(1.75, 0.12, 4.4, p.hullDark, x, 3.2, -0.5);
+    roof.rotation.z = 0.42;
+    const glass = box(0.08, 0.7, 4.3, p.glass, x + 0.82, 3.2, -0.5);
+    root.add(roof, glass);
+  }
+  // khung cửa và cửa cuốn
+  root.add(box(3.2, 0.3, 0.3, p.warning, -0.2, 2.65, 1.75), box(0.3, 2.4, 0.3, p.hullDark, -1.75, 1.45, 1.75), box(0.3, 2.4, 0.3, p.hullDark, 1.35, 1.45, 1.75));
+  const door = box(2.9, 2.2, 0.12, p.teamDark, -0.2, 1.35, 1.8);
+  root.add(door);
+  // dốc ra xe có sọc cảnh báo
+  const ramp = box(3, 0.1, 1.2, p.concreteDark, -0.2, 0.3, 2.5);
+  ramp.rotation.x = 0.08;
+  root.add(ramp);
+  for (let i = 0; i < 4; i++) root.add(box(0.28, 0.03, 1.1, p.warning, -1.25 + i * 0.7, 0.37, 2.5));
+  // ống khói + khói
+  root.add(cyl(0.32, 0.38, 2.6, p.hullDark, 10, 2.55, 2.85, -2.0), cyl(0.36, 0.36, 0.18, p.team, 10, 2.55, 4.05, -2.0));
+  const puffs: THREE.Mesh[] = [];
+  for (let i = 0; i < 4; i++) {
+    const s = sphere(0.35, p.smoke, 2.55, 4.3, -2.0, 7);
+    s.castShadow = false;
+    s.userData.phase = i / 4;
+    puffs.push(s);
+    root.add(s);
+  }
+  // cầu trục trên nóc
+  const crane = group(box(0.14, 0.14, 4.6, p.warning, 0, 0, 0), box(0.4, 0.3, 0.4, p.hullDark, 0, -0.2, 0));
+  crane.position.set(-0.2, 3.75, -0.5);
+  root.add(box(0.15, 0.9, 0.15, p.metal, -2.6, 3.3, -2.6), box(0.15, 0.9, 0.15, p.metal, 2.2, 3.3, -2.6), box(4.9, 0.14, 0.14, p.metal, -0.2, 3.75, -2.6));
+  root.add(crane);
+  const lamp = p.teamGlow.clone() as THREE.MeshStandardMaterial;
+  root.add(sphere(0.12, lamp, -1.9, 2.95, 1.85, 6), sphere(0.12, lamp, 1.5, 2.95, 1.85, 6));
+  let doorT = 0;
+  return rig(root, [WORK], 4.4, [
+    (dt, t, a) => {
+      const on = a.has("work");
+      doorT = approach(doorT, on ? 1 : 0, 2.5, dt);
+      door.position.y = 1.35 + doorT * 1.9;
+      door.scale.y = 1 - doorT * 0.85;
+      crane.position.x = -0.2 + (on ? Math.sin(t * 0.8) * 2 : 0);
+      for (const s of puffs) {
+        s.visible = on;
+        const k = (t * 0.35 + (s.userData.phase as number)) % 1;
+        s.position.set(2.55 + k * 0.5, 4.3 + k * 2.2, -2.0 + k * 0.2);
+        s.scale.setScalar(0.5 + k * 1.4);
+      }
+    },
+    blinker(lamp, 4)
   ]);
+}
+
+/** Tháp Phòng Thủ: bệ bê tông, tháp bọc giáp xoay 360° với pháo kép tự động. */
+function buildTurret(p: Palette): Rig {
+  const root = group(cyl(1.55, 1.7, 0.4, p.concrete, 8, 0, 0.2, 0), cyl(1.0, 1.2, 1.1, p.hullDark, 8, 0, 0.95, 0), cyl(1.05, 1.05, 0.14, p.team, 8, 0, 1.45, 0));
+  const turret = group(box(1.3, 0.65, 1.5, p.hull, 0, 0.35, -0.1), box(1.32, 0.12, 1.52, p.team, 0, 0.7, -0.1), box(0.4, 0.3, 0.4, p.hullDark, 0.45, 0.85, -0.45));
+  const front = box(1.1, 0.5, 0.4, p.hullDark, 0, 0.32, 0.72);
+  front.rotation.x = -0.35;
+  turret.add(front, cyl(0.03, 0.03, 0.7, p.metal, 4, -0.45, 1.0, -0.5), sphere(0.06, p.teamGlow, -0.45, 1.36, -0.5, 6));
+  turret.position.y = 1.5;
+  const gun = group();
+  gun.position.set(0, 0.42, 0.75);
+  const flashes: THREE.Mesh[] = [];
+  for (const x of [-0.22, 0.22]) {
+    const b = tubeZ(0.065, 0.075, 1.25, p.metal, 8);
+    b.position.set(x, 0, 0.6);
+    const f = muzzleFlash(0.45, p.flash);
+    f.position.set(x, 0, 1.45);
+    gun.add(b, f);
+    flashes.push(f);
+  }
+  turret.add(gun);
+  root.add(turret);
+  const w = BUILDINGS.turret.weapon!;
+  const aim: AimRef = { yaw: null };
+  return rig(root, [AIM, FIRE], 2.2, [turretUpdate(turret, gun, flashes, w.cooldown, 0.12, 1.4, aim)], [], aim);
 }
 
 function buildOutpost(p: Palette): Rig {
@@ -150,11 +244,15 @@ function buildOutpost(p: Palette): Rig {
   root.add(turret);
   const ring = groundRing(p, 4.2, "capture");
   root.add(ring.mesh);
-  return rig(root, [WORK, AIM, FIRE, { id: "capture", label: "Vùng chiếm đóng" }], 3.4, [
-    (_dt, t, a) => (flag.rotation.y = a.has("work") ? Math.sin(t * 3) * 0.35 : 0),
-    turretUpdate(turret, gun, [f], BUILDINGS.outpost.weapon!.cooldown, 0.08, 2.5),
-    ring.update
-  ]);
+  const aim: AimRef = { yaw: null };
+  return rig(
+    root,
+    [WORK, AIM, FIRE, { id: "capture", label: "Vùng chiếm đóng" }],
+    3.4,
+    [(_dt, t, a) => (flag.rotation.y = a.has("work") ? Math.sin(t * 3) * 0.35 : 0), turretUpdate(turret, gun, [f], BUILDINGS.outpost.weapon!.cooldown, 0.08, 2.5, aim), ring.update],
+    ["work"],
+    aim
+  );
 }
 
 function buildPowerPlant(p: Palette): Rig {
@@ -282,8 +380,8 @@ function buildOilExtractor(p: Palette): Rig {
   ]);
 }
 
-function buildAirfield(p: Palette, faction: Faction): Rig {
-  const root = group(box(10, 0.18, 8, p.concreteDark, 0, 0.09, 0));
+function buildAirfield(p: Palette, faction: Faction, showcase: boolean): Rig {
+  const root = group(box(11, 0.18, 8.6, p.concreteDark, 0, 0.09, 0));
   const lights: THREE.MeshStandardMaterial[] = [];
   const padPos: [number, number][] = [[-2.4, -1.8], [2.4, -1.8], [-2.4, 1.8], [2.4, 1.8]];
   padPos.forEach(([x, z], i) => {
@@ -300,13 +398,16 @@ function buildAirfield(p: Palette, faction: Faction): Rig {
   const beacon = group(box(0.5, 0.15, 0.15, p.teamGlow), cyl(0.05, 0.05, 0.3, p.metal, 4, 0, -0.15, 0));
   beacon.position.y = 4.15;
   tower.add(beacon);
-  tower.position.set(5.6, 0, 3.2);
-  root.add(tower, cyl(0.6, 0.6, 1.4, p.hull, 12, 5.6, 0.7, -3), cyl(0.62, 0.62, 0.2, p.team, 12, 5.6, 1.0, -3));
-  // một chiếc Falcon đang đậu trên bãi số 1
-  const falcon = buildUnit("falcon", faction);
-  falcon.root.scale.setScalar(0.8);
-  falcon.root.position.set(-2.4, 0.2, -1.8);
-  root.add(falcon.root);
+  tower.position.set(4.95, 0, 3.75);
+  tower.scale.setScalar(0.85);
+  root.add(tower, cyl(0.45, 0.45, 1.2, p.hull, 12, 4.95, 0.7, -3.8), cyl(0.47, 0.47, 0.18, p.team, 12, 4.95, 0.95, -3.8));
+  // Xưởng Mô Hình: trưng một chiếc Falcon đậu trên bãi số 1 (trong trận thì máy bay thật đậu ở đây)
+  if (showcase) {
+    const falcon = buildUnit("falcon", faction);
+    falcon.root.scale.setScalar(0.8);
+    falcon.root.position.set(-2.4, 0.2, -1.8);
+    root.add(falcon.root);
+  }
   return rig(root, [WORK], 6.2, [
     (dt, t, a) => {
       const on = a.has("work");
@@ -500,8 +601,10 @@ function buildEMP(p: Palette): Rig {
   ]);
 }
 
-const BUILDERS: Record<BuildingId, (p: Palette, f: Faction) => Rig> = {
-  hq: buildHQ,
+const BUILDERS: Record<BuildingId, (p: Palette, f: Faction, showcase: boolean) => Rig> = {
+  hq: (p) => buildHQ(p),
+  factory: (p) => buildFactory(p),
+  turret: (p) => buildTurret(p),
   outpost: (p) => buildOutpost(p),
   "power-plant": (p) => buildPowerPlant(p),
   "power-pylon": (p) => buildPowerPylon(p),
@@ -513,6 +616,7 @@ const BUILDERS: Record<BuildingId, (p: Palette, f: Faction) => Rig> = {
   "aa-emp": (p) => buildEMP(p)
 };
 
-export function buildBuilding(id: BuildingId, faction: Faction): Rig {
-  return BUILDERS[id](palette(faction), faction);
+/** showcase = true: bản trưng bày trên Xưởng Mô Hình (có thêm đồ trang trí, ví dụ máy bay đậu sẵn). */
+export function buildBuilding(id: BuildingId, faction: Faction, showcase = true): Rig {
+  return BUILDERS[id](palette(faction), faction, showcase);
 }

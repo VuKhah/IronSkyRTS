@@ -8,7 +8,7 @@
 import * as THREE from "three";
 import { UNITS, type Faction, type UnitId } from "../../sim/content";
 import {
-  approach, box, cyl, FireClock, group, muzzleFlash, palette, sphere, tubeZ, wheel,
+  approach, approachAngle, box, cyl, FireClock, group, muzzleFlash, palette, sphere, tubeZ, wheel,
   type Palette, type Rig, type RigAction
 } from "./kit";
 
@@ -103,29 +103,44 @@ const GROUND_ACTIONS: RigAction[] = [
   { id: "fire", label: "Khai hỏa" }
 ];
 
-function vehicleRig(id: UnitId, p: Palette, parts: VehicleParts, radius: number, extra: RigAction[] = [], extraUpdate?: (dt: number, t: number, a: ReadonlySet<string>) => void): Rig {
+function vehicleRig(
+  id: UnitId,
+  p: Palette,
+  parts: VehicleParts,
+  radius: number,
+  extra: RigAction[] = [],
+  extraUpdate?: (dt: number, t: number, a: ReadonlySet<string>) => void,
+  baseActions: RigAction[] = GROUND_ACTIONS
+): Rig {
   const root = group(parts.body);
   const spec = UNITS[id];
-  const clock = new FireClock(Math.max(0.35, spec.weapon.cooldown));
+  const clock = new FireClock(Math.max(0.35, spec.weapon?.cooldown ?? 1));
   const shots = new Shots(root);
   let yaw = 0;
   let pitch = 0;
   let muzzleIndex = 0;
-  const speed = spec.speed * 0.25;
+  // bánh xe quay đúng theo tốc độ chạy thật của xe
+  const speed = spec.speed;
+  let aimOverride: number | null = null;
   return {
     root,
-    actions: [...GROUND_ACTIONS, ...extra],
+    actions: [...baseActions, ...extra],
     defaultOn: [],
     radius,
+    setAim(y) {
+      aimOverride = y;
+    },
     update(dt, t, a) {
       const moving = a.has("move");
       for (const w of parts.wheels) if (moving) w.g.rotation.x += (speed / w.r) * dt;
       parts.body.position.y = moving ? Math.sin(t * 14) * 0.025 : approach(parts.body.position.y, 0, 10, dt);
       parts.body.rotation.x = moving ? Math.sin(t * 7) * 0.008 : 0;
 
-      const aiming = a.has("aim") || a.has("fire");
-      yaw = approach(yaw, a.has("aim") ? Math.sin(t * 0.7) * 1.1 : 0, 3, dt);
-      pitch = approach(pitch, aiming ? parts.aimPitch + Math.sin(t * 1.3) * 0.06 : 0, 3, dt);
+      // Chiến trường đặt góc ngắm thật (setAim); Xưởng Mô Hình thì cho tháp pháo quét qua lại.
+      const aiming = aimOverride !== null || a.has("aim") || a.has("fire");
+      const yawTarget = aimOverride !== null ? aimOverride : a.has("aim") ? Math.sin(t * 0.7) * 1.1 : 0;
+      yaw = approachAngle(yaw, yawTarget, aimOverride !== null ? 7 : 3, dt);
+      pitch = approach(pitch, aiming ? parts.aimPitch + (aimOverride === null ? Math.sin(t * 1.3) * 0.06 : 0) : 0, 3, dt);
       parts.turret.rotation.y = yaw;
       parts.gun.rotation.x = -pitch;
 
@@ -371,13 +386,30 @@ function aircraftRig(parts: AirParts, radius: number): Rig {
   let pitch = 0;
   let yaw = 0;
   let throttle = 0.3;
+  // Chiến trường: sim quyết định độ cao (root.position.y), rig chỉ lo càng, lửa động cơ, độ nghiêng.
+  let ext: { airborne: boolean; roll: number } | null = null;
   parts.frame.position.y = alt;
   return {
     root,
     actions: AIR_ACTIONS,
     defaultOn: [],
     radius,
+    setFlight(airborne, r) {
+      ext = { airborne, roll: r };
+    },
     update(dt, t, a) {
+      if (ext) {
+        gearT = approach(gearT, ext.airborne ? 0 : 1, 5, dt);
+        roll = approach(roll, ext.roll, 6, dt);
+        throttle = approach(throttle, ext.airborne ? 1 : 0.25, 3, dt);
+        parts.frame.position.y = parts.parkY;
+        parts.frame.rotation.set(0, 0, -roll, "YXZ");
+        parts.gear.scale.y = Math.max(0.02, gearT);
+        parts.gear.visible = gearT > 0.04;
+        for (const e of parts.engines) e.scale.set(1, 0.4 + throttle * (0.9 + Math.sin(t * 40) * 0.12), 1);
+        parts.fire(dt, a.has("fire"), ext.airborne);
+        return;
+      }
       const flying = a.has("fly");
       alt = approach(alt, flying ? parts.flyY : parts.parkY, flying ? 1.2 : 1.6, dt);
       const airborne = alt > parts.parkY + 0.25;
@@ -576,7 +608,72 @@ function buildValkyrie(p: Palette): Rig {
   return rig;
 }
 
+let cargoMats: { ore: THREE.MeshStandardMaterial; barrel: THREE.MeshStandardMaterial } | null = null;
+
+function buildHauler(p: Palette): Rig {
+  cargoMats ??= {
+    ore: new THREE.MeshStandardMaterial({ color: 0x8796ad, roughness: 0.45, metalness: 0.65, flatShading: true }),
+    barrel: new THREE.MeshStandardMaterial({ color: 0x3d2d52, roughness: 0.5, metalness: 0.3, flatShading: true })
+  };
+  const body = group();
+  const wheels: { g: THREE.Object3D; r: number }[] = [];
+  for (const side of [-1, 1])
+    for (const z of [1.45, 0.05, -1.3]) {
+      const w = wheel(0.44, 0.36, p.rubber, p.metal);
+      w.position.set(side * 1.0, 0.44, z);
+      body.add(w);
+      wheels.push({ g: w, r: 0.44 });
+    }
+  body.add(
+    box(1.8, 0.35, 4.3, p.hullDark, 0, 0.72, 0),
+    box(1.8, 1.05, 1.25, p.hull, 0, 1.4, 1.45),
+    box(1.82, 0.12, 1.27, p.team, 0, 1.97, 1.45),
+    box(1.5, 0.42, 0.06, p.glass, 0, 1.6, 2.09),
+    box(1.9, 0.18, 0.15, p.warning, 0, 0.78, 2.2),
+    cyl(0.06, 0.06, 0.8, p.metal, 6, 0.75, 2.2, 0.85),
+    sphere(0.09, p.warning, -0.6, 2.08, 1.45, 6),
+    // thùng hàng
+    box(1.9, 0.12, 2.6, p.hullDark, 0, 0.98, -0.75),
+    box(0.1, 0.75, 2.6, p.team, -0.95, 1.4, -0.75),
+    box(0.1, 0.75, 2.6, p.team, 0.95, 1.4, -0.75),
+    box(1.9, 0.75, 0.1, p.team, 0, 1.4, -2.05),
+    box(1.9, 0.75, 0.1, p.hull, 0, 1.4, 0.55)
+  );
+  // quặng Sắt
+  const ore = group();
+  for (const [x, z, s] of [[-0.4, -0.3, 0.42], [0.35, -0.9, 0.48], [-0.2, -1.4, 0.38], [0.3, -0.1, 0.33], [0, -0.8, 0.5]] as const) {
+    const m = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), cargoMats.ore);
+    m.position.set(x, 1.15 + s * 0.4, z);
+    m.rotation.set(x * 3, z * 2, s * 5);
+    m.castShadow = true;
+    ore.add(m);
+  }
+  // thùng Dầu
+  const barrels = group();
+  for (const [x, z] of [[-0.45, -0.2], [0.45, -0.2], [-0.45, -1.3], [0.45, -1.3]] as const) {
+    barrels.add(cyl(0.36, 0.36, 0.7, cargoMats.barrel, 10, x, 1.4, z), cyl(0.37, 0.37, 0.08, p.warning, 10, x, 1.5, z));
+  }
+  ore.visible = barrels.visible = false;
+  body.add(ore, barrels);
+  return vehicleRig(
+    "hauler",
+    p,
+    { body, wheels, turret: group(), gun: group(), barrels: [], muzzles: [group()], flashes: [], spinners: [], aimPitch: 0, recoil: 0 },
+    2.8,
+    [
+      { id: "load", label: "Chở Sắt" },
+      { id: "loadOil", label: "Chở Dầu" }
+    ],
+    (_dt, _t, a) => {
+      ore.visible = a.has("load");
+      barrels.visible = a.has("loadOil") && !a.has("load");
+    },
+    [{ id: "move", label: "Di chuyển" }]
+  );
+}
+
 const BUILDERS: Record<UnitId, (p: Palette) => Rig> = {
+  hauler: buildHauler,
   commander: buildCommander,
   lynx: buildLynx,
   titan: buildTitan,

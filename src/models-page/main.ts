@@ -52,7 +52,7 @@ const TARGET_TEXT = { ground: "Bắn mặt đất", air: "Bắn trên không", b
 function costHtml(c: Cost | undefined, time: number | undefined, verb: string): string {
   if (!c) return "";
   return `<section><h3>Chi phí</h3><div class="cost">
-    <span class="g">${c.gold}<small>Vàng</small></span><span class="o">${c.oil}<small>Dầu</small></span><span class="i">${c.iron}<small>Sắt</small></span>
+    <span class="i">${c.iron}<small>Sắt</small></span>${c.oil ? `<span class="o">${c.oil}<small>Dầu</small></span>` : ""}
     ${time ? `<span>${num(time)}s<small>${verb}</small></span>` : ""}</div></section>`;
 }
 
@@ -94,7 +94,9 @@ function renderRoster(): void {
     roster.innerHTML = `<h2>Mặt đất</h2>${ground.map(pickHtml).join("")}<h2>Trên không</h2>${air.map(pickHtml).join("")}
       <h2>Sắp có</h2><div class="planned">${PLANNED_UNITS.map((u) => `<span title="${esc(u.group)}">${esc(u.name)}</span>`).join("")}</div>`;
   } else {
-    roster.innerHTML = `<h2>Căn cứ & hậu cần</h2>${BUILDING_IDS.slice(0, 7).map(pickHtml).join("")}<h2>Phòng không</h2>${BUILDING_IDS.slice(7).map(pickHtml).join("")}
+    const mvp = BUILDING_IDS.filter((id) => BUILDINGS[id as keyof typeof BUILDINGS].mvp);
+    const later = BUILDING_IDS.filter((id) => !BUILDINGS[id as keyof typeof BUILDINGS].mvp);
+    roster.innerHTML = `<h2>Bản MVP</h2>${mvp.map(pickHtml).join("")}<h2>Sau MVP</h2>${later.map(pickHtml).join("")}
       <h2>Sắp có</h2><div class="planned">${PLANNED_BUILDINGS.map((n) => `<span>${esc(n)}</span>`).join("")}</div>`;
   }
 }
@@ -112,19 +114,19 @@ function unitSheet(s: UnitSpec): string {
     stat(s.hp, "Máu"),
     stat(`${Math.round(s.armor * 100)}%`, "Giáp giảm ST"),
     stat(s.minSpeed ? `${num(s.minSpeed)}–${num(s.speed)}` : num(s.speed), "Tốc độ m/s"),
-    stat(`${num(w.range)}m`, "Tầm bắn"),
-    stat(dps(w), "ST mỗi giây"),
-    stat(w.splash ? `${num(w.splash)}m` : "—", "Nổ lan"),
+    stat(`${s.sight}m`, "Tầm nhìn"),
+    ...(w ? [stat(`${num(w.range)}m`, "Tầm bắn"), stat(dps(w), "ST mỗi giây"), stat(w.splash ? `${num(w.splash)}m` : "—", "Nổ lan")] : []),
+    ...(s.cargo ? [stat(s.cargo, "Sức chở")] : []),
     ...(s.fuel ? [stat(`${s.fuel.tank}L`, "Bình dầu"), stat(`${num(s.fuel.burn)}L/s`, "Đốt dầu"), stat(`~${Math.round(s.fuel.tank / s.fuel.burn)}s`, "Thời gian bay")] : [])
   ].join("");
   return `
     <header><h2>${esc(s.name)}</h2><p class="role">${esc(s.role)}</p><div class="tags">${tags}</div></header>
     ${s.cost ? costHtml(s.cost, s.buildTime, "chế tạo") : `<section><h3>Chi phí</h3><p class="weapon">Có sẵn từ đầu trận, không chế tạo thêm được.</p></section>`}
     <section><h3>Chỉ số</h3><div class="stats">${stats}</div></section>
-    <section><h3>Vũ khí</h3>${weaponHtml(w)}</section>
+    ${w ? `<section><h3>Vũ khí</h3>${weaponHtml(w)}</section>` : ""}
     <section><h3>Đặc điểm</h3><ul class="features">${s.features.map((f) => `<li>${esc(f)}</li>`).join("")}</ul></section>
     <section class="matchups">
-      <div class="beats"><h3>Khắc chế</h3>${linkList(s.beats)}</div>
+      <div class="beats"><h3>Khắc chế</h3>${linkList(s.beats) || `<span class="weapon">—</span>`}</div>
       <div class="fears"><h3>Sợ</h3>${linkList(s.fears)}</div>
     </section>`;
 }
@@ -179,6 +181,8 @@ function loadModel(keepView: boolean): void {
   const rig = buildModel(state.id, state.faction);
   if (!keepView) stage.active = new Set(rig.defaultOn);
   const old = stage.show(rig, keepView);
+  // ?flight=1: thử chế độ bay do chiến trường điều khiển (setFlight)
+  if (new URLSearchParams(location.search).has("flight")) rig.setFlight?.(true, 0.5);
   if (old) disposeRig(old);
   renderControls(rig.actions);
 }

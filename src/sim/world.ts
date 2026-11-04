@@ -1,0 +1,1625 @@
+/**
+ * LÕI MÔ PHỎNG — World.
+ *
+ * Mỗi lần gọi step(lệnh) là trận đấu tiến thêm đúng 1 tick (0.1 giây). Thứ tự trong một tick luôn cố định:
+ *   1. lưu vị trí cũ (để phần vẽ nội suy)   2. áp dụng lệnh   3. kinh tế   4. công trình (xây, đúc quân, tháp bắn)
+ *   5. chiếm mỏ   6. quân (đi, nhắm, bắn; máy bay bay và đốt dầu)   7. đẩy xe không chồng lên nhau
+ *   8. đạn tới đích → trừ máu   9. dọn xác   10. sương mù   11. kiểm tra thắng thua
+ * Không có gì phụ thuộc thời gian thật hay số ngẫu nhiên không seed, nên cùng seed + cùng lệnh thì ra cùng trận.
+ */
+import { BUILDINGS, RULES, UNITS, type BuildingId, type Res, type Side, type UnitId, type UnitSpec, type WeaponSpec, type WeaponVisual } from "./content";
+import { clamp, DEG, dist2, Rng, turnStep, turnToward, type TurnStep } from "./fmath";
+import { Grid } from "./grid";
+import { CELL, EDGE, GRID, HQ_POS, MINES } from "./map";
+import type { AlertKind, Building, Command, Entity, Mine, Order, Shot, SideState, SimEvent, Target, Unit, WinReason } from "./types";
+
+export const TICK_RATE = RULES.tickRate;
+export const DT = 1 / TICK_RATE;
+/** Đổi giây sang số tick. */
+export const sec = (s: number): number => Math.round(s * TICK_RATE);
+
+/** Cao hơn mức này thì máy bay là mục tiêu "trên không". */
+export const AIRBORNE_ALT = 2;
+const SHOT_SPEED: Record<WeaponVisual, number> = { bullet: 90, cannon: 60, missile: 40, bomb: 25, pulse: 120 };
+/** Vị trí 4 bãi đậu so với tâm Sân Đáp (khớp với mô hình). */
+export const PAD_OFFSETS: readonly (readonly [number, number])[] = [
+  [-2.4, -1.8],
+  [2.4, -1.8],
+  [-2.4, 1.8],
+  [2.4, 1.8]
+];
+/** 3 chỗ đứng đào quanh một mỏ. */
+const SLOT_OFFSETS: readonly (readonly [number, number])[] = [
+  [3.9, 0],
+  [-1.95, 3.38],
+  [-1.95, -3.38]
+];
+const IDLE_ACQUIRE_BONUS = 4;
+const LEASH = 12;
+const AIR_LIMIT = 70;
+
+/** Đội hình khi ra lệnh cho cả nhóm: các điểm lưới 3.6 m quanh đích, gần nhất trước. */
+const FORMATION: readonly (readonly [number, number])[] = (() => {
+  const pts: [number, number][] = [];
+  for (let j = -3; j <= 3; j++) for (let i = -3; i <= 3; i++) pts.push([i, j]);
+  pts.sort((a, b) => a[0] * a[0] + a[1] * a[1] - (b[0] * b[0] + b[1] * b[1]) || a[1] - b[1] || a[0] - b[0]);
+  return pts.map(([i, j]) => [i * 3.6, j * 3.6] as const);
+})();
+
+const TURNS = new Map<UnitId, TurnStep>();
+function airTurn(kind: UnitId): TurnStep {
+  let t = TURNS.get(kind);
+  if (!t) {
+    t = turnStep((UNITS[kind].fuel?.turnRate ?? 90) * DEG * DT);
+    TURNS.set(kind, t);
+  }
+  return t;
+}
+const TMP = { x: 0, z: 0 };
+
+/** Vòng tròn ô cho sương mù, tính sẵn theo bán kính (đơn vị ô). */
+const DISCS = new Map<number, Int16Array>();
+function disc(r: number): Int16Array {
+  let d = DISCS.get(r);
+  if (!d) {
+    const pts: number[] = [];
+    for (let z = -r; z <= r; z++) for (let x = -r; x <= r; x++) if (x * x + z * z <= r * r + r) pts.push(x, z);
+    d = Int16Array.from(pts);
+    DISCS.set(r, d);
+  }
+  return d;
+}
+
+export function dirToCenter(x: number, z: number): [number, number] {
+  const l = Math.sqrt(x * x + z * z);
+  return l < 1e-6 ? [1, 0] : [-x / l, -z / l];
+}
+
+function newSide(): SideState {
+  return {
+    iron: RULES.startIron,
+    oil: RULES.startOil,
+    vis: new Uint8Array(GRID * GRID),
+    explored: new Uint8Array(GRID * GRID),
+    known: new Set(),
+    mono: 0,
+    monoRes: null,
+    alerts: { commander: -1000, base: -1000, hauler: -1000, lowfuel: -1000, nooil: -1000, mineLost: -1000 },
+    stats: { unitsBuilt: 0, unitsLost: 0, kills: 0, ironMined: 0, oilMined: 0, buildingsBuilt: 0 }
+  };
+}
+
+export interface WorldOptions {
+  /** Tự xử hòa sau số tick này (0 = không giới hạn). Dùng cho chạy thử không giao diện. */
+  maxTicks?: number;
+}
+
+export class World {
+  tick = 0;
+  readonly rng: Rng;
+  readonly grid = new Grid();
+  units: Unit[] = [];
+  buildings: Building[] = [];
+  readonly mines: Mine[] = [];
+  shots: Shot[] = [];
+  readonly byId = new Map<number, Entity>();
+  readonly sides: [SideState, SideState] = [newSide(), newSide()];
+  events: SimEvent[] = [];
+  winner: Side | 2 | -1 = -1;
+  winReason: WinReason | null = null;
+  readonly maxTicks: number;
+  private nextId = 1;
+  private commanders: [Unit | null, Unit | null] = [null, null];
+  private sold = new Set<number>();
+
+  constructor(
+    readonly seed: number,
+    opts: WorldOptions = {}
+  ) {
+    this.rng = new Rng(seed ^ 0x2545f491);
+    this.maxTicks = opts.maxTicks ?? 0;
+    for (const m of MINES) {
+      const mine: Mine = {
+        id: this.nextId++,
+        cat: "mine",
+        res: m.res,
+        x: m.x,
+        z: m.z,
+        amount: RULES.mineAmount[m.res],
+        max: RULES.mineAmount[m.res],
+        owner: m.owner,
+        cap: m.owner >= 0 ? 1 : 0,
+        capSide: m.owner,
+        slots: [],
+        cells: this.grid.cellsInRect(m.x, m.z, 1.9, 1.9)
+      };
+      this.grid.block(mine.cells, 1);
+      this.mines.push(mine);
+      this.byId.set(mine.id, mine);
+    }
+    for (const s of [0, 1] as Side[]) {
+      const [hx, hz] = HQ_POS[s];
+      this.addBuilding("hq", s, hx, hz, true);
+      const [dx, dz] = dirToCenter(hx, hz);
+      const px = -dz;
+      const pz = dx;
+      this.spawnUnit("commander", s, hx + dx * 9, hz + dz * 9);
+      this.spawnUnit("lynx", s, hx + dx * 9 + px * 5, hz + dz * 9 + pz * 5);
+      const home = this.mines.find((m) => m.owner === s)!;
+      for (let i = 0; i < 2; i++) this.spawnUnit("hauler", s, (hx + home.x) / 2 + px * (i * 3.5 - 1.75), (hz + home.z) / 2 + pz * (i * 3.5 - 1.75));
+    }
+    this.updateFog();
+  }
+
+  // ------------------------------------------------------------------ truy vấn công khai
+
+  target(id: number): Target | null {
+    const e = this.byId.get(id);
+    return e && e.cat !== "mine" && e.hp > 0 ? e : null;
+  }
+
+  isAirborne(e: Target): boolean {
+    return e.cat === "unit" && e.alt > AIRBORNE_ALT;
+  }
+
+  /** Phe `side` có đang nhìn thấy ô chứa điểm (x, z) không. */
+  cellVisible(side: Side, x: number, z: number): boolean {
+    return this.sides[side].vis[this.grid.index(x, z)] === 1;
+  }
+
+  visibleTo(side: Side, e: Target | Mine): boolean {
+    if (e.cat !== "mine" && e.side === side) return true;
+    if (e.cat === "building") {
+      const vis = this.sides[side].vis;
+      for (const c of e.cells) if (vis[c] === 1) return true;
+      return false;
+    }
+    return this.cellVisible(side, e.x, e.z);
+  }
+
+  radiusOf(e: Target): number {
+    return e.cat === "unit" ? UNITS[e.kind].radius : Math.max(BUILDINGS[e.kind].half[0], BUILDINGS[e.kind].half[1]);
+  }
+
+  hqOf(side: Side): Building | null {
+    for (const b of this.buildings) if (b.side === side && b.kind === "hq" && b.hp > 0) return b;
+    return null;
+  }
+
+  commanderOf(side: Side): Unit | null {
+    const c = this.commanders[side];
+    return c && c.hp > 0 ? c : null;
+  }
+
+  /** Số quân tính vào giới hạn (không gồm Xe Tư Lệnh), cộng cả quân đang chờ đúc. */
+  unitCount(side: Side): number {
+    let n = 0;
+    for (const u of this.units) if (u.side === side && u.kind !== "commander") n++;
+    for (const b of this.buildings) if (b.side === side) n += b.queue.length;
+    return n;
+  }
+
+  canHit(w: WeaponSpec, t: Target): boolean {
+    return this.isAirborne(t) ? w.dmgAir > 0 : w.dmgGround > 0;
+  }
+
+  padPos(b: Building, i: number): [number, number] {
+    const [ox, oz] = PAD_OFFSETS[i];
+    return [b.x + ox, b.z + oz];
+  }
+
+  /** null = được phép xây; ngược lại là lý do (tiếng Việt) để hiện cho người chơi. */
+  canPlace(side: Side, kind: BuildingId, x: number, z: number): string | null {
+    const spec = BUILDINGS[kind];
+    const [hw, hd] = spec.half;
+    if (Math.abs(x) + hw > EDGE - 1 || Math.abs(z) + hd > EDGE - 1) return "Ngoài bản đồ";
+    for (const i of this.grid.cellsInRect(x, z, hw, hd)) if (this.grid.blockedIdx(i)) return "Vướng sông, đá hoặc công trình";
+    const big = Math.max(hw, hd);
+    for (const m of this.mines) if (dist2(m.x, m.z, x, z) < (5 + big) * (5 + big)) return "Quá gần mỏ";
+    for (const u of this.units) {
+      if (u.air !== "none" && u.air !== "parked") continue;
+      const r = UNITS[u.kind].radius;
+      if (Math.abs(u.x - x) < hw + r && Math.abs(u.z - z) < hd + r) return "Có xe đang đứng ở đó";
+    }
+    for (const b of this.buildings) {
+      if (b.side !== side || !b.built || b.hp <= 0) continue;
+      const bs = BUILDINGS[b.kind];
+      const reach = RULES.buildRadius + Math.max(bs.half[0], bs.half[1]) + big;
+      if (dist2(b.x, b.z, x, z) <= reach * reach) return null;
+    }
+    return "Phải xây gần công trình phe mình";
+  }
+
+  // ------------------------------------------------------------------ vòng tick
+
+  step(cmds: readonly Command[]): void {
+    if (this.winner !== -1) return;
+    this.events = [];
+    for (const u of this.units) {
+      u.px = u.x;
+      u.pz = u.z;
+      u.palt = u.alt;
+      u.phx = u.hx;
+      u.phz = u.hz;
+      u.moved = false;
+    }
+    for (const c of cmds) this.applyOrder(c.side, c.order);
+    for (const s of [0, 1] as Side[]) if (this.hqOf(s)?.built) this.sides[s].iron += RULES.hqTrickle * DT;
+    this.updateBuildings();
+    this.updateMines();
+    for (const u of this.units) {
+      if (u.hp <= 0) continue;
+      if (u.air !== "none") this.updateAir(u);
+      else this.updateGround(u);
+    }
+    this.separate();
+    this.resolveShots();
+    this.cleanup();
+    this.updateFog();
+    this.checkVictory();
+    this.tick++;
+  }
+
+  // ------------------------------------------------------------------ tạo thực thể
+
+  private spawnUnit(kind: UnitId, side: Side, x: number, z: number): Unit {
+    const spec = UNITS[kind];
+    let px = x;
+    let pz = z;
+    if (spec.domain === "ground") {
+      const f = this.grid.nearestFree(x, z, 12);
+      if (f) [px, pz] = f;
+    }
+    const [hx, hz] = dirToCenter(px, pz);
+    const u: Unit = {
+      id: this.nextId++,
+      cat: "unit",
+      kind,
+      side,
+      x: px,
+      z: pz,
+      px,
+      pz,
+      hx,
+      hz,
+      phx: hx,
+      phz: hz,
+      alt: 0,
+      palt: 0,
+      hp: spec.hp,
+      maxHp: spec.hp,
+      cooldown: 0,
+      lastShot: -1000,
+      order: "idle",
+      tx: px,
+      tz: pz,
+      targetId: 0,
+      autoTarget: 0,
+      path: [],
+      pathI: 0,
+      repathAt: 0,
+      stuck: 0,
+      moved: false,
+      chasing: false,
+      hState: "idle",
+      mineId: 0,
+      manual: false,
+      cargo: 0,
+      cargoRes: "iron",
+      hTimer: 0,
+      air: spec.domain === "air" ? "parked" : "none",
+      fuel: spec.fuel?.tank ?? 0,
+      padB: 0,
+      padI: -1,
+      speed: 0,
+      airT: 0,
+      mission: "none",
+      mx: px,
+      mz: pz,
+      rtb: false,
+      ax: 0,
+      az: 0,
+      crashed: false
+    };
+    this.units.push(u);
+    this.byId.set(u.id, u);
+    if (kind === "commander") this.commanders[side] = u;
+    this.events.push({ t: "spawn", id: u.id, kind, side });
+    return u;
+  }
+
+  private addBuilding(kind: BuildingId, side: Side, x: number, z: number, built: boolean): Building {
+    const spec = BUILDINGS[kind];
+    const cells = this.grid.cellsInRect(x, z, spec.half[0], spec.half[1]);
+    this.grid.block(cells, 1);
+    const [dx, dz] = dirToCenter(x, z);
+    const reach = Math.max(spec.half[0], spec.half[1]) + 6;
+    const b: Building = {
+      id: this.nextId++,
+      cat: "building",
+      kind,
+      side,
+      x,
+      z,
+      hp: built ? spec.hp : spec.hp * 0.1,
+      maxHp: spec.hp,
+      progress: built ? 1 : 0,
+      built,
+      queue: [],
+      prog: 0,
+      rallyX: x + dx * reach,
+      rallyZ: z + dz * reach,
+      rallySet: false,
+      cooldown: 0,
+      lastShot: -1000,
+      targetId: 0,
+      cells,
+      pads: kind === "airfield" ? [0, 0, 0, 0] : []
+    };
+    this.buildings.push(b);
+    this.byId.set(b.id, b);
+    return b;
+  }
+
+  // ------------------------------------------------------------------ lệnh
+
+  private ownUnits(side: Side, ids: readonly number[]): Unit[] {
+    const out: Unit[] = [];
+    for (const id of ids) {
+      const e = this.byId.get(id);
+      if (e && e.cat === "unit" && e.side === side && e.hp > 0 && !out.includes(e)) out.push(e);
+    }
+    return out.sort((a, b) => a.id - b.id);
+  }
+
+  private ownBuilding(side: Side, id: number): Building | null {
+    const e = this.byId.get(id);
+    return e && e.cat === "building" && e.side === side && e.hp > 0 ? e : null;
+  }
+
+  private applyOrder(side: Side, o: Order): void {
+    switch (o.t) {
+      case "move":
+      case "amove":
+        this.orderMove(side, o.ids, o.x, o.z, o.t);
+        break;
+      case "attack": {
+        const t = this.target(o.target);
+        if (!t || t.side === side) break;
+        for (const u of this.ownUnits(side, o.ids)) this.orderAttack(u, t);
+        break;
+      }
+      case "stop":
+        for (const u of this.ownUnits(side, o.ids)) this.orderStop(u);
+        break;
+      case "harvest": {
+        const m = this.byId.get(o.mine);
+        if (!m || m.cat !== "mine") break;
+        const others: number[] = [];
+        for (const u of this.ownUnits(side, o.ids)) {
+          if (u.kind !== "hauler") {
+            others.push(u.id);
+            continue;
+          }
+          u.manual = false;
+          u.order = "idle";
+          if (!this.assignMine(u, m.id)) {
+            // mỏ chưa thuộc phe mình: chạy tới đó chờ (quân khác sẽ chiếm)
+            u.manual = true;
+            u.order = "move";
+            this.setPath(u, m.x, m.z);
+          }
+        }
+        if (others.length) this.orderMove(side, others, m.x, m.z, "amove");
+        break;
+      }
+      case "rtb":
+        for (const u of this.ownUnits(side, o.ids)) {
+          if (u.air === "flying" || u.air === "takeoff") u.rtb = true;
+          if (u.air === "parked") u.mission = "none";
+        }
+        break;
+      case "build":
+        this.orderBuild(side, o.kind, o.x, o.z);
+        break;
+      case "produce": {
+        const b = this.ownBuilding(side, o.building);
+        if (!b || !b.built || !BUILDINGS[b.kind].produces?.includes(o.kind)) break;
+        const us = UNITS[o.kind];
+        const cost = us.cost;
+        if (!cost || !us.mvp || b.queue.length >= RULES.queueMax || this.unitCount(side) >= RULES.unitCap) break;
+        const st = this.sides[side];
+        if (st.iron < cost.iron || st.oil < cost.oil) break;
+        st.iron -= cost.iron;
+        st.oil -= cost.oil;
+        b.queue.push(o.kind);
+        break;
+      }
+      case "cancel": {
+        const b = this.ownBuilding(side, o.building);
+        if (!b || b.queue.length === 0) break;
+        const k = b.queue.pop()!;
+        const cost = UNITS[k].cost!;
+        this.sides[side].iron += cost.iron;
+        this.sides[side].oil += cost.oil;
+        if (b.queue.length === 0) b.prog = 0;
+        break;
+      }
+      case "rally": {
+        const b = this.ownBuilding(side, o.building);
+        if (!b) break;
+        b.rallyX = clamp(o.x, -EDGE, EDGE);
+        b.rallyZ = clamp(o.z, -EDGE, EDGE);
+        b.rallySet = true;
+        break;
+      }
+      case "sell": {
+        const b = this.ownBuilding(side, o.building);
+        if (!b || b.kind === "hq") break;
+        const cost = BUILDINGS[b.kind].cost;
+        if (cost) {
+          const k = b.built ? RULES.sellRefund : 1;
+          this.sides[side].iron += cost.iron * k;
+          this.sides[side].oil += cost.oil * k;
+        }
+        for (const q of b.queue) {
+          const c = UNITS[q].cost!;
+          this.sides[side].iron += c.iron;
+          this.sides[side].oil += c.oil;
+        }
+        b.queue = [];
+        b.hp = 0;
+        this.sold.add(b.id);
+        break;
+      }
+    }
+  }
+
+  private orderMove(side: Side, ids: readonly number[], x: number, z: number, kind: "move" | "amove"): void {
+    const units = this.ownUnits(side, ids);
+    const groundCount = units.filter((u) => u.air === "none").length;
+    let k = 0;
+    for (const u of units) {
+      if (u.air !== "none") {
+        u.mission = "move";
+        u.mx = clamp(x, -AIR_LIMIT, AIR_LIMIT);
+        u.mz = clamp(z, -AIR_LIMIT, AIR_LIMIT);
+        u.targetId = 0;
+        u.autoTarget = 0;
+        this.cancelRtbIfFuel(u);
+        continue;
+      }
+      const off = groundCount > 1 ? FORMATION[Math.min(k++, FORMATION.length - 1)] : ([0, 0] as const);
+      if (u.kind === "hauler") {
+        this.releaseMine(u);
+        u.manual = true;
+        u.hState = "idle";
+      }
+      const f = this.grid.nearestFree(x + off[0], z + off[1], 8) ?? [x, z];
+      u.order = kind;
+      u.targetId = 0;
+      u.autoTarget = 0;
+      u.chasing = false;
+      u.tx = f[0];
+      u.tz = f[1];
+      this.setPath(u, f[0], f[1]);
+    }
+  }
+
+  private cancelRtbIfFuel(u: Unit): void {
+    const fuel = UNITS[u.kind].fuel;
+    if (!fuel) return;
+    if (u.fuel > fuel.tank * RULES.air.bingo + 2) {
+      u.rtb = false;
+      if (u.air === "returning") u.air = "flying";
+    }
+  }
+
+  private orderAttack(u: Unit, t: Target): void {
+    const w = UNITS[u.kind].weapon;
+    if (u.air !== "none") {
+      if (!w || !this.canHit(w, t)) return;
+      u.mission = "attack";
+      u.targetId = t.id;
+      this.cancelRtbIfFuel(u);
+      return;
+    }
+    if (!w || !this.canHit(w, t)) {
+      this.orderMove(u.side, [u.id], t.x, t.z, "move");
+      return;
+    }
+    if (u.kind === "hauler") return;
+    u.order = "attack";
+    u.targetId = t.id;
+    u.chasing = false;
+    u.path = [];
+    u.pathI = 0;
+    u.repathAt = 0;
+  }
+
+  private orderStop(u: Unit): void {
+    if (u.air === "none") {
+      if (u.kind === "hauler") {
+        this.releaseMine(u);
+        u.manual = true;
+        u.hState = "idle";
+      }
+      this.setIdle(u);
+      return;
+    }
+    if (u.air === "parked") u.mission = "none";
+    else {
+      u.mission = "move";
+      u.mx = u.x;
+      u.mz = u.z;
+      u.targetId = 0;
+    }
+  }
+
+  private orderBuild(side: Side, kind: BuildingId, rx: number, rz: number): void {
+    const spec = BUILDINGS[kind];
+    const cost = spec.cost;
+    if (!spec.mvp || !cost || kind === "hq") return;
+    const x = Math.round(rx);
+    const z = Math.round(rz);
+    if (this.canPlace(side, kind, x, z) !== null) return;
+    const st = this.sides[side];
+    if (st.iron < cost.iron || st.oil < cost.oil) return;
+    st.iron -= cost.iron;
+    st.oil -= cost.oil;
+    const b = this.addBuilding(kind, side, x, z, false);
+    this.events.push({ t: "placed", id: b.id, kind, side });
+  }
+
+  // ------------------------------------------------------------------ công trình
+
+  private updateBuildings(): void {
+    for (const b of this.buildings) {
+      if (b.hp <= 0) continue;
+      const spec = BUILDINGS[b.kind];
+      if (b.cooldown > 0) b.cooldown--;
+      if (!b.built) {
+        const total = sec(spec.buildTime ?? 1);
+        b.progress += 1 / total;
+        b.hp = Math.min(b.maxHp, b.hp + (b.maxHp * 0.9) / total);
+        if (b.progress >= 1 - 1e-9) {
+          b.progress = 1;
+          b.built = true;
+          this.sides[b.side].stats.buildingsBuilt++;
+          this.events.push({ t: "built", id: b.id, kind: b.kind, side: b.side });
+        }
+        continue;
+      }
+      if (b.queue.length) this.produce(b);
+      if (spec.weapon) {
+        const t = this.acquireFrom(b, b.side, b.x, b.z, spec.weapon, spec.weapon.range, b.targetId);
+        b.targetId = t ? t.id : 0;
+        if (t) this.tryFire(b, spec.weapon, t);
+      }
+    }
+  }
+
+  private produce(b: Building): void {
+    const kind = b.queue[0];
+    const us = UNITS[kind];
+    let live = 0;
+    for (const u of this.units) if (u.side === b.side && u.kind !== "commander") live++;
+    if (live >= RULES.unitCap) return;
+    if (us.domain === "air" && b.pads.indexOf(0) < 0) return;
+    b.prog++;
+    if (b.prog < sec(us.buildTime ?? 5)) return;
+    b.prog = 0;
+    b.queue.shift();
+    if (us.domain === "air") {
+      const pad = b.pads.indexOf(0);
+      const [x, z] = this.padPos(b, pad);
+      const u = this.spawnUnit(kind, b.side, x, z);
+      u.hx = u.phx = 0;
+      u.hz = u.phz = 1;
+      b.pads[pad] = u.id;
+      u.padB = b.id;
+      u.padI = pad;
+    } else {
+      const spec = BUILDINGS[b.kind];
+      const [dx, dz] = dirToCenter(b.x, b.z);
+      const reach = Math.max(spec.half[0], spec.half[1]) + 2.5;
+      const u = this.spawnUnit(kind, b.side, b.x + dx * reach, b.z + dz * reach);
+      if (kind !== "hauler" && b.rallySet) this.orderMove(b.side, [u.id], b.rallyX, b.rallyZ, "move");
+    }
+    this.sides[b.side].stats.unitsBuilt++;
+  }
+
+  // ------------------------------------------------------------------ mỏ
+
+  private updateMines(): void {
+    const R2 = RULES.captureRadius * RULES.captureRadius;
+    const step = 1 / sec(RULES.captureSeconds);
+    for (const m of this.mines) {
+      let w0 = 0;
+      let w1 = 0;
+      for (const u of this.units) {
+        if (u.air !== "none" || u.hp <= 0) continue;
+        const cw = UNITS[u.kind].captureWeight;
+        if (cw <= 0 || dist2(u.x, u.z, m.x, m.z) > R2) continue;
+        if (u.side === 0) w0 += cw;
+        else w1 += cw;
+      }
+      const prev = m.owner;
+      if (w0 > 0 && w1 > 0) continue;
+      if (w0 === 0 && w1 === 0) {
+        if (m.owner >= 0) m.cap = Math.min(1, m.cap + step * 0.25);
+        else if (m.cap > 0) m.cap = Math.max(0, m.cap - step * 0.1);
+        continue;
+      }
+      const s: Side = w0 > 0 ? 0 : 1;
+      const rate = Math.min(RULES.captureMaxWeight, w0 + w1) * step;
+      if (m.owner === s) m.cap = Math.min(1, m.cap + rate);
+      else if (m.owner !== -1) {
+        m.cap -= rate;
+        if (m.cap <= 0) {
+          m.owner = -1;
+          m.cap = 0;
+          m.capSide = s;
+          m.slots = [];
+          this.alert(prev as Side, "mineLost", m.x, m.z);
+          this.events.push({ t: "captured", mine: m.id, res: m.res, side: -1, prev });
+        }
+      } else {
+        if (m.capSide !== s && m.cap > 0) {
+          m.cap -= rate;
+          if (m.cap <= 0) {
+            m.cap = 0;
+            m.capSide = s;
+          }
+        } else {
+          m.capSide = s;
+          m.cap += rate;
+          if (m.cap >= 1) {
+            m.cap = 1;
+            m.owner = s;
+            m.slots = [];
+            this.events.push({ t: "captured", mine: m.id, res: m.res, side: s, prev: -1 });
+          }
+        }
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------ quân mặt đất
+
+  private setIdle(u: Unit): void {
+    u.order = "idle";
+    u.tx = u.x;
+    u.tz = u.z;
+    u.targetId = 0;
+    u.path = [];
+    u.pathI = 0;
+    u.chasing = false;
+  }
+
+  private halt(u: Unit): void {
+    u.path = [];
+    u.pathI = 0;
+  }
+
+  private setPath(u: Unit, x: number, z: number): boolean {
+    const p = this.grid.findPath(u.x, u.z, x, z);
+    u.path = p ?? [];
+    u.pathI = 0;
+    u.stuck = 0;
+    return p !== null;
+  }
+
+  private tryMove(u: Unit, nx: number, nz: number): boolean {
+    if (!this.grid.blockedAt(nx, nz)) {
+      u.x = nx;
+      u.z = nz;
+      return true;
+    }
+    if (!this.grid.blockedAt(nx, u.z)) {
+      u.x = nx;
+      return true;
+    }
+    if (!this.grid.blockedAt(u.x, nz)) {
+      u.z = nz;
+      return true;
+    }
+    return false;
+  }
+
+  /** Đi theo đường; trả về true khi đã tới nơi (hoặc bỏ cuộc vì kẹt quá lâu). */
+  private follow(u: Unit): boolean {
+    if (u.pathI * 2 >= u.path.length) return true;
+    const spec = UNITS[u.kind];
+    let step = spec.speed * DT;
+    const ox = u.x;
+    const oz = u.z;
+    while (step > 1e-9 && u.pathI * 2 < u.path.length) {
+      const wx = u.path[u.pathI * 2];
+      const wz = u.path[u.pathI * 2 + 1];
+      const dx = wx - u.x;
+      const dz = wz - u.z;
+      const d = Math.sqrt(dx * dx + dz * dz);
+      if (d > 1e-6) {
+        u.hx = dx / d;
+        u.hz = dz / d;
+      }
+      if (d <= step) {
+        if (!this.tryMove(u, wx, wz)) break;
+        step -= d;
+        u.pathI++;
+        continue;
+      }
+      this.tryMove(u, u.x + (dx / d) * step, u.z + (dz / d) * step);
+      break;
+    }
+    const moved2 = dist2(ox, oz, u.x, u.z);
+    u.moved = moved2 > 1e-6;
+    const expect = spec.speed * DT * 0.2;
+    if (moved2 < expect * expect) u.stuck++;
+    else if (u.stuck > 0) u.stuck--;
+    if (u.stuck >= 12 && u.path.length >= 2) {
+      const ex = u.path[u.path.length - 2];
+      const ez = u.path[u.path.length - 1];
+      if (dist2(u.x, u.z, ex, ez) < 25 || u.stuck >= 40) {
+        u.path = [];
+        u.pathI = 0;
+        u.stuck = 0;
+        return true;
+      }
+      if (u.stuck % 12 === 0) {
+        const s = u.stuck;
+        this.setPath(u, ex, ez);
+        u.stuck = s;
+      }
+    }
+    return u.pathI * 2 >= u.path.length;
+  }
+
+  private chase(u: Unit, t: Target): void {
+    if (!u.chasing || u.pathI * 2 >= u.path.length || this.tick >= u.repathAt) {
+      this.setPath(u, t.x, t.z);
+      u.repathAt = this.tick + sec(1);
+      u.chasing = true;
+    }
+    this.follow(u);
+  }
+
+  private inRange(x: number, z: number, w: WeaponSpec, t: Target): boolean {
+    const reach = w.range + this.radiusOf(t) * (t.cat === "building" ? 1 : 0.5);
+    return dist2(x, z, t.x, t.z) <= reach * reach;
+  }
+
+  /** Chọn mục tiêu: giữ mục tiêu cũ nếu còn hợp lệ, nếu không thì chọn gần nhất (ưu tiên quân có vũ khí, rồi mới tới công trình). */
+  private acquireFrom(self: Target, side: Side, x: number, z: number, w: WeaponSpec, range: number, current: number): Target | null {
+    const cur = this.target(current);
+    if (cur && cur.side !== side && this.canHit(w, cur) && this.visibleTo(side, cur)) {
+      const r = range + this.radiusOf(cur) + 3;
+      if (dist2(x, z, cur.x, cur.z) <= r * r) return cur;
+    }
+    let best: Target | null = null;
+    let bestScore = Infinity;
+    for (const e of this.units) {
+      if (e.side === side || e.hp <= 0 || e === self || !this.canHit(w, e)) continue;
+      const r = range + UNITS[e.kind].radius * 0.5;
+      const d2 = dist2(x, z, e.x, e.z);
+      if (d2 > r * r || !this.visibleTo(side, e)) continue;
+      const score = d2 + (UNITS[e.kind].weapon ? 0 : 60);
+      if (score < bestScore) {
+        bestScore = score;
+        best = e;
+      }
+    }
+    for (const b of this.buildings) {
+      if (b.side === side || b.hp <= 0 || !this.canHit(w, b)) continue;
+      const r = range + Math.max(BUILDINGS[b.kind].half[0], BUILDINGS[b.kind].half[1]);
+      const d2 = dist2(x, z, b.x, b.z);
+      if (d2 > r * r || !this.visibleTo(side, b)) continue;
+      const score = d2 + 400;
+      if (score < bestScore) {
+        bestScore = score;
+        best = b;
+      }
+    }
+    return best;
+  }
+
+  private acquire(u: Unit, w: WeaponSpec, range: number): Target | null {
+    const t = this.acquireFrom(u, u.side, u.x, u.z, w, range, u.autoTarget);
+    u.autoTarget = t ? t.id : 0;
+    return t;
+  }
+
+  private updateGround(u: Unit): void {
+    if (u.cooldown > 0) u.cooldown--;
+    if (u.kind === "hauler") {
+      this.updateHauler(u);
+      return;
+    }
+    const w = UNITS[u.kind].weapon;
+    let fireAt: Target | null = null;
+    switch (u.order) {
+      case "attack": {
+        const t = this.target(u.targetId);
+        if (!t || t.side === u.side || !w || !this.canHit(w, t) || !this.visibleTo(u.side, t)) {
+          this.setIdle(u);
+          break;
+        }
+        fireAt = t;
+        if (this.inRange(u.x, u.z, w, t)) this.halt(u);
+        else this.chase(u, t);
+        break;
+      }
+      case "amove": {
+        const t = w ? this.acquire(u, w, w.range + IDLE_ACQUIRE_BONUS) : null;
+        if (t && w) {
+          fireAt = t;
+          if (this.inRange(u.x, u.z, w, t)) this.halt(u);
+          else this.chase(u, t);
+        } else {
+          if (u.chasing || u.path.length === 0) {
+            u.chasing = false;
+            this.setPath(u, u.tx, u.tz);
+          }
+          if (this.follow(u)) this.setIdle(u);
+        }
+        break;
+      }
+      case "move": {
+        if (this.follow(u)) this.setIdle(u);
+        if (w) fireAt = this.acquire(u, w, w.range);
+        break;
+      }
+      case "idle": {
+        const t = w ? this.acquire(u, w, w.range + IDLE_ACQUIRE_BONUS) : null;
+        if (t && w) {
+          fireAt = t;
+          if (this.inRange(u.x, u.z, w, t)) this.halt(u);
+          else if (dist2(u.x, u.z, u.tx, u.tz) < LEASH * LEASH) this.chase(u, t);
+          else this.halt(u);
+        } else if (dist2(u.x, u.z, u.tx, u.tz) > 16) {
+          if (u.chasing || u.path.length === 0) {
+            u.chasing = false;
+            this.setPath(u, u.tx, u.tz);
+          }
+          if (this.follow(u)) {
+            u.tx = u.x;
+            u.tz = u.z;
+            u.path = [];
+          }
+        } else if (u.chasing) {
+          u.chasing = false;
+          this.halt(u);
+        }
+        break;
+      }
+    }
+    if (fireAt && w) this.tryFire(u, w, fireAt);
+  }
+
+  private auraFactor(u: Unit): number {
+    const c = this.commanders[u.side];
+    if (!c || c === u || c.hp <= 0) return 1;
+    const aura = UNITS.commander.aura!;
+    return dist2(u.x, u.z, c.x, c.z) <= aura.radius * aura.radius ? aura.fireRate : 1;
+  }
+
+  private tryFire(src: Unit | Building, w: WeaponSpec, t: Target): boolean {
+    if (src.cooldown > 0 || !this.inRange(src.x, src.z, w, t)) return false;
+    const air = this.isAirborne(t);
+    const dmg = air ? w.dmgAir : w.dmgGround;
+    if (dmg <= 0) return false;
+    let cd = w.cooldown;
+    if (src.cat === "unit") cd /= this.auraFactor(src);
+    src.cooldown = Math.max(1, Math.round(cd * TICK_RATE));
+    src.lastShot = this.tick;
+    const d = Math.sqrt(dist2(src.x, src.z, t.x, t.z));
+    const ticks = Math.max(1, Math.ceil((d / SHOT_SPEED[w.visual]) * TICK_RATE));
+    this.shots.push({ side: src.side, src: src.id, target: t.id, tx: t.x, tz: t.z, dmg, splash: w.splash, hitAir: air, impact: this.tick + ticks, visual: w.visual });
+    this.events.push({
+      t: "shot",
+      src: src.id,
+      side: src.side,
+      visual: w.visual,
+      x: src.x,
+      z: src.z,
+      alt: src.cat === "unit" ? src.alt : 0,
+      target: t.id,
+      tx: t.x,
+      tz: t.z,
+      talt: t.cat === "unit" ? t.alt : 0,
+      ticks
+    });
+    if (src.cat === "unit" && src.air === "none") {
+      // quay thân về phía mục tiêu khi đứng bắn (tháp pháo do phần vẽ lo)
+      if (src.path.length === 0) {
+        const l = d || 1;
+        src.hx = (t.x - src.x) / l;
+        src.hz = (t.z - src.z) / l;
+      }
+    }
+    return true;
+  }
+
+  // ------------------------------------------------------------------ Xe Vận Tải
+
+  private mineOf(u: Unit): Mine | null {
+    const e = this.byId.get(u.mineId);
+    return e && e.cat === "mine" && e.owner === u.side && e.amount > 0 ? e : null;
+  }
+
+  private releaseMine(u: Unit): void {
+    if (!u.mineId) return;
+    const e = this.byId.get(u.mineId);
+    if (e && e.cat === "mine") {
+      const i = e.slots.indexOf(u.id);
+      if (i >= 0) e.slots.splice(i, 1);
+    }
+    u.mineId = 0;
+  }
+
+  private assignMine(u: Unit, preferred: number): boolean {
+    const st = this.sides[u.side];
+    let best: Mine | null = null;
+    const pref = this.byId.get(preferred);
+    if (pref && pref.cat === "mine" && pref.owner === u.side && pref.amount > 0 && (pref.slots.length < RULES.mineSlots || pref.slots.includes(u.id))) best = pref;
+    else if (preferred) return false;
+    else {
+      let bestD = Infinity;
+      for (const m of this.mines) {
+        if (m.owner !== u.side || m.amount <= 0) continue;
+        if (m.slots.length >= RULES.mineSlots && !m.slots.includes(u.id)) continue;
+        let d = dist2(u.x, u.z, m.x, m.z);
+        // thiếu Dầu thì ưu tiên giàn Dầu
+        if (m.res === "oil" && st.oil < 150) d *= 0.35;
+        if (d < bestD) {
+          bestD = d;
+          best = m;
+        }
+      }
+    }
+    if (!best) return false;
+    if (u.mineId !== best.id) {
+      this.releaseMine(u);
+      best.slots.push(u.id);
+      u.mineId = best.id;
+    }
+    if (u.cargo > 0 && u.cargoRes !== best.res) this.toDock(u);
+    else this.goMine(u, best);
+    return true;
+  }
+
+  private slotPos(m: Mine, u: Unit): [number, number] {
+    const i = Math.max(0, m.slots.indexOf(u.id)) % SLOT_OFFSETS.length;
+    const [ox, oz] = SLOT_OFFSETS[i];
+    return this.grid.nearestFree(m.x + ox, m.z + oz, 4) ?? [m.x + ox, m.z + oz];
+  }
+
+  private goMine(u: Unit, m: Mine): void {
+    u.hState = "toMine";
+    const [x, z] = this.slotPos(m, u);
+    this.setPath(u, x, z);
+  }
+
+  private toDock(u: Unit): void {
+    const hq = this.hqOf(u.side);
+    if (!hq) {
+      u.hState = "idle";
+      return;
+    }
+    // dỡ hàng ở cạnh Tổng Hành Dinh gần phía xe đang tới
+    const dx = u.x - hq.x;
+    const dz = u.z - hq.z;
+    const l = Math.sqrt(dx * dx + dz * dz) || 1;
+    const r = BUILDINGS.hq.half[0] + 2.6;
+    const f = this.grid.nearestFree(hq.x + (dx / l) * r, hq.z + (dz / l) * r, 5) ?? [hq.x + r, hq.z];
+    u.tx = f[0];
+    u.tz = f[1];
+    u.hState = "toDock";
+    this.setPath(u, f[0], f[1]);
+  }
+
+  private nearHq(u: Unit, hq: Building, margin: number): boolean {
+    const h = BUILDINGS.hq.half[0] + margin;
+    return Math.abs(u.x - hq.x) <= h && Math.abs(u.z - hq.z) <= h;
+  }
+
+  private updateHauler(u: Unit): void {
+    switch (u.hState) {
+      case "idle": {
+        if (u.order === "move") {
+          if (this.follow(u)) this.setIdle(u);
+          return;
+        }
+        if (!u.manual && (this.tick + u.id) % 10 === 0) {
+          if (u.cargo > 0 && this.hqOf(u.side)) this.toDock(u);
+          else this.assignMine(u, 0);
+        }
+        return;
+      }
+      case "toMine": {
+        const m = this.mineOf(u);
+        if (!m) {
+          this.releaseMine(u);
+          u.hState = "idle";
+          return;
+        }
+        if (dist2(u.x, u.z, m.x, m.z) <= 4.8 * 4.8) {
+          u.hState = "mining";
+          this.halt(u);
+          return;
+        }
+        if (this.follow(u)) {
+          if (dist2(u.x, u.z, m.x, m.z) <= 7 * 7) {
+            u.hState = "mining";
+            this.halt(u);
+          } else this.goMine(u, m);
+        }
+        return;
+      }
+      case "mining": {
+        const m = this.mineOf(u);
+        if (!m) {
+          this.releaseMine(u);
+          u.hState = "idle";
+          if (u.cargo > 0) this.toDock(u);
+          return;
+        }
+        const cap = UNITS.hauler.cargo ?? 100;
+        const take = Math.min(RULES.haulerMineRate * DT, m.amount, cap - u.cargo);
+        m.amount -= take;
+        u.cargo += take;
+        u.cargoRes = m.res;
+        if (u.cargo >= cap - 1e-6 || m.amount <= 1e-6) this.toDock(u);
+        return;
+      }
+      case "toDock": {
+        const hq = this.hqOf(u.side);
+        if (!hq) {
+          u.hState = "idle";
+          return;
+        }
+        if (this.nearHq(u, hq, 2.4) || dist2(u.x, u.z, u.tx, u.tz) <= 2) {
+          u.hState = "unloading";
+          u.hTimer = sec(RULES.haulerUnload);
+          this.halt(u);
+          return;
+        }
+        if (this.follow(u)) {
+          if (this.nearHq(u, hq, 4.5)) {
+            u.hState = "unloading";
+            u.hTimer = sec(RULES.haulerUnload);
+          } else this.toDock(u);
+        }
+        return;
+      }
+      case "unloading": {
+        if (--u.hTimer > 0) return;
+        const st = this.sides[u.side];
+        st[u.cargoRes] += u.cargo;
+        if (u.cargoRes === "iron") st.stats.ironMined += u.cargo;
+        else st.stats.oilMined += u.cargo;
+        u.cargo = 0;
+        const m = this.mineOf(u);
+        if (m) this.goMine(u, m);
+        else {
+          this.releaseMine(u);
+          u.hState = "idle";
+          this.assignMine(u, 0);
+        }
+        return;
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------ không quân
+
+  private padPosOf(u: Unit): [number, number] | null {
+    if (!u.padB) return null;
+    const b = this.byId.get(u.padB);
+    if (!b || b.cat !== "building" || b.hp <= 0 || !b.built) {
+      u.padB = 0;
+      u.padI = -1;
+      return null;
+    }
+    return this.padPos(b, u.padI);
+  }
+
+  private ensurePad(u: Unit): [number, number] | null {
+    const p = this.padPosOf(u);
+    if (p) return p;
+    let best: Building | null = null;
+    let bi = -1;
+    let bd = Infinity;
+    for (const b of this.buildings) {
+      if (b.side !== u.side || b.kind !== "airfield" || !b.built || b.hp <= 0) continue;
+      const i = b.pads.indexOf(0);
+      if (i < 0) continue;
+      const d = dist2(u.x, u.z, b.x, b.z);
+      if (d < bd) {
+        bd = d;
+        best = b;
+        bi = i;
+      }
+    }
+    if (!best) return null;
+    best.pads[bi] = u.id;
+    u.padB = best.id;
+    u.padI = bi;
+    return this.padPos(best, bi);
+  }
+
+  private releasePad(u: Unit): void {
+    if (!u.padB) return;
+    const b = this.byId.get(u.padB);
+    if (b && b.cat === "building") {
+      const i = b.pads.indexOf(u.id);
+      if (i >= 0) b.pads[i] = 0;
+    }
+    u.padB = 0;
+    u.padI = -1;
+  }
+
+  /** Đốt dầu; hết dầu thì máy bay rơi. Trả về false nếu vừa rơi. */
+  private burn(u: Unit, spec: UnitSpec): boolean {
+    u.fuel -= spec.fuel!.burn * DT;
+    if (u.fuel <= 0) {
+      u.fuel = 0;
+      u.hp = 0;
+      u.crashed = true;
+      return false;
+    }
+    return true;
+  }
+
+  private takeoff(u: Unit): void {
+    let tx = u.mx;
+    let tz = u.mz;
+    const t = this.target(u.targetId);
+    if (u.mission === "attack" && t) {
+      tx = t.x;
+      tz = t.z;
+    }
+    const dx = tx - u.x;
+    const dz = tz - u.z;
+    const l = Math.sqrt(dx * dx + dz * dz);
+    if (l > 1) {
+      u.hx = dx / l;
+      u.hz = dz / l;
+    }
+    u.air = "takeoff";
+    u.airT = 0;
+  }
+
+  private updateAir(u: Unit): void {
+    const spec = UNITS[u.kind];
+    const fuel = spec.fuel!;
+    const A = RULES.air;
+    if (u.cooldown > 0) u.cooldown--;
+    switch (u.air) {
+      case "parked": {
+        u.alt = 0;
+        u.speed = 0;
+        const pad = this.padPosOf(u);
+        if (pad) {
+          u.x = pad[0];
+          u.z = pad[1];
+          const st = this.sides[u.side];
+          if (u.fuel < fuel.tank) {
+            const want = Math.min(A.refuelRate * DT, fuel.tank - u.fuel);
+            const got = Math.min(want, st.oil / A.oilPerLiter);
+            if (got > 1e-9) {
+              u.fuel += got;
+              st.oil -= got * A.oilPerLiter;
+            } else this.alert(u.side, "nooil", u.x, u.z);
+          }
+          if (u.hp < u.maxHp) u.hp = Math.min(u.maxHp, u.hp + A.repairRate * DT);
+        }
+        if (u.mission !== "none" && u.fuel >= fuel.tank * A.takeoffMin) this.takeoff(u);
+        return;
+      }
+      case "takeoff": {
+        u.airT++;
+        const T = sec(1.6);
+        const k = u.airT / T;
+        u.speed = spec.speed * Math.min(1, 0.2 + k);
+        u.alt = A.cruiseAlt * k * k;
+        u.x += u.hx * u.speed * DT;
+        u.z += u.hz * u.speed * DT;
+        if (!this.burn(u, spec)) return;
+        if (u.airT >= T) {
+          u.air = "flying";
+          u.alt = A.cruiseAlt;
+        }
+        return;
+      }
+      case "flying":
+      case "returning":
+        this.fly(u, spec);
+        return;
+      case "landing": {
+        const pad = this.padPosOf(u);
+        if (!pad) {
+          u.air = "returning";
+          u.alt = Math.max(u.alt, 4);
+          return;
+        }
+        u.airT++;
+        const T = sec(1.6);
+        const k = Math.min(1, u.airT / T);
+        u.x = u.ax + (pad[0] - u.ax) * k;
+        u.z = u.az + (pad[1] - u.az) * k;
+        u.alt = A.cruiseAlt * (1 - k) * (1 - k);
+        u.speed = spec.speed * (1 - k);
+        if (k >= 1) {
+          u.air = "parked";
+          u.alt = 0;
+          u.speed = 0;
+          u.mission = "none";
+          u.rtb = false;
+          u.targetId = 0;
+          u.autoTarget = 0;
+          u.hx = 0;
+          u.hz = 1;
+        }
+        return;
+      }
+      default:
+        return;
+    }
+  }
+
+  private fly(u: Unit, spec: UnitSpec): void {
+    if (!this.burn(u, spec)) return;
+    const fuel = spec.fuel!;
+    const A = RULES.air;
+    const w = spec.weapon!;
+    if (u.air === "flying" && (u.rtb || u.fuel <= fuel.tank * A.bingo)) {
+      if (!u.rtb) this.alert(u.side, "lowfuel", u.x, u.z);
+      u.rtb = true;
+      u.air = "returning";
+    }
+    let dx = 0;
+    let dz = 0;
+    let tgt: Target | null = null;
+    if (u.air === "returning") {
+      const pad = this.ensurePad(u);
+      if (pad) {
+        dx = pad[0] - u.x;
+        dz = pad[1] - u.z;
+        if (dx * dx + dz * dz < 100) {
+          u.air = "landing";
+          u.airT = 0;
+          u.ax = u.x;
+          u.az = u.z;
+          return;
+        }
+      } else {
+        const hq = this.hqOf(u.side);
+        [dx, dz] = this.loiter(u, hq ? hq.x : 0, hq ? hq.z : 0);
+      }
+    } else {
+      if (u.mission === "attack") {
+        const t = this.target(u.targetId);
+        if (t && t.side !== u.side && this.canHit(w, t) && this.visibleTo(u.side, t)) tgt = t;
+        else {
+          u.mission = "move";
+          u.mx = clamp(u.x, -AIR_LIMIT, AIR_LIMIT);
+          u.mz = clamp(u.z, -AIR_LIMIT, AIR_LIMIT);
+          u.targetId = 0;
+        }
+      }
+      if (!tgt) {
+        tgt = this.acquireFrom(u, u.side, u.mx, u.mz, w, 26, u.autoTarget);
+        u.autoTarget = tgt ? tgt.id : 0;
+      }
+      if (tgt) {
+        dx = tgt.x - u.x;
+        dz = tgt.z - u.z;
+      } else [dx, dz] = this.loiter(u, u.mx, u.mz);
+    }
+    if (Math.abs(u.x) > AIR_LIMIT || Math.abs(u.z) > AIR_LIMIT) {
+      dx = -u.x;
+      dz = -u.z;
+    }
+    const l = Math.sqrt(dx * dx + dz * dz);
+    if (l > 1e-6) {
+      turnToward(u.hx, u.hz, dx / l, dz / l, airTurn(u.kind), TMP);
+      u.hx = TMP.x;
+      u.hz = TMP.z;
+    }
+    u.speed = spec.speed;
+    u.x = clamp(u.x + u.hx * u.speed * DT, -78, 78);
+    u.z = clamp(u.z + u.hz * u.speed * DT, -78, 78);
+    u.alt = A.cruiseAlt;
+    if (tgt) {
+      const tx = tgt.x - u.x;
+      const tz = tgt.z - u.z;
+      const d = Math.sqrt(tx * tx + tz * tz);
+      // chỉ bắn khi mũi máy bay hướng về mục tiêu (lượt bổ nhào)
+      if (d <= w.range + this.radiusOf(tgt) && u.hx * tx + u.hz * tz >= 0.8 * d) this.tryFire(u, w, tgt);
+    }
+  }
+
+  /** Hướng bay vòng chờ quanh (cx, cz): xa thì bay thẳng tới, gần thì bay tiếp tuyến bán kính ~11 m. */
+  private loiter(u: Unit, cx: number, cz: number): [number, number] {
+    const dx = cx - u.x;
+    const dz = cz - u.z;
+    const d = Math.sqrt(dx * dx + dz * dz);
+    if (d > 16 || d < 1e-6) return [dx, dz];
+    const k = (d - 11) / 11;
+    return [-dz / d + (dx / d) * k, dx / d + (dz / d) * k];
+  }
+
+  // ------------------------------------------------------------------ va chạm, đạn, dọn xác
+
+  private separate(): void {
+    const g: Unit[] = [];
+    for (const u of this.units) if (u.air === "none" && u.hp > 0) g.push(u);
+    for (let i = 0; i < g.length; i++) {
+      const a = g[i];
+      const ra = UNITS[a.kind].radius;
+      for (let j = i + 1; j < g.length; j++) {
+        const b = g[j];
+        const min = (ra + UNITS[b.kind].radius) * 0.8;
+        const dx = b.x - a.x;
+        const dz = b.z - a.z;
+        if (dx >= min || dx <= -min || dz >= min || dz <= -min) continue;
+        const d2 = dx * dx + dz * dz;
+        if (d2 >= min * min) continue;
+        let d = Math.sqrt(d2);
+        let nx: number;
+        let nz: number;
+        if (d < 1e-6) {
+          nx = (a.id + b.id) % 2 === 0 ? 1 : -1;
+          nz = 0;
+          d = 0;
+        } else {
+          nx = dx / d;
+          nz = dz / d;
+        }
+        const push = (min - d) * 0.5;
+        const ax = a.x - nx * push;
+        const az = a.z - nz * push;
+        if (!this.grid.blockedAt(ax, az)) {
+          a.x = ax;
+          a.z = az;
+        }
+        const bx = b.x + nx * push;
+        const bz = b.z + nz * push;
+        if (!this.grid.blockedAt(bx, bz)) {
+          b.x = bx;
+          b.z = bz;
+        }
+      }
+    }
+  }
+
+  private alert(side: Side, what: AlertKind, x: number, z: number): void {
+    const st = this.sides[side];
+    if (this.tick - st.alerts[what] < sec(8)) return;
+    st.alerts[what] = this.tick;
+    this.events.push({ t: "alert", side, what, x, z });
+  }
+
+  private damage(e: Target, amount: number, by: Side): void {
+    if (e.hp <= 0) return;
+    const armor = e.cat === "unit" ? UNITS[e.kind].armor : BUILDINGS[e.kind].armor;
+    e.hp -= amount * (1 - armor);
+    if (e.cat === "unit") {
+      if (e.kind === "commander") this.alert(e.side, "commander", e.x, e.z);
+      else if (e.kind === "hauler") this.alert(e.side, "hauler", e.x, e.z);
+    } else this.alert(e.side, "base", e.x, e.z);
+    if (e.hp <= 0) this.sides[by].stats.kills++;
+  }
+
+  private resolveShots(): void {
+    if (this.shots.length === 0) return;
+    const keep: Shot[] = [];
+    for (const s of this.shots) {
+      if (s.impact > this.tick) {
+        keep.push(s);
+        continue;
+      }
+      const t = this.target(s.target);
+      let x = s.tx;
+      let z = s.tz;
+      let alt = 0;
+      if (t) {
+        x = t.x;
+        z = t.z;
+        alt = t.cat === "unit" ? t.alt : 0;
+      }
+      if (s.splash > 0) {
+        for (const u of this.units) {
+          if (u.side === s.side || u.hp <= 0 || (u.alt > AIRBORNE_ALT) !== s.hitAir) continue;
+          const r = s.splash + UNITS[u.kind].radius * 0.5;
+          if (dist2(x, z, u.x, u.z) <= r * r) this.damage(u, s.dmg, s.side);
+        }
+        if (!s.hitAir)
+          for (const b of this.buildings) {
+            if (b.side === s.side || b.hp <= 0) continue;
+            const r = s.splash + Math.max(BUILDINGS[b.kind].half[0], BUILDINGS[b.kind].half[1]);
+            if (dist2(x, z, b.x, b.z) <= r * r) this.damage(b, s.dmg, s.side);
+          }
+      } else if (t) this.damage(t, s.dmg, s.side);
+      this.events.push({ t: "hit", side: s.side, visual: s.visual, x, z, alt, splash: s.splash });
+    }
+    this.shots = keep;
+  }
+
+  private cleanup(): void {
+    let deadUnits = false;
+    for (const u of this.units) if (u.hp <= 0) deadUnits = true;
+    if (deadUnits) {
+      const alive: Unit[] = [];
+      for (const u of this.units) {
+        if (u.hp > 0) {
+          alive.push(u);
+          continue;
+        }
+        this.byId.delete(u.id);
+        this.releaseMine(u);
+        this.releasePad(u);
+        this.sides[u.side].stats.unitsLost++;
+        if (this.commanders[u.side] === u) this.commanders[u.side] = null;
+        this.events.push({ t: "death", id: u.id, kind: u.kind, side: u.side, x: u.x, z: u.z, alt: u.alt, building: false, crash: u.crashed, sold: false });
+      }
+      this.units = alive;
+    }
+    let deadBuildings = false;
+    for (const b of this.buildings) if (b.hp <= 0) deadBuildings = true;
+    if (deadBuildings) {
+      const alive: Building[] = [];
+      for (const b of this.buildings) {
+        if (b.hp > 0) {
+          alive.push(b);
+          continue;
+        }
+        this.byId.delete(b.id);
+        this.grid.block(b.cells, -1);
+        for (const st of this.sides) st.known.delete(b.id);
+        if (b.kind === "airfield")
+          for (const u of this.units)
+            if (u.padB === b.id) {
+              u.padB = 0;
+              u.padI = -1;
+            }
+        const sold = this.sold.delete(b.id);
+        this.events.push({ t: "death", id: b.id, kind: b.kind, side: b.side, x: b.x, z: b.z, alt: 0, building: true, crash: false, sold });
+      }
+      this.buildings = alive;
+    }
+  }
+
+  // ------------------------------------------------------------------ sương mù & thắng thua
+
+  private stamp(st: SideState, x: number, z: number, sight: number): void {
+    const r = Math.round(sight / CELL);
+    const cx = this.grid.cellX(x);
+    const cz = this.grid.cellZ(z);
+    const d = disc(r);
+    for (let k = 0; k < d.length; k += 2) {
+      const nx = cx + d[k];
+      const nz = cz + d[k + 1];
+      if (nx < 0 || nz < 0 || nx >= GRID || nz >= GRID) continue;
+      const i = nz * GRID + nx;
+      st.vis[i] = 1;
+      st.explored[i] = 1;
+    }
+  }
+
+  private updateFog(): void {
+    for (const s of [0, 1] as Side[]) {
+      const st = this.sides[s];
+      st.vis.fill(0);
+      for (const u of this.units) if (u.side === s) this.stamp(st, u.x, u.z, UNITS[u.kind].sight);
+      for (const b of this.buildings) if (b.side === s) this.stamp(st, b.x, b.z, BUILDINGS[b.kind].sight * (b.built ? 1 : 0.6));
+      for (const b of this.buildings) if (b.side !== s && !st.known.has(b.id) && this.visibleTo(s, b)) st.known.add(b.id);
+    }
+  }
+
+  private checkVictory(): void {
+    const lost: [WinReason | null, WinReason | null] = [null, null];
+    for (const s of [0, 1] as Side[]) {
+      if (!this.commanderOf(s)) lost[s] = "commander";
+      else if (!this.buildings.some((b) => b.side === s && b.hp > 0)) lost[s] = "buildings";
+    }
+    const monoWinners: Side[] = [];
+    for (const s of [0, 1] as Side[]) {
+      const st = this.sides[s];
+      let res: Res | null = null;
+      for (const r of ["iron", "oil"] as Res[]) {
+        let all = true;
+        for (const m of this.mines) if (m.res === r && m.owner !== s) all = false;
+        if (all) {
+          res = r;
+          break;
+        }
+      }
+      if (res) {
+        if (st.monoRes !== res) {
+          st.mono = 0;
+          st.monoRes = res;
+          this.events.push({ t: "monopoly", side: s, res });
+        }
+        st.mono++;
+        if (st.mono >= sec(RULES.monopolySeconds)) monoWinners.push(s);
+      } else {
+        st.mono = 0;
+        st.monoRes = null;
+      }
+    }
+    let winner: Side | 2 | -1 = -1;
+    let reason: WinReason | null = null;
+    if (lost[0] && lost[1]) {
+      winner = 2;
+      reason = lost[0];
+    } else if (lost[0]) {
+      winner = 1;
+      reason = lost[0];
+    } else if (lost[1]) {
+      winner = 0;
+      reason = lost[1];
+    } else if (monoWinners.length === 2) {
+      winner = 2;
+      reason = "monopoly";
+    } else if (monoWinners.length === 1) {
+      winner = monoWinners[0];
+      reason = "monopoly";
+    } else if (this.maxTicks > 0 && this.tick + 1 >= this.maxTicks) {
+      winner = 2;
+      reason = "timeout";
+    }
+    if (winner !== -1 && reason) {
+      this.winner = winner;
+      this.winReason = reason;
+      this.events.push({ t: "end", winner, reason });
+    }
+  }
+}
+
+/** Mã băm trạng thái trận (FNV-1a trên từng bit của các số): hai máy chạy cùng lệnh phải ra cùng mã. */
+export function hashWorld(w: World): number {
+  let h = 0x811c9dc5;
+  const f64 = new Float64Array(1);
+  const u32 = new Uint32Array(f64.buffer);
+  const mix = (n: number): void => {
+    h = Math.imul(h ^ n, 16777619);
+  };
+  const num = (v: number): void => {
+    f64[0] = v;
+    mix(u32[0]);
+    mix(u32[1]);
+  };
+  num(w.tick);
+  for (const s of w.sides) {
+    num(s.iron);
+    num(s.oil);
+    num(s.mono);
+  }
+  for (const u of w.units) {
+    num(u.id);
+    num(u.x);
+    num(u.z);
+    num(u.hp);
+    num(u.alt);
+    num(u.fuel);
+    num(u.cargo);
+    num(u.cooldown);
+  }
+  for (const b of w.buildings) {
+    num(b.id);
+    num(b.hp);
+    num(b.progress);
+    num(b.queue.length);
+    num(b.prog);
+  }
+  for (const m of w.mines) {
+    num(m.amount);
+    num(m.owner);
+    num(m.cap);
+  }
+  num(w.shots.length);
+  return h >>> 0;
+}

@@ -23,8 +23,16 @@ describe("content", () => {
       expect(u.hp).toBeGreaterThan(0);
       expect(u.armor).toBeGreaterThanOrEqual(0);
       expect(u.armor).toBeLessThan(1);
-      expect(u.weapon.cooldown).toBeGreaterThan(0);
+      if (u.weapon) expect(u.weapon.cooldown).toBeGreaterThan(0);
       if (u.domain === "air") expect(u.fuel, `${u.id} là máy bay nên phải có bình dầu`).toBeDefined();
+    }
+  });
+
+  it("quân MVP đúc được thì phải có nơi đúc, và nơi đó liệt kê nó", () => {
+    for (const u of Object.values(UNITS)) {
+      if (!u.mvp || !u.cost) continue;
+      expect(u.builtAt, u.id).toBeDefined();
+      expect(BUILDINGS[u.builtAt!].produces, u.id).toContain(u.id);
     }
   });
 });
