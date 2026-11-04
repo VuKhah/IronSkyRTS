@@ -78,6 +78,8 @@ export interface Unit {
   ax: number;
   az: number;
   crashed: boolean;
+  /** Máy bay vừa bổ nhào qua mục tiêu: đang giữ thẳng hướng lấy khoảng cách trước khi quay lại lượt sau. */
+  ext: boolean;
 }
 
 export interface Building {

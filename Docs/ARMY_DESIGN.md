@@ -509,7 +509,9 @@ Người dùng chốt: thêm **toàn bộ cơ chế bắn** đã mô tả trư�
 
 | Cơ chế | Trường dữ liệu | Đang dùng | Số tạm |
 |---|---|---|---|
-| Bắn theo loạt rồi nạp lại | `burst: { shots, interval }` + `cooldown` = thời gian nạp | SkyGuard, Falcon, Valkyrie | SkyGuard 5 quả × 0,15 giây, nạp 2,4 giây · Falcon 8 viên 30mm × 0,1 giây, nạp 2,2 giây · Valkyrie 6 bom × 0,25 giây, nạp 6 giây |
+| Bắn theo loạt rồi nạp lại | `burst: { shots, interval }` + `cooldown` = thời gian nạp | SkyGuard, Falcon, Valkyrie | SkyGuard 5 quả × 0,15 giây, nạp 2,4 giây · Falcon 8 cặp đạn 30mm × 0,1 giây, nạp 1,4 giây · Valkyrie 6 bom × 0,25 giây, nạp 6 giây |
+| Súng nhiều nòng (bắn song song) | `barrels` | Falcon (pháo đôi hai cánh) | 2 nòng cách nhau 1,6 m, mỗi viên đủ sát thương |
+| Lượt bổ nhào của máy bay | (luật bay chung, `world.ts` `fly()`) | mọi máy bay | bay qua mục tiêu thì giữ thẳng hướng tới khi cách xa ≥ max(80% tầm bắn, 2,6 × bán kính ngoặt) rồi mới quay lại |
 | Lockdown (triển khai khi đứng yên) | `deploy: { time, range, dmg, required? }` | SkyGuard | 1,2 giây → tầm +25%, sát thương +33% |
 | Vừa chạy vừa bắn bị phạt | `movePenalty: { dmg, miss }` | SkyGuard | −25% sát thương, 30% tên lửa trượt (trượt = rơi lệch, không trúng) |
 | Tháp pháo xoay chậm | `traverse` (độ/giây) | Titan | 60°/giây; thân xe không còn tự quay theo mục tiêu, chỉ nòng quay |
@@ -528,6 +530,12 @@ Mọi phép ngẫu nhiên (trượt, tản) dùng RNG có seed của trận, l�
 - `falcon-flyover-skyguard`: hạ 0/10. Một lượt bay ngang chỉ ăn đúng **một loạt**: bắn xong 5 quả thì nạp 2,4 giây, trong lúc đó Falcon bay được ~43 m, ra khỏi tầm. Hàng Falcon đầu bị bắn còn 41/540 máu (chỉ thiếu chút nữa là rơi cả hàng). Khi cân bằng sẽ chỉnh số quả mỗi loạt, sát thương mỗi quả hoặc thời gian nạp.
 - Hai kịch bản này tạm ra khỏi danh sách kiểm thử bắt buộc, cân bằng xong đưa lại. `titan-vs-lynx-seq` và `reaction-time` vẫn đạt.
 - AI đấu AI: **8/20 trận hòa** (trước khi thêm cơ chế khoảng một nửa). Bắn loạt có giúp một chút nhưng chưa giải quyết thế giằng co quanh mỏ (xem mục Bước 4).
+
+**Sửa không quân (05/11/2026, người dùng chơi thử thấy Falcon lượn vòng quá lâu, sát thương quá đuối):**
+- Nguyên nhân lượn vòng: máy bay luôn quay mũi về mục tiêu nhưng bán kính ngoặt có giới hạn, nên khi đã ở gần nó rơi vào **quỹ đạo tròn quanh mục tiêu** mà không chĩa được mũi vào. Đo: Falcon đánh một Lynx đứng yên chỉ xả được **1 loạt trong 30 giây**, nửa thời gian quẩn trong vòng 12 m.
+- Sửa: lượt bổ nhào kiểu phi công thật (bổ nhào, bắn, bay thẳng ra lấy khoảng cách, quay lại). Thêm pháo đôi (`barrels: 2`), nạp 2,2 → 1,4 giây, ngoặt 110 → 150°/giây (thiết kế: "đổi hướng nhanh nhất game").
+- Kết quả (30 giây, mục tiêu đứng yên): đánh Lynx từ 1 loạt / 105 sát thương lên 4 lượt (~3,2 giây một lượt) và hạ được Lynx; đánh Titan hạ trong 2 lượt (~5 giây). **Falcon vào Titan giờ có thể quá mạnh** (xuyên giáp 150% × pháo đôi): xem lại khi cân bằng.
+- AI đấu AI sau khi sửa: 5/20 trận hòa. Lưu ý phe Đỏ thắng 12, Lam 3: cần xem bản đồ hoặc AI có lệch phe không.
 
 **Chưa làm (không phải cơ chế bắn, hoặc cần thứ chưa có):**
 - Pháo Tự Hành "địa lợi tầm cao" (+20% tầm khi đứng trên đồi): cần sim đọc độ cao địa hình theo cách tất định.

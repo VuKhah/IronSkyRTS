@@ -78,6 +78,8 @@ export interface WeaponSpec {
   visual: WeaponVisual;
 
   // ---- Cơ chế bắn (Docs/ARMY_DESIGN.md). Tất cả là tùy chọn và dùng chung: quân nào khai báo thì có. ----
+  /** Số nòng bắn cùng lúc (súng đôi hai bên cánh): mỗi lần bắn ra chừng này viên song song, mỗi viên đủ sát thương. */
+  barrels?: number;
   /** Bắn theo loạt: `shots` viên cách nhau `interval` giây; bắn hết loạt mới nạp lại `cooldown` giây. */
   burst?: { shots: number; interval: number };
   /** Tầm bắn tối thiểu (m): mục tiêu đứng gần hơn thì không bắn được (Pháo). */
@@ -417,20 +419,22 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     radius: 1.8,
     captureWeight: 0,
     weapon: {
-      name: "Pháo tự động 30mm",
+      name: "Pháo đôi 30mm",
       dmgGround: 22,
       dmgAir: 26,
       range: 22,
-      cooldown: 2.2,
+      cooldown: 1.4,
       dmgType: "ap",
       splash: 0,
       visual: "bullet",
+      barrels: 2,
       burst: { shots: 8, interval: 0.1 }
     },
-    fuel: { tank: 40, burn: 1.2, turnRate: 110 },
+    fuel: { tank: 40, burn: 1.2, turnRate: 150 },
     features: [
       "Pháo 30mm xuyên giáp: diệt xe tăng và máy bay ném bom; bắn xe nhẹ kém hiệu quả.",
-      "Bổ nhào xả một loạt 8 viên, rồi vòng lại nạp đợt bắn tiếp (2.2 giây).",
+      "Pháo đôi hai bên cánh: bổ nhào xả một loạt 8 cặp đạn, kéo ra lấy khoảng cách rồi quay lại lượt sau (nạp 1.4 giây).",
+      "Ngoặt gấp nhất game (150°/giây).",
       "Bình dầu 40L, đốt 1.2L/s: khoảng 33 giây bay mỗi lần xuất kích.",
       "Chỉ cất cánh khi còn ít nhất 35% dầu; xuống 24% (hoặc vừa đủ dầu bay về nếu đang ở xa) thì tự bay về Sân Đáp.",
       "Nạp dầu khoảng 4 giây tại bãi đậu, trừ vào kho Dầu. Kho cạn thì máy bay nằm sân.",

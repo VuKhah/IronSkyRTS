@@ -239,6 +239,33 @@ describe("cơ chế bắn", () => {
     });
   });
 
+  it("súng nhiều nòng: mỗi lần bắn ra các viên song song, xuất phát lệch hai bên", () => {
+    const w = new World(1, { sandbox: true });
+    hold(w, 1);
+    const [tx, tz] = P(10);
+    unit(w, 1, "titan", tx, tz);
+    const f = unit(w, 0, "falcon", ...P(-40), { x: tx, z: tz, mode: "amove" });
+    const shots = run(w, sec(8), f.id);
+    const n = UNITS.falcon.weapon!.barrels!;
+    expect(shots.length).toBeGreaterThan(0);
+    const first = shots.filter((s) => s.tick === shots[0].tick);
+    expect(first).toHaveLength(n);
+    const gap = Math.sqrt((first[0].e.x - first[1].e.x) ** 2 + (first[0].e.z - first[1].e.z) ** 2);
+    expect(gap).toBeGreaterThan(1);
+  });
+
+  it("lượt bổ nhào: máy bay không bay vòng tròn quanh mục tiêu, lượt nào cũng quay lại bắn được", () => {
+    const w = new World(1, { sandbox: true });
+    hold(w, 1);
+    const [tx, tz] = P(10);
+    unit(w, 1, "lynx", tx, tz);
+    const f = unit(w, 0, "falcon", ...P(-40), { x: tx, z: tz, mode: "amove" });
+    const ticks = run(w, sec(20), f.id).map((s) => s.tick);
+    // các lượt bổ nhào: những cụm phát bắn cách nhau quá 0,5 giây
+    const passes = ticks.filter((t, i) => i === 0 || t - ticks[i - 1] > 5).length;
+    expect(passes).toBeGreaterThanOrEqual(3);
+  });
+
   it("cơ chế bắn vẫn tất định: cùng lệnh, cùng mã băm", async () => {
     const { hashWorld } = await import("./world");
     const play = (): number => {

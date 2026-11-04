@@ -69,6 +69,8 @@ function traverseStep(degPerSec: number): TurnStep {
 }
 /** Nòng lệch dưới ~5° là coi như đã ngắm trúng. */
 const AIM_COS = dcos(5 * DEG);
+/** Khoảng cách giữa hai nòng súng đôi (m), ví dụ súng ở hai bên cánh. */
+const BARREL_GAP = 1.6;
 /** Bom rơi từ độ cao bay tới đất mất chừng này giây (bom trôi theo đà máy bay). */
 const BOMB_FALL = 1.2;
 const COS_CACHE = new Map<number, number>();
@@ -383,7 +385,8 @@ export class World {
       rtb: false,
       ax: 0,
       az: 0,
-      crashed: false
+      crashed: false,
+      ext: false
     };
     this.units.push(u);
     this.byId.set(u.id, u);
@@ -1295,26 +1298,33 @@ export class World {
     else if (BUILDINGS[src.kind].power < 0) cd /= Math.max(0.1, src.powerFrac);
     src.cooldown = Math.max(1, Math.round(cd * TICK_RATE));
     src.lastShot = this.tick;
-    // Điểm rơi: bám mục tiêu, trừ khi bắn trượt hoặc vũ khí có độ tản
-    let target = t.id;
-    let tx = t.x;
-    let tz = t.z;
-    if (miss) {
-      const [ox, oz] = this.randDisc();
-      const l = Math.sqrt(ox * ox + oz * oz) || 1;
-      const off = this.radiusOf(t) + 2.5;
-      tx += (ox / l) * off;
-      tz += (oz / l) * off;
-      target = 0;
-    } else if (w.scatter) {
-      const [ox, oz] = this.randDisc();
-      tx += ox * w.scatter;
-      tz += oz * w.scatter;
-      target = 0;
-    }
     const talt = t.cat === "unit" ? t.alt : 0;
     const ticks = Math.max(1, Math.ceil((d / SHOT_SPEED[w.visual]) * TICK_RATE));
-    this.pushShot(src, w, target, tx, tz, talt, dmg, air, ticks);
+    // Nhiều nòng: các viên bắn song song, xuất phát lệch sang hai bên theo hướng vuông góc với đường ngắm
+    const n = w.barrels ?? 1;
+    const px = d > 1e-6 ? -(t.z - src.z) / d : 0;
+    const pz = d > 1e-6 ? (t.x - src.x) / d : 0;
+    for (let i = 0; i < n; i++) {
+      const side = (i - (n - 1) / 2) * BARREL_GAP;
+      // Điểm rơi: bám mục tiêu, trừ khi bắn trượt hoặc vũ khí có độ tản
+      let target = t.id;
+      let tx = t.x;
+      let tz = t.z;
+      if (miss) {
+        const [ox, oz] = this.randDisc();
+        const l = Math.sqrt(ox * ox + oz * oz) || 1;
+        const off = this.radiusOf(t) + 2.5;
+        tx += (ox / l) * off;
+        tz += (oz / l) * off;
+        target = 0;
+      } else if (w.scatter) {
+        const [ox, oz] = this.randDisc();
+        tx += ox * w.scatter;
+        tz += oz * w.scatter;
+        target = 0;
+      }
+      this.pushShot(src, w, target, tx, tz, talt, dmg, air, ticks, px * side, pz * side);
+    }
     if (ground && !w.traverse) {
       // quay thân về phía mục tiêu khi đứng bắn (xe có tháp pháo xoay thì thân giữ nguyên, chỉ nòng quay)
       if (src.path.length === 0) {
@@ -1326,7 +1336,7 @@ export class World {
     return true;
   }
 
-  private pushShot(src: Unit | Building, w: WeaponSpec, target: number, tx: number, tz: number, talt: number, dmg: number, air: boolean, ticks: number): void {
+  private pushShot(src: Unit | Building, w: WeaponSpec, target: number, tx: number, tz: number, talt: number, dmg: number, air: boolean, ticks: number, ox = 0, oz = 0): void {
     this.shots.push({
       side: src.side,
       src: src.id,
@@ -1335,8 +1345,8 @@ export class World {
       tz,
       dmg,
       dmgType: w.dmgType,
-      sx: src.x,
-      sz: src.z,
+      sx: src.x + ox,
+      sz: src.z + oz,
       talt,
       interceptable: !!w.interceptable,
       splash: w.splash,
@@ -1349,8 +1359,8 @@ export class World {
       src: src.id,
       side: src.side,
       visual: w.visual,
-      x: src.x,
-      z: src.z,
+      x: src.x + ox,
+      z: src.z + oz,
       alt: src.cat === "unit" ? src.alt : 0,
       target,
       tx,
@@ -1778,7 +1788,22 @@ export class World {
       if (tgt) {
         dx = tgt.x - u.x;
         dz = tgt.z - u.z;
-      } else [dx, dz] = this.loiter(u, u.mx, u.mz);
+        // Lượt bổ nhào: bay qua mục tiêu thì giữ thẳng hướng lấy khoảng cách rồi mới quay lại.
+        // Nếu cứ quay mũi về mục tiêu với bán kính ngoặt giới hạn, máy bay sẽ bay vòng tròn quanh nó mãi
+        // mà không chĩa được mũi vào để bắn.
+        const d = Math.sqrt(dx * dx + dz * dz);
+        const turnR = spec.speed / (fuel.turnRate * DEG);
+        const facing = d > 1e-6 ? (u.hx * dx + u.hz * dz) / d : 1;
+        if (!u.ext && d < turnR * 1.5 && facing < 0.3) u.ext = true;
+        if (u.ext && d >= Math.max(w.range * 0.8, turnR * 2.6)) u.ext = false;
+        if (u.ext) {
+          dx = u.hx;
+          dz = u.hz;
+        }
+      } else {
+        u.ext = false;
+        [dx, dz] = this.loiter(u, u.mx, u.mz);
+      }
     }
     if (Math.abs(u.x) > AIR_LIMIT || Math.abs(u.z) > AIR_LIMIT) {
       dx = -u.x;
