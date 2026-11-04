@@ -1,6 +1,6 @@
 # Kế Hoạch Bản Đồ — Iron Sky
 
-> Lập ngày 05/11/2026. Bản 2 (cùng ngày): đã có quyết định của người dùng (mục 2). **Chờ duyệt bản 2 trước khi làm B0.**
+> Lập ngày 05/11/2026. Bản 2 (cùng ngày): đã có quyết định của người dùng (mục 2), đã duyệt. **B0 xong (05/11/2026).**
 > Yêu cầu gốc: có **vài bản đồ**, mỗi bản đồ có **đặc tính riêng**; căn cứ ở **góc dưới trái và góc trên phải**; bản đồ **to hơn** hiện tại.
 
 ---
@@ -21,7 +21,8 @@
 1. **Bản đồ hiện hình vuông, đúng hướng gốc** (không xoay thành hình thoi), vì thân thiện với người dùng.
 2. **Bản đồ là thành phần riêng**, để làm được nhiều bản đồ như tác giả Battle Drones, với **nhiều kích cỡ và hình dáng khác nhau**.
 3. **Vị trí cố định (mỏ Sắt, giàn Dầu, căn cứ…) do ta đặt tay** trong dữ liệu từng bản đồ. Không có trình sinh bản đồ tự đặt mỏ.
-4. **Hiệu ứng địa hình do bản đồ quyết định:** mỗi bản đồ tự "tô" các vùng địa hình (bùn, cát, rừng, đường…), luật của từng loại địa hình thì dùng chung.
+4. **Hiệu ứng địa hình do bản đồ quyết định:** mỗi bản đồ tự "tô" các vùng địa hình (bùn, cát, rừng, đường…), luật của từng loại địa hình thì dùng chung, **nằm trong một file chung duy nhất `src/sim/maps/terrain.ts`** để dễ cập nhật.
+5. **Phe Đỏ được xoay camera ban đầu 180°**: ai cũng thấy nhà mình ở góc dưới trái.
 
 ## 3. Thiết kế
 
@@ -68,7 +69,7 @@ Máy bay không chịu hiệu ứng địa hình. Độ dốc làm chậm (mục
 
 ### 3.4. Góc nhìn
 - Camera mặc định nhìn thẳng hướng Bắc; minimap hình vuông (hình chữ nhật nếu bản đồ chữ nhật), không xoay theo camera.
-- Lam ở góc dưới trái. **Đề xuất:** phe Đỏ được xoay góc nhìn ban đầu 180° để cũng thấy nhà mình ở góc dưới trái. Nếu muốn mọi người luôn thấy hướng gốc (Đỏ ở góc trên phải), chỉ cần bỏ phần xoay này.
+- Lam ở góc dưới trái. Phe Đỏ được xoay góc nhìn ban đầu 180° (đã chốt) để cũng thấy nhà mình ở góc dưới trái.
 - Người chơi vẫn xoay camera tự do như hiện tại.
 
 ### 3.5. Kích thước
@@ -84,7 +85,7 @@ Mỗi bản đồ một cỡ. Gợi ý khởi điểm: nhỏ 192 m, vừa 256 m,
 
 | Bước | Việc | Tiêu chí xong |
 |---|---|---|
-| **B0. Tách bản đồ thành thành phần riêng** | Tạo `src/sim/maps/` với `MapDef` và `GameMap`; bản đồ hiện tại thành `iron-valley.ts`; **chưa đổi gì về luật** | Mọi kiểm thử cũ đạt; trận AI đấu AI cùng seed ra kết quả tương đương trước khi tách |
+| **B0. Tách bản đồ thành thành phần riêng** ✅ | Tạo `src/sim/maps/` với `MapDef` và `GameMap`; bản đồ hiện tại thành `iron-valley.ts`; **chưa đổi gì về luật** | ✅ So 190.900 điểm: độ cao lệch tối đa 3·10⁻¹⁴ m, chặn đường và mặt cầu giống hệt; 10 trận AI đấu AI giống hệt từng con số; thêm `maps.test.ts` (đối xứng, mỏ đi tới được) |
 | **B1. Mọi nơi đọc `GameMap`** | `World` nhận bản đồ qua tham số; lưới, AI, `scene.ts`, minimap, camera, Phòng Thử Nghiệm bỏ hằng số `MAP_HALF` / `GRID`; kích thước và hình dáng thay đổi được | Đổi kích thước / hình dáng trong dữ liệu là game chạy đúng |
 | **B2. Góc nhìn hình vuông** | Camera nhìn Bắc, minimap hình vuông, Lam ở góc dưới trái (Đỏ theo mục 3.4) | Chụp màn hình cả hai phe |
 | **B3. Loại địa hình** | Bảng `TERRAIN`, vùng tô `regions`, hiệu ứng tốc độ / tầm nhìn / che chắn, độ dốc làm chậm; phần vẽ tô màu theo loại | Kiểm thử: xe đi vào bùn chậm đúng hệ số, Xe Tư Lệnh không bị chậm |

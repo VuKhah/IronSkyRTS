@@ -1,0 +1,78 @@
+/**
+ * MapDef: dữ liệu khai báo của một bản đồ (Docs/MAPS_PLAN.md mục 3.2).
+ *
+ * Mỗi bản đồ là một file dữ liệu trong `src/sim/maps/`. Mọi vị trí cố định (căn cứ, mỏ Sắt, giàn Dầu)
+ * do người thiết kế đặt tay. Hệ tọa độ: tâm bản đồ ở (0, 0), x sang Đông, z sang Nam (Nam = cạnh dưới
+ * màn hình khi camera nhìn hướng Bắc). Lam ở góc dưới trái (Tây Nam), Đỏ ở góc trên phải (Đông Bắc).
+ */
+import type { Res, Side } from "../content";
+import type { TerrainKind } from "./terrain";
+
+export type Vec2 = readonly [number, number];
+
+/** Đồi hoặc mỏm đá: hình tròn, độ cao ở tâm (m). */
+export interface Blob {
+  x: number;
+  z: number;
+  r: number;
+  h: number;
+}
+
+/** Lối qua sông, đặt bằng một điểm nằm trên dòng sông. `half`: nửa bề rộng lối qua đo dọc theo sông (m). */
+export interface CrossingDef {
+  x: number;
+  z: number;
+  half: number;
+  kind: "bridge" | "ford";
+}
+
+export interface RiverDef {
+  /** Đường gấp khúc của dòng chảy (m). Nên kéo ra quá mép bản đồ để sông chảy hết bản đồ. */
+  path: readonly Vec2[];
+  /** Nửa bề rộng lòng sông có nước (m): xe không đi được, trừ ở lối qua. */
+  half: number;
+  /** Nửa bề rộng cả bờ dốc hai bên (m). */
+  bank: number;
+  /** Độ sâu lòng sông và độ sâu ở bãi cạn (m). */
+  depth: number;
+  fordDepth: number;
+  crossings: readonly CrossingDef[];
+}
+
+export interface MineDef {
+  res: Res;
+  x: number;
+  z: number;
+  owner: Side | -1;
+  /** Trữ lượng riêng (mặc định lấy theo RULES.mineAmount). */
+  amount?: number;
+}
+
+/** Vùng tô loại địa hình: hình tròn hoặc đa giác. Vùng khai báo sau đè lên vùng trước. */
+export interface RegionDef {
+  kind: TerrainKind;
+  circle?: { x: number; z: number; r: number };
+  poly?: readonly Vec2[];
+}
+
+export interface MapDef {
+  id: string;
+  name: string;
+  /** Mô tả đặc tính bản đồ (hiện ở menu chọn bản đồ). */
+  blurb: string;
+  /** Kích thước (m). Cho phép hình chữ nhật. */
+  size: { w: number; h: number };
+  /** Hình dáng vùng chơi (đa giác, theo chiều bất kỳ). Bỏ trống = cả hình chữ nhật. Ngoài vùng là vách núi. */
+  bounds?: readonly Vec2[];
+  /** Vị trí căn cứ theo phe: [0] = Lam (góc dưới trái), [1] = Đỏ (góc trên phải). */
+  bases: readonly Vec2[];
+  mines: readonly MineDef[];
+  hills: readonly Blob[];
+  /** Mỏm đá: chặn đường, che tầm nhìn. */
+  rocks: readonly Blob[];
+  rivers: readonly RiverDef[];
+  /** Hiệu ứng địa hình theo vùng (luật của từng loại nằm ở terrain.ts). */
+  regions?: readonly RegionDef[];
+  /** Bộ màu / cảnh cho phần vẽ (không ảnh hưởng luật). */
+  biome?: string;
+}
