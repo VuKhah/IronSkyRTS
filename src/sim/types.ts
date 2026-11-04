@@ -148,7 +148,19 @@ export type Order =
   | { t: "produce"; building: number; kind: UnitId }
   | { t: "cancel"; building: number }
   | { t: "rally"; building: number; x: number; z: number }
-  | { t: "sell"; building: number };
+  | { t: "sell"; building: number }
+  // ---- Phòng Thử Nghiệm: chỉ có tác dụng khi World tạo với { sandbox: true }, trận thường bỏ qua
+  /** Thả quân / công trình (đã xây xong) cho phe `side`. Có (gx, gz) thì quân tự tấn công-di chuyển tới đó. */
+  | { t: "sbSpawn"; kind: UnitId | BuildingId; side: Side; x: number; z: number; gx?: number; gz?: number }
+  | { t: "sbRemove"; ids: number[] }
+  /** Hồi đầy máu (và dầu máy bay). */
+  | { t: "sbHeal"; ids: number[] }
+  /** Dọn sạch quân và công trình (trừ Tổng Hành Dinh), đặt lại số đo sát thương. */
+  | { t: "sbClear" }
+  /** Phe `side` ngừng bắn (làm bia tập). */
+  | { t: "sbHold"; side: Side; on: boolean }
+  /** Máy bay không tốn nhiên liệu. */
+  | { t: "sbFuel"; on: boolean };
 
 export interface Command {
   side: Side;
@@ -177,6 +189,8 @@ export interface SideStats {
   ironMined: number;
   oilMined: number;
   buildingsBuilt: number;
+  /** Tổng sát thương thực gây ra (sau giáp, không tính phần dư khi mục tiêu đã hết máu). */
+  damageDealt: number;
 }
 
 export interface SideState {

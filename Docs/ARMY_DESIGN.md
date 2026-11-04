@@ -33,6 +33,7 @@ Ký hiệu: ✅ đang có trong game · 🗓 đã lên kế hoạch · 💡 từ
 - **Điểm yếu chí mạng:*Giáp mỏng, không vũ khí*
 - **Cơ chế riêng:*Bảo vệ hàng hóa — Khi phát hiện nguy hiểm gần đó, tự động quay đầu tháo chạy về chốt phòng thủ gần nhất thay vì đâm đầu qua vùng chiến sự, có thể bật tắt chế độ này.*
 - **Ghi chú:**
+- **Chốt bước 2:** Tạm **không có** chế độ tự tháo chạy (cũng không có nút bật/tắt). Xe Vận Tải giữ hành vi hiện tại.
 
 ### 3. Xe Công Binh 🗓
 *Hiện tại:* chưa có. Ý tưởng: sửa xe và công trình, dựng nhanh công sự.
@@ -253,7 +254,14 @@ Giữ lại ý tưởng trong kho thiết kế để phát triển thành bản 
 - **Chốt bước 2:**
     - Chọn Khiên hay Khói **lúc đúc** (hai biến thể), không đổi giữa trận.
     - Tự bật khi gặp nguy hiểm. Tư lệnh **vẫn được bật/tắt** khi chọn cả cụm quân tác chiến: đây là lệnh cấp cụm quân, không phải chỉnh từng chiếc.
-    - Còn mở: giới hạn cụ thể (thời lượng, hồi chiêu, số drone tối đa).
+    - Giới hạn **không theo số lượng**. Đề xuất (chờ người dùng chọn):
+        - **(a) Pin năng lượng riêng:** khiên/khói tiêu năng lượng khi bật, khiên tốn thêm theo sát thương đỡ được; cạn thì tự tắt và phải sạc lại (chỉ sạc khi tắt). Khớp với lệnh bật/tắt của tư lệnh: bật lúc cần, tắt để sạc.
+        - **(b) Cái giá cho quân bên trong:** quân trong vùng khiên bắn ra bị giảm sát thương (khiên chặn cả hai chiều); quân trong khói thì ẩn khỏi địch nhưng tầm nhìn của chính mình cũng giảm.
+        - **(c) Phải đứng yên mới bật:** drone phải lơ lửng tại chỗ (giống Lockdown của SkyGuard); di chuyển thì vùng tắt. Khiên dùng để giữ trận địa, không dùng để đẩy lên.
+        - **(d) Quá tải:** khiên đỡ đủ X sát thương thì vỡ, phải chờ lâu mới bật lại được.
+        - **(e) Lộ vị trí:** vùng khiên/khói nhìn thấy được xuyên sương mù, nên đối phương biết chỗ có quân đang ẩn hoặc đang được che.
+    - Gợi ý ghép: **Khiên = (a) + (b)**, **Khói = (a) + (e)**.
+    - Còn mở: thời lượng, tốc độ sạc, bán kính.
 
 ---
 
@@ -296,7 +304,10 @@ Giữ lại ý tưởng trong kho thiết kế để phát triển thành bản 
 
 **Hệ thống hiệu ứng (thiết kế sau, cần cho nhiều loại quân):** làm chậm do địa hình (cát, bùn, tuyết), hiệu ứng nổ, vùng khiên benzen, vùng khói. Xe Tư Lệnh kháng hiệu ứng làm chậm.
 
+**Đã chốt thêm:** Xe Vận Tải tạm không có chế độ tháo chạy.
+
+**Công cụ kiểm chứng:** Phòng Thử Nghiệm (`index.html?play=sandbox`). Mỗi ý đồ trong bảng khắc chế có thể thử ngay bằng link, ví dụ `?play=sandbox&duel=lynx:3,titan:1` hoặc `?play=sandbox&duel=falcon:10,skyguard:4`.
+
 **Còn mở:**
-- Xe Vận Tải: nút bật/tắt tháo chạy. Đề xuất luôn bật, hậu cần tự quyết, người chơi chỉ nhận cảnh báo "tuyến vận tải bị đe dọa" (đúng nguyên tắc "Tư lệnh, không phải tài xế").
-- Drone Khiên/Khói: giới hạn cụ thể (thời lượng, hồi chiêu, số lượng tối đa).
+- Drone Khiên/Khói: chọn hạn chế trong các đề xuất (a)–(e) ở mục #23.
 - Thứ tự đưa quân vào game: đề xuất đợt 1 là 7 loại đang có, chỉnh theo mô tả mới; sau đó Drone Sửa Chữa, Pháo Tự Hành, Drone Trinh Sát (ba loại này tạo combo).

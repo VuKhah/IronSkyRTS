@@ -93,14 +93,25 @@ function newSide(): SideState {
     batteryFlow: 0,
     oilBurn: 0,
     alerts: { commander: -1000, base: -1000, hauler: -1000, lowfuel: -1000, nooil: -1000, mineLost: -1000, powerShort: -1000, powerForecast: -1000, oilLow: -1000, batteryLow: -1000 },
-    stats: { unitsBuilt: 0, unitsLost: 0, kills: 0, ironMined: 0, oilMined: 0, buildingsBuilt: 0 }
+    stats: { unitsBuilt: 0, unitsLost: 0, kills: 0, ironMined: 0, oilMined: 0, buildingsBuilt: 0, damageDealt: 0 }
   };
 }
 
 export interface WorldOptions {
   /** Tự xử hòa sau số tick này (0 = không giới hạn). Dùng cho chạy thử không giao diện. */
   maxTicks?: number;
+  /** Phòng Thử Nghiệm: chỉ có 2 Tổng Hành Dinh, tài nguyên vô hạn, không xử thắng thua, nhận lệnh sb*. */
+  sandbox?: boolean;
 }
+
+export interface SandboxState {
+  /** Phe đang ngừng bắn. */
+  hold: [boolean, boolean];
+  infiniteFuel: boolean;
+}
+
+/** Tài nguyên luôn được nạp lại tới mức này trong Phòng Thử Nghiệm. */
+const SANDBOX_RES = 99999;
 
 export class World {
   tick = 0;
@@ -116,6 +127,8 @@ export class World {
   winner: Side | 2 | -1 = -1;
   winReason: WinReason | null = null;
   readonly maxTicks: number;
+  /** null = trận thường. */
+  readonly sandbox: SandboxState | null;
   private nextId = 1;
   private commanders: [Unit | null, Unit | null] = [null, null];
   private sold = new Set<number>();
@@ -126,6 +139,7 @@ export class World {
   ) {
     this.rng = new Rng(seed ^ 0x2545f491);
     this.maxTicks = opts.maxTicks ?? 0;
+    this.sandbox = opts.sandbox ? { hold: [false, false], infiniteFuel: true } : null;
     for (const m of MINES) {
       const mine: Mine = {
         id: this.nextId++,
@@ -148,6 +162,7 @@ export class World {
     for (const s of [0, 1] as Side[]) {
       const [hx, hz] = HQ_POS[s];
       this.addBuilding("hq", s, hx, hz, true);
+      if (this.sandbox) continue;
       const [dx, dz] = dirToCenter(hx, hz);
       const px = -dz;
       const pz = dx;
@@ -252,6 +267,11 @@ export class World {
       u.phz = u.hz;
       u.moved = false;
     }
+    if (this.sandbox)
+      for (const st of this.sides) {
+        st.iron = SANDBOX_RES;
+        st.oil = SANDBOX_RES;
+      }
     for (const c of cmds) this.applyOrder(c.side, c.order);
     for (const s of [0, 1] as Side[]) if (this.hqOf(s)?.built) this.sides[s].iron += RULES.hqTrickle * DT;
     this.updateBuildings();
@@ -265,7 +285,7 @@ export class World {
     this.resolveShots();
     this.cleanup();
     this.updateFog();
-    this.checkVictory();
+    if (!this.sandbox) this.checkVictory();
     this.tick++;
   }
 
@@ -485,6 +505,88 @@ export class World {
         this.sold.add(b.id);
         break;
       }
+      default:
+        if (this.sandbox) this.applySandbox(this.sandbox, o);
+        break;
+    }
+  }
+
+  // ------------------------------------------------------------------ Phòng Thử Nghiệm
+
+  /** null = thả được công trình ở đây (Phòng Thử Nghiệm bỏ qua luật vùng xây và giá tiền). */
+  sandboxPlaceError(kind: BuildingId, x: number, z: number): string | null {
+    const [hw, hd] = BUILDINGS[kind].half;
+    if (Math.abs(x) + hw > EDGE - 1 || Math.abs(z) + hd > EDGE - 1) return "Ngoài bản đồ";
+    for (const i of this.grid.cellsInRect(x, z, hw, hd)) if (this.grid.blockedIdx(i)) return "Vướng sông, đá, mỏ hoặc công trình";
+    return null;
+  }
+
+  private applySandbox(sb: SandboxState, o: Order): void {
+    switch (o.t) {
+      case "sbSpawn": {
+        if (o.kind in BUILDINGS) {
+          const kind = o.kind as BuildingId;
+          const x = Math.round(o.x);
+          const z = Math.round(o.z);
+          if (this.sandboxPlaceError(kind, x, z) === null) this.addBuilding(kind, o.side, x, z, true);
+          break;
+        }
+        const kind = o.kind as UnitId;
+        if (!(kind in UNITS)) break;
+        const x = clamp(o.x, -EDGE + 2, EDGE - 2);
+        const z = clamp(o.z, -EDGE + 2, EDGE - 2);
+        const u = this.spawnUnit(kind, o.side, x, z);
+        const spec = UNITS[kind];
+        if (spec.domain === "air") {
+          // không có Sân Đáp thì không cất cánh được: thả thẳng lên trời, bay vòng chờ tại chỗ
+          u.air = "flying";
+          u.alt = u.palt = RULES.air.cruiseAlt;
+          u.speed = spec.speed;
+          u.mission = "move";
+          u.mx = clamp(x, -AIR_LIMIT, AIR_LIMIT);
+          u.mz = clamp(z, -AIR_LIMIT, AIR_LIMIT);
+        }
+        if (o.gx !== undefined && o.gz !== undefined) this.orderMove(o.side, [u.id], o.gx, o.gz, "amove");
+        break;
+      }
+      case "sbRemove":
+        for (const id of o.ids) {
+          const e = this.target(id);
+          if (!e) continue;
+          e.hp = 0;
+          if (e.cat === "building") this.sold.add(e.id);
+        }
+        break;
+      case "sbHeal":
+        for (const id of o.ids) {
+          const e = this.target(id);
+          if (!e) continue;
+          e.hp = e.maxHp;
+          if (e.cat === "unit") e.fuel = UNITS[e.kind].fuel?.tank ?? 0;
+        }
+        break;
+      case "sbClear":
+        for (const u of this.units) u.hp = 0;
+        for (const b of this.buildings)
+          if (b.kind !== "hq") {
+            b.hp = 0;
+            this.sold.add(b.id);
+          }
+        this.shots = [];
+        for (const st of this.sides) {
+          st.stats.damageDealt = 0;
+          st.stats.kills = 0;
+          st.stats.unitsLost = 0;
+        }
+        break;
+      case "sbHold":
+        sb.hold[o.side] = o.on;
+        break;
+      case "sbFuel":
+        sb.infiniteFuel = o.on;
+        break;
+      default:
+        break;
     }
   }
 
@@ -1059,6 +1161,7 @@ export class World {
 
   private tryFire(src: Unit | Building, w: WeaponSpec, t: Target): boolean {
     if (src.cooldown > 0 || !this.inRange(src.x, src.z, w, t)) return false;
+    if (this.sandbox?.hold[src.side]) return false;
     const air = this.isAirborne(t);
     const dmg = air ? w.dmgAir : w.dmgGround;
     if (dmg <= 0) return false;
@@ -1339,7 +1442,7 @@ export class World {
    * Trả về false nếu vừa rơi.
    */
   private burn(u: Unit, spec: UnitSpec): boolean {
-    u.fuel -= spec.fuel!.burn * DT;
+    if (!this.sandbox?.infiniteFuel) u.fuel -= spec.fuel!.burn * DT;
     if (u.fuel > 0) return true;
     u.fuel = 0;
     if (this.homeDistance(u) !== null || u.air === "landing") {
@@ -1592,7 +1695,9 @@ export class World {
   private damage(e: Target, amount: number, by: Side): void {
     if (e.hp <= 0) return;
     const armor = e.cat === "unit" ? UNITS[e.kind].armor : BUILDINGS[e.kind].armor;
-    e.hp -= amount * (1 - armor);
+    const dealt = amount * (1 - armor);
+    this.sides[by].stats.damageDealt += Math.min(dealt, e.hp);
+    e.hp -= dealt;
     if (e.cat === "unit") {
       if (e.kind === "commander") this.alert(e.side, "commander", e.x, e.z);
       else if (e.kind === "hauler") this.alert(e.side, "hauler", e.x, e.z);

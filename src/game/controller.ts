@@ -7,7 +7,7 @@
  * Trên máy tính: nhấp trái để chọn, nhấp phải để ra lệnh. Trên điện thoại: chạm đất khi đang chọn quân là ra lệnh đi.
  */
 import * as THREE from "three";
-import { BUILDINGS, FACTION_OF, RES_NAME, UNITS, type BuildingId, type UnitId } from "../sim/content";
+import { BUILDINGS, FACTION_OF, RES_NAME, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
 import { groundY } from "../sim/map";
 import type { Building, Entity, Mine, Order, Unit } from "../sim/types";
 import { buildModel, disposeRig, type Rig } from "../render/models";
@@ -32,6 +32,10 @@ export class Controller implements GestureHandlers {
   alpha = 0;
   hud: Hud | null = null;
   lastAlert: { x: number; z: number } | null = null;
+  /** Phòng Thử Nghiệm: công cụ đang cầm nhận cú chạm trước; trả về true nếu đã xử lý. */
+  toolTap: ((sx: number, sy: number) => boolean) | null = null;
+  /** Phòng Thử Nghiệm: phe mà việc chọn quân nhìn theo (null = thấy hết, khớp với phần vẽ khi tắt sương mù). */
+  viewerFn: (() => Side | null) | null = null;
   private groups: number[][] = [[], [], [], [], [], []];
   private lastGroupKey = { n: -1, t: 0 };
   private panAnchor: THREE.Vector3 | null = null;
@@ -73,6 +77,9 @@ export class Controller implements GestureHandlers {
   private get me() {
     return this.match.player;
   }
+  private get viewer(): Side | null {
+    return this.viewerFn ? this.viewerFn() : this.me;
+  }
   private size(): { w: number; h: number } {
     return { w: this.canvas.clientWidth, h: this.canvas.clientHeight };
   }
@@ -84,7 +91,8 @@ export class Controller implements GestureHandlers {
     for (const id of this.selected) {
       const e = this.world.byId.get(id);
       if (!e || (e.cat !== "mine" && e.hp <= 0)) continue;
-      if (e.cat === "unit" && this.me !== null && e.side !== this.me && !this.world.visibleTo(this.me, e)) continue;
+      const v = this.viewer;
+      if (e.cat === "unit" && v !== null && e.side !== v && !this.world.visibleTo(v, e)) continue;
       out.push(e);
     }
     return out;
@@ -126,7 +134,7 @@ export class Controller implements GestureHandlers {
   /** Thực thể dưới điểm chạm: quân (so khoảng cách trên màn hình), rồi công trình, rồi mỏ. */
   pick(sx: number, sy: number, touch: boolean): Entity | null {
     const { w, h } = this.size();
-    const viewer = this.me;
+    const viewer = this.viewer;
     let best: Entity | null = null;
     let bestD = Infinity;
     const tanHalf = Math.tan(((this.cam.cam.fov / 2) * Math.PI) / 180);
@@ -428,6 +436,7 @@ export class Controller implements GestureHandlers {
       if (info.mouse) this.tryPlace(info.shift);
       return;
     }
+    if (this.mode === "normal" && this.toolTap?.(x, y)) return;
     const hit = this.pick(x, y, !info.mouse);
     if (this.mode === "amove" || this.mode === "rally" || this.mode === "harvest") {
       this.commandAt(x, y, hit, this.mode);

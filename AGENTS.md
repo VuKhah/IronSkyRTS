@@ -43,19 +43,20 @@ Bộ nhớ kỹ thuật của dự án. Đọc hết trước khi sửa code.
   - `fmath.ts`: `dsin/dcos` tự viết, `turnToward` (ngoặt không dùng góc), `Rng` (mulberry32).
   - `map.ts`: bản đồ "Thung Lũng Sông Sắt" 160×160 m (hệ trục sông u/v, 3 lối qua, đá, đồi, 7 mỏ, vị trí HQ), `staticBlocked`, `terrainHeight`/`groundY` (cho phần vẽ).
   - `grid.ts`: lưới 2 m (80×80), A* 8 hướng + kéo thẳng đường bằng LOS, `nearestFree`.
-  - `types.ts`: `Unit`, `Building`, `Mine`, `Order` (lệnh), `SimEvent` (sự kiện cho phần vẽ / âm thanh).
-  - `world.ts`: `World.step(cmds)` — 1 tick = 0.1 s; kinh tế, chiếm mỏ, Xe Vận Tải, **điện** (`computePower`: phát/tiêu thụ/hiệu suất, Nhà Máy Điện đốt Dầu, vùng xây theo `zone`), sản xuất, chiến đấu, không quân + nhiên liệu (Bingo động, dầu dự trữ), sương mù + radar, 3 điều kiện thắng; `hashWorld()`.
+  - `types.ts`: `Unit`, `Building`, `Mine`, `Order` (lệnh), `SimEvent` (sự kiện cho phần vẽ / âm thanh). Lệnh `sb*` (`sbSpawn`, `sbRemove`, `sbHeal`, `sbClear`, `sbHold`, `sbFuel`) chỉ có tác dụng khi `World` tạo với `{ sandbox: true }`; trận thường bỏ qua (có kiểm thử).
+  - `world.ts`: `World.step(cmds)` — 1 tick = 0.1 s; kinh tế, chiếm mỏ, Xe Vận Tải, **điện** (`computePower`: phát/tiêu thụ/hiệu suất, Nhà Máy Điện đốt Dầu, vùng xây theo `zone`), sản xuất, chiến đấu, không quân + nhiên liệu (Bingo động, dầu dự trữ), sương mù + radar, 3 điều kiện thắng; `hashWorld()`. Chế độ thử nghiệm (`sandbox`): chỉ có 2 HQ, tài nguyên vô hạn, không xử thắng thua, `stats.damageDealt` để đo sát thương.
   - `ai.ts`: AI 1 độ khó, chỉ ra lệnh và chỉ đọc phần mình thấy; dùng seed trận để mỗi trận một khác.
   - Kiểm thử: `content.test.ts`, `sim.test.ts` (tất định, tìm đường, kinh tế, AI đấu AI trọn trận).
 - **`src/render/models/`**: mô hình 3D bằng code. Mỗi mô hình là một `Rig` (`root`, `actions`, `defaultOn`, `radius`, `update()`, tùy chọn `setAim()` cho tháp pháo và `setFlight()` cho máy bay do chiến trường điều khiển). Điểm vào: `buildModel(id, faction, showcase)`; mỏ: `buildNode(res)` trong `nodes.ts`.
   - Mô hình hiện là **BẢN NHẸ**. Bản chi tiết sẽ thay thế nhưng phải giữ giao diện `Rig` và tên hoạt ảnh (`move`, `aim`, `fire`, `fly`, `work`, `load`, `loadOil`…).
 - **`src/game/` — trận đấu trên trình duyệt** (`index.html`):
-  - `main.ts` (menu, vòng lặp, màn kết thúc), `match.ts` (tick cố định + nội suy, gom lệnh, nhật ký lệnh), `scene.ts` (địa hình, nước, cầu, cây, sương mù), `views.ts` (sim → mô hình, nội suy), `fx.ts` (đạn, nổ, khói), `controller.ts` (chọn, ra lệnh theo ngữ cảnh, đặt công trình, phím tắt), `input.ts` (cử chỉ chạm/chuột), `camera.ts`, `hud.ts`, `overlay.ts` (thanh máu/dầu 2D), `minimap.ts`, `audio.ts` (âm thanh tổng hợp).
+  - `main.ts` (menu, vòng lặp, màn kết thúc), `match.ts` (tick cố định + nội suy, gom lệnh, nhật ký lệnh), `scene.ts` (địa hình, nước, cầu, cây, sương mù), `views.ts` (sim → mô hình, nội suy), `fx.ts` (đạn, nổ, khói), `controller.ts` (chọn, ra lệnh theo ngữ cảnh, đặt công trình, phím tắt), `input.ts` (cử chỉ chạm/chuột), `camera.ts`, `hud.ts`, `overlay.ts` (thanh máu/dầu 2D), `minimap.ts`, `audio.ts` (âm thanh tổng hợp), `sandbox.ts` (**Phòng Thử Nghiệm**: bảng thả quân/công trình, công cụ Xóa/Hồi đầy, ngừng bắn, đấu thử nhanh, bảng đo sát thương; mọi thao tác đi qua `match.issueAs(side, order)` nên vẫn tất định).
 - **`src/tools/simulate.ts`**: chạy nhiều trận AI đấu AI không giao diện (`npm run simulate -- 20`).
 - `models.html` + `src/models-page/`: **Xưởng Mô Hình**. URL `models.html?act=fly,fire&f=do#valkyrie`; `?flight=1` thử chế độ bay do chiến trường điều khiển.
 
 ### Tham số URL để thử nghiệm trận (`index.html`)
 `?play=vsai|aivai` vào thẳng trận · `&seed=N` · `&skip=N` tua nhanh N giây đầu · `&cam=x,z,dist` đặt camera · `&script=1` kịch bản tự chơi (đặt Xưởng Xe, chiếm mỏ, đúc Titan) và in log `[script]` · `&debug=1` in log vài khung hình đầu · `&nooverlay=1`, `&nofx=1`, `&noshadow=1` tắt từng lớp để khoanh vùng lỗi hình.
+`?play=sandbox` Phòng Thử Nghiệm · `&duel=lynx:3,titan:1` vào thẳng trận đấu thử (Lam trước, Đỏ sau) · `&dist=44` khoảng cách hai nhóm (m) · `&skip=N` tua sau khi thả quân. Ví dụ chia sẻ kịch bản cân bằng: `?play=sandbox&duel=falcon:10,skyguard:4`.
 
 ### Hiệu năng (chống lag)
 - **Lõi sim:** ~0.16 ms/tick trung bình, đỉnh ~5 ms khi nhiều xe cùng tìm đường (đo 04/11/2026) — không phải điểm nghẽn.

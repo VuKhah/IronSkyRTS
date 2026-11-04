@@ -209,3 +209,81 @@ describe("lõi mô phỏng", () => {
     );
   });
 });
+
+describe("Phòng Thử Nghiệm", () => {
+  /** Bãi đấu bên bờ Lam (cùng chỗ với nút "Đấu thử nhanh"): Lam ở v = -18, Đỏ ở v = +18. */
+  const A: [number, number] = [-39.6, 14.1];
+  const B: [number, number] = [-14.1, 39.6];
+  const duel = (w: World, k0: "lynx" | "titan" | "skyguard" | "falcon", n0: number, k1: typeof k0, n1: number): void => {
+    const cmds: Command[] = [];
+    for (let i = 0; i < n0; i++) cmds.push({ side: 0, order: { t: "sbSpawn", kind: k0, side: 0, x: A[0] + i * 3.6, z: A[1] - i * 3.6, gx: B[0], gz: B[1] } });
+    for (let i = 0; i < n1; i++) cmds.push({ side: 1, order: { t: "sbSpawn", kind: k1, side: 1, x: B[0] + i * 3.6, z: B[1] - i * 3.6, gx: A[0], gz: A[1] } });
+    w.step(cmds);
+  };
+
+  it("trận thường bỏ qua mọi lệnh thử nghiệm", () => {
+    const w = new World(5);
+    const before = w.units.length;
+    w.step([
+      { side: 0, order: { t: "sbSpawn", kind: "titan", side: 0, x: 0, z: 40 } },
+      { side: 0, order: { t: "sbRemove", ids: w.units.map((u) => u.id) } },
+      { side: 0, order: { t: "sbClear" } }
+    ]);
+    expect(w.units.length).toBe(before);
+    expect(w.sandbox).toBeNull();
+  });
+
+  it("chỉ có 2 Tổng Hành Dinh, không xử thắng thua dù không có Xe Tư Lệnh", () => {
+    const w = new World(5, { sandbox: true });
+    expect(w.units.length).toBe(0);
+    expect(w.buildings.map((b) => b.kind)).toEqual(["hq", "hq"]);
+    for (let i = 0; i < 20; i++) w.step([]);
+    expect(w.winner).toBe(-1);
+  });
+
+  it("thả quân, công trình, máy bay; xóa và dọn sạch", () => {
+    const w = new World(5, { sandbox: true });
+    w.step([
+      { side: 0, order: { t: "sbSpawn", kind: "lynx", side: 0, x: -30, z: 30 } },
+      { side: 1, order: { t: "sbSpawn", kind: "turret", side: 1, x: -20, z: 40 } },
+      { side: 0, order: { t: "sbSpawn", kind: "falcon", side: 0, x: -30, z: 20 } }
+    ]);
+    expect(w.units.map((u) => u.kind).sort()).toEqual(["falcon", "lynx"]);
+    const falcon = w.units.find((u) => u.kind === "falcon")!;
+    expect(falcon.air).toBe("flying");
+    const turret = w.buildings.find((b) => b.kind === "turret")!;
+    expect(turret.built).toBe(true);
+    w.step([{ side: 0, order: { t: "sbRemove", ids: [turret.id] } }]);
+    expect(w.buildings.some((b) => b.kind === "turret")).toBe(false);
+    w.step([{ side: 0, order: { t: "sbClear" } }]);
+    expect(w.units.length).toBe(0);
+    expect(w.buildings.length).toBe(2);
+  });
+
+  it("đấu thử 3 Lynx gặp 1 Titan: có giao tranh, ghi được sát thương", () => {
+    const w = new World(5, { sandbox: true });
+    duel(w, "lynx", 3, "titan", 1);
+    for (let i = 0; i < sec(40); i++) w.step([]);
+    expect(w.sides[0].stats.damageDealt + w.sides[1].stats.damageDealt).toBeGreaterThan(0);
+    expect(w.winner).toBe(-1);
+  });
+
+  it("phe ngừng bắn thì không gây sát thương", () => {
+    const w = new World(5, { sandbox: true });
+    w.step([{ side: 1, order: { t: "sbHold", side: 1, on: true } }]);
+    duel(w, "lynx", 2, "titan", 2);
+    for (let i = 0; i < sec(30); i++) w.step([]);
+    expect(w.sides[1].stats.damageDealt).toBe(0);
+    expect(w.sides[0].stats.damageDealt).toBeGreaterThan(0);
+  });
+
+  it("tất định: cùng lệnh thử nghiệm chạy hai lần ra cùng mã băm", () => {
+    const run = (): number => {
+      const w = new World(9, { sandbox: true });
+      duel(w, "falcon", 4, "skyguard", 2);
+      for (let i = 0; i < sec(30); i++) w.step([]);
+      return hashWorld(w);
+    };
+    expect(run()).toBe(run());
+  });
+});

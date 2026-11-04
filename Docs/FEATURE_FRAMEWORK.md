@@ -30,6 +30,7 @@ Trạng thái: ⬜ chưa làm · 🟨 đang làm / làm một phần · ✅ xong
 | A15 | **Thử thách hằng ngày** | Seed bản đồ, luật và đối thủ theo ngày, giống nhau với mọi người chơi | P3 | ⬜ |
 | A16 | **Cấp bậc và huy chương** | Cấp bậc người chơi, huy chương sau trận, lưu trong `localStorage` | P2 | ⬜ |
 | A17 | **LLM đấu LLM** | Công cụ cho các mô hình AI chơi với nhau, chỉ thấy phần ngoài sương mù | P3 | ⬜ |
+| A19 | **Phòng Thử Nghiệm** (công cụ phát triển, không có trong Battle Drones) | `?play=sandbox`: thả quân / công trình tùy ý cho cả hai phe, ngừng bắn, đấu thử nhanh N chọi M, bảng đo sát thương/giây. Dùng để kiểm tra ý đồ trong `ARMY_DESIGN.md` bằng mắt trước khi viết thành kiểm thử | P1 | ✅ |
 | A18 | **Multiplayer**: hai máy ở gần nhau truyền tin bằng âm thanh (mở rộng từ thử nghiệm Chirp Pong của tác giả) | Ưu tiên bản **online qua relay WebSocket bằng mã phòng**. Bản truyền qua âm thanh chỉ để thử nghiệm | P3 | ⬜ |
 
 **Đội hình mục tiêu** (Battle Drones có 9 công trình, 7 xe mặt đất, 6 máy bay, 3 bộ binh). Iron Sky đặt khung tương tự, nhưng nhiều công trình hơn vì có hệ thống hậu cần:

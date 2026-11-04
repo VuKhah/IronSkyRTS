@@ -4,7 +4,7 @@
  * (không phải tự dọn hàng nghìn đối tượng 3D của trận trước).
  */
 import * as THREE from "three";
-import { BUILDINGS, RES_NAME, SIDE_NAME, UNITS, type Side, type UnitId } from "../sim/content";
+import { BUILDINGS, RES_NAME, SIDE_NAME, UNITS, type EntityId, type Side, type UnitId } from "../sim/content";
 import { groundY, HQ_POS } from "../sim/map";
 import type { SimEvent } from "../sim/types";
 import { TICK_RATE } from "../sim/world";
@@ -19,6 +19,7 @@ import { attachGestures } from "./input";
 import { Match, type Mode } from "./match";
 import { Minimap } from "./minimap";
 import { Overlay } from "./overlay";
+import { DUEL_CENTER, Sandbox } from "./sandbox";
 import { BattleScene } from "./scene";
 import { Views } from "./views";
 
@@ -46,6 +47,7 @@ function showMenu(): void {
         <p>Tư Lệnh Chiến Thuật &amp; Hậu Cần · bản v1 (MVP). Hai đạo quân tranh mỏ Sắt và giàn Dầu dọc dòng sông chéo có 3 lối qua.</p>
         <button class="menu-btn primary" data-go="vsai">Chơi với AI<small>Bạn là Liên Minh Lam, đối đầu Tập Đoàn Đỏ</small></button>
         <button class="menu-btn" data-go="aivai">Xem AI đấu AI<small>Hai AI đánh nhau, có nút tăng tốc ×1 ×2 ×4</small></button>
+        <button class="menu-btn" data-go="sandbox">Phòng Thử Nghiệm<small>Thả quân và công trình tùy ý để thử từng binh chủng</small></button>
         <button class="menu-btn" data-help>Cách chơi<small>Luật thắng, kinh tế, điều khiển chạm và chuột</small></button>
         <a class="menu-btn" href="./models.html" style="text-decoration:none">Xưởng Mô Hình<small>Xem mô hình 3D và chỉ số từng binh chủng</small></a>
         <div data-helpbox hidden>${HELP}</div>
@@ -58,11 +60,13 @@ function showMenu(): void {
   });
 }
 
-function makeThumbs(): Map<string, string> {
+const HUD_THUMBS = ["hauler", "lynx", "titan", "skyguard", "falcon", "factory", "airfield", "turret", "power-plant", "power-pylon", "battery", "radar"] as const;
+
+function makeThumbs(ids: readonly EntityId[]): Map<string, string> {
   const out = new Map<string, string>();
   try {
     const shooter = new Thumbnailer();
-    for (const id of ["hauler", "lynx", "titan", "skyguard", "falcon", "factory", "airfield", "turret", "power-plant", "power-pylon", "battery", "radar"] as const) {
+    for (const id of ids) {
       const rig = buildModel(id, "lam");
       out.set(id, shooter.shoot(rig));
       disposeRig(rig);
@@ -113,12 +117,21 @@ function startGame(mode: Mode, seed: number, skip = 0): void {
   if (new URLSearchParams(location.search).has("noshadow")) scene.renderer.shadowMap.enabled = false;
   const match = new Match(mode, seed);
   // ?skip=N: chạy nhanh N giây đầu trận (để thử nghiệm / chụp ảnh giữa trận)
-  for (let i = 0; i < skip * 10 && match.world.winner === -1; i++) match.advance(0.1);
+  // (Phòng Thử Nghiệm tua sau khi đã thả quân, xem sandbox.ts)
+  if (mode !== "sandbox") for (let i = 0; i < skip * 10 && match.world.winner === -1; i++) match.advance(0.1);
   match.drainEvents();
   const world = match.world;
-  const me = match.player;
+  const sandboxMode = mode === "sandbox";
+  /** Phe người chơi đang điều khiển (Phòng Thử Nghiệm cho đổi phe nên đọc lại mỗi khung hình). */
+  let me = match.player;
+  /** Phe mà sương mù / phần vẽ nhìn theo: null = thấy toàn bản đồ. */
+  let viewer = me;
   const cam = new RtsCamera();
-  if (me !== null) {
+  if (sandboxMode) {
+    cam.focus(DUEL_CENTER[0], DUEL_CENTER[1]);
+    cam.yaw = Math.atan2(HQ_POS[0][0], HQ_POS[0][1]);
+    cam.dist = 70;
+  } else if (me !== null) {
     const [hx, hz] = HQ_POS[me];
     const l = Math.hypot(hx, hz);
     cam.focus(hx - (hx / l) * 7, hz - (hz / l) * 7);
@@ -140,7 +153,7 @@ function startGame(mode: Mode, seed: number, skip = 0): void {
   const views = new Views(scene.scene);
   const fx = new Fx(scene.scene);
   const sfx = new Sfx();
-  const thumbs = makeThumbs();
+  const thumbs = makeThumbs(sandboxMode ? ([...Object.keys(UNITS), ...Object.keys(BUILDINGS)] as EntityId[]) : HUD_THUMBS);
   const overlay = new Overlay(overlayCanvas);
 
   let screenEl: HTMLElement | null = null;
@@ -202,8 +215,11 @@ function startGame(mode: Mode, seed: number, skip = 0): void {
   window.addEventListener("resize", resize);
   resize();
 
+  const sandbox = sandboxMode ? new Sandbox(app, match, ctrl, cam, fx, hud, canvas, thumbs) : null;
+
   window.setTimeout(() => {
-    if (me === null) hud.alert("Chế độ xem: hai AI tự đánh nhau. Bấm ×1 để tăng tốc.");
+    if (sandbox) hud.alert("Phòng Thử Nghiệm: chọn quân ở bảng bên trái rồi chạm lên bản đồ để thả");
+    else if (me === null) hud.alert("Chế độ xem: hai AI tự đánh nhau. Bấm ×1 để tăng tốc.");
     else {
       hud.alert("Mục tiêu: diệt Xe Tư Lệnh địch, phá hết công trình, hoặc giữ trọn một loại mỏ 30 giây");
       window.setTimeout(() => hud.alert("Mẹo: chọn Lynx rồi chạm vào mỏ trung lập để chiếm"), 2200);
@@ -214,7 +230,7 @@ function startGame(mode: Mode, seed: number, skip = 0): void {
     const d = Math.hypot(x - cam.tx, z - cam.tz);
     return Math.max(0, Math.min(1, 1 - d / (cam.dist * 1.2 + 25))) * (cam.dist > 110 ? 0.5 : 1);
   };
-  const visible = (x: number, z: number): boolean => me === null || world.cellVisible(me, x, z);
+  const visible = (x: number, z: number): boolean => viewer === null || world.cellVisible(viewer, x, z);
   let lastReady = 0;
   let ended = false;
 
@@ -297,7 +313,7 @@ function startGame(mode: Mode, seed: number, skip = 0): void {
           }
           break;
         case "spawn":
-          if (e.side === me && now - lastReady > 600 && world.tick > 1) {
+          if (!sandbox && e.side === me && now - lastReady > 600 && world.tick > 1) {
             lastReady = now;
             sfx.ui("ready");
             if (UNITS[e.kind as UnitId].domain === "air") hud.alert("Falcon sẵn sàng trên Sân Đáp", "good");
@@ -331,7 +347,8 @@ function startGame(mode: Mode, seed: number, skip = 0): void {
   };
 
   // ?script=1: kịch bản tự chơi thử, gọi đúng các hàm mà nút bấm / cú chạm gọi (để kiểm tra không cần tay)
-  if (new URLSearchParams(location.search).has("script") && me !== null) {
+  if (new URLSearchParams(location.search).has("script") && match.player !== null) {
+    const me = match.player;
     const lynx = world.units.find((u) => u.side === me && u.kind === "lynx")!;
     const fwd = world.mines.find((m) => m.res === "iron" && m.owner === -1 && Math.hypot(m.x - HQ_POS[me][0], m.z - HQ_POS[me][1]) < 70)!;
     ctrl.select([lynx.id]);
@@ -370,6 +387,7 @@ function startGame(mode: Mode, seed: number, skip = 0): void {
   let last = performance.now();
   let time = 0;
   let lastFogTick = -1;
+  let lastViewer: Side | null | undefined = undefined;
   let lastMini = 0;
   const selectedSet = new Set<number>();
   const frame = (): void => {
@@ -378,6 +396,8 @@ function startGame(mode: Mode, seed: number, skip = 0): void {
     const dt = Math.max(0, Math.min(0.1, (now - last) / 1000));
     last = now;
     time += dt;
+    me = match.player;
+    viewer = sandbox ? sandbox.viewer() : me;
     ctrl.alpha = match.advance(dt);
     if (debugFrames > 0) {
       debugFrames--;
@@ -387,13 +407,14 @@ function startGame(mode: Mode, seed: number, skip = 0): void {
     ctrl.update(dt);
     cam.apply();
     scene.followSun(cam.tx, cam.tz);
-    if (world.tick !== lastFogTick) {
-      scene.updateFog(world, me);
+    if (world.tick !== lastFogTick || viewer !== lastViewer) {
+      scene.updateFog(world, viewer);
       lastFogTick = world.tick;
+      lastViewer = viewer;
     }
     selectedSet.clear();
     for (const id of ctrl.selected) selectedSet.add(id);
-    views.sync(world, me, ctrl.alpha, dt, time, selectedSet);
+    views.sync(world, viewer, ctrl.alpha, dt, time, selectedSet);
     fx.update(dt, world, targetPos);
     hud.update(ctrl.panelCtx(), ctrl.mode, ctrl.placeKind, ctrl.hint());
     const anchor = ctrl.confirmAnchor();
@@ -405,7 +426,7 @@ function startGame(mode: Mode, seed: number, skip = 0): void {
     }
     const w = app.clientWidth;
     const h = app.clientHeight;
-    overlay.draw(world, me, cam, ctrl.alpha, selectedSet, ctrl.box, w, h);
+    overlay.draw(world, viewer, cam, ctrl.alpha, selectedSet, ctrl.box, w, h);
     if (now - lastMini > 150) {
       lastMini = now;
       const corners: [number, number][] = [];
@@ -418,8 +439,9 @@ function startGame(mode: Mode, seed: number, skip = 0): void {
         const g = cam.ground(sx, sy, w, h) ?? cam.ground(sx, Math.max(sy, h * 0.35), w, h);
         if (g) corners.push([g.x, g.z]);
       }
-      minimap.draw(world, me, cam.yaw, corners);
+      minimap.draw(world, viewer, cam.yaw, corners);
     }
+    sandbox?.update(now);
     scene.render(cam.cam);
     // Tự hạ chất lượng nếu máy chậm (đo mỗi 2 giây, chỉ khi tab đang hiện). ?hq=1 để giữ nguyên.
     fpsFrames++;
@@ -456,5 +478,5 @@ function startGame(mode: Mode, seed: number, skip = 0): void {
 
 const params = new URLSearchParams(location.search);
 const play = params.get("play");
-if (play === "vsai" || play === "aivai") startGame(play, Number(params.get("seed")) || randomSeed(), Number(params.get("skip")) || 0);
+if (play === "vsai" || play === "aivai" || play === "sandbox") startGame(play, Number(params.get("seed")) || randomSeed(), Number(params.get("skip")) || 0);
 else showMenu();
