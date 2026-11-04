@@ -93,6 +93,7 @@ Mỗi bản đồ một cỡ. Gợi ý khởi điểm: nhỏ 192 m, vừa 256 m,
 | **B5. Bản đồ mới** | Thung Lũng Sông Sắt bản lớn (256 m), Cao Nguyên Gió, Đèo Đá Kép, với cỡ và hình dáng khác nhau; mỗi bản có kịch bản đo đặc tính | Kiểm thử chung: đối xứng, mọi mỏ đi tới được từ cả hai nhà, AI đấu AI trọn trận trước 20 phút |
 | **B6. Chọn bản đồ** | Menu, Phòng Thử Nghiệm, tham số URL `?map=` | Vào được mọi bản đồ từ menu và link |
 | **B7. Xem trước bản đồ** (tùy chọn) | Trang xem bản đồ từ trên xuống, tô màu theo độ cao và loại địa hình | Thiết kế bản đồ không cần vào trận |
+| **B8. Mặt đất đẹp và tương tác** | Ảnh màu mặt đất vẽ bằng code, vân chi tiết, lớp vết chiến trường (hố đạn, vết xích), nước, cây, bóng mây (chi tiết ở mục 7) | Đẹp hơn rõ rệt mà ≤ 4 lệnh vẽ cho mặt đất, FPS không giảm trên điện thoại |
 
 Đề xuất 3 bản đồ đợt đầu (B5): **Thung Lũng Sông Sắt** (giành cầu), **Cao Nguyên Gió** (giữ cao nguyên giữa bản đồ: nhìn xa, bắn xa), **Đèo Đá Kép** (hai đèo hẹp, phục kích). Khi có loại địa hình (B3) thì thêm được **Đầm Lầy**, **Đồng Tuyết**, rừng. Thành Phố Đổ Nát (vật cản phá được) và Quần Đảo (sau bản Hải quân) để đợt sau.
 
@@ -105,8 +106,22 @@ Mỗi bản đồ một cỡ. Gợi ý khởi điểm: nhỏ 192 m, vừa 256 m,
 | Ảnh mặt đất vẽ sẵn bằng Python + ảnh AI, phủ lên địa hình 3D | **Chờ người dùng chọn** (mục 7) | |
 | Shader nước, cây hàng loạt, bóng mây, "váy" ngoài mép bản đồ | Bước đồ họa mới **B8. Mặt đất đẹp** sau B5 | Đề xuất |
 
-## 7. Câu hỏi mới: đồ họa mặt đất
-Hiện mặt đất Iron Sky tô màu theo đỉnh lưới (vertex color) nên trông phẳng. Hai hướng:
-1. **Vẽ bằng code trong trình duyệt** (giống cách họ vẽ bản đồ ngẫu nhiên): lúc vào trận, sinh ảnh mặt đất từ `GameMap` (loại địa hình, độ cao, khoảng cách tới nước), hòa trộn mép bằng nhiễu, có hạt sạn, bóng nắng. Đúng tinh thần dự án (mọi thứ dựng bằng code, không tải tài nguyên), không cần công cụ ngoài; đẹp kém ảnh vẽ tay một chút, tốn vài trăm ms lúc tải trận.
-2. **Ảnh vẽ sẵn ngoại tuyến** (như bản đồ có sẵn của họ): đẹp nhất, nhưng cần quy trình riêng (Python hoặc công cụ vẽ), ảnh vật liệu (tự vẽ hoặc AI tạo), vài MB tài nguyên mỗi bản đồ, và phải vẽ lại mỗi khi sửa bản đồ.
+## 7. Đồ họa mặt đất (quyết định 05/11/2026)
 
+Người dùng chốt: **phương án 1, vẽ mặt đất bằng code**, với ba yêu cầu: **đẹp**, **không làm máy thở hổn hển**, **tương tác được chỉ để nhìn** (ví dụ pháo nổ để lại hố đất; không ảnh hưởng luật chơi).
+
+Phần vẽ mặt đất không đụng tới sim: địa hình 3D, chặn đường, đồi che tầm nhìn vẫn do `GameMap` và lưới ô của sim quyết định, như hiện nay.
+
+### B8. Mặt đất đẹp và tương tác
+| Phần | Cách làm | Chi phí |
+|---|---|---|
+| **B8a. Ảnh màu mặt đất** | Lúc vào trận, vẽ bằng code từ `GameMap` (loại địa hình, độ cao, khoảng cách tới nước): hòa trộn mép bằng nhiễu, bờ sông ẩm, bóng nắng cố định (hillshade). Độ phân giải **thấp** (khoảng 1024 × 1024 cho bản 256 m), vẽ trong luồng nền (Web Worker) để màn hình không khựng | Một lần lúc tải trận; ~4 MB bộ nhớ đồ họa |
+| **B8b. Vân chi tiết** | Một ảnh vân nhỏ lặp lại (hạt sạn, cỏ, đá; sinh bằng code) trộn trong shader để lại gần không nhòe; vách dốc chuyển sang vân đá | Một ảnh nhỏ, đọc thêm 1–2 lần mỗi điểm ảnh |
+| **B8c. Lớp vết chiến trường** | Ảnh phủ toàn bản đồ, ban đầu trong suốt. Mỗi vụ nổ **in một dấu** vào ảnh (hố đất: vành đất tơi, lòng sẫm, vệt cháy; cỡ theo bán kính nổ). Shader mặt đất đọc ảnh này để tối màu và đổ bóng giả cho hố trông lõm xuống. Dùng chung cho: vết xích trên bùn / tuyết, đống đổ nát khi công trình sập, vệt bom rải thảm. Thay cho các tấm "vết cháy" hiện tại (mỗi tấm một lệnh vẽ, sống 25 giây) | Mỗi vụ nổ một lệnh vẽ nhỏ, đúng một lần; mỗi khung hình **không đổi** dù bao nhiêu hố. Vết ở lại cả trận |
+| **B8d. Chi tiết sống động** | Nước có shader rẻ (gợn, bọt ven bờ), cây vẽ hàng loạt (instancing) theo vùng rừng, bóng mây trôi (chỉ là một phép dịch trong shader), "váy" ngoài mép bản đồ mờ dần vào màu trời | Vài lệnh vẽ cố định |
+
+**Ràng buộc:**
+- Lớp vết chiến trường **chỉ nằm ở phần vẽ** (`src/game/`), sim không biết tới, nên trận vẫn tất định. Được dùng `Math.random` cho dáng hố.
+- Ngân sách mặt đất: ≤ 4 lệnh vẽ, ≤ ~12 MB ảnh trên điện thoại. Máy yếu (tự hạ chất lượng như hiện có) thì ảnh màu 512 × 512, tắt bóng mây.
+- Lưới địa hình bản đồ to chia thành mảnh, mảnh xa thưa đỉnh hơn (đo ở B4).
+- Kiểm bằng `?perf=1` (số lệnh vẽ, FPS) trước và sau mỗi phần.
