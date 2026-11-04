@@ -216,3 +216,17 @@ Người dùng chọn: **mô hình kết hợp** (tổng điện toàn phe + C�
 Vì sao đốt Dầu: máy giả lập cho thấy Dầu dư trong khi Sắt cạn. Đốt Dầu để phát điện biến giàn Dầu thành mạch sống của cả căn cứ, không chỉ của không quân.
 
 **Phát hiện mới từ máy giả lập:** khi Dầu quý hơn, các trận AI đấu AI còn ngắn hơn (1.8–3.7 phút), gần như toàn bộ kết thúc bằng **độc quyền Dầu**. Cần quyết định ở buổi bàn chỉ số (xem đề xuất trong lịch sử trao đổi).
+
+## 16. Ý tưởng chờ thực hiện (ghi lại 04/11/2026, làm ở lượt sau)
+
+1. **Điện đốt Dầu quá hao, và chưa có cách lưu trữ điện.**
+   - Vấn đề: Nhà Máy Điện đốt Dầu liên tục kể cả khi điện đang dư, nên Dầu bị phí. Ngoài nút Tắt máy thì chưa có gì để "để dành" phần điện thừa.
+   - Hướng cần thiết kế: một công trình **lưu trữ điện** (ví dụ Trạm Tích Điện / pin), nạp từ phần điện dư và xả ra khi thiếu. Cần chốt:
+     - Dung lượng mỗi trạm (MWh), tốc độ nạp và xả.
+     - Khi nào xả: tự động khi hiệu suất dưới 100%, hay người chơi bấm?
+     - Nhà Máy Điện có tự giảm công suất (đốt ít Dầu hơn) khi pin đã đầy và điện đang dư không?
+     - Điện lưu trữ có dùng được cho việc gì đặc biệt không (ví dụ kỹ năng của Xe Tư Lệnh, tháp EMP sau MVP)?
+2. **Mỗi phe có một giàn Dầu gần nhà, trữ lượng nhỏ.**
+   - Giống mỏ Sắt nhà: có sẵn từ đầu trận, đủ để khởi động điện và máy bay, nhưng cạn sớm, nên vẫn phải ra tranh giàn Dầu giữa bản đồ.
+   - Ảnh hưởng tới luật độc quyền: tổng số giàn Dầu tăng từ 3 lên 5. Độc quyền Dầu sẽ phải chiếm cả giàn nhà của địch, nên khó hơn nhiều. Việc này cũng giải luôn phần nào vấn đề "độc quyền Dầu thắng quá sớm".
+3. **Chờ quyết: độc quyền Dầu thắng quá sớm** (trận AI đấu AI kết thúc sau 2–4 phút). Các hướng: chỉ tính sau phút 8–10 · giữ 60–90 giây · thêm giàn Dầu (ý 2 ở trên) · mỏ mới chiếm cần 20 giây ổn định.
