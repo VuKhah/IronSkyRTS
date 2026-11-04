@@ -544,6 +544,16 @@ Mọi phép ngẫu nhiên (trượt, tản) dùng RNG có seed của trận, l�
 - Đường bay mượt trên màn hình: sim 10 tick/giây, Falcon đổi hướng tới 20° mỗi tick; nối thẳng giữa hai tick thì đường bay thành đa giác gãy khúc. Phần vẽ giờ nội suy máy bay bằng **đường cong Hermite** (đi qua hai vị trí, tiếp tuyến đúng hướng bay ở hai đầu); sim không đổi nên vẫn tất định.
 - AI đấu AI sau khi sửa: 5/20 trận hòa. Lưu ý phe Đỏ thắng 12, Lam 3: cần xem bản đồ hoặc AI có lệch phe không.
 
+### ⏳ Phiên riêng: hoàn thiện không quân (chưa làm, người dùng chốt 05/11/2026)
+Triệu chứng người dùng thấy khi chơi: Falcon bay **"dựt dựt dựt"** (giật theo nhịp), dù đã có nội suy Hermite. Cần một phiên riêng, đo trước rồi mới sửa. Giả thuyết để kiểm tra lần lượt:
+1. **Độ cao bật qua bật lại:** điều kiện bổ nhào (`facing >= 0.5`, `!u.ext`, khoảng cách) đổi trạng thái liên tục ở ranh giới, nên máy bay xuống / lên luân phiên từng tick, mũi chúc / ngóc nhấp nháy. Cần độ trễ (hysteresis) hoặc trạng thái "đang bổ nhào" giữ đủ lâu.
+2. **Hướng bay dao động:** lái tỉ lệ trong vùng ±30° cộng giới hạn gia tốc góc có thể vọt quá rồi bẻ lại, mỗi tick lệch trái phải một chút, cánh nghiêng nhấp nháy.
+3. **`u.ext` bật tắt ở ranh giới khoảng cách** (kéo ra / quay lại) làm đổi hướng đột ngột.
+4. **Nội suy Hermite:** tiếp tuyến lấy theo độ dài dây cung, tốc độ trên màn hình có thể không đều trong một tick và nhảy ở ranh giới tick.
+5. **Độ nghiêng cánh tính từ chênh lệch hướng giữa hai khung hình chia cho `dt`:** nhiễu khi `dt` dao động.
+6. **Nhịp khung hình / hệ số nội suy `alpha`** trong `match.ts`: ảnh hưởng mọi quân nhưng lộ rõ nhất ở quân nhanh.
+Cách làm đề xuất: ghi lại theo từng tick độ cao, hướng, `yawRate`, `ext`, trạng thái bổ nhào của một Falcon (có thể vẽ biểu đồ trong Phòng Thử Nghiệm), tìm thứ dao động theo nhịp rồi mới sửa. Kèm theo: cất / hạ cánh vẫn nội suy thẳng; Valkyrie đội hình mũi tên; cân bằng Falcon (đang quá mạnh với Titan và cả SkyGuard).
+
 **Chưa làm (không phải cơ chế bắn, hoặc cần thứ chưa có):**
 - Pháo Tự Hành "địa lợi tầm cao" (+20% tầm khi đứng trên đồi): cần sim đọc độ cao địa hình theo cách tất định.
 - Valkyrie: chọn đội hình mũi tên, cất cánh rồi không nhận lệnh điều hướng, nạp bom lâu gấp đôi.

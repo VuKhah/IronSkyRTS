@@ -51,7 +51,7 @@ Tên **in đậm** là quân và công trình đã có trong thiết kế Iron S
 
 | # | Tính năng | Ghi chú | Ưu tiên | Trạng thái |
 |---|---|---|---|---|
-| B1 | **Cơ chế bay khí động học**: nghiêng cánh, bay vòng chờ, bổ nhào, lượn né phòng không | Máy bay bay theo quỹ đạo thật trong không gian 3D, không lơ lửng như drone | P1 | 🟨 |
+| B1 | **Cơ chế bay khí động học**: nghiêng cánh, bay vòng chờ, bổ nhào, lượn né phòng không | Máy bay bay theo quỹ đạo thật trong không gian 3D, không lơ lửng như drone. Đã có: lượt bổ nhào, lái mượt có gia tốc góc, nội suy Hermite. **Còn giật khi bay: chờ phiên riêng** (giả thuyết ở `Docs/ARMY_DESIGN.md` mục "Phiên riêng: hoàn thiện không quân") | P1 | 🟨 |
 | B2 | **Sân Đáp**: cất cánh, hạ cánh, đậu bãi, sửa chữa, nạp bom | Mỗi sân có 4 bãi đáp, giới hạn số máy bay theo số sân | P1 | ✅ |
 | B3 | **Nhiên liệu Dầu cho máy bay** | Đủ 35% mới cất cánh được; xuống 24% (mức Bingo) thì tự quay về; hết dầu thì rơi | P1 | ✅ |
 | B4 | **Lưới điện MW**: nhà máy điện, cột điện, dây cáp võng 3D | Thiếu điện thì quá tải, một số tháp ngừng bắn | P2 | 🟨 |
