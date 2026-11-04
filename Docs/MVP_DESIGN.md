@@ -88,7 +88,8 @@
 | Sân Đáp | **4 bãi đậu**, nuôi tối đa 4 Falcon mỗi sân | |
 
 **Khi hết Dầu:**
-- **Hết dầu giữa trời** mà không về kịp bãi trống: máy bay **rơi**.
+- **Dầu dự trữ** *(sửa sau bản chơi thử 04/11)*: máy bay tự quay về khi dầu chỉ còn vừa đủ bay về sân (mức Bingo động = max(24%, dầu cần để về + 25% dự phòng)). Cạn dầu trên đường về vẫn bay về được, **không rơi**.
+- Máy bay **chỉ rơi** khi hết dầu mà phe mình **không còn Sân Đáp nào**.
 - **Kho Dầu cạn:** máy bay đậu trên bãi **không nạp được nữa**, nằm chờ ở sân. Lúc này nó là mục tiêu mặt đất, dễ bị phá.
 - **Kho Dầu còn ít:** máy bay chỉ nạp được một phần bình. Nếu chưa đủ 35% thì không cất cánh được.
 - **Sân Đáp bị phá:** máy bay của sân đó phải tìm bãi trống ở sân khác, không có thì rơi khi hết dầu.

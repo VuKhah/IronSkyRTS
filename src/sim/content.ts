@@ -325,9 +325,9 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     features: [
       "Sát thương rất cao lên cả mặt đất lẫn trên không.",
       "Bình dầu 40L, đốt 1.2L/s: khoảng 33 giây bay mỗi lần xuất kích.",
-      "Chỉ cất cánh khi còn ít nhất 35% dầu; xuống 24% thì tự bay về Sân Đáp.",
+      "Chỉ cất cánh khi còn ít nhất 35% dầu; xuống 24% (hoặc vừa đủ dầu bay về nếu đang ở xa) thì tự bay về Sân Đáp.",
       "Nạp dầu khoảng 4 giây tại bãi đậu, trừ vào kho Dầu. Kho cạn thì máy bay nằm sân.",
-      "Hết dầu giữa trời là rơi."
+      "Luôn giữ dầu dự trữ đủ bay về; chỉ rơi khi không còn Sân Đáp nào của phe mình."
     ],
     beats: ["titan", "hauler", "lynx"],
     fears: ["skyguard", "turret"]

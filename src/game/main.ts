@@ -267,7 +267,7 @@ function startGame(mode: Mode, seed: number, skip = 0): void {
           break;
         case "death":
           if (!e.sold && visible(e.x, e.z)) sfx.boom(e.building ? 3 : 1.5, vol(e.x, e.z));
-          if (me !== null && e.side === me && e.kind === "falcon" && e.crash) hud.alert("Một Falcon hết dầu và rơi!", "bad");
+          if (me !== null && e.side === me && e.kind === "falcon" && e.crash) hud.alert("Một Falcon hết dầu và rơi vì không còn Sân Đáp!", "bad");
           break;
         case "alert":
           if (e.side === me) {

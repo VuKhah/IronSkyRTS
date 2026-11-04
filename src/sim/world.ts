@@ -507,9 +507,10 @@ export class World {
   }
 
   private cancelRtbIfFuel(u: Unit): void {
-    const fuel = UNITS[u.kind].fuel;
+    const spec = UNITS[u.kind];
+    const fuel = spec.fuel;
     if (!fuel) return;
-    if (u.fuel > fuel.tank * RULES.air.bingo + 2) {
+    if (u.fuel > Math.max(fuel.tank * RULES.air.bingo, this.fuelToReturn(u, spec)) + 2) {
       u.rtb = false;
       if (u.air === "returning") u.air = "flying";
     }
@@ -1160,16 +1161,44 @@ export class World {
     u.padI = -1;
   }
 
-  /** Đốt dầu; hết dầu thì máy bay rơi. Trả về false nếu vừa rơi. */
+  /** Khoảng cách tới bãi đậu của mình (hoặc sân còn bãi trống gần nhất, không giữ chỗ). null = không còn sân nào. */
+  private homeDistance(u: Unit): number | null {
+    const p = this.padPosOf(u);
+    if (p) return Math.sqrt(dist2(u.x, u.z, p[0], p[1]));
+    let best = Infinity;
+    for (const b of this.buildings) {
+      if (b.side !== u.side || b.kind !== "airfield" || !b.built || b.hp <= 0 || b.pads.indexOf(0) < 0) continue;
+      best = Math.min(best, dist2(u.x, u.z, b.x, b.z));
+    }
+    return best === Infinity ? null : Math.sqrt(best);
+  }
+
+  /** Lượng dầu cần để bay về và hạ cánh, cộng 25% dự phòng. */
+  private fuelToReturn(u: Unit, spec: UnitSpec): number {
+    const d = this.homeDistance(u);
+    if (d === null) return 0;
+    return (d / spec.speed + 3) * spec.fuel!.burn * 1.25;
+  }
+
+  /**
+   * Đốt dầu. Máy bay luôn giữ một phần "dầu dự trữ" đủ bay về: khi cạn mà vẫn còn sân để về
+   * thì không rơi mà bay về hạ cánh. Chỉ rơi khi không còn Sân Đáp nào của phe mình.
+   * Trả về false nếu vừa rơi.
+   */
   private burn(u: Unit, spec: UnitSpec): boolean {
     u.fuel -= spec.fuel!.burn * DT;
-    if (u.fuel <= 0) {
-      u.fuel = 0;
-      u.hp = 0;
-      u.crashed = true;
-      return false;
+    if (u.fuel > 0) return true;
+    u.fuel = 0;
+    if (this.homeDistance(u) !== null || u.air === "landing") {
+      if (u.air === "flying" || u.air === "takeoff") {
+        u.rtb = true;
+        u.air = "returning";
+      }
+      return true;
     }
-    return true;
+    u.hp = 0;
+    u.crashed = true;
+    return false;
   }
 
   private takeoff(u: Unit): void {
@@ -1274,7 +1303,8 @@ export class World {
     const fuel = spec.fuel!;
     const A = RULES.air;
     const w = spec.weapon!;
-    if (u.air === "flying" && (u.rtb || u.fuel <= fuel.tank * A.bingo)) {
+    // Mức Bingo động: 24% bình, hoặc lượng dầu đủ bay về sân nếu sân ở xa hơn
+    if (u.air === "flying" && (u.rtb || u.fuel <= Math.max(fuel.tank * A.bingo, this.fuelToReturn(u, spec)))) {
       if (!u.rtb) this.alert(u.side, "lowfuel", u.x, u.z);
       u.rtb = true;
       u.air = "returning";

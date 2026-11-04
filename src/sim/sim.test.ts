@@ -61,6 +61,37 @@ describe("lõi mô phỏng", () => {
     expect(a.hashes).toEqual(b.hashes);
   });
 
+  it("máy bay hết dầu tự bay về sân thay vì rơi (dầu dự trữ)", () => {
+    const w = new World(11);
+    const st = w.sides[0];
+    st.iron = 5000;
+    st.oil = 5000;
+    const hq = w.hqOf(0)!;
+    let spot: [number, number] | null = null;
+    for (let r = 12; r <= 28 && !spot; r += 2)
+      for (const [dx, dz] of [[1, 0], [0, -1], [1, -1], [-1, 0], [0, 1]] as const)
+        if (!spot && w.canPlace(0, "airfield", Math.round(hq.x + dx * r), Math.round(hq.z + dz * r)) === null) spot = [Math.round(hq.x + dx * r), Math.round(hq.z + dz * r)];
+    expect(spot, "tìm được chỗ đặt Sân Đáp").not.toBeNull();
+    w.step([{ side: 0, order: { t: "build", kind: "airfield", x: spot![0], z: spot![1] } }]);
+    const af = w.buildings.find((b) => b.kind === "airfield" && b.side === 0);
+    expect(af, "đặt được Sân Đáp").toBeDefined();
+    for (let i = 0; i < sec(13); i++) w.step([]);
+    w.step([{ side: 0, order: { t: "produce", building: af!.id, kind: "falcon" } }]);
+    for (let i = 0; i < sec(8); i++) w.step([]);
+    const f = w.units.find((u) => u.kind === "falcon" && u.side === 0)!;
+    expect(f).toBeDefined();
+    // bay ra tận góc xa nhất bên kia bản đồ, rồi để mặc
+    w.step([{ side: 0, order: { t: "move", ids: [f.id], x: 64, z: 64 } }]);
+    let landed = false;
+    for (let i = 0; i < sec(120); i++) {
+      w.step([]);
+      if (!w.byId.has(f.id)) break;
+      if (i > sec(10) && f.air === "parked") landed = true;
+    }
+    expect(w.byId.has(f.id), "Falcon không được rơi").toBe(true);
+    expect(landed, "Falcon phải tự hạ cánh về sân").toBe(true);
+  });
+
   it("kinh tế chạy: Xe Vận Tải chở Sắt về kho", () => {
     const w = new World(3);
     for (let i = 0; i < sec(60); i++) w.step([]);
