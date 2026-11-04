@@ -8,7 +8,7 @@
  * Không có gì phụ thuộc thời gian thật hay số ngẫu nhiên không seed, nên cùng seed + cùng lệnh thì ra cùng trận.
  */
 import { BUILDINGS, RULES, UNITS, type BuildingId, type Res, type Side, type UnitId, type UnitSpec, type WeaponSpec, type WeaponVisual } from "./content";
-import { clamp, dcos, DEG, dist2, Rng, turnStep, turnToward, type TurnStep } from "./fmath";
+import { clamp, dcos, DEG, dist2, dsin, Rng, turnStep, turnToward, type TurnStep } from "./fmath";
 import { Grid } from "./grid";
 import { CELL, EDGE, GRID, HQ_POS, MINES } from "./map";
 import type { AlertKind, Building, Command, Entity, Mine, Order, Shot, SideState, SimEvent, Target, Unit, WinReason } from "./types";
@@ -46,15 +46,6 @@ const FORMATION: readonly (readonly [number, number])[] = (() => {
   return pts.map(([i, j]) => [i * 3.6, j * 3.6] as const);
 })();
 
-const TURNS = new Map<UnitId, TurnStep>();
-function airTurn(kind: UnitId): TurnStep {
-  let t = TURNS.get(kind);
-  if (!t) {
-    t = turnStep((UNITS[kind].fuel?.turnRate ?? 90) * DEG * DT);
-    TURNS.set(kind, t);
-  }
-  return t;
-}
 const TMP = { x: 0, z: 0 };
 
 /** Bước xoay tháp pháo mỗi tick, tính sẵn theo tốc độ xoay (độ/giây). */
@@ -69,6 +60,10 @@ function traverseStep(degPerSec: number): TurnStep {
 }
 /** Nòng lệch dưới ~5° là coi như đã ngắm trúng. */
 const AIM_COS = dcos(5 * DEG);
+/** Lái máy bay: vùng nắn nhẹ ±30° và thời gian để tốc độ ngoặt lên hết cỡ (giây). */
+const STEER_SOFT_COS = dcos(30 * DEG);
+const STEER_SOFT_SIN = dsin(30 * DEG);
+const STEER_RAMP = 0.4;
 /** Khoảng cách giữa hai nòng súng đôi (m), ví dụ súng ở hai bên cánh. */
 const BARREL_GAP = 1.6;
 /** Bom rơi từ độ cao bay tới đất mất chừng này giây (bom trôi theo đà máy bay). */
@@ -386,7 +381,8 @@ export class World {
       ax: 0,
       az: 0,
       crashed: false,
-      ext: false
+      ext: false,
+      yawRate: 0
     };
     this.units.push(u);
     this.byId.set(u.id, u);
@@ -1732,6 +1728,7 @@ export class World {
           u.autoTarget = 0;
           u.hx = 0;
           u.hz = 1;
+          u.yawRate = 0;
         }
         return;
       }
@@ -1809,12 +1806,7 @@ export class World {
       dx = -u.x;
       dz = -u.z;
     }
-    const l = Math.sqrt(dx * dx + dz * dz);
-    if (l > 1e-6) {
-      turnToward(u.hx, u.hz, dx / l, dz / l, airTurn(u.kind), TMP);
-      u.hx = TMP.x;
-      u.hz = TMP.z;
-    }
+    this.steerAir(u, dx, dz, fuel.turnRate);
     u.speed = spec.speed;
     u.x = clamp(u.x + u.hx * u.speed * DT, -78, 78);
     u.z = clamp(u.z + u.hz * u.speed * DT, -78, 78);
@@ -1836,6 +1828,35 @@ export class World {
       // chỉ bắn khi mũi máy bay hướng về mục tiêu (lượt bổ nhào)
       if (d <= w.range + this.radiusOf(tgt) && u.hx * tx + u.hz * tz >= 0.8 * d) this.tryFire(u, w, tgt);
     }
+  }
+
+  /**
+   * Lái máy bay về hướng (dx, dz) cho mượt: tốc độ ngoặt tăng giảm dần (gia tốc góc), như phải nghiêng cánh
+   * dần mới vào vòng được. Lệch nhiều thì ngoặt hết cỡ, gần đúng hướng thì nắn nhẹ theo độ lệch.
+   * Không dùng góc: độ lệch lấy từ tích vô hướng / tích có hướng, xoay bằng dsin/dcos tự viết (tất định).
+   */
+  private steerAir(u: Unit, dx: number, dz: number, turnRateDeg: number): void {
+    const l = Math.sqrt(dx * dx + dz * dz);
+    const maxR = turnRateDeg * DEG * DT;
+    let want = 0;
+    if (l > 1e-6) {
+      const nx = dx / l;
+      const nz = dz / l;
+      const dot = u.hx * nx + u.hz * nz;
+      const cross = u.hx * nz - u.hz * nx;
+      const dir = cross >= 0 ? 1 : -1;
+      // trong vùng ±30° thì sin(lệch) = cross, ngoặt tỉ lệ theo độ lệch; ngoài vùng thì ngoặt hết cỡ
+      want = dot >= STEER_SOFT_COS ? clamp(cross / STEER_SOFT_SIN, -1, 1) * maxR : dir * maxR;
+    }
+    const acc = maxR / (STEER_RAMP * TICK_RATE);
+    u.yawRate += clamp(want - u.yawRate, -acc, acc);
+    const c = dcos(u.yawRate);
+    const s = dsin(u.yawRate);
+    const hx = u.hx * c - u.hz * s;
+    const hz = u.hx * s + u.hz * c;
+    const hl = Math.sqrt(hx * hx + hz * hz) || 1;
+    u.hx = hx / hl;
+    u.hz = hz / hl;
   }
 
   /** Hướng bay vòng chờ quanh (cx, cz): xa thì bay thẳng tới, gần thì bay tiếp tuyến bán kính ~11 m. */
@@ -2141,6 +2162,7 @@ export function hashWorld(w: World): number {
     num(u.aimX);
     num(u.aimZ);
     num(u.pd);
+    num(u.yawRate);
   }
   for (const b of w.buildings) {
     num(b.id);

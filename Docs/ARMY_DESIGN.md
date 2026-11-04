@@ -535,6 +535,7 @@ Mọi phép ngẫu nhiên (trượt, tản) dùng RNG có seed của trận, l�
 - Nguyên nhân lượn vòng: máy bay luôn quay mũi về mục tiêu nhưng bán kính ngoặt có giới hạn, nên khi đã ở gần nó rơi vào **quỹ đạo tròn quanh mục tiêu** mà không chĩa được mũi vào. Đo: Falcon đánh một Lynx đứng yên chỉ xả được **1 loạt trong 30 giây**, nửa thời gian quẩn trong vòng 12 m.
 - Sửa: lượt bổ nhào kiểu phi công thật (bổ nhào, bắn, bay thẳng ra lấy khoảng cách, quay lại). Thêm pháo đôi (`barrels: 2`), nạp 2,2 → 1,4 giây, ngoặt 110 → 150°/giây (thiết kế: "đổi hướng nhanh nhất game").
 - Kết quả (30 giây, mục tiêu đứng yên): đánh Lynx từ 1 loạt / 105 sát thương lên 4 lượt (~3,2 giây một lượt) và hạ được Lynx; đánh Titan hạ trong 2 lượt (~5 giây). **Falcon vào Titan giờ có thể quá mạnh** (xuyên giáp 150% × pháo đôi): xem lại khi cân bằng.
+- Đường bay mượt (người dùng thấy Falcon bay cứng sau khi sửa): hướng bay từng đổi kiểu bật/tắt (đang thẳng là ngoặt hết cỡ ngay). Giờ máy bay có **tốc độ ngoặt tăng giảm dần** (`steerAir`, `u.yawRate`): lên hết cỡ trong 0,4 giây, lệch dưới 30° thì nắn nhẹ theo độ lệch. Áp dụng cho mọi máy bay.
 - AI đấu AI sau khi sửa: 5/20 trận hòa. Lưu ý phe Đỏ thắng 12, Lam 3: cần xem bản đồ hoặc AI có lệch phe không.
 
 **Chưa làm (không phải cơ chế bắn, hoặc cần thứ chưa có):**

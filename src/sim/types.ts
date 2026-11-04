@@ -80,6 +80,8 @@ export interface Unit {
   crashed: boolean;
   /** Máy bay vừa bổ nhào qua mục tiêu: đang giữ thẳng hướng lấy khoảng cách trước khi quay lại lượt sau. */
   ext: boolean;
+  /** Máy bay: tốc độ ngoặt hiện tại (radian mỗi tick, dấu = chiều ngoặt). Tăng giảm dần cho đường bay mượt. */
+  yawRate: number;
 }
 
 export interface Building {
