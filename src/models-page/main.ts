@@ -7,6 +7,7 @@ import {
   type BuildingSpec, type Cost, type EntityId, type EntitySpec, type Faction, type UnitSpec, type WeaponSpec
 } from "../sim/content";
 import { buildModel, disposeRig } from "../render/models";
+import { bakeStatic } from "../render/models/bake";
 import { Stage, Thumbnailer } from "./stage";
 
 type Tab = "units" | "buildings";
@@ -180,6 +181,8 @@ function loadModel(keepView: boolean): void {
   if (!stage) return;
   const rig = buildModel(state.id, state.faction);
   if (!keepView) stage.active = new Set(rig.defaultOn);
+  // ?bake=1: xem mô hình đã "nướng" đúng như trên chiến trường (gộp khối đứng yên)
+  if (new URLSearchParams(location.search).has("bake")) bakeStatic(rig);
   const old = stage.show(rig, keepView);
   // ?flight=1: thử chế độ bay do chiến trường điều khiển (setFlight)
   if (new URLSearchParams(location.search).has("flight")) rig.setFlight?.(true, 0.5);

@@ -355,6 +355,17 @@ function startGame(mode: Mode, seed: number, skip = 0): void {
     console.log(`[script] mỏ tiền tuyến thuộc phe: ${fwd.owner}; quân: ${world.units.filter((u) => u.side === me).map((u) => u.kind).join(",")}; sắt ${Math.round(world.sides[me].iron)}`);
     cam.focus(hx + 10, hz - 14);
   }
+  // ?perf=1: bảng đo hiệu năng (FPS, số lệnh vẽ, số tam giác) — để biết máy có bị lag không
+  const perfEl = new URLSearchParams(location.search).has("perf") ? document.createElement("div") : null;
+  if (perfEl) {
+    perfEl.style.cssText = "position:absolute;left:8px;top:48px;background:rgba(0,0,0,.7);color:#9f9;font:12px monospace;padding:4px 8px;border-radius:6px;pointer-events:none;white-space:pre";
+    app.appendChild(perfEl);
+  }
+  let perfFrames = 0;
+  let fpsFrames = 0;
+  let fpsT = performance.now();
+  const lockQuality = new URLSearchParams(location.search).has("hq");
+  let perfT = performance.now();
   let debugFrames = new URLSearchParams(location.search).has("debug") ? 8 : 0;
   let last = performance.now();
   let time = 0;
@@ -410,6 +421,34 @@ function startGame(mode: Mode, seed: number, skip = 0): void {
       minimap.draw(world, me, cam.yaw, corners);
     }
     scene.render(cam.cam);
+    // Tự hạ chất lượng nếu máy chậm (đo mỗi 2 giây, chỉ khi tab đang hiện). ?hq=1 để giữ nguyên.
+    fpsFrames++;
+    if (now - fpsT > 2000) {
+      const fps = (fpsFrames * 1000) / (now - fpsT);
+      fpsFrames = 0;
+      fpsT = now;
+      if (!lockQuality && document.visibilityState === "visible" && time > 4 && fps < 40) {
+        const what = scene.lowerQuality();
+        if (what) {
+          hud.alert(`Máy đang chậm (${Math.round(fps)} FPS): tự ${what} để chơi mượt hơn`);
+          resize();
+        }
+      }
+    }
+    if (perfEl) {
+      perfFrames++;
+      if (now - perfT > 1000) {
+        const r = scene.renderer.info.render;
+        let meshes = 0;
+        scene.scene.traverseVisible((o) => {
+          if ((o as THREE.Mesh).isMesh) meshes++;
+        });
+        perfEl.textContent = `FPS ${Math.round((perfFrames * 1000) / (now - perfT))} · chất lượng ${scene.quality} · draw ${r.calls} · tam giác ${(r.triangles / 1000).toFixed(0)}k · mesh ${meshes} · quân ${world.units.length}`;
+        console.log(`[perf] ${perfEl.textContent}`);
+        perfFrames = 0;
+        perfT = now;
+      }
+    }
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);

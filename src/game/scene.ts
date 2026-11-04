@@ -21,10 +21,15 @@ export class BattleScene {
   private fogData: Uint8Array;
   private fogMesh: THREE.Mesh;
   private water: THREE.Mesh;
+  readonly mobile: boolean;
+  /** Mức chất lượng tự hạ khi máy chậm: 0 = đầy đủ, 1 = giảm độ phân giải, 2 = tắt bóng đổ, 3 = độ phân giải thấp. */
+  quality = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+    // điện thoại / màn cảm ứng: khởi đầu ở mức nhẹ hơn
+    this.mobile = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.mobile ? 1.25 : 1.75));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -37,7 +42,7 @@ export class BattleScene {
     this.scene.add(new THREE.HemisphereLight(0xd6e8ff, 0x4b5a3a, 1.25));
     this.sun = new THREE.DirectionalLight(0xfff0d8, 2.7);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.mapSize.set(this.mobile ? 1024 : 2048, this.mobile ? 1024 : 2048);
     const c = this.sun.shadow.camera;
     c.left = c.bottom = -70;
     c.right = c.top = 70;
@@ -252,6 +257,16 @@ export class BattleScene {
   followSun(x: number, z: number): void {
     this.sun.position.set(x + 55, 110, z + 35);
     this.sun.target.position.set(x, 0, z);
+  }
+
+  /** Hạ một bậc chất lượng; trả về mô tả để báo cho người chơi (null nếu đã thấp nhất). */
+  lowerQuality(): string | null {
+    if (this.quality >= 3) return null;
+    this.quality++;
+    if (this.quality === 1) this.renderer.setPixelRatio(1);
+    if (this.quality === 2) this.sun.castShadow = false;
+    if (this.quality === 3) this.renderer.setPixelRatio(0.75);
+    return ["", "giảm độ phân giải", "tắt bóng đổ", "độ phân giải thấp"][this.quality];
   }
 
   resize(w: number, h: number): void {

@@ -57,6 +57,13 @@ Bộ nhớ kỹ thuật của dự án. Đọc hết trước khi sửa code.
 ### Tham số URL để thử nghiệm trận (`index.html`)
 `?play=vsai|aivai` vào thẳng trận · `&seed=N` · `&skip=N` tua nhanh N giây đầu · `&cam=x,z,dist` đặt camera · `&script=1` kịch bản tự chơi (đặt Xưởng Xe, chiếm mỏ, đúc Titan) và in log `[script]` · `&debug=1` in log vài khung hình đầu · `&nooverlay=1`, `&nofx=1`, `&noshadow=1` tắt từng lớp để khoanh vùng lỗi hình.
 
+### Hiệu năng (chống lag)
+- **Lõi sim:** ~0.16 ms/tick trung bình, đỉnh ~5 ms khi nhiều xe cùng tìm đường (đo 04/11/2026) — không phải điểm nghẽn.
+- **Phần vẽ là điểm nghẽn: số lệnh vẽ (draw call).** Mọi mô hình trên chiến trường đi qua `bakeStatic()` (`src/render/models/bake.ts`): tự dò bộ phận động bằng cách chạy thử hoạt ảnh, rồi gộp các khối đứng yên cùng vật liệu vào tổ tiên động gần nhất. Bánh xe đánh dấu `userData.cosmetic` → gộp luôn (mất hiệu ứng quay ở chiến trường). Kết quả: 766 → 387 lệnh vẽ ở cùng một cảnh. Mô hình mới **không cần làm gì thêm**; chỉ cần bộ phận chuyển động phải nằm trong khung (Group) riêng.
+- **Tự hạ chất lượng** khi FPS < 40 (đo mỗi 2 giây): giảm độ phân giải → tắt bóng đổ → độ phân giải thấp; điện thoại khởi đầu ở mức nhẹ. Giới hạn 260 hạt hiệu ứng.
+- Đo: `?perf=1` (FPS, lệnh vẽ, tam giác, số mesh) · `?hq=1` khóa chất lượng (dùng khi chụp ảnh bằng Chrome không giao diện, vì máy CPU luôn < 40 FPS) · Xưởng Mô Hình `?bake=1` xem mô hình đã gộp.
+- Ngân sách mục tiêu cho điện thoại: < 500 lệnh vẽ khi trận đông.
+
 ### Bài học đã gặp (đừng lặp lại)
 - **`dt` của khung hình phải chặn trong [0, 0.1]** và đo bằng `performance.now()`: mốc thời gian của `requestAnimationFrame` có thể sớm hơn mốc khởi tạo → `dt` âm làm nổ các phép nội suy `exp()` (càng máy bay dài hàng chục mét).
 - CSS `display: flex` đè thuộc tính `hidden` → đã có luật `[hidden] { display: none !important; }`.
@@ -70,7 +77,7 @@ Bộ nhớ kỹ thuật của dự án. Đọc hết trước khi sửa code.
 - `npm run simulate -- N`: N trận AI đấu AI không giao diện, in kết quả và thống kê (dùng để cân bằng).
 - `npm run build`: kiểm tra kiểu rồi build ra `dist/`. `npm run preview`: chạy thử bản build (http://localhost:4173).
 - **Tự xem kết quả bằng Chrome không giao diện** (WebGL qua SwiftShader):
-  `"/c/Program Files/Google/Chrome/Application/chrome.exe" --headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --hide-scrollbars --window-size=1280,800 --virtual-time-budget=5000 --screenshot=<file.png> "http://localhost:4173/?play=aivai&seed=3&skip=170"`
+  `"/c/Program Files/Google/Chrome/Application/chrome.exe" --headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --hide-scrollbars --window-size=1280,800 --virtual-time-budget=5000 --screenshot=<file.png> "http://localhost:4173/?play=aivai&seed=3&skip=170&hq=1"`
   Đọc log console: thêm `--enable-logging=stderr --v=0` và lọc dòng `CONSOLE`.
 - Sau mỗi thay đổi phải chạy `npm run check` và `npm test`. Khi đụng tới phần hiển thị thì chụp màn hình để kiểm tra.
 - Commit nhỏ, thông điệp rõ ràng. Chỉ push khi người dùng yêu cầu.

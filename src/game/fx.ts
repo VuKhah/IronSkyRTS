@@ -61,6 +61,12 @@ export class Fx {
   constructor(private scene: THREE.Scene) {}
 
   private spawn(geo: THREE.BufferGeometry, mat: THREE.Material, pos: THREE.Vector3, scale: number, life: number, opts: Partial<Omit<Particle, "mesh" | "life" | "max">> = {}): Particle {
+    // giới hạn số hạt: trận đông thì bỏ hạt cũ nhất thay vì để máy chậm đi
+    if (this.parts.length > 260) {
+      const old = this.parts.shift()!;
+      this.scene.remove(old.mesh);
+      if (old.fade) (old.mesh.material as THREE.Material).dispose();
+    }
     const mesh = new THREE.Mesh(geo, opts.fade === false ? mat : (mat as THREE.Material).clone());
     mesh.position.copy(pos);
     mesh.scale.setScalar(scale);

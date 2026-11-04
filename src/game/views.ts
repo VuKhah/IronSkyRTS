@@ -10,6 +10,7 @@ import { groundY } from "../sim/map";
 import type { Building, Mine, Target, Unit } from "../sim/types";
 import { AIRBORNE_ALT, DT, type World } from "../sim/world";
 import { buildModel, buildNode, disposeRig, type NodeRig, type Rig } from "../render/models";
+import { bakeObject, bakeStatic } from "../render/models/bake";
 
 const wrap = (a: number): number => {
   a = (a + Math.PI) % (Math.PI * 2);
@@ -72,6 +73,7 @@ export class Views {
       let v = this.units.get(u.id);
       if (!v) {
         const rig = buildModel(u.kind, FACTION_OF[u.side], false);
+        bakeStatic(rig);
         const yaw = Math.atan2(u.hx, u.hz);
         v = { rig, yaw, prevYaw: yaw, roll: 0, ring: null, active: new Set(), seen: f };
         this.scene.add(rig.root);
@@ -84,6 +86,7 @@ export class Views {
       let v = this.buildings.get(b.id);
       if (!v) {
         const rig = buildModel(b.kind, FACTION_OF[b.side], false);
+        bakeStatic(rig);
         rig.root.position.set(b.x, groundY(b.x, b.z), b.z);
         v = { rig, yaw: 0, prevYaw: 0, roll: 0, ring: null, active: new Set(), seen: f };
         this.scene.add(rig.root);
@@ -96,6 +99,15 @@ export class Views {
       let v = this.mines.get(m.id);
       if (!v) {
         const node = buildNode(m.res);
+        bakeObject(node.root, (check) => {
+          for (let i = 0; i < 30; i++) {
+            node.setOwner(i % 2 === 0 ? 0 : 1);
+            node.setAmount(i < 15 ? 1 : 0.3);
+            node.update(0.05, i * 0.05);
+            check();
+          }
+          node.setAmount(1);
+        });
         node.root.position.set(m.x, groundY(m.x, m.z), m.z);
         this.scene.add(node.root);
         v = { node, ring: null };

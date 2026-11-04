@@ -125,6 +125,8 @@ export function wheel(r: number, width: number, mat: THREE.Material, hubMat: THR
   const hub = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(r * 0.5, r * 0.5, width * 1.05, 6), hubMat));
   hub.rotation.z = Math.PI / 2;
   g.add(tire, hub);
+  // bánh quay chỉ là chi tiết trang trí: khi "nướng" cho chiến trường được phép gộp vào thân xe (mất hiệu ứng quay)
+  g.userData.cosmetic = true;
   return g;
 }
 
