@@ -22,4 +22,5 @@ Thắng khi: diệt Xe Tư Lệnh địch, phá hết công trình địch, ho�
 - [Khung tính năng (danh sách việc cần làm chính)](Docs/FEATURE_FRAMEWORK.md)
 - [Thiết kế game (GDD)](Docs/GAME_DESIGN_DOCUMENT.md)
 - [Nội dung game](Docs/GAME_CONTENT.md)
-- [Phân tích game tham chiếu và lộ trình](Docs/BATTLEDRONES_REFERENCE.md)
+- [Tham chiếu: Battle Drones](Docs/BATTLEDRONES_REFERENCE.md)
+- [Tham chiếu: thiết kế gốc quản lý sư đoàn (Art of War)](Docs/REF_ARTOFWAR_GDD_MASTER.md)

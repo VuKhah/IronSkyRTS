@@ -230,3 +230,39 @@ Vì sao đốt Dầu: máy giả lập cho thấy Dầu dư trong khi Sắt cạ
    - Giống mỏ Sắt nhà: có sẵn từ đầu trận, đủ để khởi động điện và máy bay, nhưng cạn sớm, nên vẫn phải ra tranh giàn Dầu giữa bản đồ.
    - Ảnh hưởng tới luật độc quyền: tổng số giàn Dầu tăng từ 3 lên 5. Độc quyền Dầu sẽ phải chiếm cả giàn nhà của địch, nên khó hơn nhiều. Việc này cũng giải luôn phần nào vấn đề "độc quyền Dầu thắng quá sớm".
 3. **Chờ quyết: độc quyền Dầu thắng quá sớm** (trận AI đấu AI kết thúc sau 2–4 phút). Các hướng: chỉ tính sau phút 8–10 · giữ 60–90 giây · thêm giàn Dầu (ý 2 ở trên) · mỏ mới chiếm cần 20 giây ổn định.
+
+## 17. Định hướng: quản lý cấp sư đoàn, trận không quá 20 phút (ghi lại 04/11/2026, bàn tiếp ở lượt sau)
+
+Người dùng có một bản thiết kế game đầu tiên (`Docs/REF_ARTOFWAR_GDD_MASTER.md`): RTS quản lý **cấp sư đoàn**, trận dài hơn 20 phút, chưa từng được làm. Người dùng **vẫn muốn đi theo hướng quản lý sư đoàn**, nhưng tối ưu để **một trận không quá 20 phút**.
+
+### Bài toán cần giải
+Quản lý sư đoàn tự nhiên kéo trận dài: nhiều quân, nhiều tầng hậu cần, xây dựng chậm. Muốn gói trong ≤ 20 phút thì phải:
+- **Đúc theo lô / điều theo đội** thay vì từng xe, để người chơi ra lệnh ít mà quân vẫn đông. Cần chốt cỡ lô hợp với điện thoại.
+- **Tự động hóa hậu cần:** mạng kho và ray tự tiếp tế, người chơi chỉ quy hoạch tuyến, không vi quản lý từng xe.
+- **Nhịp kinh tế nhanh hơn**, mỏ hữu hạn để trận tự dồn về trận đánh cuối.
+- **Đo bằng máy giả lập** (`npm run simulate`): mục tiêu mở màn ~3 phút, giữa trận ~8–12 phút, kết thúc trước phút 20.
+
+### Ý tưởng nên mang sang từ bản thiết kế cũ
+| Ý tưởng | Hướng áp dụng cho Iron Sky |
+|---|---|
+| Kho Mỏ tạm (Local Buffer) | Mỏ tích tài nguyên tại chỗ; chưa chở về thì chưa là của mình; địch chiếm mỏ thì lấy luôn phần đang tích |
+| Thùng hàng rơi khi xe vận tải bị phá (70% nhặt được) | Xe Vận Tải chết thì rơi thùng Sắt/Dầu, ai chạm trước thì nhặt |
+| Tàu hỏa không tốn dầu, chở nhiều, ray trúng bom thì phanh và tự sửa 5 giây | Xương sống của hệ thống ray (hướng B ở lượt bàn trước): Ga Tàu ở mỏ, ray tự dò đường về Tổng Hành Dinh, **chạy bằng điện** |
+| Tụ điện nội bộ + ưu tiên cấp điện | Trả lời mục 16.1: pin nạp chậm từ điện dư; hạ tầng thiết yếu được cấp điện trước |
+| Mạng Kho liên kết tự động | Sân Đáp và tháp đứng gần mạng kho / ray thì tự rút Dầu và đạn |
+| 2 giây "tử thần" khi máy bay cất và hạ cánh | Máy bay đang cất/hạ cánh là mục tiêu mặt đất |
+| Ma trận Giáp × Đạn 3×3 | Thay cho bảng khắc chế rời rạc hiện nay: gọn và dễ nhớ trên điện thoại |
+
+### Nên bỏ hoặc để rất xa sau
+- 5 tầng không gian: chỉ giữ ý đồi che tầm nhìn và cộng tầm bắn.
+- Vàng và Thương Hội quy đổi: Sắt, Dầu, Điện đã đủ.
+- Hải quân, tàu ngầm, hạt nhân, tên lửa quỹ đạo.
+- Thắng khi đạt 2/3 điều kiện: Iron Sky giữ "đạt 1 trong 3".
+- Hết dầu thì máy bay tự nổ: Iron Sky đã đổi sang dầu dự trữ đủ bay về.
+
+### Câu hỏi để bàn ở lượt sau
+1. **Cỡ lô:** đúc và điều theo đội bao nhiêu xe (3? 5?) để vừa màn hình điện thoại? Có giữ "Mất chỉ huy" khi đội còn quá ít xe không?
+2. **Giới hạn quân:** hiện là 40 xe; quy mô sư đoàn có cần nâng không, và máy yếu có chịu nổi không?
+3. **Đạn:** có đưa thanh đạn riêng cho từng xe (hết đạn thì ngừng bắn, chờ tiếp tế) vào không, hay chỉ áp dụng cho tháp phòng thủ?
+4. **Ray:** chốt lại theo hướng tàu hỏa ở trên; người chơi kéo ray hay ray tự nối?
+5. **Nhịp 20 phút:** giữ 3 điều kiện thắng hiện tại; độc quyền Dầu sửa theo mục 16.3.
