@@ -14,7 +14,7 @@ Trạng thái: ⬜ chưa làm · 🟨 đang làm / làm một phần · ✅ xong
 | # | Tính năng | Phiên bản Iron Sky | Ưu tiên | Trạng thái |
 |---|---|---|---|---|
 | A1 | **Toàn bộ là mô hình 3D**: công trình, xe mặt đất, máy bay, bộ binh, kèm trang xem mô hình | Mô hình dựng bằng code Three.js, có trang `models.html` để xem từng mô hình. **Đã có Xưởng Mô Hình và 16 mô hình bản nhẹ; chờ bản chi tiết** | P1 | 🟨 |
-| A2 | **Sương mù chiến tranh** | Tính theo địa hình 3D: đồi che tầm nhìn, đứng trên cao nhìn xa hơn. Thêm Trạm Radar | P1 | 🟨 |
+| A2 | **Sương mù chiến tranh** | Tính theo địa hình 3D: đồi che tầm nhìn, đứng trên cao nhìn xa hơn. Thêm Trạm Radar. **Đã có (05/11/2026):** tầm nhìn có che khuất theo thuật toán đường chân trời (`stampLos`), máy bay và Radar không bị che | P1 | 🟨 |
 | A3 | **Vũ khí khác nhau cho mục tiêu trên không và mặt đất** | Ma trận *loại sát thương × lớp giáp* (4 giáp Nhẹ / Nặng / Công sự / Kết cấu × 3 đạn Thường / Xuyên giáp / Nổ, `RULES.damageMatrix`, 04/11/2026), cờ "bắn được: đất / không / cả hai" | P1 | ✅ |
 | A4 | **Chế độ giao tranh**: Xanh đấu Đỏ trên bản đồ đối xứng xoay | Liên Minh Lam đấu Tập Đoàn Đỏ, đối xứng 180° qua dòng sông chéo | P1 | ✅ |
 | A5 | **Sáu bản đồ trên năm vùng khí hậu**: ôn đới, sa mạc, Bắc Cực, núi lửa, nhiệt đới | Mỗi vùng có bảng màu, địa hình, vật trang trí và luật riêng (ví dụ băng trơn, dung nham) | P2 | ⬜ |
@@ -61,7 +61,7 @@ Tên **in đậm** là quân và công trình đã có trong thiết kế Iron S
 | B8 | **Xe Tư Lệnh và 3 kỹ năng**, mất Xe Tư Lệnh là thua | Có hào quang hỗ trợ quân xung quanh | P1 | 🟨 |
 | B9 | **4 điều kiện thắng**: phá căn cứ, diệt Tư Lệnh, độc quyền 3/3 mỏ, tính điểm khi hết giờ | Ván đấu tối đa 15 phút | P1 | 🟨 |
 | B10 | **3 tài nguyên**: Vàng, Dầu, Sắt; **9 mỏ**; **5 căn cứ** | Dầu vừa dùng cho kinh tế vừa làm nhiên liệu máy bay | P1 | 🟨 |
-| B11 | **Địa hình 3D chiến thuật**: đồi được cộng tầm nhìn và tầm bắn, sông có 7 cầu | Xem mục "Nghĩa của 3D" trong `AGENTS.md` | P1 | 🟨 |
+| B11 | **Địa hình 3D chiến thuật**: đồi được cộng tầm nhìn và tầm bắn, sông có 7 cầu | Xem mục "Nghĩa của 3D" trong `AGENTS.md`. **Đã có (05/11/2026):** `RULES.terrain` (+6% tầm nhìn, +5% tầm bắn mỗi mét cao, trần +30% / +20%). Còn: độ dốc làm chậm, bản đồ mới (xem `Docs/MAPS_PLAN.md`) | P1 | 🟨 |
 | … | *(Người dùng sẽ bổ sung thêm)* | | | |
 
 ---

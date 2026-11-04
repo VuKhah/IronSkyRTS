@@ -59,7 +59,7 @@ export const ROCKS: readonly Blob[] = [
   { x: -9.9, z: -29.7, r: 5.5, h: 4 }
 ];
 
-/** Đồi thấp: chỉ để cảnh (MVP chưa cộng tầm nhìn theo độ cao). */
+/** Đồi thấp: đứng trên đồi được cộng tầm nhìn và tầm bắn; đồi che tầm nhìn của quân mặt đất (RULES.terrain). */
 export const HILLS: readonly Blob[] = [
   { x: -28, z: 66, r: 13, h: 4 },
   { x: 28, z: -66, r: 13, h: 4 },
@@ -117,7 +117,10 @@ function smooth01(t: number): number {
   return k * k * (3 - 2 * k);
 }
 
-/** Độ cao địa hình (m) — dùng cho phần vẽ. Lõi sim MVP không dùng độ cao. */
+/**
+ * Độ cao địa hình (m). Dùng cho cả phần vẽ lẫn lõi sim (tầm nhìn bị che, cộng tầm khi đứng cao).
+ * Chỉ dùng + − × ÷, trị tuyệt đối, min/max nên tất định trên mọi máy. Đừng thêm Math.sin/cos vào đây.
+ */
 export function terrainHeight(x: number, z: number): number {
   let h = 0;
   for (const b of HILLS) {

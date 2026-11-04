@@ -10,7 +10,7 @@
 import { BUILDINGS, RULES, UNITS, type BuildingId, type Res, type Side, type UnitId, type UnitSpec, type WeaponSpec, type WeaponVisual } from "./content";
 import { clamp, dcos, DEG, dist2, dsin, Rng, turnStep, turnToward, type TurnStep } from "./fmath";
 import { Grid } from "./grid";
-import { CELL, EDGE, GRID, HQ_POS, MINES } from "./map";
+import { CELL, EDGE, GRID, groundY, HQ_POS, MINES } from "./map";
 import type { AlertKind, Building, Command, Entity, Mine, Order, Shot, SideState, SimEvent, Target, Unit, WinReason } from "./types";
 
 export const TICK_RATE = RULES.tickRate;
@@ -81,6 +81,43 @@ function cosDeg(deg: number): number {
 }
 
 /** Vòng tròn ô cho sương mù, tính sẵn theo bán kính (đơn vị ô). */
+/**
+ * Các tia nhìn của vùng nhìn bán kính r ô, tính sẵn theo bán kính (giống nhau cho mọi quân): mỗi tia đi từ tâm ra một
+ * ô biên của đĩa. `off` là độ lệch ô (x, z) từng bước, `inv` là 1 / khoảng cách (m), `start[k]..start[k+1]` là tia k.
+ */
+interface Rays {
+  off: Int16Array;
+  inv: Float64Array;
+  start: Int32Array;
+}
+const RAYS = new Map<number, Rays>();
+function rays(r: number): Rays {
+  let R = RAYS.get(r);
+  if (!R) {
+    const lim = r * r + r;
+    const inside = (x: number, z: number): boolean => x * x + z * z <= lim;
+    const off: number[] = [];
+    const inv: number[] = [];
+    const start: number[] = [0];
+    for (let z = -r; z <= r; z++)
+      for (let x = -r; x <= r; x++) {
+        if (!inside(x, z) || (inside(x + 1, z) && inside(x - 1, z) && inside(x, z + 1) && inside(x, z - 1))) continue;
+        const n = Math.max(Math.abs(x), Math.abs(z));
+        for (let i = 1; i <= n; i++) {
+          const ox = Math.round((x * i) / n);
+          const oz = Math.round((z * i) / n);
+          if (!inside(ox, oz)) break;
+          off.push(ox, oz);
+          inv.push(1 / (Math.sqrt(ox * ox + oz * oz) * CELL));
+        }
+        start.push(inv.length);
+      }
+    R = { off: Int16Array.from(off), inv: Float64Array.from(inv), start: Int32Array.from(start) };
+    RAYS.set(r, R);
+  }
+  return R;
+}
+
 const DISCS = new Map<number, Int16Array>();
 function disc(r: number): Int16Array {
   let d = DISCS.get(r);
@@ -140,6 +177,8 @@ export class World {
   tick = 0;
   readonly rng: Rng;
   readonly grid = new Grid();
+  /** Độ cao mặt đất ở tâm từng ô lưới (m), tính một lần lúc tạo trận (địa hình không đổi). */
+  readonly cellH = new Float64Array(GRID * GRID);
   units: Unit[] = [];
   buildings: Building[] = [];
   readonly mines: Mine[] = [];
@@ -163,6 +202,7 @@ export class World {
     this.rng = new Rng(seed ^ 0x2545f491);
     this.maxTicks = opts.maxTicks ?? 0;
     this.sandbox = opts.sandbox ? { hold: [false, false], infiniteFuel: true } : null;
+    for (let cz = 0; cz < GRID; cz++) for (let cx = 0; cx < GRID; cx++) this.cellH[cz * GRID + cx] = groundY(this.grid.centerX(cx), this.grid.centerZ(cz));
     for (const m of MINES) {
       const mine: Mine = {
         id: this.nextId++,
@@ -1113,9 +1153,26 @@ export class World {
     return !!w.deploy && src.cat === "unit" && src.still >= sec(w.deploy.time);
   }
 
-  /** Tầm bắn thực tế: cộng thêm khi đã triển khai. */
+  /** Tầm bắn thực tế: cộng thêm khi đã triển khai, và khi đứng trên cao (quân mặt đất, công trình). */
   private reach(src: Unit | Building, w: WeaponSpec): number {
-    return this.deployed(src, w) ? w.range * (1 + w.deploy!.range) : w.range;
+    let r = this.deployed(src, w) ? w.range * (1 + w.deploy!.range) : w.range;
+    if (src.cat === "building" || src.air === "none") {
+      const T = RULES.terrain;
+      r *= 1 + clamp(this.heightAt(src.x, src.z) * T.rangePerM, 0, T.rangeMax);
+    }
+    return r;
+  }
+
+  /** Độ cao mặt đất (m) tại ô chứa điểm (x, z). */
+  heightAt(x: number, z: number): number {
+    return this.cellH[this.grid.index(x, z)];
+  }
+
+  /** Tầm nhìn thực tế: đứng cao nhìn xa hơn (không áp cho máy bay). */
+  private sightOf(base: number, x: number, z: number, air: boolean): number {
+    if (air) return base;
+    const T = RULES.terrain;
+    return base * (1 + clamp(this.heightAt(x, z) * T.sightPerM, 0, T.sightMax));
   }
 
   /** Chọn mục tiêu: giữ mục tiêu cũ nếu còn hợp lệ, nếu không thì chọn gần nhất (ưu tiên quân có vũ khí, rồi mới tới công trình). */
@@ -2096,17 +2153,59 @@ export class World {
     }
   }
 
+  /**
+   * Tầm nhìn có che khuất (thuật toán đường chân trời): bắn tia từ mắt ra từng ô biên của vùng nhìn; đi dọc tia,
+   * giữ "góc ngẩng" lớn nhất của mặt đất đã gặp. Ô nào mà điểm nhìn thấy được của nó (mặt đất + targetHeight)
+   * thấp hơn góc đó thì bị đồi / đá che. Tốn ~8r × r phép tính mỗi quân thay vì r³ (mỗi ô một tia).
+   * Chỉ dùng + − × ÷ và Math.round / sqrt nên tất định.
+   */
+  private stampLos(st: SideState, x: number, z: number, sight: number, eye: number): void {
+    const r = Math.round(sight / CELL);
+    const cx = this.grid.cellX(x);
+    const cz = this.grid.cellZ(z);
+    const c0 = cz * GRID + cx;
+    st.vis[c0] = 1;
+    st.explored[c0] = 1;
+    const th = RULES.terrain.targetHeight;
+    const { off, inv, start } = rays(r);
+    const H = this.cellH;
+    for (let k = 0; k + 1 < start.length; k++) {
+      let maxSlope = -Infinity;
+      for (let j = start[k]; j < start[k + 1]; j++) {
+        const nx = cx + off[j * 2];
+        const nz = cz + off[j * 2 + 1];
+        if (nx < 0 || nz < 0 || nx >= GRID || nz >= GRID) break;
+        const idx = nz * GRID + nx;
+        const h = H[idx] - eye;
+        if ((h + th) * inv[j] >= maxSlope) {
+          st.vis[idx] = 1;
+          st.explored[idx] = 1;
+        }
+        const g = h * inv[j];
+        if (g > maxSlope) maxSlope = g;
+      }
+    }
+  }
+
   private updateFog(): void {
     for (const s of [0, 1] as Side[]) {
       const st = this.sides[s];
       st.vis.fill(0);
-      for (const u of this.units) if (u.side === s) this.stamp(st, u.x, u.z, UNITS[u.kind].sight);
+      const T = RULES.terrain;
+      for (const u of this.units) {
+        if (u.side !== s) continue;
+        const air = u.alt > AIRBORNE_ALT;
+        const sight = this.sightOf(UNITS[u.kind].sight, u.x, u.z, air);
+        // máy bay ở trên cao hơn mọi đồi: không bị che
+        if (air) this.stamp(st, u.x, u.z, sight);
+        else this.stampLos(st, u.x, u.z, sight, this.heightAt(u.x, u.z) + T.eyeUnit);
+      }
       for (const b of this.buildings) {
         if (b.side !== s) continue;
         const spec = BUILDINGS[b.kind];
-        // Trạm Radar có điện: nhìn xuyên sương mù cả vùng rộng
-        const sight = spec.radarSight && b.active ? spec.radarSight : spec.sight * (b.built ? 1 : 0.6);
-        this.stamp(st, b.x, b.z, sight);
+        // Trạm Radar có điện: nhìn xuyên sương mù (và xuyên đồi) cả vùng rộng
+        if (spec.radarSight && b.active) this.stamp(st, b.x, b.z, spec.radarSight);
+        else this.stampLos(st, b.x, b.z, this.sightOf(spec.sight, b.x, b.z, false) * (b.built ? 1 : 0.6), this.heightAt(b.x, b.z) + T.eyeBuilding);
       }
       for (const b of this.buildings) if (b.side !== s && !st.known.has(b.id) && this.visibleTo(s, b)) st.known.add(b.id);
     }

@@ -221,6 +221,20 @@ export const RULES = {
     fort: { normal: 0.25, ap: 1.5, he: 0.6 },
     struct: { normal: 0.25, ap: 1, he: 1.5 }
   } as Record<ArmorClass, Record<DmgType, number>>,
+  /**
+   * Địa hình 3D chiến thuật (AGENTS.md "Nghĩa của 3D"): độ cao tính từ mặt thung lũng (0 m).
+   * Đứng cao được cộng tầm nhìn / tầm bắn theo mỗi mét, có trần. Đồi và đá che tầm nhìn của quân mặt đất.
+   */
+  terrain: {
+    /** Mắt quân mặt đất / công trình cao hơn mặt đất (m); điểm nhìn thấy được của mục tiêu (m). */
+    eyeUnit: 1.6,
+    eyeBuilding: 3,
+    targetHeight: 1,
+    sightPerM: 0.06,
+    sightMax: 0.3,
+    rangePerM: 0.05,
+    rangeMax: 0.2
+  },
   sellRefund: 0.5,
   queueMax: 5,
   captureRadius: 8,
