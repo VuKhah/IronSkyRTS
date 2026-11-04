@@ -268,7 +268,8 @@ Giữ lại ý tưởng trong kho thiết kế để phát triển thành bản 
         - Khói: đạn bắn vào quân bên trong có **xác suất trượt** (không miễn thương). Trong sim, tỉ lệ trượt dùng `Rng` có seed để vẫn tất định.
         - Sạc lại bằng **điện** cho cả hai (Khói tạm dùng điện, xem lại khi cân bằng). Hậu cần tự lo việc sạc, đúng nguyên tắc "Tư lệnh, không phải tài xế".
         - Thời lượng ≈ **một đợt tấn công**, số tạm **10 giây**.
-    - Còn mở: sạc ở đâu (chỉ khi drone ở trong vùng lưới điện, hay rút từ tổng điện của phe ở bất cứ đâu); sức chịu của khiên; tỉ lệ trượt trong khói; bán kính; thời gian sạc.
+        - **Chỉ sạc trong vùng lưới điện** (vùng `zone` quanh Tổng Hành Dinh, Nhà Máy Điện, Cột Điện). Drone phải về hậu phương hoặc tới chỗ có Cột Điện mới sạc được, nên mỗi lần bật là một quyết định chiến lược và lưới điện có thêm vai trò ở tiền tuyến. Điện sạc tính vào tiêu thụ của phe (hậu cần tự điều độ như các công trình khác).
+    - Còn mở: sức chịu của khiên; tỉ lệ trượt trong khói; bán kính; thời gian sạc; mức ưu tiên điện của việc sạc so với công trình.
 
 ---
 
@@ -326,6 +327,6 @@ Giữ lại ý tưởng trong kho thiết kế để phát triển thành bản 
 Khi chốt chỉ số (bước 4), kịch bản đã đạt sẽ chuyển thành kiểm thử bắt buộc trong `npm test`.
 
 **Còn mở:**
-- Drone Khiên/Khói: đã chốt hạn chế (10 giây, khiên vỡ theo sát thương, khói cho đạn xác suất trượt, sạc bằng điện); còn mở: sạc ở đâu và các con số, xem mục #23.
+- Drone Khiên/Khói: đã chốt hạn chế (10 giây, khiên vỡ theo sát thương, khói cho đạn xác suất trượt, sạc bằng điện, chỉ trong vùng lưới điện); còn mở: các con số, xem mục #23.
 - Thêm kịch bản thiết kế cho các ý đồ khác (Falcon tấn công SkyGuard, 3 Drone cảm tử hạ Lynx, 2–3 Lynx hạ một máy bay…) khi các loại quân đó có trong game.
 - Thứ tự đưa quân vào game: đề xuất đợt 1 là 7 loại đang có, chỉnh theo mô tả mới; sau đó Drone Sửa Chữa, Pháo Tự Hành, Drone Trinh Sát (ba loại này tạo combo).
