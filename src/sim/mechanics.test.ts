@@ -1,5 +1,5 @@
 /**
- * Kiểm thử các cơ chế bắn (Docs/ARMY_DESIGN.md): bắn loạt, tầm tối thiểu, triển khai (Lockdown),
+ * Kiểm thử các cơ chế bắn (Docs/design/ARMY_DESIGN.md): bắn loạt, tầm tối thiểu, triển khai (Lockdown),
  * vừa chạy vừa bắn, tháp pháo xoay chậm, giáp mặt trước, phòng thủ điểm, lộ vị trí, rải thảm, độ tản.
  *
  * Mỗi phép thử chạy trong Phòng Thử Nghiệm (World { sandbox: true }). Cơ chế chưa có quân nào dùng thì

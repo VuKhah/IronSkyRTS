@@ -1,6 +1,6 @@
 /**
  * THỬ NGHIỆM (chưa vào game): vẽ ảnh mặt đất nhìn từ trên xuống HOÀN TOÀN BẰNG CODE từ GameMap,
- * để đánh giá phương án 1 của B8 (Docs/MAPS_PLAN.md mục 7). Không dùng ảnh hay tài nguyên nào.
+ * để đánh giá phương án 1 của B8 (Docs/design/MAPS_PLAN.md mục 7). Không dùng ảnh hay tài nguyên nào.
  *   npx tsx src/tools/paint-ground-demo.ts <out.png> [cỡ ảnh]
  */
 import { writeFileSync } from "node:fs";

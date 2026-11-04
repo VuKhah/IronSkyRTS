@@ -17,10 +17,21 @@ Thắng khi: diệt Xe Tư Lệnh địch, phá hết công trình địch, ho�
 - `npm test` — kiểm thử (gồm tất định và 1 trận AI đấu AI)
 - `npm run simulate -- 20` — 20 trận AI đấu AI không giao diện để cân bằng
 
+## Đầu việc
+- [**TASKS.md**: đã làm tới đâu, còn những gì](TASKS.md) (mỗi việc một dòng)
+
 ## Tài liệu
-- [**Thiết kế MVP** (bản chơi được đầu tiên)](Docs/MVP_DESIGN.md)
-- [Khung tính năng (danh sách việc cần làm chính)](Docs/FEATURE_FRAMEWORK.md)
-- [Thiết kế game (GDD)](Docs/GAME_DESIGN_DOCUMENT.md)
-- [Nội dung game](Docs/GAME_CONTENT.md)
-- [Tham chiếu: Battle Drones](Docs/BATTLEDRONES_REFERENCE.md)
-- [Tham chiếu: thiết kế gốc quản lý sư đoàn (Art of War)](Docs/REF_ARTOFWAR_GDD_MASTER.md)
+`Docs/design/`: thiết kế đang dùng
+- [**Thiết kế MVP** (bản chơi được đầu tiên)](Docs/design/MVP_DESIGN.md)
+- [Thiết kế quân đội](Docs/design/ARMY_DESIGN.md)
+- [Kế hoạch bản đồ](Docs/design/MAPS_PLAN.md)
+- [Điện và lưu trữ điện](Docs/design/POWER_STORAGE.md)
+- [Khung tính năng (danh sách tính năng có ưu tiên)](Docs/design/FEATURE_FRAMEWORK.md)
+
+`Docs/reference/`: tham chiếu
+- [Battle Drones](Docs/reference/BATTLEDRONES_REFERENCE.md)
+- [Thiết kế gốc quản lý sư đoàn (Art of War)](Docs/reference/REF_ARTOFWAR_GDD_MASTER.md)
+
+`Docs/legacy-unity/`: tài liệu thời bản Unity (đã bỏ; ý tưởng vẫn tham khảo được)
+- [Thiết kế game (GDD)](Docs/legacy-unity/GAME_DESIGN_DOCUMENT.md)
+- [Nội dung game](Docs/legacy-unity/GAME_CONTENT.md)

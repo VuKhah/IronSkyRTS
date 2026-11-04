@@ -4,7 +4,7 @@
  * Đây là DỮ LIỆU THUẦN: không import Three.js hay DOM. Lõi mô phỏng (sim), AI và giao diện
  * đều đọc chung một nguồn này, nên con số trên Xưởng Mô Hình không bao giờ lệch với trận đấu.
  *
- * ⚠️ Mọi con số hiện là SỐ TẠM cho bản demo MVP (xem Docs/MVP_DESIGN.md). Sẽ bàn kỹ lại sau bản demo.
+ * ⚠️ Mọi con số hiện là SỐ TẠM cho bản demo MVP (xem Docs/design/MVP_DESIGN.md). Sẽ bàn kỹ lại sau bản demo.
  * Đơn vị: mét, giây, m/s. Bản đồ MVP rộng 160 × 160 m.
  */
 
@@ -46,7 +46,7 @@ export type BuildingId =
 export type EntityId = UnitId | BuildingId;
 
 /**
- * Lớp giáp (Docs/ARMY_DESIGN.md Bước 3). Mỗi thực thể thuộc đúng một lớp; hệ số sát thương nằm ở RULES.damageMatrix.
+ * Lớp giáp (Docs/design/ARMY_DESIGN.md Bước 3). Mỗi thực thể thuộc đúng một lớp; hệ số sát thương nằm ở RULES.damageMatrix.
  * Nhẹ: xe nhẹ, máy bay nhẹ, hạ tầng lộ thiên · Nặng: xe tăng, máy bay ném bom · Công sự: tháp phòng thủ ·
  * Kết cấu: nhà xưởng, căn cứ, công trình lớn.
  */
@@ -77,7 +77,7 @@ export interface WeaponSpec {
   breach?: boolean;
   visual: WeaponVisual;
 
-  // ---- Cơ chế bắn (Docs/ARMY_DESIGN.md). Tất cả là tùy chọn và dùng chung: quân nào khai báo thì có. ----
+  // ---- Cơ chế bắn (Docs/design/ARMY_DESIGN.md). Tất cả là tùy chọn và dùng chung: quân nào khai báo thì có. ----
   /** Máy bay: chỉ bắn khi mũi lệch mục tiêu không quá chừng này (độ). Pháo gắn cố định ở mũi cần góc hẹp. Mặc định 37°. */
   fireArc?: number;
   /** Số nòng bắn cùng lúc (súng đôi hai bên cánh): mỗi lần bắn ra chừng này viên song song, mỗi viên đủ sát thương. */
@@ -212,7 +212,7 @@ export const RULES = {
     warnBatterySeconds: 25
   },
   /**
-   * Ma trận Giáp × Đạn: hệ số nhân sát thương [lớp giáp][loại đạn]. Docs/ARMY_DESIGN.md Bước 3 mục 2.
+   * Ma trận Giáp × Đạn: hệ số nhân sát thương [lớp giáp][loại đạn]. Docs/design/ARMY_DESIGN.md Bước 3 mục 2.
    * Hàng Công sự lúc đầu gần giống hàng Nặng, nhưng cố ý tách để chỉnh riêng.
    */
   damageMatrix: {

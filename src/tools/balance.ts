@@ -1,6 +1,6 @@
 /**
  * Chấm các kịch bản thiết kế (src/sim/scenarios.ts) không giao diện: `npm run balance`.
- * In bảng đạt / chưa đạt để biết chỉ số hiện tại còn lệch ý đồ trong Docs/ARMY_DESIGN.md bao nhiêu.
+ * In bảng đạt / chưa đạt để biết chỉ số hiện tại còn lệch ý đồ trong Docs/design/ARMY_DESIGN.md bao nhiêu.
  * Lệnh này không làm hỏng `npm test`: chỉ số còn là số tạm, nên kịch bản chưa đạt là chuyện bình thường.
  */
 import { runScenario, SCENARIOS } from "../sim/scenarios";

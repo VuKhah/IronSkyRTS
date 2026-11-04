@@ -1,5 +1,5 @@
 /**
- * Kiểm thử chung cho MỌI bản đồ (Docs/MAPS_PLAN.md): bản đồ mới thêm vào MAP_DEFS là tự được kiểm.
+ * Kiểm thử chung cho MỌI bản đồ (Docs/design/MAPS_PLAN.md): bản đồ mới thêm vào MAP_DEFS là tự được kiểm.
  * - Công bằng: đối xứng xoay 180° quanh tâm (căn cứ, mỏ, độ cao, chỗ đi được).
  * - Chơi được: căn cứ không bị chặn, mọi mỏ đi tới được từ cả hai nhà.
  */

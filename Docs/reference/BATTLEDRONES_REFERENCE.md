@@ -98,7 +98,7 @@ Khai thác (giáp vừa) · trinh sát bay không vũ khí · xe nhẹ nhanh · 
 - Siêu mech: vũ khí tắt dần ở 75/50/25% máu, luôn bị địch nhìn thấy, neo 4 giây / thu 6 giây, mỗi chiếc thêm đắt hơn 25%.
 - Cựu binh: 3 cấp theo giá trị quân đã hạ, +15% sát thương mỗi cấp, cấp 3 tự hồi máu. Xác quân rơi 30% giá, xe đầu tiên chạm vào nhặt được.
 
-Quyết định áp dụng cho Iron Sky: xem `Docs/ARMY_DESIGN.md`, mục "Bài học từ đội hình Battle Drones".
+Quyết định áp dụng cho Iron Sky: xem `Docs/design/ARMY_DESIGN.md`, mục "Bài học từ đội hình Battle Drones".
 
 ---
 
@@ -119,4 +119,4 @@ Quyết định áp dụng cho Iron Sky: xem `Docs/ARMY_DESIGN.md`, mục "Bài 
 3. **Chi tiết sống động:** nước có shader (bọt ven bờ, lấp lánh), băng trôi, dung nham; cây vẽ hàng loạt bằng instancing theo vùng khí hậu; cầu dựng theo trục lối qua; bóng mây trôi; **"váy" ngoài mép bản đồ** (bản đồ phản chiếu ra ngoài vài ô rồi mờ dần vào màu trời, nên không bao giờ thấy khoảng trống).
 4. Bản đồ ngẫu nhiên không có ảnh vẽ sẵn: trình duyệt tự vẽ ảnh mặt đất từ lưới ô (`terrain-paint.ts`) với bảng màu lấy từ các bản đồ vẽ sẵn, độ phân giải bằng nửa.
 
-**Bài học cho Iron Sky:** xem `Docs/MAPS_PLAN.md` mục "Học từ Battle Drones".
+**Bài học cho Iron Sky:** xem `Docs/design/MAPS_PLAN.md` mục "Học từ Battle Drones".

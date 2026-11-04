@@ -1,5 +1,5 @@
 /**
- * HIỆU ỨNG ĐỊA HÌNH — file chung cho mọi bản đồ (Docs/MAPS_PLAN.md mục 3.3).
+ * HIỆU ỨNG ĐỊA HÌNH — file chung cho mọi bản đồ (Docs/design/MAPS_PLAN.md mục 3.3).
  *
  * Bản đồ chỉ "tô" vùng nào là loại địa hình gì (`MapDef.regions`). Còn MỌI con số của từng loại
  * (tốc độ, tầm nhìn, che chắn, màu vẽ) chỉ nằm ở đây: muốn chỉnh hiệu ứng địa hình thì chỉ sửa file này.

@@ -1,6 +1,6 @@
 > **Tài liệu tham chiếu** (bản sao ngày 04/11/2026 từ `SeconeGame_ArtOfWar/Ideas/GameDesignDocument_Master.md`, không sửa nội dung).
 > Đây là ý tưởng game đầu tiên của người dùng: RTS quản lý **cấp sư đoàn**, trận dài hơn 20 phút, chưa từng được làm.
-> Iron Sky giữ **hướng quản lý sư đoàn** nhưng tối ưu để **một trận không quá 20 phút**. Xem phân tích ở `Docs/MVP_DESIGN.md` mục 17.
+> Iron Sky giữ **hướng quản lý sư đoàn** nhưng tối ưu để **một trận không quá 20 phút**. Xem phân tích ở `Docs/design/MVP_DESIGN.md` mục 17.
 
 # TÀI LIỆU THIẾT KẾ GAME - BẢN TỔNG HỢP (MASTER)
 ## ĐẠI CHIẾN KHÔNG BINH: SƯ ĐOÀN KHÉP KÍN (DIVISION-SCALE HARDCORE RTS)

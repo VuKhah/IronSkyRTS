@@ -564,7 +564,7 @@ Cách làm đề xuất: ghi lại theo từng tick độ cao, hướng, `yawRat
 
 ## Bài học từ đội hình Battle Drones (04/11/2026)
 
-So sánh chi tiết ở `Docs/BATTLEDRONES_REFERENCE.md` mục 5. Quyết định của người dùng:
+So sánh chi tiết ở `Docs/reference/BATTLEDRONES_REFERENCE.md` mục 5. Quyết định của người dùng:
 
 | Bài học | Quyết định |
 |---|---|

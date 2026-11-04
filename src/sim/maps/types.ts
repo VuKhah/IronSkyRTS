@@ -1,5 +1,5 @@
 /**
- * MapDef: dữ liệu khai báo của một bản đồ (Docs/MAPS_PLAN.md mục 3.2).
+ * MapDef: dữ liệu khai báo của một bản đồ (Docs/design/MAPS_PLAN.md mục 3.2).
  *
  * Mỗi bản đồ là một file dữ liệu trong `src/sim/maps/`. Mọi vị trí cố định (căn cứ, mỏ Sắt, giàn Dầu)
  * do người thiết kế đặt tay. Hệ tọa độ: tâm bản đồ ở (0, 0), x sang Đông, z sang Nam (Nam = cạnh dưới

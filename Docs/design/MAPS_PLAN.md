@@ -97,7 +97,7 @@ Mỗi bản đồ một cỡ. Gợi ý khởi điểm: nhỏ 192 m, vừa 256 m,
 
 Đề xuất 3 bản đồ đợt đầu (B5): **Thung Lũng Sông Sắt** (giành cầu), **Cao Nguyên Gió** (giữ cao nguyên giữa bản đồ: nhìn xa, bắn xa), **Đèo Đá Kép** (hai đèo hẹp, phục kích). Khi có loại địa hình (B3) thì thêm được **Đầm Lầy**, **Đồng Tuyết**, rừng. Thành Phố Đổ Nát (vật cản phá được) và Quần Đảo (sau bản Hải quân) để đợt sau.
 
-## 6. Học từ Battle Drones (05/11/2026, chi tiết ở `Docs/BATTLEDRONES_REFERENCE.md` mục 6)
+## 6. Học từ Battle Drones (05/11/2026, chi tiết ở `Docs/reference/BATTLEDRONES_REFERENCE.md` mục 6)
 
 | Họ làm | Áp dụng cho Iron Sky | Trạng thái |
 |---|---|---|
@@ -110,12 +110,14 @@ Mỗi bản đồ một cỡ. Gợi ý khởi điểm: nhỏ 192 m, vừa 256 m,
 
 Người dùng chốt: **phương án 1, vẽ mặt đất bằng code**, với ba yêu cầu: **đẹp**, **không làm máy thở hổn hển**, **tương tác được chỉ để nhìn** (ví dụ pháo nổ để lại hố đất; không ảnh hưởng luật chơi).
 
+**Cập nhật (05/11/2026, sau khi xem ảnh thử):** người dùng chốt **dùng ảnh mặt đất** thay cho kiểu tô màu theo đỉnh lưới hiện tại ("bản đồ hiện xấu quá"). Cách hiểu đang áp dụng: ảnh do **công cụ vẽ bằng code của dự án** tạo ra (`src/tools/paint-ground-demo.ts` → công cụ chính thức), **vẽ sẵn ngoại tuyến** thành file ảnh đi kèm game (nén WebP), nên lúc vào trận không tốn ~7 giây vẽ. Sửa bản đồ thì chạy lại công cụ. Nếu sau này muốn ảnh vẽ tay hoặc AI tạo thì chỉ thay nguồn ảnh, phần game không đổi.
+
 Phần vẽ mặt đất không đụng tới sim: địa hình 3D, chặn đường, đồi che tầm nhìn vẫn do `GameMap` và lưới ô của sim quyết định, như hiện nay.
 
 ### B8. Mặt đất đẹp và tương tác
 | Phần | Cách làm | Chi phí |
 |---|---|---|
-| **B8a. Ảnh màu mặt đất** | Lúc vào trận, vẽ bằng code từ `GameMap` (loại địa hình, độ cao, khoảng cách tới nước): hòa trộn mép bằng nhiễu, bờ sông ẩm, bóng nắng cố định (hillshade). Độ phân giải **thấp** (khoảng 1024 × 1024 cho bản 256 m), vẽ trong luồng nền (Web Worker) để màn hình không khựng | Một lần lúc tải trận; ~4 MB bộ nhớ đồ họa |
+| **B8a. Ảnh màu mặt đất** | **Vẽ sẵn ngoại tuyến** bằng công cụ code của dự án (`npm run paint-maps`) từ `GameMap` (loại địa hình, độ cao, khoảng cách tới nước): hòa trộn mép bằng nhiễu, bờ sông ẩm, bóng nắng cố định (hillshade), cây, đá. Xuất WebP theo mảnh (khoảng 1024 × 1024 cho bản 256 m) đi kèm game; game tải rồi phủ lên địa hình 3D | Không tốn CPU lúc vào trận; vài MB tải về mỗi bản đồ; ~4 MB bộ nhớ đồ họa |
 | **B8b. Vân chi tiết** | Một ảnh vân nhỏ lặp lại (hạt sạn, cỏ, đá; sinh bằng code) trộn trong shader để lại gần không nhòe; vách dốc chuyển sang vân đá | Một ảnh nhỏ, đọc thêm 1–2 lần mỗi điểm ảnh |
 | **B8c. Lớp vết chiến trường** | Ảnh phủ toàn bản đồ, ban đầu trong suốt. Mỗi vụ nổ **in một dấu** vào ảnh (hố đất: vành đất tơi, lòng sẫm, vệt cháy; cỡ theo bán kính nổ). Shader mặt đất đọc ảnh này để tối màu và đổ bóng giả cho hố trông lõm xuống. Dùng chung cho: vết xích trên bùn / tuyết, đống đổ nát khi công trình sập, vệt bom rải thảm. Thay cho các tấm "vết cháy" hiện tại (mỗi tấm một lệnh vẽ, sống 25 giây) | Mỗi vụ nổ một lệnh vẽ nhỏ, đúng một lần; mỗi khung hình **không đổi** dù bao nhiêu hố. Vết ở lại cả trận |
 | **B8d. Chi tiết sống động** | Nước có shader rẻ (gợn, bọt ven bờ), cây vẽ hàng loạt (instancing) theo vùng rừng, bóng mây trôi (chỉ là một phép dịch trong shader), "váy" ngoài mép bản đồ mờ dần vào màu trời | Vài lệnh vẽ cố định |

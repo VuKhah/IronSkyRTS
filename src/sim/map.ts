@@ -1,5 +1,5 @@
 /**
- * LỚP TƯƠNG THÍCH (bước B0 của Docs/MAPS_PLAN.md). Bản đồ thật nằm ở `src/sim/maps/` (MapDef + GameMap).
+ * LỚP TƯƠNG THÍCH (bước B0 của Docs/design/MAPS_PLAN.md). Bản đồ thật nằm ở `src/sim/maps/` (MapDef + GameMap).
  *
  * File này xuất lại các hằng số và hàm cũ, lấy từ bản đồ MẶC ĐỊNH, để các nơi chưa chuyển vẫn chạy.
  * Bước B1 sẽ chuyển từng nơi sang đọc thẳng `GameMap` (truyền theo trận), rồi xóa file này.

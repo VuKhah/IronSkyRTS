@@ -1,5 +1,5 @@
 /**
- * Kịch bản thiết kế: biến ý đồ trong Docs/ARMY_DESIGN.md thành phép thử có tiêu chí đạt / chưa đạt.
+ * Kịch bản thiết kế: biến ý đồ trong Docs/design/ARMY_DESIGN.md thành phép thử có tiêu chí đạt / chưa đạt.
  *
  * Mỗi kịch bản giống một "đạo diễn": đầu trận dàn quân, mỗi tick có thể ra thêm lệnh (ví dụ thả Lynx kế tiếp
  * khi chiếc trước bị hạ), rồi chấm kết quả. Đạo diễn chỉ đọc trạng thái và gửi LỆNH qua kênh lệnh, nên kết quả

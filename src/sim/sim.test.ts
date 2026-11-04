@@ -291,7 +291,7 @@ describe("Phòng Thử Nghiệm", () => {
 
 describe("kịch bản thiết kế", () => {
   // Mọi kịch bản phải chạy trọn và tất định. Kịch bản trong REQUIRED là ý đồ đã chốt (bước 4, 04/11/2026):
-  // chỉnh chỉ số mà làm hỏng ý đồ thì kiểm thử báo ngay. Cố ý đổi ý đồ thì sửa kịch bản và Docs/ARMY_DESIGN.md.
+  // chỉnh chỉ số mà làm hỏng ý đồ thì kiểm thử báo ngay. Cố ý đổi ý đồ thì sửa kịch bản và Docs/design/ARMY_DESIGN.md.
   // Tạm bỏ khỏi danh sách bắt buộc (05/11/2026): vừa thêm cơ chế bắn (Titan xoay tháp + giáp mặt trước, SkyGuard bắn loạt),
   // con số chưa cân bằng lại. Cân bằng xong thì đưa lại: "titan-vs-lynx-sim", "falcon-flyover-skyguard".
   const REQUIRED = new Set(["titan-vs-lynx-seq", "reaction-time"]);
