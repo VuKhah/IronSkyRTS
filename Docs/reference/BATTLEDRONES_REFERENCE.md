@@ -141,4 +141,4 @@ Quyết định áp dụng cho Iron Sky: xem `Docs/design/ARMY_DESIGN.md`, mục
 | v13 | Đấu online qua relay WebSocket (link / mã QR), nút sao chép bản ghi trận |
 | v14 | Bản đồ 4 người (Compass Rose), chế độ hỗn chiến |
 
-So sánh với lộ trình Iron Sky: xem câu trả lời ngày 05/11/2026 (tóm tắt trong `TASKS.md` mục 6 khi người dùng chốt).
+So sánh với Iron Sky (05/11/2026): xong bản đồ + quân đội thì Iron Sky tương đương khoảng v6 nhưng **thiếu trọn lớp v4**. Người dùng chốt làm "bản cập nhật vui" của Iron Sky (học từ v4) **trước bản Hải quân**: `TASKS.md` mục 6.

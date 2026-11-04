@@ -72,6 +72,6 @@ Tên **in đậm** là quân và công trình đã có trong thiết kế Iron S
 2. **Vòng lặp trận đấu:** kinh tế 3 tài nguyên, công trình, sản xuất, điều kiện thắng, AI cơ bản (B8, B9, B10, A3).
 3. **Không quân:** cơ chế bay, Sân Đáp, nhiên liệu Dầu (B1, B2, B3).
 4. **Chiều sâu:** sương mù, bộ binh, hậu cần điện, dầu, đường ray, phòng không (A2, B4–B7).
-5. **Độ vui:** kỹ năng diện rộng, rương, nhạc thích ứng, tính cách AI, siêu cỗ máy (A8–A13).
+5. **Độ vui:** kỹ năng diện rộng, rương, nhạc thích ứng, tính cách AI, siêu cỗ máy (A8–A13). **Chốt 05/11/2026: "bản cập nhật vui" làm ngay sau bản đồ + quân đội, trước bản Hải quân** (danh sách ở `TASKS.md` mục 6; siêu cỗ máy vẫn để sau Hải quân).
 6. **Nội dung:** vùng khí hậu, trình tạo bản đồ, Last Stand, cấp bậc (A5–A7, A16).
 7. **Về sau:** biến thể luật chơi, thử thách hằng ngày, multiplayer, LLM đấu LLM (A14, A15, A17, A18).
