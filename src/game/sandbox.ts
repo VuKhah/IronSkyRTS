@@ -6,6 +6,7 @@
  * thì ra cùng kết quả, và lõi sim không cần biết có giao diện nào đang điều khiển nó.
  */
 import { BUILDINGS, SIDE_NAME, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
+import { ARENA_CENTER, ARENA_U, formation, SCENARIOS, ScenarioRun } from "../sim/scenarios";
 import { fromUV } from "../sim/map";
 import type { Order } from "../sim/types";
 import { TICK_RATE } from "../sim/world";
@@ -19,23 +20,9 @@ type Tool = { t: "spawn"; kind: UnitId | BuildingId } | { t: "remove" } | { t: "
 
 const UNIT_IDS = Object.keys(UNITS) as UnitId[];
 const BUILDING_IDS = Object.keys(BUILDINGS) as BuildingId[];
-const SPACING = 3.6;
-
-/** Bãi thử đấu tay đôi: vùng đất bằng bên bờ Liên Minh Lam, hai nhóm xếp dọc theo dòng sông. */
-const DUEL_U = -38;
-export const DUEL_CENTER = fromUV(DUEL_U, 0);
-
-/** Vị trí thứ i trong khối n quân: hàng ngang tối đa 5 chiếc, các hàng lùi dần theo hướng (bx, bz). */
-function formation(i: number, n: number, cx: number, cz: number, bx: number, bz: number): [number, number] {
-  const cols = Math.min(5, n);
-  const row = Math.floor(i / cols);
-  const inRow = Math.min(cols, n - row * cols);
-  const col = (i % cols) - (inRow - 1) / 2;
-  // trục ngang vuông góc với hướng lùi
-  const px = -bz;
-  const pz = bx;
-  return [cx + px * col * SPACING + bx * row * SPACING, cz + pz * col * SPACING + bz * row * SPACING];
-}
+/** Bãi thử đấu tay đôi (dùng chung với kịch bản thiết kế): vùng đất bằng bên bờ Liên Minh Lam. */
+export const DUEL_CENTER = ARENA_CENTER;
+const SCENARIO_IDS = Object.keys(SCENARIOS);
 
 const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
@@ -101,6 +88,12 @@ export class Sandbox {
         </div>
         <div class="sb-line"><span>Cách nhau</span><input data-duel="d" type="number" min="10" max="90" value="44" /><span>m</span>
           <button class="sb-chip primary" data-sb="duel">Bắt đầu</button></div>
+        <h4>Kịch bản thiết kế <small>ý đồ trong ARMY_DESIGN</small></h4>
+        <div class="sb-scen">${SCENARIO_IDS.map((id) => {
+          const sc = SCENARIOS[id]();
+          return `<button class="sb-chip" data-sb="scen:${id}" title="${esc(sc.intent)}">${esc(sc.name)}</button>`;
+        }).join("")}</div>
+        <div class="sb-verdict" data-n="verdict" hidden></div>
         <h4>Đo đạc <small data-n="since"></small></h4>
         <table class="sb-stats">
           <thead><tr><th></th><th>Quân</th><th>Máu</th><th>Sát thương</th><th>/giây</th><th>Hạ</th></tr></thead>
@@ -134,9 +127,28 @@ export class Sandbox {
     this.fromUrl();
   }
 
-  /** ?play=sandbox&duel=lynx:3,titan:1&dist=44&skip=10: vào thẳng một trận đấu thử (để chia sẻ kịch bản / chụp ảnh). */
+  private startScenario(id: string): void {
+    this.match.director = new ScenarioRun(id);
+    this.resetStats(true);
+    this.cam.focus(ARENA_CENTER[0], ARENA_CENTER[1]);
+    this.cam.dist = Math.max(this.cam.dist, 80);
+    this.hud.alert(`Kịch bản: ${this.match.director.scenario.name}`);
+  }
+
+  /**
+   * ?play=sandbox&duel=lynx:3,titan:1&dist=44&skip=10: vào thẳng một trận đấu thử (để chia sẻ kịch bản / chụp ảnh).
+   * ?play=sandbox&scenario=titan-vs-lynx-seq: chạy thẳng một kịch bản thiết kế.
+   */
   private fromUrl(): void {
     const p = new URLSearchParams(location.search);
+    const skip = Number(p.get("skip")) || 0;
+    const scen = p.get("scenario");
+    if (scen && scen in SCENARIOS) {
+      this.startScenario(scen);
+      for (let i = 0; i < skip * TICK_RATE; i++) this.match.advance(1 / TICK_RATE);
+      this.match.drainEvents();
+      return;
+    }
     const duel = p.get("duel");
     if (!duel) return;
     const q = <T extends HTMLInputElement | HTMLSelectElement>(s: string): T => this.el.querySelector<T>(`[data-duel="${s}"]`)!;
@@ -147,7 +159,6 @@ export class Sandbox {
     });
     if (p.get("dist")) q("d").value = p.get("dist")!;
     this.startDuel();
-    const skip = Number(p.get("skip")) || 0;
     for (let i = 0; i < skip * TICK_RATE; i++) this.match.advance(1 / TICK_RATE);
     this.match.drainEvents();
   }
@@ -202,7 +213,11 @@ export class Sandbox {
         this.send({ t: "sbHeal", ids: [...w.units.map((u) => u.id), ...w.buildings.map((b) => b.id)] });
         break;
       }
+      case "scen":
+        this.startScenario(arg);
+        break;
       case "clear":
+        this.match.director = null;
         this.send({ t: "sbClear" });
         this.resetStats(true);
         break;
@@ -261,7 +276,8 @@ export class Sandbox {
     const ns = [0, 1].map((s) => Math.max(1, Math.min(30, Math.round(Number(q<HTMLInputElement>(`n${s}`).value) || 1))));
     const d = Math.max(10, Math.min(90, Number(q<HTMLInputElement>("d").value) || 44));
     // hai nhóm đứng đối diện dọc theo trục v (song song dòng sông), cùng một bờ
-    const pos = [fromUV(DUEL_U, -d / 2), fromUV(DUEL_U, d / 2)];
+    const pos = [fromUV(ARENA_U, -d / 2), fromUV(ARENA_U, d / 2)];
+    this.match.director = null;
     this.send({ t: "sbClear" });
     for (const s of [0, 1] as Side[]) {
       const [cx, cz] = pos[s];
@@ -328,5 +344,15 @@ export class Sandbox {
       cells[4].textContent = String(w.sides[s].stats.kills - this.base.kills[s]);
     }
     this.el.querySelector<HTMLElement>('[data-n="since"]')!.textContent = `trong ${secs.toFixed(1)} giây`;
+    const vEl = this.el.querySelector<HTMLElement>('[data-n="verdict"]')!;
+    const run = this.match.director;
+    vEl.hidden = !run;
+    if (run) {
+      const r = run.result;
+      vEl.className = `sb-verdict ${r ? (r.ok ? "ok" : "no") : ""}`;
+      vEl.innerHTML = `<b>${esc(run.scenario.name)}</b><br><small>${esc(run.scenario.intent)}</small><br>${
+        r ? `${r.ok ? "✅ ĐẠT" : "❌ CHƯA ĐẠT"}: ${esc(r.text)}` : `Đang chạy… ${run.elapsed(w).toFixed(1)} giây`
+      }`;
+    }
   }
 }

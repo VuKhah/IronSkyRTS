@@ -214,3 +214,9 @@ button { font: inherit; color: inherit; }
 @media (max-width: 760px) {
   .sandbox { top: 92px; width: min(272px, calc(100% - 16px)); max-height: calc(100% - 92px - 200px - var(--safe-b)); }
 }
+.sb-scen { display: flex; flex-direction: column; gap: 4px; }
+.sb-scen .sb-chip { text-align: left; }
+.sb-verdict { margin-top: 6px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line-strong); background: rgba(255, 255, 255, 0.04); }
+.sb-verdict small { color: var(--dim); }
+.sb-verdict.ok { border-color: var(--good); }
+.sb-verdict.no { border-color: var(--bad); }

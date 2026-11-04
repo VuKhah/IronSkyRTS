@@ -546,7 +546,19 @@ export class World {
           u.mx = clamp(x, -AIR_LIMIT, AIR_LIMIT);
           u.mz = clamp(z, -AIR_LIMIT, AIR_LIMIT);
         }
-        if (o.gx !== undefined && o.gz !== undefined) this.orderMove(o.side, [u.id], o.gx, o.gz, "amove");
+        if (o.gx !== undefined && o.gz !== undefined) {
+          if (spec.domain === "air") {
+            // máy bay thả ra đã hướng mũi về đích, để đường bay thẳng
+            const dx = o.gx - u.x;
+            const dz = o.gz - u.z;
+            const l = Math.sqrt(dx * dx + dz * dz);
+            if (l > 1e-6) {
+              u.hx = u.phx = dx / l;
+              u.hz = u.phz = dz / l;
+            }
+          }
+          this.orderMove(o.side, [u.id], o.gx, o.gz, o.go ?? "amove");
+        }
         break;
       }
       case "sbRemove":

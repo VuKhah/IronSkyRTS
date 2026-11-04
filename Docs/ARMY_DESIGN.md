@@ -79,6 +79,10 @@ Ký hiệu: ✅ đang có trong game · 🗓 đã lên kế hoạch · 💡 từ
 - **Cơ chế riêng:**Giáp góc nghiêng — Giảm 25% sát thương nhận vào từ mặt trước xe
 - **Ghi chú:**Luôn luôn cần SkyGuard đi kèm để bảo vệ khỏi Falcon và Valkyrie.
 - **Chốt bước 2:** Titan là xe tăng thật sự, phải **trâu hơn** mọi xe mặt đất khác. Mặt đất không có xe săn tăng giá rẻ (bộ binh đã bỏ): khắc chế Titan là Pháo Tự Hành, Falcon, Valkyrie và Titan khác.
+- **Tiêu chí đo (kịch bản thiết kế):**
+    - **Lần lượt:** Lynx lao vào từng chiếc, Titan không hồi máu → Titan hạ đủ 3 Lynx (`titan-vs-lynx-seq`).
+    - **Cùng lúc:** 3 Lynx đánh cùng lúc → Lynx thắng, còn đúng 1 chiếc (`titan-vs-lynx-sim`).
+    - ⚠️ Chỉ số tạm hiện cho Titan **nổ lan 2,8 m**, trong khi ý đồ là "bắn đơn mục tiêu". Nổ lan làm kết quả "cùng lúc" phụ thuộc Lynx đứng sát hay dãn: đứng sát thì một phát trúng cả cụm và Titan thắng. Cần quyết khi chỉnh số.
 
 ### 7. Phòng Không Cơ Động SkyGuard ✅
 *Hiện tại:* tên lửa phòng không tầm xa 26.5m, đi kèm đoàn xe. Yếu khi bị xe tăng áp sát.
@@ -87,6 +91,7 @@ Ký hiệu: ✅ đang có trong game · 🗓 đã lên kế hoạch · 💡 từ
 - **Điểm mạnh nổi bật:**Khóa mục tiêu trên không từ tầm rất xa (26.5m); tên lửa truy đuổi có xác suất trúng đích cao; tốc độ chạy nhanh hơn Titan để rút lui kịp thời
 - **Điểm yếu chí mạng:**Giáp giấy; không có vũ khí bắn mục tiêu mặt đất; khi vừa chạy vừa bắn thì sát thương giảm 25% **và độ chính xác giảm** (một phần tên lửa trượt).
 - **Chốt bước 2:** Giữ **cả hai** cơ chế (phạt khi chạy + Lockdown). Lý do: tên lửa truy đuổi rất mạnh, cần cái giá rõ ràng để không quân không quá đuối. SkyGuard chỉ phát huy hết sức khi đứng yên, tức là chỗ đứng là quyết định của người chơi.
+- **Tiêu chí đo (kịch bản thiết kế):** 10 Falcon **bay ngang** không phận của 4 SkyGuard một lượt (không tấn công SkyGuard) → SkyGuard hạ được **5–8** chiếc (`falcon-flyover-skyguard`). Falcon **tấn công thẳng** vào SkyGuard là kịch bản khác, chưa đặt tiêu chí.
 - **Cơ chế riêng:**Trạng thái triển khai (Lockdown) — Mất 1.2 giây để hạ chân chống đứng yên, tăng 25% tầm bắn và 33% sát thương (đạt 100% hiệu suất)
 - **Ghi chú:**Bắn theo loạt 4–6 quả tên lửa nhỏ rồi nạp lại thay vì bắn rải rác từng phát. Khi một sư đội bay 10 chiếc Falcon bay ngang đầu 4 SkyGuard, lưới phòng không này phải hạ ít nhất được khoảng 7-8 chiếc
 
@@ -254,14 +259,12 @@ Giữ lại ý tưởng trong kho thiết kế để phát triển thành bản 
 - **Chốt bước 2:**
     - Chọn Khiên hay Khói **lúc đúc** (hai biến thể), không đổi giữa trận.
     - Tự bật khi gặp nguy hiểm. Tư lệnh **vẫn được bật/tắt** khi chọn cả cụm quân tác chiến: đây là lệnh cấp cụm quân, không phải chỉnh từng chiếc.
-    - Giới hạn **không theo số lượng**. Đề xuất (chờ người dùng chọn):
-        - **(a) Pin năng lượng riêng:** khiên/khói tiêu năng lượng khi bật, khiên tốn thêm theo sát thương đỡ được; cạn thì tự tắt và phải sạc lại (chỉ sạc khi tắt). Khớp với lệnh bật/tắt của tư lệnh: bật lúc cần, tắt để sạc.
-        - **(b) Cái giá cho quân bên trong:** quân trong vùng khiên bắn ra bị giảm sát thương (khiên chặn cả hai chiều); quân trong khói thì ẩn khỏi địch nhưng tầm nhìn của chính mình cũng giảm.
-        - **(c) Phải đứng yên mới bật:** drone phải lơ lửng tại chỗ (giống Lockdown của SkyGuard); di chuyển thì vùng tắt. Khiên dùng để giữ trận địa, không dùng để đẩy lên.
-        - **(d) Quá tải:** khiên đỡ đủ X sát thương thì vỡ, phải chờ lâu mới bật lại được.
-        - **(e) Lộ vị trí:** vùng khiên/khói nhìn thấy được xuyên sương mù, nên đối phương biết chỗ có quân đang ẩn hoặc đang được che.
-    - Gợi ý ghép: **Khiên = (a) + (b)**, **Khói = (a) + (e)**.
-    - Còn mở: thời lượng, tốc độ sạc, bán kính.
+    - **Chốt hạn chế (người dùng, 04/11/2026):** giới hạn bằng **thời gian và tài nguyên**, không bằng số lượng.
+        - Cả hai chế độ **duy trì trong một khoảng thời gian cố định**, hết giờ thì tắt.
+        - **Khiên** còn tắt sớm khi **bị bắn vỡ**: chỉ chịu được một lượng sát thương hữu hạn.
+        - **Khói** che quân bên trong khỏi tầm nhìn của địch, và cho quân bên trong **tăng né tránh** (hoặc miễn thương, chốt sau).
+        - Cả hai **phải sạc lại bằng tài nguyên** trước khi dùng lần tiếp theo.
+    - Còn mở: né tránh hay miễn thương cho Khói; sạc bằng Dầu, Sắt hay điện; thời lượng, sức chịu của khiên, bán kính.
 
 ---
 
@@ -306,8 +309,19 @@ Giữ lại ý tưởng trong kho thiết kế để phát triển thành bản 
 
 **Đã chốt thêm:** Xe Vận Tải tạm không có chế độ tháo chạy.
 
-**Công cụ kiểm chứng:** Phòng Thử Nghiệm (`index.html?play=sandbox`). Mỗi ý đồ trong bảng khắc chế có thể thử ngay bằng link, ví dụ `?play=sandbox&duel=lynx:3,titan:1` hoặc `?play=sandbox&duel=falcon:10,skyguard:4`.
+**Công cụ kiểm chứng:** Phòng Thử Nghiệm (`index.html?play=sandbox`). Đấu thử tùy ý bằng link, ví dụ `?play=sandbox&duel=lynx:3,titan:1`.
+
+**Kịch bản thiết kế** (`src/sim/scenarios.ts`): mỗi ý đồ đo được viết thành một kịch bản có tiêu chí đạt/chưa đạt. Xem bằng mắt trong Phòng Thử Nghiệm (mục "Kịch bản thiết kế", hoặc `?play=sandbox&scenario=<mã>`), chấm không giao diện bằng `npm run balance`. Kết quả với chỉ số tạm (04/11/2026):
+
+| Mã | Ý đồ | Kết quả |
+|---|---|---|
+| `titan-vs-lynx-seq` | Titan hạ đủ 3 Lynx lao vào lần lượt | ✅ Titan còn 9% máu |
+| `titan-vs-lynx-sim` | 3 Lynx cùng lúc thắng, còn 1 | ❌ Titan thắng, còn 14% máu (do nổ lan, xem mục Titan) |
+| `falcon-flyover-skyguard` | 4 SkyGuard hạ 5–8/10 Falcon bay ngang | ✅ hạ 5/10 (sát ngưỡng dưới) |
+
+Khi chốt chỉ số (bước 4), kịch bản đã đạt sẽ chuyển thành kiểm thử bắt buộc trong `npm test`.
 
 **Còn mở:**
-- Drone Khiên/Khói: chọn hạn chế trong các đề xuất (a)–(e) ở mục #23.
+- Drone Khiên/Khói: đã chốt hạn chế (thời gian cố định + sạc bằng tài nguyên); còn mở chi tiết ở mục #23.
+- Thêm kịch bản thiết kế cho các ý đồ khác (Falcon tấn công SkyGuard, 3 Drone cảm tử hạ Lynx, 2–3 Lynx hạ một máy bay…) khi các loại quân đó có trong game.
 - Thứ tự đưa quân vào game: đề xuất đợt 1 là 7 loại đang có, chỉnh theo mô tả mới; sau đó Drone Sửa Chữa, Pháo Tự Hành, Drone Trinh Sát (ba loại này tạo combo).

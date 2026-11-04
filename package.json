@@ -8,7 +8,8 @@
     "preview": "vite preview",
     "check": "tsc",
     "test": "vitest run",
-    "simulate": "tsx src/tools/simulate.ts"
+    "simulate": "tsx src/tools/simulate.ts",
+    "balance": "tsx src/tools/balance.ts"
   },
   "author": "",
   "license": "UNLICENSED",

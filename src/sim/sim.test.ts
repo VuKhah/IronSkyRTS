@@ -7,6 +7,7 @@ import { dcos, dsin } from "./fmath";
 import { HQ_POS, MINES } from "./map";
 import type { BuildingId } from "./content";
 import type { Command } from "./types";
+import { runScenario, SCENARIOS } from "./scenarios";
 import { hashWorld, sec, World } from "./world";
 
 /** Chạy một trận AI đấu AI, trả về chuỗi mã băm lấy mẫu và trận đã chạy. */
@@ -286,4 +287,20 @@ describe("Phòng Thử Nghiệm", () => {
     };
     expect(run()).toBe(run());
   });
+});
+
+describe("kịch bản thiết kế", () => {
+  // Chỉ kiểm tra kịch bản chạy trọn và tất định. Đạt / chưa đạt ý đồ thì xem `npm run balance`
+  // (chỉ số còn là số tạm; khi chốt chỉ số, kịch bản nào đã chốt sẽ chuyển thành kiểm thử bắt buộc).
+  for (const id of Object.keys(SCENARIOS)) {
+    it(`${id}: chạy trọn, hai lần ra cùng kết quả`, () => {
+      const a = new World(1, { sandbox: true });
+      const b = new World(1, { sandbox: true });
+      const va = runScenario(id, a);
+      const vb = runScenario(id, b);
+      expect(va).toEqual(vb);
+      expect(hashWorld(a)).toBe(hashWorld(b));
+      expect(a.tick).toBeLessThanOrEqual(sec(SCENARIOS[id]().seconds) + 2);
+    });
+  }
 });

@@ -150,8 +150,8 @@ export type Order =
   | { t: "rally"; building: number; x: number; z: number }
   | { t: "sell"; building: number }
   // ---- Phòng Thử Nghiệm: chỉ có tác dụng khi World tạo với { sandbox: true }, trận thường bỏ qua
-  /** Thả quân / công trình (đã xây xong) cho phe `side`. Có (gx, gz) thì quân tự tấn công-di chuyển tới đó. */
-  | { t: "sbSpawn"; kind: UnitId | BuildingId; side: Side; x: number; z: number; gx?: number; gz?: number }
+  /** Thả quân / công trình (đã xây xong) cho phe `side`. Có (gx, gz) thì quân tự đi tới đó: mặc định tấn công-di chuyển, `go: "move"` thì chỉ đi (máy bay bay ngang). */
+  | { t: "sbSpawn"; kind: UnitId | BuildingId; side: Side; x: number; z: number; gx?: number; gz?: number; go?: "move" | "amove" }
   | { t: "sbRemove"; ids: number[] }
   /** Hồi đầy máu (và dầu máy bay). */
   | { t: "sbHeal"; ids: number[] }

@@ -45,6 +45,7 @@ Bộ nhớ kỹ thuật của dự án. Đọc hết trước khi sửa code.
   - `grid.ts`: lưới 2 m (80×80), A* 8 hướng + kéo thẳng đường bằng LOS, `nearestFree`.
   - `types.ts`: `Unit`, `Building`, `Mine`, `Order` (lệnh), `SimEvent` (sự kiện cho phần vẽ / âm thanh). Lệnh `sb*` (`sbSpawn`, `sbRemove`, `sbHeal`, `sbClear`, `sbHold`, `sbFuel`) chỉ có tác dụng khi `World` tạo với `{ sandbox: true }`; trận thường bỏ qua (có kiểm thử).
   - `world.ts`: `World.step(cmds)` — 1 tick = 0.1 s; kinh tế, chiếm mỏ, Xe Vận Tải, **điện** (`computePower`: phát/tiêu thụ/hiệu suất, Nhà Máy Điện đốt Dầu, vùng xây theo `zone`), sản xuất, chiến đấu, không quân + nhiên liệu (Bingo động, dầu dự trữ), sương mù + radar, 3 điều kiện thắng; `hashWorld()`. Chế độ thử nghiệm (`sandbox`): chỉ có 2 HQ, tài nguyên vô hạn, không xử thắng thua, `stats.damageDealt` để đo sát thương.
+  - `scenarios.ts`: **kịch bản thiết kế**: ý đồ trong `Docs/ARMY_DESIGN.md` viết thành phép thử có tiêu chí đạt/chưa đạt (đạo diễn ra lệnh `sb*` mỗi tick, chấm điểm khi ngã ngũ). Chạy trong Phòng Thử Nghiệm hoặc `npm run balance`.
   - `ai.ts`: AI 1 độ khó, chỉ ra lệnh và chỉ đọc phần mình thấy; dùng seed trận để mỗi trận một khác.
   - Kiểm thử: `content.test.ts`, `sim.test.ts` (tất định, tìm đường, kinh tế, AI đấu AI trọn trận).
 - **`src/render/models/`**: mô hình 3D bằng code. Mỗi mô hình là một `Rig` (`root`, `actions`, `defaultOn`, `radius`, `update()`, tùy chọn `setAim()` cho tháp pháo và `setFlight()` cho máy bay do chiến trường điều khiển). Điểm vào: `buildModel(id, faction, showcase)`; mỏ: `buildNode(res)` trong `nodes.ts`.
@@ -52,11 +53,12 @@ Bộ nhớ kỹ thuật của dự án. Đọc hết trước khi sửa code.
 - **`src/game/` — trận đấu trên trình duyệt** (`index.html`):
   - `main.ts` (menu, vòng lặp, màn kết thúc), `match.ts` (tick cố định + nội suy, gom lệnh, nhật ký lệnh), `scene.ts` (địa hình, nước, cầu, cây, sương mù), `views.ts` (sim → mô hình, nội suy), `fx.ts` (đạn, nổ, khói), `controller.ts` (chọn, ra lệnh theo ngữ cảnh, đặt công trình, phím tắt), `input.ts` (cử chỉ chạm/chuột), `camera.ts`, `hud.ts`, `overlay.ts` (thanh máu/dầu 2D), `minimap.ts`, `audio.ts` (âm thanh tổng hợp), `sandbox.ts` (**Phòng Thử Nghiệm**: bảng thả quân/công trình, công cụ Xóa/Hồi đầy, ngừng bắn, đấu thử nhanh, bảng đo sát thương; mọi thao tác đi qua `match.issueAs(side, order)` nên vẫn tất định).
 - **`src/tools/simulate.ts`**: chạy nhiều trận AI đấu AI không giao diện (`npm run simulate -- 20`).
+- **`src/tools/balance.ts`**: chấm mọi kịch bản thiết kế, in ĐẠT / CHƯA ĐẠT (`npm run balance`, hoặc `npm run balance -- <mã>`). Không làm hỏng `npm test`: chỉ số còn tạm.
 - `models.html` + `src/models-page/`: **Xưởng Mô Hình**. URL `models.html?act=fly,fire&f=do#valkyrie`; `?flight=1` thử chế độ bay do chiến trường điều khiển.
 
 ### Tham số URL để thử nghiệm trận (`index.html`)
 `?play=vsai|aivai` vào thẳng trận · `&seed=N` · `&skip=N` tua nhanh N giây đầu · `&cam=x,z,dist` đặt camera · `&script=1` kịch bản tự chơi (đặt Xưởng Xe, chiếm mỏ, đúc Titan) và in log `[script]` · `&debug=1` in log vài khung hình đầu · `&nooverlay=1`, `&nofx=1`, `&noshadow=1` tắt từng lớp để khoanh vùng lỗi hình.
-`?play=sandbox` Phòng Thử Nghiệm · `&duel=lynx:3,titan:1` vào thẳng trận đấu thử (Lam trước, Đỏ sau) · `&dist=44` khoảng cách hai nhóm (m) · `&skip=N` tua sau khi thả quân. Ví dụ chia sẻ kịch bản cân bằng: `?play=sandbox&duel=falcon:10,skyguard:4`.
+`?play=sandbox` Phòng Thử Nghiệm · `&duel=lynx:3,titan:1` vào thẳng trận đấu thử (Lam trước, Đỏ sau) · `&dist=44` khoảng cách hai nhóm (m) · `&skip=N` tua sau khi thả quân. Ví dụ chia sẻ kịch bản cân bằng: `?play=sandbox&duel=falcon:10,skyguard:4` · `&scenario=<mã>` chạy thẳng một kịch bản thiết kế (ví dụ `titan-vs-lynx-seq`).
 
 ### Hiệu năng (chống lag)
 - **Lõi sim:** ~0.16 ms/tick trung bình, đỉnh ~5 ms khi nhiều xe cùng tìm đường (đo 04/11/2026) — không phải điểm nghẽn.
@@ -70,12 +72,14 @@ Bộ nhớ kỹ thuật của dự án. Đọc hết trước khi sửa code.
 - CSS `display: flex` đè thuộc tính `hidden` → đã có luật `[hidden] { display: none !important; }`.
 - Three.js 0.187 đã bỏ `PCFSoftShadowMap` → dùng `PCFShadowMap`.
 - Chrome không giao diện vẽ bằng CPU nên ~1–2 giây mỗi khung hình: muốn xem giữa trận thì dùng `skip`/`script`, đừng chờ thời gian thật.
+- **`Math.hypot` cũng không dùng trong sim**: chuẩn JS không bắt buộc kết quả giống nhau giữa các trình duyệt. Dùng `Math.sqrt(dx*dx + dz*dz)` (sqrt được IEEE bảo đảm làm tròn đúng). Phần giao diện tính tọa độ cho lệnh thì dùng thoải mái, vì lệnh được ghi lại nguyên giá trị.
 - `tsconfig` tắt `noUncheckedIndexedAccess`: mã lưới / mảng kiểu (typed array) truy cập chỉ số liên tục, bật lên thì toàn dấu `!` mà không an toàn hơn.
 
 ## 5. Quy trình và lệnh
 - `npm run dev`: server phát triển, tự tải lại khi sửa code (http://localhost:5173 — game; /models.html — Xưởng Mô Hình).
 - `npm run check`: kiểm tra kiểu TypeScript. `npm test`: chạy kiểm thử Vitest (gồm 1 trận AI đấu AI trọn vẹn).
 - `npm run simulate -- N`: N trận AI đấu AI không giao diện, in kết quả và thống kê (dùng để cân bằng).
+- `npm run balance`: chấm các kịch bản thiết kế (ý đồ binh chủng) với chỉ số hiện tại.
 - `npm run build`: kiểm tra kiểu rồi build ra `dist/`. `npm run preview`: chạy thử bản build (http://localhost:4173).
 - **Tự xem kết quả bằng Chrome không giao diện** (WebGL qua SwiftShader):
   `"/c/Program Files/Google/Chrome/Application/chrome.exe" --headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --hide-scrollbars --window-size=1280,800 --virtual-time-budget=5000 --screenshot=<file.png> "http://localhost:4173/?play=aivai&seed=3&skip=170&hq=1"`

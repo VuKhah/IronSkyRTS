@@ -6,6 +6,7 @@
  * dù logic chỉ chạy 10 lần/giây. Lệnh của người chơi được gom lại và áp dụng ở tick kế tiếp.
  */
 import { Ai } from "../sim/ai";
+import type { ScenarioRun } from "../sim/scenarios";
 import type { Side } from "../sim/content";
 import type { Command, Order, SimEvent } from "../sim/types";
 import { DT, World } from "../sim/world";
@@ -19,6 +20,8 @@ export class Match {
   /** Phe người chơi điều khiển; null = chỉ xem (AI đấu AI). Phòng Thử Nghiệm cho đổi phe giữa chừng. */
   player: Side | null;
   speed = 1;
+  /** Phòng Thử Nghiệm: kịch bản thiết kế đang chạy (ra lệnh mỗi tick như một AI). */
+  director: ScenarioRun | null = null;
   paused = false;
   private acc = 0;
   private pending: Command[] = [];
@@ -64,8 +67,10 @@ export class Match {
     for (const c of this.pending) cmds.push(c);
     this.pending = [];
     for (const ai of this.ais) for (const o of ai.think(this.world)) cmds.push({ side: ai.side, order: o });
+    if (this.director) for (const c of this.director.commands(this.world)) cmds.push(c);
     for (const c of cmds) this.log.push({ tick: this.world.tick, side: c.side, order: c.order });
     this.world.step(cmds);
+    this.director?.check(this.world);
     for (const e of this.world.events) this.evq.push(e);
   }
 
