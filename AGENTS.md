@@ -39,7 +39,7 @@ Bộ nhớ kỹ thuật của dự án. Đọc hết trước khi sửa code.
 
 ## 4. Cấu trúc mã nguồn (bản v1 — MVP chơi được, từ 04/11/2026)
 - **`src/sim/` — lõi mô phỏng tất định** (không import Three.js / DOM):
-  - `content.ts`: chỉ số binh chủng, công trình và `RULES` (luật MVP). Nguồn số liệu duy nhất. **Mọi số là số tạm** chờ buổi bàn chỉ số sau bản demo.
+  - `content.ts`: chỉ số binh chủng, công trình và `RULES` (luật MVP). Nguồn số liệu duy nhất. **Mọi số là số tạm** chờ buổi bàn chỉ số sau bản demo. Mọi lựa chọn về quân (giáp, loại đạn, nổ lan, phá công sự, ma trận sát thương) phải là dữ liệu ở đây; `world.ts` không rẽ nhánh theo tên quân khi tính sát thương, để chỉnh về sau chỉ cần sửa số (`Docs/ARMY_DESIGN.md` Bước 3 mục 5).
   - `fmath.ts`: `dsin/dcos` tự viết, `turnToward` (ngoặt không dùng góc), `Rng` (mulberry32).
   - `map.ts`: bản đồ "Thung Lũng Sông Sắt" 160×160 m (hệ trục sông u/v, 3 lối qua, đá, đồi, 7 mỏ, vị trí HQ), `staticBlocked`, `terrainHeight`/`groundY` (cho phần vẽ).
   - `grid.ts`: lưới 2 m (80×80), A* 8 hướng + kéo thẳng đường bằng LOS, `nearestFree`.

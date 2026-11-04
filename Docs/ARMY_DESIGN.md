@@ -83,6 +83,7 @@ Ký hiệu: ✅ đang có trong game · 🗓 đã lên kế hoạch · 💡 từ
     - **Lần lượt:** Lynx lao vào từng chiếc, Titan không hồi máu → Titan hạ đủ 3 Lynx (`titan-vs-lynx-seq`).
     - **Cùng lúc:** 3 Lynx đánh cùng lúc → Lynx thắng, còn đúng 1 chiếc (`titan-vs-lynx-sim`).
     - ⚠️ Chỉ số tạm hiện cho Titan **nổ lan 2,8 m**, trong khi ý đồ là "bắn đơn mục tiêu". Nổ lan làm kết quả "cùng lúc" phụ thuộc Lynx đứng sát hay dãn: đứng sát thì một phát trúng cả cụm và Titan thắng. Cần quyết khi chỉnh số.
+    - **Chốt bước 3:** Titan vẫn là đạn **Nổ có lan**, nhưng bán kính **nhỏ nhất** trong mọi vũ khí nổ lan (tạm 1,0 m, nhỏ hơn khoảng cách 3,6 m giữa hai xe đứng cạnh nhau, nên chỉ trúng xe thứ hai khi địch dồn cục).
 
 ### 7. Phòng Không Cơ Động SkyGuard ✅
 *Hiện tại:* tên lửa phòng không tầm xa 26.5m, đi kèm đoàn xe. Yếu khi bị xe tăng áp sát.
@@ -339,7 +340,7 @@ Khi chốt chỉ số (bước 4), kịch bản đã đạt sẽ chuyển thành
 
 ---
 
-## Bước 3 — Ma trận Giáp × Đạn (bản đề xuất, chờ duyệt — 04/11/2026)
+## Bước 3 — Ma trận Giáp × Đạn (đã duyệt 04/11/2026, còn chờ giáp công trình)
 
 Gốc: ma trận 3×3 trong thiết kế gốc (`REF_ARTOFWAR_GDD_MASTER.md` mục 8), MVP_DESIGN đã chọn mang sang vì "gọn, dễ nhớ trên điện thoại". Bản dưới đây giữ khung 3×3 nhưng sửa theo các quyết định ở bước 2.
 
@@ -350,7 +351,7 @@ Bước 2 cho thấy nếu gộp các khái niệm này vào một chỗ sẽ si
 |---|---|---|
 | **Bắn được** | đất / không / cả hai | Ai bắn được máy bay (đã có trong game) |
 | **Loại đạn** | Thường · Xuyên giáp · Nổ | Hệ số sát thương theo ma trận bên dưới |
-| **Nổ lan** | bán kính (m), 0 = đơn mục tiêu | Trúng một hay cả cụm. **Không** gắn với loại đạn: Titan bắn đạn Nổ nhưng nổ lan = 0 |
+| **Nổ lan** | bán kính (m), 0 = đơn mục tiêu | Trúng một hay cả cụm. **Không** gắn với loại đạn: cùng là đạn Nổ, Titan lan nhỏ nhất (~1 m), Tên Lửa Loạt lan lớn và tản |
 | **Phá công sự** | có / không | Cắt được đường ray (sau này: mìn, công sự). Chỉ Pháo Tự Hành, Xe Tên Lửa Loạt, bom Valkyrie, mìn |
 
 ### 2. Ma trận (hệ số nhân sát thương)
@@ -375,16 +376,36 @@ So với ma trận gốc: hàng "Chống xuyên" và "Chống nổ" được tha
 | Xe Tư Lệnh | Nặng | Thường | nhỏ | – | + giáp phòng thủ điểm chặn 1–2 phát pháo |
 | Xe Vận Tải | Nhẹ | – | – | – | |
 | Lynx | Nhẹ | Thường | 0 | – | bắn được máy bay, sát thương lên không thấp |
-| Titan | **Nặng** | **Nổ** | **0** | – | "bắn đơn mục tiêu (bắn nổ)"; + giáp góc nghiêng mặt trước |
+| Titan | **Nặng** | **Nổ** | **nhỏ nhất** (~1 m) | – | lan nhỏ nhất trong các vũ khí nổ; + giáp góc nghiêng mặt trước |
 | SkyGuard | Nhẹ | Nổ | nhỏ | – | chỉ bắn không (bỏ sát thương mặt đất) |
 | Pháo Tự Hành | Nhẹ | **Xuyên giáp** | nhỏ–vừa | ✅ | Nhẹ để Lynx khắc được |
 | Xe Tên Lửa Loạt | Nhẹ | Nổ | lớn, tản | ✅ | |
-| Falcon | Nhẹ | **Xuyên giáp** | 0 | – | đạn 30mm: diệt tăng + chặn Valkyrie |
+| Falcon | Nhẹ | **Xuyên giáp** | 0 | – | đạn 30mm: diệt tăng + chặn Valkyrie. **Tạm**, sẽ xem lại khi cân bằng |
 | Valkyrie | Nặng | Nổ | lớn | ✅ | |
 | Drone Trinh Sát (cảm tử) | Nhẹ | Nổ | nhỏ | – | |
 | Drone Sửa Chữa, Drone Khiên/Khói | Nhẹ | – | – | – | |
 | Tàu Hỏa | Kiên cố | – | – | – | tê liệt khi hết máu |
-| Mọi công trình | Kiên cố | (tháp: Thường; phòng không: Nổ) | | – | |
+| Công trình | xem mục 3b | (tháp: Thường; phòng không: Nổ) | | – | |
+
+### 3b. Giáp công trình (đề xuất, chờ duyệt)
+
+Nếu mọi công trình cùng một hàng Kiên cố thì có hai vấn đề (tính bằng số tạm hiện tại):
+- **Titan san tháp pháo quá nhanh.** Titan bắn Nổ, vào Kiên cố được 150%: hạ một Tháp Pháo (700 máu) trong ~10 giây, mất chừng một phần ba máu. Tuyến phòng thủ gần như vô dụng trước xe tăng chủ lực, xây tháp không còn đáng tiền.
+- **Không có mục tiêu đột kích nào cho xe nhẹ.** Lynx bắn Thường vào Kiên cố chỉ 25%: phá một Cột Điện mất ~41 giây. Lối chơi "Lynx săn hậu cần" dừng ở Xe Vận Tải.
+
+Đề xuất chia công trình vào **cả ba hàng giáp sẵn có** (không thêm hàng mới), mỗi nhóm cho một cách đánh khác nhau:
+
+| Nhóm | Giáp | Công trình | Ai phá giỏi | Vì sao |
+|---|---|---|---|---|
+| **Công sự phòng thủ** | **Nặng** | Tháp Pháo, Tiền Đồn | Pháo Tự Hành (Xuyên 150%, lại bắn ngoài tầm tháp) | Bê tông cốt thép chịu nổ. Titan chỉ còn 60%: một Titan đấu một Tháp Pháo là ngang ngửa (~25 giây so với ~29 giây), muốn phá tuyến phải dồn quân hoặc mang Pháo theo |
+| **Căn cứ, nhà xưởng** | **Kiên cố** | HQ, Xưởng Xe, Sân Bay, Nhà Máy Điện, Nhà Máy Dầu, Kho Đạn, Pin, Phòng không (CIWS, SAM, EMP) | Tên Lửa Loạt, bom Valkyrie, Titan (Nổ 150%) | Đúng ý đồ "Tên Lửa Loạt làm bình địa, Valkyrie kết liễu căn cứ". Phòng không xếp ở đây vì điểm yếu của nó là không bắn được quân đất: phải có tháp hoặc quân che |
+| **Hạ tầng lộ thiên** | **Nhẹ** | Cột Điện, Radar | Lynx (Thường 100%): ~10 giây một Cột Điện | Rẻ, mỏng, rải khắp bản đồ: mục tiêu đột kích. Cắt Cột Điện làm mất vùng điện, phá Radar làm địch mù |
+
+Hệ quả cho lối chơi: muốn phá một căn cứ phải **qua ba lớp, mỗi lớp cần một công cụ khác nhau**: Pháo cạy tuyến tháp, Titan và Tên Lửa Loạt san nhà xưởng, Lynx cắt điện phía sau. Không có binh chủng nào phá được tất cả một mình.
+
+Theo nguyên tắc "Tư lệnh, không phải tài xế": khi Cột Điện hay Radar bị đánh, bộ phận hậu cần **tự báo** ("Cột Điện phía Đông đang bị tấn công, vùng xây phía Đông sắp mất điện") và tự điều độ lại điện. Người chơi chỉ quyết định có điều quân về giữ hay không.
+
+Một chỗ dễ gây nhầm: với chia nhóm này, Tháp Pháo (thật sự kiên cố) lại mang giáp **Nặng**, còn nhà xưởng mang giáp **Kiên cố**. Đề xuất **đổi tên hàng thứ ba thành "Kết cấu"** (nhà xưởng, Tàu Hỏa, công trình lớn) để người chơi đọc "Giáp: Kết cấu" là hiểu ngay "sợ đạn Nổ".
 
 ### 4. Kiểm tra với ý đồ bước 2
 
@@ -409,17 +430,22 @@ So với ma trận gốc: hàng "Chống xuyên" và "Chống nổ" được tha
 
 ### 5. Thay đổi trong code (làm ở bước 4, sau khi duyệt)
 - `content.ts`: thêm `armorClass` cho mọi thực thể; thêm `dmgType`, `siege` cho vũ khí; bảng `RULES.damageMatrix`. **Bỏ trường `armor` (giảm % riêng lẻ)** để chỉ còn một nguồn: hệ số giáp do ma trận quyết định. Cơ chế riêng (giáp góc nghiêng Titan, phòng thủ điểm của Tư Lệnh) là hệ số cộng thêm, viết riêng.
-- `world.ts`: `damage()` nhân theo ma trận; Titan bỏ nổ lan; SkyGuard bỏ sát thương mặt đất; Lynx có sát thương lên không.
+- `world.ts`: `damage()` nhân theo ma trận; Titan nổ lan nhỏ nhất (tạm 1,0 m); SkyGuard bỏ sát thương mặt đất; Lynx có sát thương lên không.
 - Kiểm thử: bảng ma trận đúng 3×3, mọi binh chủng có giáp và loại đạn; các kịch bản thiết kế đã đạt chuyển thành kiểm thử bắt buộc.
+
+**Nguyên tắc "chỉnh được về sau"** (yêu cầu của người dùng 04/11/2026: mọi cập nhật nhẹ về quân đội phải chỉnh lại được):
+- Mọi lựa chọn về quân là **dữ liệu** trong `content.ts`: giáp, loại đạn, bán kính nổ lan, phá công sự, bắn đất/không, và chính bảng ma trận (`RULES.damageMatrix`). Đổi Falcon sang đạn Thường hay đổi một ô ma trận chỉ là sửa một chữ, không đụng `world.ts`.
+- `world.ts` **không rẽ nhánh theo tên quân** khi tính sát thương (không có `if (kind === "titan")`). Cơ chế riêng (giáp góc nghiêng, phòng thủ điểm) cũng khai báo bằng trường dữ liệu.
+- Kiểm thử chỉ kiểm **cấu trúc** (đủ trường, bảng đúng 3×3, tất định), không khóa con số. Con số được chấm bằng kịch bản thiết kế (`npm run balance`): sửa số xong chạy lại là biết ý đồ nào còn đạt.
 
 ### 6. Tiêu chí chung cho cả đội hình
 - **Thời gian kịp phản ứng (chốt 04/11/2026, học từ Battle Drones):** một trận giao tranh tầm trung (nửa đạo quân của một bên) phải kéo dài **ít nhất khoảng 8 giây** (mục tiêu 7–9 giây) trước khi bị xóa sổ, để người chơi trên điện thoại kịp nhìn ra và ra lệnh. Khi chỉnh máu và sát thương ở bước 4, tiêu chí này đứng trên mọi con số riêng lẻ. Sẽ có kịch bản thiết kế đo nó.
 
-### 7. Câu hỏi chờ duyệt
-1. Đồng ý tách 4 trục (đặc biệt: **Titan = đạn Nổ nhưng nổ lan 0**)?
-2. Đồng ý **Falcon = Xuyên giáp** (diệt tăng, chặn Valkyrie; đổi lại bắn xe nhẹ chỉ 60%)?
-3. Đồng ý đổi hàng giáp thành **Nhẹ / Nặng / Kiên cố**, và bỏ trường giảm sát thương % riêng lẻ?
-4. Các ô hệ số: giữ như bảng, hay muốn chênh lệch mạnh hơn (giống bản gốc 10%–150%)?
+### 7. Duyệt (04/11/2026)
+1. ✅ Tách 4 trục. Sửa: Titan **vẫn nổ lan**, nhưng bán kính nhỏ nhất.
+2. ✅ Falcon = Xuyên giáp, **tạm thời**; sẽ điều chỉnh khi cân bằng.
+3. ✅ Ba hàng giáp, bỏ giảm sát thương % riêng lẻ. Còn chờ: **giáp công trình** (mục 3b) và tên hàng thứ ba.
+4. ✅ Giữ nguyên các hệ số như bảng.
 
 ---
 
