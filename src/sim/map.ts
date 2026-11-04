@@ -74,9 +74,14 @@ export interface MineDef {
   x: number;
   z: number;
   owner: Side | -1;
+  /** Trữ lượng riêng (mặc định lấy theo RULES.mineAmount). */
+  amount?: number;
 }
 
-/** 4 mỏ Sắt (mỗi bên 1 mỏ nhà + 1 mỏ tiền tuyến) và 3 giàn Dầu (giữa sông + 2 đầu cầu cánh). */
+/**
+ * 4 mỏ Sắt (mỗi bên 1 mỏ nhà + 1 mỏ tiền tuyến) và 5 giàn Dầu:
+ * mỗi bên 1 giàn nhà trữ lượng nhỏ (có sẵn từ đầu trận) + 3 giàn trung lập (giữa sông + 2 đầu cầu cánh).
+ */
 export const MINES: readonly MineDef[] = [
   { res: "iron", x: -66, z: 30, owner: 0 },
   { res: "iron", x: 66, z: -30, owner: 1 },
@@ -84,7 +89,10 @@ export const MINES: readonly MineDef[] = [
   { res: "iron", x: 2, z: -34, owner: -1 },
   { res: "oil", x: 0, z: 0, owner: -1 },
   { res: "oil", x: -44.5, z: -20.5, owner: -1 },
-  { res: "oil", x: 44.5, z: 20.5, owner: -1 }
+  { res: "oil", x: 44.5, z: 20.5, owner: -1 },
+  // giàn Dầu nhà: đủ khởi động điện và máy bay, cạn sớm nên vẫn phải ra tranh giàn giữa bản đồ
+  { res: "oil", x: -42, z: 68, owner: 0, amount: 1200 },
+  { res: "oil", x: 42, z: -68, owner: 1, amount: 1200 }
 ];
 
 export const HQ_POS: readonly (readonly [number, number])[] = [

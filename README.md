@@ -11,7 +11,7 @@ npm run dev
 ```
 Mở http://localhost:5173 → **Chơi với AI** hoặc **Xem AI đấu AI**. Xưởng Mô Hình: http://localhost:5173/models.html
 
-Thắng khi: diệt Xe Tư Lệnh địch, phá hết công trình địch, hoặc giữ trọn một loại mỏ (4/4 Sắt hoặc 3/3 Dầu) liên tục 30 giây.
+Thắng khi: diệt Xe Tư Lệnh địch, phá hết công trình địch, hoặc giữ trọn một loại mỏ (4/4 Sắt hoặc 5/5 Dầu) liên tục 30 giây.
 
 ## Cho nhà phát triển
 - `npm test` — kiểm thử (gồm tất định và 1 trận AI đấu AI)

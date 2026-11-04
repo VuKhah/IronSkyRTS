@@ -30,7 +30,7 @@ const go = (mode: Mode | null, seed = randomSeed()): void => {
 
 const HELP = `
   <table>
-    <tr><td>Mục tiêu</td><td>Thắng khi: <b>diệt Xe Tư Lệnh địch</b>, hoặc <b>phá hết công trình địch</b>, hoặc <b>giữ trọn một loại mỏ</b> (4/4 Sắt hoặc 3/3 Dầu) liên tục 30 giây.</td></tr>
+    <tr><td>Mục tiêu</td><td>Thắng khi: <b>diệt Xe Tư Lệnh địch</b>, hoặc <b>phá hết công trình địch</b>, hoặc <b>giữ trọn một loại mỏ</b> (4/4 Sắt hoặc 5/5 Dầu) liên tục 30 giây.</td></tr>
     <tr><td>Kinh tế</td><td>Đưa quân đứng cạnh mỏ để chiếm. Xe Vận Tải tự đào và chở Sắt / Dầu về Tổng Hành Dinh. Sắt để xây và đúc quân, Dầu để nạp cho máy bay.</td></tr>
     <tr><td>Không quân</td><td>Falcon rất mạnh nhưng chỉ bay ~33 giây. Hết dầu tự về Sân Đáp nạp (trừ vào kho Dầu). Kho Dầu cạn thì máy bay nằm sân.</td></tr>
     <tr><td>Chạm</td><td>Chạm quân để chọn · chạm đất / địch / mỏ để ra lệnh · <b>giữ rồi kéo</b> để chọn nhiều · chạm đúp để chọn cả loại · một ngón kéo để cuộn · hai ngón để thu phóng và xoay.</td></tr>

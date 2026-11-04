@@ -56,7 +56,7 @@
 | Kho lúc đầu trận | **500 Sắt • 100 Dầu** | |
 | Thu nhập gốc của HQ | **+2 Sắt/s** (không có Dầu) | Để bên cạn mỏ vẫn còn đường gỡ. Dầu chỉ có từ giàn Dầu |
 | Mỏ Sắt | **4 mỏ**: mỗi bên 1 mỏ nhà (sở hữu từ đầu) và 1 mỏ tiền tuyến | Trữ lượng **6.000** mỗi mỏ |
-| Giàn Dầu | **3 giàn**: 1 ở giữa sông (cầu giữa) và 2 ở đầu cầu cánh | Trữ lượng **3.000** mỗi giàn. Đều trung lập lúc đầu, đều là điểm nóng |
+| Giàn Dầu | **5 giàn**: mỗi bên 1 **giàn nhà** (sở hữu từ đầu, trữ lượng nhỏ **1.200**) *(thêm 04/11)* + 3 giàn trung lập: 1 ở giữa sông (cầu giữa), 2 ở đầu cầu cánh | Giàn trung lập trữ lượng **3.000**, là điểm nóng. Giàn nhà đủ khởi động điện và máy bay nhưng cạn sớm |
 | Chiếm mỏ | Đứng trong bán kính **8m**, mất **10s** với 1 quân; thêm quân thì nhanh hơn, tối đa ×3 | Có quân địch trong vùng thì tạm dừng. Mỏ trung lập phải chiếm trước rồi mới đào được |
 | Xe Vận Tải | Chở **100** mỗi chuyến (Sắt hoặc Dầu), đào **20/s**, dỡ hàng tại HQ mất **1.5s** | Chỉ đào ở mỏ phe mình. Mỗi mỏ tối đa 3 xe cùng lúc |
 | Giới hạn quân | **40** quân (Xe Vận Tải tính chung) | |
@@ -113,9 +113,9 @@
 |---|---|---|
 | 1 | **Diệt Xe Tư Lệnh địch** | Xe Tư Lệnh không đúc lại được. Nên giữ nó an toàn, nhưng hào quang của nó lại rất mạnh khi đi cùng quân |
 | 2 | **Phá hết công trình địch** | Mọi công trình, kể cả Tổng Hành Dinh. Xe còn sống không cứu được trận |
-| 3 | **Độc quyền tài nguyên** | Sở hữu **trọn 4/4 mỏ Sắt** hoặc **trọn 3/3 giàn Dầu** liên tục **30 giây**. Mất một mỏ là đồng hồ về 0. Cả hai bên thấy đồng hồ đếm ngược trên HUD |
+| 3 | **Độc quyền tài nguyên** | Sở hữu **trọn 4/4 mỏ Sắt** hoặc **trọn 5/5 giàn Dầu** (gồm cả giàn nhà của địch) liên tục **30 giây**. Mất một mỏ là đồng hồ về 0. Cả hai bên thấy đồng hồ đếm ngược trên HUD |
 
-- Độc quyền Dầu (3 giàn, đều trung lập lúc đầu) là con đường **tranh giành giữa bản đồ**. Độc quyền Sắt buộc phải chiếm cả **mỏ nhà của địch**, nên thực chất là thắng áp đảo.
+- Cả độc quyền Sắt lẫn độc quyền Dầu đều buộc phải chiếm **mỏ / giàn nhà của địch**, nên thực chất là thắng áp đảo chứ không còn là cuộc đua giành giàn giữa bản đồ (đổi 04/11 khi thêm giàn Dầu nhà).
 - Hòa: hai bên cùng đạt điều kiện trong cùng một tick (rất hiếm) thì tính hòa.
 
 ## 8. Bản đồ MVP: "Thung Lũng Sông Sắt"
