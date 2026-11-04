@@ -120,3 +120,25 @@ Quyết định áp dụng cho Iron Sky: xem `Docs/design/ARMY_DESIGN.md`, mục
 4. Bản đồ ngẫu nhiên không có ảnh vẽ sẵn: trình duyệt tự vẽ ảnh mặt đất từ lưới ô (`terrain-paint.ts`) với bảng màu lấy từ các bản đồ vẽ sẵn, độ phân giải bằng nửa.
 
 **Bài học cho Iron Sky:** xem `Docs/design/MAPS_PLAN.md` mục "Học từ Battle Drones".
+
+---
+
+## 7. Lịch sử phiên bản Battle Drones (GitHub Releases, đọc 05/11/2026)
+
+| Bản | Nội dung chính |
+|---|---|
+| v1 | Nguyên mẫu 2D: khai thác, xây dựng, chiến đấu, sương mù, AI |
+| v2 | Bản gốc hoàn chỉnh: 6 quân, 4 công trình, bộ hình đầy đủ, điều khiển điện thoại, tính cách AI, chế độ xem |
+| v3 | Mặt đất vẽ sẵn, 5 bản đồ / 4 vùng khí hậu, 11 quân, 8 công trình, cây công nghệ, hiệu ứng địa hình, cựu binh |
+| v4 | **"The Fun Update"**: lối mở đầu chọn trước trận, kỹ năng gọi xuống, điểm chiếm (Uplink), thả hàng tiếp tế, xác quân, nhạc thích ứng và giọng nói, Last Stand, 8 nhiệm vụ, tiến trình sự nghiệp, biến thể luật, thử thách hằng ngày |
+| v5 | Chuyển sang 3D (three.js): tháp pháo xoay, máy bay nghiêng cánh, địa hình có độ cao, bóng đổ |
+| v6 | Đánh bóng hình ảnh: vách đá có vân, địa hình và ánh sáng giàu hơn, nổ đẹp hơn, HUD, sương mù chính xác hơn |
+| v7 | Bộ binh robot (súng trường, tên lửa, bắn tỉa), phi cơ vận tải, ẩn trong rừng, cán bẹp bộ binh, đổ bộ đường không, chế độ đỡ đợt tấn công |
+| v8–v9 | Bản đồ quần đảo lớn (96 → 108 ô) xoay quanh chở bộ binh đi chiếm 7 điểm, AI hiểu đảo, tìm đường tốt hơn |
+| v10 | Goliath (căn cứ di động dạng mech), các mô hình AI đấu nhau, sim tất định để xem lại trận |
+| v11 | Bản đồ ngẫu nhiên theo seed (6 kiểu bố cục), xem trước hoặc chơi mù, cầu chéo thẳng |
+| v12 | Đấu tay đôi qua **âm thanh** (hai điện thoại gửi lệnh bằng modem âm thanh, không cần mạng), camera điện ảnh khi xem AI đấu |
+| v13 | Đấu online qua relay WebSocket (link / mã QR), nút sao chép bản ghi trận |
+| v14 | Bản đồ 4 người (Compass Rose), chế độ hỗn chiến |
+
+So sánh với lộ trình Iron Sky: xem câu trả lời ngày 05/11/2026 (tóm tắt trong `TASKS.md` mục 6 khi người dùng chốt).
