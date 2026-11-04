@@ -23,6 +23,8 @@ interface View {
   yaw: number;
   prevYaw: number;
   roll: number;
+  /** Máy bay: góc chúc mũi (dương = chúc xuống) theo tốc độ hạ độ cao. */
+  pitch: number;
   ring: THREE.Mesh | null;
   active: Set<string>;
   seen: number;
@@ -75,7 +77,7 @@ export class Views {
         const rig = buildModel(u.kind, FACTION_OF[u.side], false);
         bakeStatic(rig);
         const yaw = Math.atan2(u.hx, u.hz);
-        v = { rig, yaw, prevYaw: yaw, roll: 0, ring: null, active: new Set(), seen: f };
+        v = { rig, yaw, prevYaw: yaw, roll: 0, pitch: 0, ring: null, active: new Set(), seen: f };
         this.scene.add(rig.root);
         this.units.set(u.id, v);
       }
@@ -88,7 +90,7 @@ export class Views {
         const rig = buildModel(b.kind, FACTION_OF[b.side], false);
         bakeStatic(rig);
         rig.root.position.set(b.x, groundY(b.x, b.z), b.z);
-        v = { rig, yaw: 0, prevYaw: 0, roll: 0, ring: null, active: new Set(), seen: f };
+        v = { rig, yaw: 0, prevYaw: 0, roll: 0, pitch: 0, ring: null, active: new Set(), seen: f };
         this.scene.add(rig.root);
         this.buildings.set(b.id, v);
       }
@@ -168,8 +170,14 @@ export class Views {
       const parked = u.air === "parked";
       const y = groundY(x, z) + (parked || alt < 0.05 ? 0.22 : alt);
       root.position.set(x, y, z);
-      root.rotation.set(0, v.yaw, 0);
-      v.rig.setFlight?.(alt > 0.6, u.air === "flying" || u.air === "returning" ? v.roll : 0);
+      // chúc mũi khi bổ nhào, ngóc mũi khi kéo lên: theo tốc độ đổi độ cao của sim
+      const flying = u.air === "flying" || u.air === "returning";
+      const sink = flying ? (u.palt - u.alt) / DT : 0;
+      const pitchTarget = Math.atan2(sink, Math.max(1, u.speed));
+      v.pitch += (pitchTarget - v.pitch) * Math.min(1, dt * 5);
+      root.rotation.set(v.pitch, v.yaw, 0, "YXZ");
+      v.rig.setFlight?.(alt > 0.6, flying ? v.roll : 0);
+      if (spec.weapon && (world.tick - u.lastShot) * DT < 0.25) a.add("fire");
     } else {
       v.yaw += wrap(target - v.yaw) * Math.min(1, dt * 10);
       const y = groundY(x, z);

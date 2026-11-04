@@ -23,6 +23,8 @@ interface Tracer {
   mesh: THREE.Object3D;
   from: THREE.Vector3;
   to: THREE.Vector3;
+  /** Độ lệch nòng (súng nhiều nòng): giữ tới tận mục tiêu để các vệt đạn song song. */
+  off: THREE.Vector3;
   target: number;
   t: number;
   dur: number;
@@ -39,7 +41,7 @@ export class Fx {
   private tracers: Tracer[] = [];
   private geo = {
     sphere: new THREE.SphereGeometry(1, 10, 8),
-    bullet: new THREE.BoxGeometry(0.12, 0.12, 1.4),
+    bullet: new THREE.BoxGeometry(0.16, 0.16, 2.2),
     shell: new THREE.SphereGeometry(0.22, 8, 6),
     missile: new THREE.CylinderGeometry(0.09, 0.09, 0.9, 6).rotateX(Math.PI / 2),
     debris: new THREE.BoxGeometry(0.5, 0.35, 0.6),
@@ -94,14 +96,16 @@ export class Fx {
         case "shot": {
           if (!visible(e.x, e.z) && !visible(e.tx, e.tz)) break;
           const from = new THREE.Vector3(e.x, groundY(e.x, e.z) + (e.alt > 0.5 ? e.alt : 1.6), e.z);
-          const to = new THREE.Vector3(e.tx, groundY(e.tx, e.tz) + (e.talt > 0.5 ? e.talt : 1.0), e.tz);
+          // súng nhiều nòng: mỗi viên giữ độ lệch nòng tới tận mục tiêu, thành các vệt đạn song song
+          const off = new THREE.Vector3(e.ox * 0.6, 0, e.oz * 0.6);
+          const to = new THREE.Vector3(e.tx, groundY(e.tx, e.tz) + (e.talt > 0.5 ? e.talt : 1.0), e.tz).add(off);
           const geo = e.visual === "missile" ? this.geo.missile : e.visual === "cannon" ? this.geo.shell : this.geo.bullet;
           const mat = e.visual === "missile" ? this.mat.missile : e.visual === "cannon" ? this.mat.shell : this.mat.bullet;
           const mesh = new THREE.Mesh(geo, mat);
           mesh.position.copy(from);
           mesh.renderOrder = 5;
           this.scene.add(mesh);
-          this.tracers.push({ mesh, from, to, target: e.target, t: 0, dur: Math.max(0.06, e.ticks * DT), visual: e.visual, arc: e.visual === "missile" ? 2.5 : e.visual === "cannon" ? 1.2 : 0, smokeT: 0 });
+          this.tracers.push({ mesh, from, to, off, target: e.target, t: 0, dur: Math.max(0.06, e.ticks * DT), visual: e.visual, arc: e.visual === "missile" ? 2.5 : e.visual === "cannon" ? 1.2 : 0, smokeT: 0 });
           if (e.visual === "missile") this.spawn(this.geo.sphere, this.mat.smoke, from, 0.35, 0.6, { grow: 1.2 });
           break;
         }
@@ -155,7 +159,7 @@ export class Fx {
       const tr = this.tracers[i];
       tr.t += dt;
       const live = targetPos(tr.target);
-      if (live) tr.to.lerp(live, 0.35);
+      if (live) tr.to.lerp(live.add(tr.off), 0.35);
       const k = Math.min(1, tr.t / tr.dur);
       const p = tr.from.clone().lerp(tr.to, k);
       p.y += Math.sin(k * Math.PI) * tr.arc;

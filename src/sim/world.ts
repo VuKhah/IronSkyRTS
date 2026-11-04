@@ -1362,7 +1362,9 @@ export class World {
       tx,
       tz,
       talt,
-      ticks
+      ticks,
+      ox,
+      oz
     });
   }
 
@@ -1751,6 +1753,7 @@ export class World {
     let dx = 0;
     let dz = 0;
     let tgt: Target | null = null;
+    let wantAlt: number = A.cruiseAlt;
     if (u.air === "returning") {
       const pad = this.ensurePad(u);
       if (pad) {
@@ -1797,6 +1800,8 @@ export class World {
           dx = u.hx;
           dz = u.hz;
         }
+        // Bổ nhào: đang lao vào mục tiêu mặt đất (mũi hướng về nó, đã gần) thì hạ độ cao; kéo ra thì lên lại
+        if (spec.diveAlt && !u.ext && !this.isAirborne(tgt) && facing >= 0.5 && d <= w.range + 12) wantAlt = spec.diveAlt;
       } else {
         u.ext = false;
         [dx, dz] = this.loiter(u, u.mx, u.mz);
@@ -1810,7 +1815,8 @@ export class World {
     u.speed = spec.speed;
     u.x = clamp(u.x + u.hx * u.speed * DT, -78, 78);
     u.z = clamp(u.z + u.hz * u.speed * DT, -78, 78);
-    u.alt = A.cruiseAlt;
+    const climb = A.climbRate * DT;
+    u.alt += clamp(wantAlt - u.alt, -climb, climb);
     if (w.carpet) {
       // Rải thảm: đã bắt đầu loạt thì thả nốt dọc đường bay; loạt mới chỉ bắt đầu khi bom sẽ rơi trúng mục tiêu
       if (u.cooldown === 0) {

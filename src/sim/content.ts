@@ -139,6 +139,8 @@ export interface UnitSpec {
   aura?: { radius: number; fireRate: number };
   /** Giáp mặt trước: đạn tới từ phía trước thân xe (trong góc ±`arc` độ) giảm `reduce` sát thương (Titan). */
   frontArmor?: { reduce: number; arc: number };
+  /** Máy bay bổ nhào: lao xuống độ cao này (m) khi vào lượt bắn mục tiêu mặt đất, bắn xong kéo lên lại (Falcon). */
+  diveAlt?: number;
   /** Phòng thủ điểm: chặn `charges` viên đạn pháo (interceptable); mỗi `recharge` giây hồi 1 lượt (Xe Tư Lệnh). */
   pointDefense?: { charges: number; recharge: number };
   features: string[];
@@ -224,6 +226,8 @@ export const RULES = {
   mineSlots: 3,
   air: {
     cruiseAlt: 12,
+    /** Tốc độ lên / xuống độ cao (m/s) khi bổ nhào và kéo lên. */
+    climbRate: 7,
     /** Tỉ lệ dầu tối thiểu để cất cánh. */
     takeoffMin: 0.35,
     /** Mức Bingo: tự bay về Sân Đáp. */
@@ -431,10 +435,11 @@ export const UNITS: Record<UnitId, UnitSpec> = {
       burst: { shots: 8, interval: 0.1 }
     },
     fuel: { tank: 40, burn: 1.2, turnRate: 150 },
+    diveAlt: 5,
     features: [
       "Pháo 30mm xuyên giáp: diệt xe tăng và máy bay ném bom; bắn xe nhẹ kém hiệu quả.",
       "Pháo đôi hai bên cánh: bổ nhào xả một loạt 8 cặp đạn, kéo ra lấy khoảng cách rồi quay lại lượt sau (nạp 1.4 giây).",
-      "Ngoặt gấp nhất game (150°/giây).",
+      "Ngoặt gấp nhất game (150°/giây). Bổ nhào xuống 5m khi bắn mục tiêu mặt đất, rồi kéo lên lại độ cao bay.",
       "Bình dầu 40L, đốt 1.2L/s: khoảng 33 giây bay mỗi lần xuất kích.",
       "Chỉ cất cánh khi còn ít nhất 35% dầu; xuống 24% (hoặc vừa đủ dầu bay về nếu đang ở xa) thì tự bay về Sân Đáp.",
       "Nạp dầu khoảng 4 giây tại bãi đậu, trừ vào kho Dầu. Kho cạn thì máy bay nằm sân.",

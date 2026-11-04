@@ -475,21 +475,26 @@ function buildFalcon(p: Palette): Rig {
   glow.position.z = -1.75;
   frame.add(glow);
 
-  const pylons: { m: THREE.Group; cd: number }[] = [];
-  for (const x of [-1.35, -0.85, 0.85, 1.35]) {
+  // tên lửa treo dưới cánh: chỉ để trang trí (vũ khí chính là pháo đôi 30mm)
+  for (const x of [-1.35, 1.35]) {
     const m = missileMesh(p, 0.6, 0.05);
     (m.children[2] as THREE.Object3D).visible = false;
     m.position.set(x, -0.12, -0.25);
     frame.add(m);
-    pylons.push({ m, cd: 0 });
+  }
+  // pháo đôi 30mm ở hai gốc cánh (cách nhau ~1,6 m như trong sim), mỗi nòng có chớp lửa đầu nòng
+  const guns: THREE.Mesh[] = [];
+  for (const x of [-0.8, 0.8]) {
+    frame.add(cyl(0.045, 0.045, 0.7, p.metal, 6, x, -0.08, 0.75).rotateX(Math.PI / 2));
+    const f = muzzleFlash(0.55, p.flash);
+    f.position.set(x, -0.08, 1.35);
+    frame.add(f);
+    guns.push(f);
   }
   const gear = group(gearLeg(p, 0, 1.2, 0.5, 0.1), gearLeg(p, -0.45, -0.35, 0.5, 0.12), gearLeg(p, 0.45, -0.35, 0.5, 0.12));
   frame.add(gear);
 
-  // Đạn bay trong hệ tọa độ của root (không bị nghiêng theo thân máy bay); root chỉ có sau khi tạo rig.
-  let shots: Shots | undefined;
-  const clock = new FireClock(0.55);
-  let next = 0;
+  const clock = new FireClock(0.1);
   const rig = aircraftRig(
     {
       frame,
@@ -498,23 +503,17 @@ function buildFalcon(p: Palette): Rig {
       parkY: 0.62,
       flyY: 2.6,
       fire(dt, on) {
-        if (clock.tick(dt, on)) {
-          const slot = pylons[next]!;
-          next = (next + 1) % pylons.length;
-          if (slot.cd <= 0) {
-            slot.m.visible = false;
-            slot.cd = 1.6;
-            frame.getWorldDirection(V);
-            shots?.spawn(missileMesh(p, 0.6, 0.05), slot.m, V.clone().multiplyScalar(22).add(new THREE.Vector3(0, -1.5, 0)), 0.9);
-          }
+        clock.tick(dt, on);
+        // hai nòng cùng chớp, nhấp nháy theo nhịp bắn
+        const lit = on && clock.since < 0.05;
+        for (const g of guns) {
+          g.visible = lit;
+          if (lit) g.scale.setScalar(0.8 + Math.random() * 0.5);
         }
-        for (const s of pylons) if (s.cd > 0 && (s.cd -= dt) <= 0) s.m.visible = true;
-        shots?.update(dt);
       }
     },
     3.0
   );
-  shots = new Shots(rig.root);
   return rig;
 }
 

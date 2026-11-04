@@ -266,6 +266,23 @@ describe("cơ chế bắn", () => {
     expect(passes).toBeGreaterThanOrEqual(3);
   });
 
+  it("bổ nhào: lao xuống thấp khi bắn mục tiêu mặt đất, rồi kéo lên lại", () => {
+    const w = new World(1, { sandbox: true });
+    hold(w, 1);
+    const [tx, tz] = P(10);
+    unit(w, 1, "lynx", tx, tz);
+    const f = unit(w, 0, "falcon", ...P(-40), { x: tx, z: tz, mode: "amove" });
+    let low = Infinity;
+    let climbedBack = false;
+    for (let i = 0; i < sec(15); i++) {
+      w.step([]);
+      low = Math.min(low, f.alt);
+      if (low < 6 && f.alt > 11) climbedBack = true;
+    }
+    expect(low).toBeLessThanOrEqual(UNITS.falcon.diveAlt! + 0.5);
+    expect(climbedBack).toBe(true);
+  });
+
   it("cơ chế bắn vẫn tất định: cùng lệnh, cùng mã băm", async () => {
     const { hashWorld } = await import("./world");
     const play = (): number => {

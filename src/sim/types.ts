@@ -193,7 +193,7 @@ export type AlertKind = "commander" | "base" | "hauler" | "lowfuel" | "nooil" | 
 export type WinReason = "commander" | "buildings" | "monopoly" | "timeout";
 
 export type SimEvent =
-  | { t: "shot"; src: number; side: Side; visual: WeaponVisual; x: number; z: number; alt: number; target: number; tx: number; tz: number; talt: number; ticks: number }
+  | { t: "shot"; src: number; side: Side; visual: WeaponVisual; x: number; z: number; alt: number; target: number; tx: number; tz: number; talt: number; ticks: number; ox: number; oz: number }
   | { t: "hit"; side: Side; visual: WeaponVisual; x: number; z: number; alt: number; splash: number }
   | { t: "death"; id: number; kind: UnitId | BuildingId; side: Side; x: number; z: number; alt: number; building: boolean; crash: boolean; sold: boolean }
   | { t: "spawn"; id: number; kind: UnitId; side: Side }
