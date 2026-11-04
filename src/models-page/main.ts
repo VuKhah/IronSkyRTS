@@ -126,6 +126,7 @@ function unitSheet(s: UnitSpec): string {
     ${s.cost ? costHtml(s.cost, s.buildTime, "chế tạo") : `<section><h3>Chi phí</h3><p class="weapon">Có sẵn từ đầu trận, không chế tạo thêm được.</p></section>`}
     <section><h3>Chỉ số</h3><div class="stats">${stats}</div></section>
     ${w ? `<section><h3>Vũ khí</h3>${weaponHtml(w)}</section>` : ""}
+    ${s.secondary ? `<section><h3>Vũ khí phụ (${s.secondary.ammo} viên mỗi lần xuất kích)</h3>${weaponHtml(s.secondary)}</section>` : ""}
     <section><h3>Đặc điểm</h3><ul class="features">${s.features.map((f) => `<li>${esc(f)}</li>`).join("")}</ul></section>
     <section class="matchups">
       <div class="beats"><h3>Khắc chế</h3>${linkList(s.beats) || `<span class="weapon">—</span>`}</div>

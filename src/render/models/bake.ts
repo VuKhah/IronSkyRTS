@@ -31,6 +31,7 @@ export function bakeStatic(rig: Rig): { before: number; after: number } {
     rig.setAim?.(0.8);
     rig.setFlight?.(true, 0.5);
     rig.setLevel?.(0.9);
+    rig.setAmmo?.(0);
     for (let i = 0; i < 40; i++) {
       rig.update(0.05, (t += 0.05), all);
       check();
@@ -38,6 +39,7 @@ export function bakeStatic(rig: Rig): { before: number; after: number } {
     rig.setAim?.(null);
     rig.setFlight?.(false, 0);
     rig.setLevel?.(0.2);
+    rig.setAmmo?.(99);
     for (let i = 0; i < 40; i++) {
       rig.update(0.05, (t += 0.05), none);
       check();

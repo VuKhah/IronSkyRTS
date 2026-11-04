@@ -82,6 +82,9 @@ export interface Unit {
   ext: boolean;
   /** Máy bay: tốc độ ngoặt hiện tại (radian mỗi tick, dấu = chiều ngoặt). Tăng giảm dần cho đường bay mượt. */
   yawRate: number;
+  /** Vũ khí phụ: số tick chờ bắn tiếp và số viên còn lại của lần xuất kích này. */
+  cd2: number;
+  ammo2: number;
 }
 
 export interface Building {

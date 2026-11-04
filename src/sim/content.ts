@@ -133,6 +133,11 @@ export interface UnitSpec {
   /** Sức chiếm mỏ (0 = không chiếm được). */
   captureWeight: number;
   weapon?: WeaponSpec;
+  /**
+   * Vũ khí phụ có cơ số đạn hạn chế mỗi lần xuất kích (`ammo` viên), hạ cánh xuống bãi đậu thì nạp lại đầy.
+   * Bắn độc lập với vũ khí chính (nhịp nạp riêng), nhắm cùng mục tiêu (Falcon: 2 tên lửa nổ).
+   */
+  secondary?: WeaponSpec & { ammo: number };
   /** Nhiên liệu máy bay: dung tích (L), đốt (L/s), tốc độ ngoặt (độ/s). */
   fuel?: { tank: number; burn: number; turnRate: number };
   /** Sức chở của Xe Vận Tải. */
@@ -437,11 +442,24 @@ export const UNITS: Record<UnitId, UnitSpec> = {
       fireArc: 8,
       burst: { shots: 8, interval: 0.1 }
     },
+    secondary: {
+      name: "Tên lửa nổ",
+      dmgGround: 90,
+      dmgAir: 110,
+      range: 26,
+      cooldown: 1,
+      dmgType: "he",
+      splash: 2,
+      visual: "missile",
+      fireArc: 30,
+      ammo: 2
+    },
     fuel: { tank: 40, burn: 1.2, turnRate: 200 },
     diveAlt: 9,
     features: [
       "Pháo 30mm xuyên giáp: diệt xe tăng và máy bay ném bom; bắn xe nhẹ kém hiệu quả.",
       "Pháo đôi hai bên cánh: bổ nhào xả một loạt 8 cặp đạn, kéo ra lấy khoảng cách rồi quay lại lượt sau (nạp 0.8 giây).",
+      "2 tên lửa nổ mỗi lần xuất kích (diệt xe nhẹ, máy bay, công trình); hạ cánh là nạp lại.",
       "Nhanh (22 m/s) và ngoặt gấp nhất game (200°/giây). Bổ nhào xuống thấp khi bắn mục tiêu mặt đất, rồi kéo lên lại độ cao bay.",
       "Bình dầu 40L, đốt 1.2L/s: khoảng 33 giây bay mỗi lần xuất kích.",
       "Chỉ cất cánh khi còn ít nhất 35% dầu; xuống 24% (hoặc vừa đủ dầu bay về nếu đang ở xa) thì tự bay về Sân Đáp.",

@@ -64,6 +64,8 @@ const AIM_COS = dcos(5 * DEG);
 const STEER_SOFT_COS = dcos(30 * DEG);
 const STEER_SOFT_SIN = dsin(30 * DEG);
 const STEER_RAMP = 0.25;
+/** Tên lửa treo dưới cánh cách trục thân chừng này (m). */
+const MISSILE_PYLON = 1.35;
 /** Khoảng cách giữa hai nòng súng đôi (m), ví dụ súng ở hai bên cánh. */
 const BARREL_GAP = 1.6;
 /** Bom rơi từ độ cao bay tới đất mất chừng này giây (bom trôi theo đà máy bay). */
@@ -382,7 +384,9 @@ export class World {
       az: 0,
       crashed: false,
       ext: false,
-      yawRate: 0
+      yawRate: 0,
+      cd2: 0,
+      ammo2: spec.secondary?.ammo ?? 0
     };
     this.units.push(u);
     this.byId.set(u.id, u);
@@ -1380,6 +1384,18 @@ export class World {
     });
   }
 
+  /** Vũ khí phụ (tên lửa dưới cánh): mỗi lần một quả, luân phiên hai bên cánh, trừ cơ số đạn của lần xuất kích. */
+  private fireSecondary(u: Unit, w: WeaponSpec & { ammo: number }, t: Target, d: number): void {
+    if (this.sandbox?.hold[u.side]) return;
+    const air = this.isAirborne(t);
+    const dmg = air ? w.dmgAir : w.dmgGround;
+    u.ammo2--;
+    u.cd2 = Math.max(1, Math.round(w.cooldown * TICK_RATE));
+    const side = (u.ammo2 % 2 === 0 ? 1 : -1) * MISSILE_PYLON;
+    const ticks = Math.max(1, Math.ceil((d / SHOT_SPEED[w.visual]) * TICK_RATE));
+    this.pushShot(u, w, t.id, t.x, t.z, t.cat === "unit" ? t.alt : 0, dmg, air, ticks, -u.hz * side, u.hx * side);
+  }
+
   /** Ném bom rải thảm: bom trôi theo đà máy bay, rơi xuống điểm phía trước đường bay, không bám mục tiêu. */
   private dropBomb(u: Unit, w: WeaponSpec): void {
     if (this.sandbox?.hold[u.side]) return;
@@ -1674,6 +1690,7 @@ export class World {
     const fuel = spec.fuel!;
     const A = RULES.air;
     if (u.cooldown > 0) u.cooldown--;
+    if (u.cd2 > 0) u.cd2--;
     switch (u.air) {
       case "parked": {
         u.alt = 0;
@@ -1695,6 +1712,8 @@ export class World {
             } else if (pw > 0) this.alert(u.side, "nooil", u.x, u.z);
           }
           if (u.hp < u.maxHp) u.hp = Math.min(u.maxHp, u.hp + A.repairRate * DT * pw);
+          // nạp lại vũ khí phụ (tên lửa) khi đậu
+          if (spec.secondary) u.ammo2 = spec.secondary.ammo;
         }
         if (u.mission !== "none" && u.fuel >= fuel.tank * A.takeoffMin) this.takeoff(u);
         return;
@@ -1846,6 +1865,13 @@ export class World {
       const d = Math.sqrt(tx * tx + tz * tz);
       // chỉ bắn khi mũi máy bay hướng về mục tiêu (lượt bổ nhào)
       if (d <= w.range + this.radiusOf(tgt) && u.hx * tx + u.hz * tz >= cosDeg(w.fireArc ?? 37) * d) this.tryFire(u, w, tgt);
+    }
+    const w2 = spec.secondary;
+    if (w2 && tgt && u.ammo2 > 0 && u.cd2 === 0 && this.canHit(w2, tgt)) {
+      const tx = tgt.x - u.x;
+      const tz = tgt.z - u.z;
+      const d = Math.sqrt(tx * tx + tz * tz);
+      if (d <= w2.range + this.radiusOf(tgt) && u.hx * tx + u.hz * tz >= cosDeg(w2.fireArc ?? 37) * d) this.fireSecondary(u, w2, tgt, d);
     }
   }
 
@@ -2182,6 +2208,8 @@ export function hashWorld(w: World): number {
     num(u.aimZ);
     num(u.pd);
     num(u.yawRate);
+    num(u.ammo2);
+    num(u.cd2);
   }
   for (const b of w.buildings) {
     num(b.id);

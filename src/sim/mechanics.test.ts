@@ -245,7 +245,7 @@ describe("cơ chế bắn", () => {
     const [tx, tz] = P(10);
     unit(w, 1, "titan", tx, tz);
     const f = unit(w, 0, "falcon", ...P(-40), { x: tx, z: tz, mode: "amove" });
-    const shots = run(w, sec(8), f.id);
+    const shots = run(w, sec(8), f.id).filter((s) => s.e.visual === "bullet");
     const n = UNITS.falcon.weapon!.barrels!;
     expect(shots.length).toBeGreaterThan(0);
     const first = shots.filter((s) => s.tick === shots[0].tick);
@@ -257,10 +257,12 @@ describe("cơ chế bắn", () => {
   it("lượt bổ nhào: máy bay không bay vòng tròn quanh mục tiêu, lượt nào cũng quay lại bắn được", () => {
     const w = new World(1, { sandbox: true });
     hold(w, 1);
-    const [tx, tz] = P(10);
-    unit(w, 1, "lynx", tx, tz);
-    const f = unit(w, 0, "falcon", ...P(-40), { x: tx, z: tz, mode: "amove" });
-    const ticks = run(w, sec(20), f.id).map((s) => s.tick);
+    // mục tiêu thật trâu (Tổng Hành Dinh) để còn đủ lượt mà đếm
+    const hq = w.hqOf(1)!;
+    const f = unit(w, 0, "falcon", hq.x - 30, hq.z + 30, { x: hq.x, z: hq.z, mode: "amove" });
+    const ticks = run(w, sec(20), f.id)
+      .filter((s) => s.e.visual === "bullet")
+      .map((s) => s.tick);
     // các lượt bổ nhào: những cụm phát bắn cách nhau quá 0,5 giây
     const passes = ticks.filter((t, i) => i === 0 || t - ticks[i - 1] > 5).length;
     expect(passes).toBeGreaterThanOrEqual(3);
@@ -281,6 +283,18 @@ describe("cơ chế bắn", () => {
     }
     expect(low).toBeLessThanOrEqual(UNITS.falcon.diveAlt! + 0.5);
     expect(climbedBack).toBe(true);
+  });
+
+  it("vũ khí phụ: Falcon bắn đúng số tên lửa của một lần xuất kích rồi hết", () => {
+    const w = new World(1, { sandbox: true });
+    hold(w, 1);
+    const [tx, tz] = P(10);
+    unit(w, 1, "titan", tx, tz);
+    unit(w, 1, "titan", tx + 4, tz - 4);
+    const f = unit(w, 0, "falcon", ...P(-40), { x: tx, z: tz, mode: "amove" });
+    const missiles = run(w, sec(25), f.id).filter((s) => s.e.visual === "missile");
+    expect(missiles).toHaveLength(UNITS.falcon.secondary!.ammo);
+    expect(f.ammo2).toBe(0);
   });
 
   it("cơ chế bắn vẫn tất định: cùng lệnh, cùng mã băm", async () => {

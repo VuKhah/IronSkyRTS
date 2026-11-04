@@ -151,11 +151,12 @@ export class Views {
 
   private updateUnit(world: World, u: Unit, v: View, alpha: number, dt: number, time: number, selected: boolean, viewer: Side | null): void {
     const spec = UNITS[u.kind];
-    const x = u.px + (u.x - u.px) * alpha;
-    const z = u.pz + (u.z - u.pz) * alpha;
+    let x = u.px + (u.x - u.px) * alpha;
+    let z = u.pz + (u.z - u.pz) * alpha;
     const alt = u.palt + (u.alt - u.palt) * alpha;
-    const hx = u.phx + (u.hx - u.phx) * alpha;
-    const hz = u.phz + (u.hz - u.phz) * alpha;
+    let hx = u.phx + (u.hx - u.phx) * alpha;
+    let hz = u.phz + (u.hz - u.phz) * alpha;
+    if (Views.curved(u)) [x, z, hx, hz] = Views.hermite(u, alpha);
     const target = Math.atan2(hx, hz);
     const root = v.rig.root;
     const a = v.active;
@@ -177,6 +178,7 @@ export class Views {
       v.pitch += (pitchTarget - v.pitch) * Math.min(1, dt * 5);
       root.rotation.set(v.pitch, v.yaw, 0, "YXZ");
       v.rig.setFlight?.(alt > 0.6, flying ? v.roll : 0);
+      if (spec.secondary) v.rig.setAmmo?.(u.ammo2);
       if (spec.weapon && (world.tick - u.lastShot) * DT < 0.25) a.add("fire");
     } else {
       v.yaw += wrap(target - v.yaw) * Math.min(1, dt * 10);
@@ -237,9 +239,41 @@ export class Views {
   }
 
   /** Vị trí hiển thị (nội suy) của một đơn vị — cho thanh máu và chọn bằng chạm. */
+  /** Máy bay đang bay: vẽ theo đường cong thay vì nối thẳng giữa hai tick. */
+  static curved(u: Unit): boolean {
+    return u.air === "flying" || u.air === "returning";
+  }
+
+  /**
+   * Nội suy Hermite giữa hai tick: đường cong đi qua vị trí tick trước và tick này, tiếp tuyến đúng hướng bay ở
+   * cả hai đầu. Máy bay nhanh ngoặt gắt đổi hướng tới ~20° mỗi tick; nối thẳng thì đường bay thành đa giác gãy
+   * khúc, nhìn giật. Trả về vị trí và hướng (đạo hàm của đường cong, khớp với chuyển động trên màn hình).
+   */
+  static hermite(u: Unit, t: number): [number, number, number, number] {
+    const L = Math.sqrt((u.x - u.px) ** 2 + (u.z - u.pz) ** 2);
+    if (L < 1e-4) return [u.x, u.z, u.hx, u.hz];
+    const t2 = t * t;
+    const t3 = t2 * t;
+    const h00 = 2 * t3 - 3 * t2 + 1;
+    const h10 = t3 - 2 * t2 + t;
+    const h01 = -2 * t3 + 3 * t2;
+    const h11 = t3 - t2;
+    const x = h00 * u.px + h10 * u.phx * L + h01 * u.x + h11 * u.hx * L;
+    const z = h00 * u.pz + h10 * u.phz * L + h01 * u.z + h11 * u.hz * L;
+    const d00 = 6 * t2 - 6 * t;
+    const d10 = 3 * t2 - 4 * t + 1;
+    const d01 = -6 * t2 + 6 * t;
+    const d11 = 3 * t2 - 2 * t;
+    const dx = d00 * u.px + d10 * u.phx * L + d01 * u.x + d11 * u.hx * L;
+    const dz = d00 * u.pz + d10 * u.phz * L + d01 * u.z + d11 * u.hz * L;
+    const dl = Math.sqrt(dx * dx + dz * dz) || 1;
+    return [x, z, dx / dl, dz / dl];
+  }
+
   static displayPos(u: Unit, alpha: number): [number, number, number] {
-    const x = u.px + (u.x - u.px) * alpha;
-    const z = u.pz + (u.z - u.pz) * alpha;
+    let x = u.px + (u.x - u.px) * alpha;
+    let z = u.pz + (u.z - u.pz) * alpha;
+    if (Views.curved(u)) [x, z] = Views.hermite(u, alpha);
     const alt = u.palt + (u.alt - u.palt) * alpha;
     return [x, groundY(x, z) + (alt < 0.05 ? 0.22 * (u.air === "parked" ? 1 : 0) : alt), z];
   }

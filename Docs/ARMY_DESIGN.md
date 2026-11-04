@@ -511,6 +511,7 @@ Người dùng chốt: thêm **toàn bộ cơ chế bắn** đã mô tả trư�
 |---|---|---|---|
 | Bắn theo loạt rồi nạp lại | `burst: { shots, interval }` + `cooldown` = thời gian nạp | SkyGuard, Falcon, Valkyrie | SkyGuard 5 quả × 0,15 giây, nạp 2,4 giây · Falcon 8 cặp đạn 30mm × 0,1 giây, nạp 1,4 giây · Valkyrie 6 bom × 0,25 giây, nạp 6 giây |
 | Súng nhiều nòng (bắn song song) | `barrels` | Falcon (pháo đôi hai cánh) | 2 nòng cách nhau 1,6 m, mỗi viên đủ sát thương |
+| Vũ khí phụ có cơ số đạn mỗi lần xuất kích | `secondary: WeaponSpec & { ammo }` | Falcon (tên lửa nổ) | 2 quả / lần xuất kích, nạp lại khi đậu; 90 đất / 110 không, nổ lan 2 m, tầm 26 m |
 | Lượt bổ nhào của máy bay | (luật bay chung, `world.ts` `fly()`) | mọi máy bay | bay qua mục tiêu thì giữ thẳng hướng tới khi cách xa ≥ max(80% tầm bắn, 2,6 × bán kính ngoặt) rồi mới quay lại |
 | Lockdown (triển khai khi đứng yên) | `deploy: { time, range, dmg, required? }` | SkyGuard | 1,2 giây → tầm +25%, sát thương +33% |
 | Vừa chạy vừa bắn bị phạt | `movePenalty: { dmg, miss }` | SkyGuard | −25% sát thương, 30% tên lửa trượt (trượt = rơi lệch, không trúng) |
@@ -539,6 +540,8 @@ Mọi phép ngẫu nhiên (trượt, tản) dùng RNG có seed của trận, l�
 - Bổ nhào thật và thấy được pháo đôi (người dùng chưa nhận ra hai thứ này): Falcon có `diveAlt: 5`, lao xuống 5 m khi vào lượt bắn mục tiêu mặt đất rồi kéo lên lại 12 m (`RULES.air.climbRate` 7 m/s), máy bay chúc / ngóc mũi theo tốc độ đổi độ cao. Mô hình Falcon có hai nòng ở gốc cánh, chớp lửa khi bắn (tên lửa dưới cánh chỉ còn để trang trí). Vệt đạn của súng nhiều nòng giữ độ lệch nòng tới tận mục tiêu, thành các đường song song.
 - Vòng bổ nhào chặt hơn (người dùng thấy Falcon bay quá xa rồi mới vòng lại, bay và bắn còn chậm): đoạn kéo ra chỉ còn max(1,8 × bán kính ngoặt, 8 m) thay vì theo tầm bắn (khoảng cách tối thiểu để lúc quay lại mục tiêu nằm ngoài vòng ngoặt, không rơi vào bay vòng tròn). Falcon 22 m/s, ngoặt 200°/giây (bay nhanh hơn mà vòng vẫn chặt), nạp 0,8 giây, nghiêng cánh lên hết cỡ trong 0,25 giây. Người dùng tự chỉnh `diveAlt` 9 m, `climbRate` 5 m/s.
 - Đường đạn thẳng (người dùng thấy đạn Falcon bay cong, nằm chéo): vệt đạn súng / pháo không còn bám mục tiêu mỗi khung hình (chỉ tên lửa và đạn cầu vồng bám); Falcon chỉ bắn khi mũi lệch mục tiêu ≤ 8° (`fireArc`, mặc định 37° cho máy bay khác); hai nòng đặt theo trục cánh máy bay.
+- Tên lửa cho Falcon (người dùng: "để đáng tiền hơn"): 2 tên lửa nổ mỗi lần xuất kích, bắn độc lập với pháo đôi, hạ cánh nạp lại. Mô hình: 2 quả dưới cánh biến mất khi đã bắn.
+- Đường bay mượt trên màn hình: sim 10 tick/giây, Falcon đổi hướng tới 20° mỗi tick; nối thẳng giữa hai tick thì đường bay thành đa giác gãy khúc. Phần vẽ giờ nội suy máy bay bằng **đường cong Hermite** (đi qua hai vị trí, tiếp tuyến đúng hướng bay ở hai đầu); sim không đổi nên vẫn tất định.
 - AI đấu AI sau khi sửa: 5/20 trận hòa. Lưu ý phe Đỏ thắng 12, Lam 3: cần xem bản đồ hoặc AI có lệch phe không.
 
 **Chưa làm (không phải cơ chế bắn, hoặc cần thứ chưa có):**

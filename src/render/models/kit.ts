@@ -34,6 +34,8 @@ export interface Rig {
   setFlight?(airborne: boolean, roll: number): void;
   /** Chỉ báo mức (0..1), ví dụ % pin của Trạm Tích Điện. */
   setLevel?(k: number): void;
+  /** Số đạn vũ khí phụ còn treo trên thân (ví dụ tên lửa dưới cánh Falcon): bắn rồi thì ẩn đi. */
+  setAmmo?(n: number): void;
 }
 
 export interface Palette {

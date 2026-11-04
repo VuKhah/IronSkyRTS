@@ -475,12 +475,14 @@ function buildFalcon(p: Palette): Rig {
   glow.position.z = -1.75;
   frame.add(glow);
 
-  // tên lửa treo dưới cánh: chỉ để trang trí (vũ khí chính là pháo đôi 30mm)
+  // 2 tên lửa nổ treo dưới cánh (vũ khí phụ): bắn quả nào thì quả đó biến mất, hạ cánh nạp lại
+  const pylons: THREE.Object3D[] = [];
   for (const x of [-1.35, 1.35]) {
     const m = missileMesh(p, 0.6, 0.05);
     (m.children[2] as THREE.Object3D).visible = false;
     m.position.set(x, -0.12, -0.25);
     frame.add(m);
+    pylons.push(m);
   }
   // pháo đôi 30mm ở hai gốc cánh (cách nhau ~1,6 m như trong sim), mỗi nòng có chớp lửa đầu nòng
   const guns: THREE.Mesh[] = [];
@@ -514,6 +516,11 @@ function buildFalcon(p: Palette): Rig {
     },
     3.0
   );
+  rig.setAmmo = (n) => {
+    // sim bắn quả ở trục +x của thân trước (pylons[1], x = +1,35), rồi tới quả bên kia
+    pylons[1]!.visible = n >= 2;
+    pylons[0]!.visible = n >= 1;
+  };
   return rig;
 }
 
