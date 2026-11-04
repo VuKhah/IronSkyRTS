@@ -1308,8 +1308,10 @@ export class World {
     const ticks = Math.max(1, Math.ceil((d / SHOT_SPEED[w.visual]) * TICK_RATE));
     // Nhiều nòng: các viên bắn song song, xuất phát lệch sang hai bên theo hướng vuông góc với đường ngắm
     const n = w.barrels ?? 1;
-    const px = d > 1e-6 ? -(t.z - src.z) / d : 0;
-    const pz = d > 1e-6 ? (t.x - src.x) / d : 0;
+    // trục đặt nòng: máy bay thì theo trục cánh (vuông góc hướng bay), còn lại vuông góc đường ngắm
+    const wing = src.cat === "unit" && src.air !== "none";
+    const px = wing ? -src.hz : d > 1e-6 ? -(t.z - src.z) / d : 0;
+    const pz = wing ? src.hx : d > 1e-6 ? (t.x - src.x) / d : 0;
     for (let i = 0; i < n; i++) {
       const side = (i - (n - 1) / 2) * BARREL_GAP;
       // Điểm rơi: bám mục tiêu, trừ khi bắn trượt hoặc vũ khí có độ tản
@@ -1843,7 +1845,7 @@ export class World {
       const tz = tgt.z - u.z;
       const d = Math.sqrt(tx * tx + tz * tz);
       // chỉ bắn khi mũi máy bay hướng về mục tiêu (lượt bổ nhào)
-      if (d <= w.range + this.radiusOf(tgt) && u.hx * tx + u.hz * tz >= 0.8 * d) this.tryFire(u, w, tgt);
+      if (d <= w.range + this.radiusOf(tgt) && u.hx * tx + u.hz * tz >= cosDeg(w.fireArc ?? 37) * d) this.tryFire(u, w, tgt);
     }
   }
 

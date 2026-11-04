@@ -105,7 +105,10 @@ export class Fx {
           mesh.position.copy(from);
           mesh.renderOrder = 5;
           this.scene.add(mesh);
-          this.tracers.push({ mesh, from, to, off, target: e.target, t: 0, dur: Math.max(0.06, e.ticks * DT), visual: e.visual, arc: e.visual === "missile" ? 2.5 : e.visual === "cannon" ? 1.2 : 0, smokeT: 0 });
+          // đạn pháo / súng máy bay thẳng tới điểm ngắm lúc bắn (không bám mục tiêu, không thì vệt đạn bị uốn cong
+          // và nằm chéo); chỉ tên lửa và đạn pháo cầu vồng mới bám mục tiêu
+          mesh.lookAt(to);
+          this.tracers.push({ mesh, from, to, off, target: e.visual === "bullet" ? 0 : e.target, t: 0, dur: Math.max(0.06, e.ticks * DT), visual: e.visual, arc: e.visual === "missile" ? 2.5 : e.visual === "cannon" ? 1.2 : 0, smokeT: 0 });
           if (e.visual === "missile") this.spawn(this.geo.sphere, this.mat.smoke, from, 0.35, 0.6, { grow: 1.2 });
           break;
         }

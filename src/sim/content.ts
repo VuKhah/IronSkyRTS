@@ -78,6 +78,8 @@ export interface WeaponSpec {
   visual: WeaponVisual;
 
   // ---- Cơ chế bắn (Docs/ARMY_DESIGN.md). Tất cả là tùy chọn và dùng chung: quân nào khai báo thì có. ----
+  /** Máy bay: chỉ bắn khi mũi lệch mục tiêu không quá chừng này (độ). Pháo gắn cố định ở mũi cần góc hẹp. Mặc định 37°. */
+  fireArc?: number;
   /** Số nòng bắn cùng lúc (súng đôi hai bên cánh): mỗi lần bắn ra chừng này viên song song, mỗi viên đủ sát thương. */
   barrels?: number;
   /** Bắn theo loạt: `shots` viên cách nhau `interval` giây; bắn hết loạt mới nạp lại `cooldown` giây. */
@@ -432,6 +434,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
       splash: 0,
       visual: "bullet",
       barrels: 2,
+      fireArc: 8,
       burst: { shots: 8, interval: 0.1 }
     },
     fuel: { tank: 40, burn: 1.2, turnRate: 200 },
