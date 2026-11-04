@@ -104,6 +104,9 @@ Ký hiệu: ✅ đang có trong game · 🗓 đã lên kế hoạch · 💡 từ
 - **Cơ chế riêng:**Địa lợi tầm cao — Triển khai trên núi/đồi được cộng thêm 20% tầm bắn và triệt tiêu độ lệch đạn
 - **Ghi chú:**Khẩu pháo này rất cồng kềnh, nhưng nó có thể một viên phá hủy mọi thứ trong phạm vi nhỏ, Cơ chế xoay thân xe mất thời gian trước khi ngắm bắn.
 - **Chốt bước 2:** Pháo phải **thật sự mạnh**, tạo áp lực từ tầm cực xa. Cái giá: **mỗi lần bắn là lộ vị trí** (đối phương thấy chỗ khẩu pháo trong vài giây dù đang bị sương mù che), cộng với chậm, nạp lâu và cần quân khác nhìn thấy mục tiêu hộ. Khác Xe Tên Lửa Loạt: Pháo là **một viên chính xác, xuyên giáp**, khắc mục tiêu giáp dày (Titan, tháp pháo).
+- **Chốt thêm (học cơ chế từ Battle Drones, 04/11/2026):**
+    - **Tầm bắn tối thiểu:** không bắn được mục tiêu đứng quá gần. Điểm yếu "bị áp sát là bất lực" có sẵn mà không cần luật riêng: Lynx lao sát vào thì Pháo vô dụng.
+    - **Lộ vị trí 2 giây sau mỗi phát bắn:** đối phương nhìn thấy khẩu pháo xuyên sương mù trong 2 giây (số tạm).
 
 ### 9. Xe Tên Lửa Loạt 💡
 *Hiện tại:* chưa có. Thiết kế gốc: phóng loạt tên lửa nổ diện rộng, khắc chế cụm phòng thủ tĩnh và bộ binh đông.
@@ -188,6 +191,7 @@ Quyết định chung: tạm thời BỎ toàn bộ
 - **Điểm yếu chí mạng:**
 - **Cơ chế riêng:**
 - **Ghi chú:**Đây là đơn vị lơ lửng duy nhất (nhưng drone đã làm thay)
+- **Ghi chú 04/11/2026:** đây sẽ là quân **không quân chỉ đánh đất** của Iron Sky khi quay lại (Battle Drones tách riêng drone đánh đất và tiêm kích; ta để Trực Thăng gánh vai này sau).
 
 ### 17. Trực Thăng Vận Tải 🗓 / Máy Bay Vận Tải Vũ Trang 💡
 *Hiện tại:* chưa có. Thiết kế gốc: chở 3 thùng hàng hoặc quân, có vũ khí tự vệ; bị bắn rơi thì thùng hàng rơi nguyên vẹn, ai nhặt trước thì được.
@@ -219,6 +223,7 @@ Quyết định chung: tạm thời BỎ toàn bộ
 - **Điểm yếu chí mạng:**
 - **Cơ chế riêng:**
 - **Ghi chú:**Pháo tự hành đang làm thay nó
+- **Ghi chú 04/11/2026:** siêu vũ khí / siêu cỗ máy để dành cho bản cập nhật **sau bản Hải quân**.
 
 ---
 
@@ -407,8 +412,30 @@ So với ma trận gốc: hàng "Chống xuyên" và "Chống nổ" được tha
 - `world.ts`: `damage()` nhân theo ma trận; Titan bỏ nổ lan; SkyGuard bỏ sát thương mặt đất; Lynx có sát thương lên không.
 - Kiểm thử: bảng ma trận đúng 3×3, mọi binh chủng có giáp và loại đạn; các kịch bản thiết kế đã đạt chuyển thành kiểm thử bắt buộc.
 
-### 6. Câu hỏi chờ duyệt
+### 6. Tiêu chí chung cho cả đội hình
+- **Thời gian kịp phản ứng (chốt 04/11/2026, học từ Battle Drones):** một trận giao tranh tầm trung (nửa đạo quân của một bên) phải kéo dài **ít nhất khoảng 8 giây** (mục tiêu 7–9 giây) trước khi bị xóa sổ, để người chơi trên điện thoại kịp nhìn ra và ra lệnh. Khi chỉnh máu và sát thương ở bước 4, tiêu chí này đứng trên mọi con số riêng lẻ. Sẽ có kịch bản thiết kế đo nó.
+
+### 7. Câu hỏi chờ duyệt
 1. Đồng ý tách 4 trục (đặc biệt: **Titan = đạn Nổ nhưng nổ lan 0**)?
 2. Đồng ý **Falcon = Xuyên giáp** (diệt tăng, chặn Valkyrie; đổi lại bắn xe nhẹ chỉ 60%)?
 3. Đồng ý đổi hàng giáp thành **Nhẹ / Nặng / Kiên cố**, và bỏ trường giảm sát thương % riêng lẻ?
 4. Các ô hệ số: giữ như bảng, hay muốn chênh lệch mạnh hơn (giống bản gốc 10%–150%)?
+
+---
+
+## Bài học từ đội hình Battle Drones (04/11/2026)
+
+So sánh chi tiết ở `Docs/BATTLEDRONES_REFERENCE.md` mục 5. Quyết định của người dùng:
+
+| Bài học | Quyết định |
+|---|---|
+| ① Mục tiêu thời gian kịp phản ứng (~8 giây cho một trận giao tranh tầm trung) | ✅ **Thêm**: tiêu chí chung ở Bước 3 mục 6 |
+| ② Cân bằng "giá ngang giá" (cùng số tiền đấu nhau) | ⏳ Cân nhắc khi cân bằng game sau |
+| ③ Pháo có tầm bắn tối thiểu | ✅ **Thêm** vào Pháo Tự Hành |
+| ④ Lộ vị trí một lúc sau mỗi phát bắn | ✅ **Thêm**: lộ **2 giây** cho Pháo Tự Hành |
+| ⑤ Giới hạn mềm bằng giá tăng dần theo số lượng | ❌ **Không học.** Iron Sky là trận cấp sư đoàn: số lượng quân là một phần của quy mô hoành tráng |
+| ⑥ Quân tự ưu tiên bắn quân sửa chữa của địch | ⏳ Chưa quyết |
+| ⑦ Quân tự phản ứng (đứng yên bị bắn thì đánh trả, đồng minh gần đó vào giúp) | ⏳ **Bàn kỹ sau** (liên quan nguyên tắc "Tư lệnh, không phải tài xế") |
+| ⑧ Siêu cỗ máy hỏng vũ khí dần theo máu | ⏳ Để dành cho bản cập nhật siêu vũ khí, **sau bản Hải quân** |
+| Không quân chỉ đánh đất (tách khỏi tiêm kích) | ⏳ Vai của **Trực Thăng Tấn Công** (đang tạm bỏ) |
+| Quân lướt nước / vượt sông | ⏳ Chắc chắn có **lưới nước** về sau (bản đồ, đơn vị…) |

@@ -65,3 +65,37 @@ Các mốc xếp theo thứ tự "tăng độ vui nhiều nhất trên công s�
 7. **Mốc 7: Pháo đài di động.** Phiên bản Iron Sky của siêu mech, ví dụ một Xe Tư lệnh hạng nặng có thể triển khai thành tiền đồn.
 
 Ở mỗi mốc phải làm theo checklist trong `AGENTS.md` (Bootstrapper, ProjectBuilder, HUD, AI, kiểm tra biên dịch bằng Roslyn).
+
+---
+
+## 5. Đội hình và ma trận sát thương (đọc mã nguồn `src/sim/balance.ts`, 04/11/2026)
+
+> Chỉ để học cơ chế. Tên quân của họ ghi ở đây để đối chiếu, **không** dùng trong Iron Sky.
+
+### Ma trận sát thương (7 loại đạn × 5 lớp giáp)
+
+| Đạn \ Giáp | Nhẹ | Vừa | Nặng | Công trình | Bộ binh |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Động năng | 1.0 | 1.0 | 0.6 | 0.65 | 1.0 |
+| Pháo | 0.8 | 1.0 | 1.3 | 1.0 | 0.4 |
+| Flak | 1.25 | 1.0 | 1.15 | 0.5 | 1.25 |
+| Tên lửa | 1.15 | 1.0 | 0.9 | 0.6 | 0.7 |
+| Nổ | 1.2 | 0.9 | 0.85 | 1.35 | 1.3 |
+| Laser | 1.0 | 1.0 | 1.55 | 0.8 | 0.7 |
+| Bắn tỉa | 0.6 | 0.4 | 0.25 | 0.15 | 3.0 |
+
+Nhận xét: ma trận **mềm** (hầu hết 0.6–1.35, chỉ bắn tỉa cực đoan); cột "Vừa" là mốc 1.0. Ai thắng ai chủ yếu do tầm, tốc độ, DPS và vai trò; ma trận chỉ nghiêng cán cân. Không có giảm sát thương % riêng từng quân. Thêm hai hệ số: `airMult` (vũ khí đa năng yếu với máy bay) và `cover` (rừng giảm sát thương).
+
+### Đội hình (17 quân) theo vai trò
+Khai thác (giáp vừa) · trinh sát bay không vũ khí · xe nhẹ nhanh · phòng không mặt đất (bó tay với quân đất) · pháo tầm xa có **tầm bắn tối thiểu** · tăng siêu nặng · **tăng lướt nước** bắn cả đất lẫn không · **drone chỉ đánh đất** · **tiêm kích chỉ đánh máy bay** · ném bom nặng · drone sửa chữa · 3 bộ binh (súng trường, tên lửa chống tăng, bắn tỉa) · phi cơ vận tải · siêu mech làm căn cứ di động.
+
+### Cơ chế quanh đội hình đáng chú ý
+- Máu quân chiến đấu ×1.5 để nửa đạo quân chết trong 7–9 giây thay vì 5–7: "đủ lâu để phản ứng trên điện thoại".
+- Cân bằng bằng đấu tay đôi **giá ngang giá** trong `tools/balance.ts`, ghi điểm chênh lệch vào chú thích chỉ số.
+- Lính bắn tỉa ẩn trong rừng, **lộ 2 giây sau mỗi phát bắn**.
+- Quân tự ưu tiên bắn drone sửa chữa ("giết thằng sửa trước, không thì trận không bao giờ kết thúc").
+- Quân đứng yên bị bắn tự đánh trả trong 9 ô; đồng minh trong 5 ô tự vào giúp.
+- Siêu mech: vũ khí tắt dần ở 75/50/25% máu, luôn bị địch nhìn thấy, neo 4 giây / thu 6 giây, mỗi chiếc thêm đắt hơn 25%.
+- Cựu binh: 3 cấp theo giá trị quân đã hạ, +15% sát thương mỗi cấp, cấp 3 tự hồi máu. Xác quân rơi 30% giá, xe đầu tiên chạm vào nhặt được.
+
+Quyết định áp dụng cho Iron Sky: xem `Docs/ARMY_DESIGN.md`, mục "Bài học từ đội hình Battle Drones".
