@@ -99,3 +99,24 @@ Khai thác (giáp vừa) · trinh sát bay không vũ khí · xe nhẹ nhanh · 
 - Cựu binh: 3 cấp theo giá trị quân đã hạ, +15% sát thương mỗi cấp, cấp 3 tự hồi máu. Xác quân rơi 30% giá, xe đầu tiên chạm vào nhặt được.
 
 Quyết định áp dụng cho Iron Sky: xem `Docs/ARMY_DESIGN.md`, mục "Bài học từ đội hình Battle Drones".
+
+---
+
+## 6. Bản đồ của Battle Drones làm thế nào (đọc mã nguồn `src/sim/maps.ts`, `src/game/three/terrain*.ts`, `art/terrain.py`, 05/11/2026)
+
+> Chỉ học quy trình và kỹ thuật. Không chép code, ảnh, tên bản đồ.
+
+**Dữ liệu (sim):**
+- Bản đồ là **lưới ô** (48–108 ô mỗi cạnh), mỗi ô một trong 11 loại địa hình (đất, đá, mỏ phế liệu, nước, đường, đất xấu, rừng, pha lê, cầu, nước nông, biển sâu).
+- Mỗi bản đồ là một khai báo (`MapDef`: tên, vùng khí hậu, kích thước, vị trí HQ, seed) kèm một hàm `paint(p)` vẽ bằng vài **nét cơ bản**: `blob` (vệt tròn, mép lượn theo nhiễu), `stroke` (đường gấp khúc có bề rộng: sông, đường, sống núi), `rect`, `scatter` (rải vệt nhỏ ngẫu nhiên theo seed). Tham số `only` cho phép chỉ tô đè lên loại đất nhất định (ví dụ chỉ tô rừng lên đất trống).
+- **Bộ vẽ tự đối xứng:** mỗi ô vẽ ra được tô luôn ô đối xứng xoay 180° (hoặc xoay 4 lần cho bản đồ 4 người). Người thiết kế chỉ vẽ một nửa, công bằng có sẵn.
+- Mép vệt và nét đều lượn bằng nhiễu giá trị (value noise) theo seed cố định, nên trông tự nhiên mà vẫn tất định.
+- Có thêm trình sinh bản đồ ngẫu nhiên theo seed (`mapgen.ts`), chia sẻ bằng mã ngắn.
+
+**Hình ảnh (vì sao đẹp):**
+1. **Ảnh mặt đất vẽ sẵn, ngoại tuyến:** một chương trình Python (`art/terrain.py`, dùng Pillow, numpy, scipy) đọc lưới ô của từng bản đồ rồi vẽ một ảnh nhìn từ trên xuống, 48 điểm ảnh mỗi ô. Vật liệu (cỏ, đá, nước, cát…) và hình trang trí (tán cây, tảng đá) là ảnh do AI tạo sẵn (OpenAI Images). Mép giữa các loại đất được hòa trộn bằng nhiễu và làm méo tọa độ (domain warp), có bóng đổ theo hướng nắng cố định (trên trái), hillshade. Xuất ra các mảnh WebP 1024 điểm ảnh (khoảng 1,5 MB mỗi bản đồ) và một ảnh nhỏ 256 × 256 cho menu chọn bản đồ và minimap.
+2. **Trong game:** lưới ô thành địa hình 3D (đá thành mỏm cao, sông thành lòng trũng), ảnh vẽ sẵn **phủ lên làm màu bề mặt**, nên vừa giữ nét vẽ tay vừa có ánh sáng và bóng thật. Vách dốc dùng vật liệu đá chiếu theo phương ngang (ảnh phủ từ trên xuống sẽ bị kéo vệt trên vách đứng).
+3. **Chi tiết sống động:** nước có shader (bọt ven bờ, lấp lánh), băng trôi, dung nham; cây vẽ hàng loạt bằng instancing theo vùng khí hậu; cầu dựng theo trục lối qua; bóng mây trôi; **"váy" ngoài mép bản đồ** (bản đồ phản chiếu ra ngoài vài ô rồi mờ dần vào màu trời, nên không bao giờ thấy khoảng trống).
+4. Bản đồ ngẫu nhiên không có ảnh vẽ sẵn: trình duyệt tự vẽ ảnh mặt đất từ lưới ô (`terrain-paint.ts`) với bảng màu lấy từ các bản đồ vẽ sẵn, độ phân giải bằng nửa.
+
+**Bài học cho Iron Sky:** xem `Docs/MAPS_PLAN.md` mục "Học từ Battle Drones".

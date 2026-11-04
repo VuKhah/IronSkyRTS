@@ -95,3 +95,18 @@ Mỗi bản đồ một cỡ. Gợi ý khởi điểm: nhỏ 192 m, vừa 256 m,
 | **B7. Xem trước bản đồ** (tùy chọn) | Trang xem bản đồ từ trên xuống, tô màu theo độ cao và loại địa hình | Thiết kế bản đồ không cần vào trận |
 
 Đề xuất 3 bản đồ đợt đầu (B5): **Thung Lũng Sông Sắt** (giành cầu), **Cao Nguyên Gió** (giữ cao nguyên giữa bản đồ: nhìn xa, bắn xa), **Đèo Đá Kép** (hai đèo hẹp, phục kích). Khi có loại địa hình (B3) thì thêm được **Đầm Lầy**, **Đồng Tuyết**, rừng. Thành Phố Đổ Nát (vật cản phá được) và Quần Đảo (sau bản Hải quân) để đợt sau.
+
+## 6. Học từ Battle Drones (05/11/2026, chi tiết ở `Docs/BATTLEDRONES_REFERENCE.md` mục 6)
+
+| Họ làm | Áp dụng cho Iron Sky | Trạng thái |
+|---|---|---|
+| Bộ vẽ tự đối xứng: người thiết kế chỉ vẽ một nửa | `MapDef` có cờ đối xứng; `GameMap` tự sinh nửa còn lại cho đồi, đá, sông, mỏ, vùng địa hình. Công bằng có sẵn, `maps.test.ts` vẫn kiểm | Đề xuất, thêm vào B1 |
+| Nét vẽ cơ bản có mép lượn theo nhiễu (vệt tròn, đường gấp khúc có bề rộng, rải ngẫu nhiên theo seed) | Thêm vào `RegionDef`: `blob` có mép lượn, `stroke` (đường, sống núi, dải bùn), `scatter` (rừng thưa, đá vụn). Nhiễu tự viết, tất định | Đề xuất, làm ở B3 |
+| Ảnh mặt đất vẽ sẵn bằng Python + ảnh AI, phủ lên địa hình 3D | **Chờ người dùng chọn** (mục 7) | |
+| Shader nước, cây hàng loạt, bóng mây, "váy" ngoài mép bản đồ | Bước đồ họa mới **B8. Mặt đất đẹp** sau B5 | Đề xuất |
+
+## 7. Câu hỏi mới: đồ họa mặt đất
+Hiện mặt đất Iron Sky tô màu theo đỉnh lưới (vertex color) nên trông phẳng. Hai hướng:
+1. **Vẽ bằng code trong trình duyệt** (giống cách họ vẽ bản đồ ngẫu nhiên): lúc vào trận, sinh ảnh mặt đất từ `GameMap` (loại địa hình, độ cao, khoảng cách tới nước), hòa trộn mép bằng nhiễu, có hạt sạn, bóng nắng. Đúng tinh thần dự án (mọi thứ dựng bằng code, không tải tài nguyên), không cần công cụ ngoài; đẹp kém ảnh vẽ tay một chút, tốn vài trăm ms lúc tải trận.
+2. **Ảnh vẽ sẵn ngoại tuyến** (như bản đồ có sẵn của họ): đẹp nhất, nhưng cần quy trình riêng (Python hoặc công cụ vẽ), ảnh vật liệu (tự vẽ hoặc AI tạo), vài MB tài nguyên mỗi bản đồ, và phải vẽ lại mỗi khi sửa bản đồ.
+
