@@ -338,6 +338,12 @@ export class Controller implements GestureHandlers {
       case "cancel":
         if (b) this.issue({ t: "cancel", building: b.id });
         break;
+      case "toggle":
+        if (b) {
+          this.issue({ t: "toggle", building: b.id });
+          this.sfx.ui("click");
+        }
+        break;
       case "sell":
         if (b) {
           const now = performance.now();

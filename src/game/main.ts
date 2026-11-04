@@ -62,7 +62,7 @@ function makeThumbs(): Map<string, string> {
   const out = new Map<string, string>();
   try {
     const shooter = new Thumbnailer();
-    for (const id of ["hauler", "lynx", "titan", "skyguard", "falcon", "factory", "airfield", "turret"] as const) {
+    for (const id of ["hauler", "lynx", "titan", "skyguard", "falcon", "factory", "airfield", "turret", "power-plant", "power-pylon", "radar"] as const) {
       const rig = buildModel(id, "lam");
       out.set(id, shooter.shoot(rig));
       disposeRig(rig);

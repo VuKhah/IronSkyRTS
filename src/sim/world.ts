@@ -84,6 +84,9 @@ function newSide(): SideState {
     known: new Set(),
     mono: 0,
     monoRes: null,
+    powerGen: 0,
+    powerUse: 0,
+    eff: 1,
     alerts: { commander: -1000, base: -1000, hauler: -1000, lowfuel: -1000, nooil: -1000, mineLost: -1000 },
     stats: { unitsBuilt: 0, unitsLost: 0, kills: 0, ironMined: 0, oilMined: 0, buildingsBuilt: 0 }
   };
@@ -223,11 +226,12 @@ export class World {
     }
     for (const b of this.buildings) {
       if (b.side !== side || !b.built || b.hp <= 0) continue;
-      const bs = BUILDINGS[b.kind];
-      const reach = RULES.buildRadius + Math.max(bs.half[0], bs.half[1]) + big;
+      const zone = BUILDINGS[b.kind].zone;
+      if (!zone) continue;
+      const reach = zone + big;
       if (dist2(b.x, b.z, x, z) <= reach * reach) return null;
     }
-    return "Phải xây gần công trình phe mình";
+    return "Phải xây trong vùng của Tổng Hành Dinh, Nhà Máy Điện hoặc Cột Điện";
   }
 
   // ------------------------------------------------------------------ vòng tick
@@ -354,7 +358,9 @@ export class World {
       lastShot: -1000,
       targetId: 0,
       cells,
-      pads: kind === "airfield" ? [0, 0, 0, 0] : []
+      pads: kind === "airfield" ? [0, 0, 0, 0] : [],
+      off: false,
+      active: false
     };
     this.buildings.push(b);
     this.byId.set(b.id, b);
@@ -451,6 +457,11 @@ export class World {
         b.rallyX = clamp(o.x, -EDGE, EDGE);
         b.rallyZ = clamp(o.z, -EDGE, EDGE);
         b.rallySet = true;
+        break;
+      }
+      case "toggle": {
+        const b = this.ownBuilding(side, o.building);
+        if (b && BUILDINGS[b.kind].oilBurn) b.off = !b.off;
         break;
       }
       case "sell": {
@@ -574,15 +585,54 @@ export class World {
 
   // ------------------------------------------------------------------ công trình
 
+  /**
+   * Điện, tính lại mỗi tick cho từng phe: Tổng Hành Dinh phát nền, Nhà Máy Điện đốt Dầu để phát,
+   * công trình tiêu thụ cộng dồn. Hiệu suất = phát / tiêu thụ quyết định mọi thứ chạy nhanh hay chậm.
+   */
+  private computePower(): void {
+    for (const s of [0, 1] as Side[]) {
+      const st = this.sides[s];
+      let gen = 0;
+      let use = 0;
+      for (const b of this.buildings) {
+        if (b.side !== s) continue;
+        if (b.hp <= 0 || !b.built) {
+          b.active = false;
+          continue;
+        }
+        const spec = BUILDINGS[b.kind];
+        if (spec.power > 0) {
+          const burn = (spec.oilBurn ?? 0) * DT;
+          if (!b.off && st.oil >= burn) {
+            st.oil -= burn;
+            gen += spec.power;
+            b.active = true;
+          } else b.active = false;
+        } else if (spec.power < 0) use -= spec.power;
+      }
+      st.powerGen = gen;
+      st.powerUse = use;
+      st.eff = use <= 0 ? 1 : Math.min(1, gen / use);
+      for (const b of this.buildings) {
+        if (b.side !== s || !b.built || b.hp <= 0) continue;
+        const spec = BUILDINGS[b.kind];
+        if (spec.power < 0) b.active = spec.radarSight ? st.eff >= RULES.power.radarMin : st.eff > 0;
+      }
+    }
+  }
+
   private updateBuildings(): void {
+    this.computePower();
     for (const b of this.buildings) {
       if (b.hp <= 0) continue;
       const spec = BUILDINGS[b.kind];
       if (b.cooldown > 0) b.cooldown--;
       if (!b.built) {
         const total = sec(spec.buildTime ?? 1);
-        b.progress += 1 / total;
-        b.hp = Math.min(b.maxHp, b.hp + (b.maxHp * 0.9) / total);
+        // thiếu điện thì xây chậm (trừ chính Nhà Máy Điện và Cột Điện, để luôn gỡ được thế thiếu điện)
+        const k = spec.power > 0 || b.kind === "power-pylon" ? 1 : this.sides[b.side].eff;
+        b.progress += k / total;
+        b.hp = Math.min(b.maxHp, b.hp + (k * b.maxHp * 0.9) / total);
         if (b.progress >= 1 - 1e-9) {
           b.progress = 1;
           b.built = true;
@@ -593,6 +643,10 @@ export class World {
       }
       if (b.queue.length) this.produce(b);
       if (spec.weapon) {
+        if (spec.power < 0 && this.sides[b.side].eff < RULES.power.turretMin) {
+          b.targetId = 0;
+          continue;
+        }
         const t = this.acquireFrom(b, b.side, b.x, b.z, spec.weapon, spec.weapon.range, b.targetId);
         b.targetId = t ? t.id : 0;
         if (t) this.tryFire(b, spec.weapon, t);
@@ -607,7 +661,8 @@ export class World {
     for (const u of this.units) if (u.side === b.side && u.kind !== "commander") live++;
     if (live >= RULES.unitCap) return;
     if (us.domain === "air" && b.pads.indexOf(0) < 0) return;
-    b.prog++;
+    // thiếu điện thì đúc chậm (Tổng Hành Dinh tự có điện nên không bị ảnh hưởng)
+    b.prog += BUILDINGS[b.kind].power < 0 ? this.sides[b.side].eff : 1;
     if (b.prog < sec(us.buildTime ?? 5)) return;
     b.prog = 0;
     b.queue.shift();
@@ -912,6 +967,7 @@ export class World {
     if (dmg <= 0) return false;
     let cd = w.cooldown;
     if (src.cat === "unit") cd /= this.auraFactor(src);
+    else if (BUILDINGS[src.kind].power < 0) cd /= Math.max(0.1, this.sides[src.side].eff);
     src.cooldown = Math.max(1, Math.round(cd * TICK_RATE));
     src.lastShot = this.tick;
     const d = Math.sqrt(dist2(src.x, src.z, t.x, t.z));
@@ -1235,14 +1291,15 @@ export class World {
           u.z = pad[1];
           const st = this.sides[u.side];
           if (u.fuel < fuel.tank) {
-            const want = Math.min(A.refuelRate * DT, fuel.tank - u.fuel);
+            // thiếu điện thì bơm dầu chậm
+            const want = Math.min(A.refuelRate * DT * st.eff, fuel.tank - u.fuel);
             const got = Math.min(want, st.oil / A.oilPerLiter);
             if (got > 1e-9) {
               u.fuel += got;
               st.oil -= got * A.oilPerLiter;
-            } else this.alert(u.side, "nooil", u.x, u.z);
+            } else if (st.eff > 0) this.alert(u.side, "nooil", u.x, u.z);
           }
-          if (u.hp < u.maxHp) u.hp = Math.min(u.maxHp, u.hp + A.repairRate * DT);
+          if (u.hp < u.maxHp) u.hp = Math.min(u.maxHp, u.hp + A.repairRate * DT * st.eff);
         }
         if (u.mission !== "none" && u.fuel >= fuel.tank * A.takeoffMin) this.takeoff(u);
         return;
@@ -1544,7 +1601,13 @@ export class World {
       const st = this.sides[s];
       st.vis.fill(0);
       for (const u of this.units) if (u.side === s) this.stamp(st, u.x, u.z, UNITS[u.kind].sight);
-      for (const b of this.buildings) if (b.side === s) this.stamp(st, b.x, b.z, BUILDINGS[b.kind].sight * (b.built ? 1 : 0.6));
+      for (const b of this.buildings) {
+        if (b.side !== s) continue;
+        const spec = BUILDINGS[b.kind];
+        // Trạm Radar có điện: nhìn xuyên sương mù cả vùng rộng
+        const sight = spec.radarSight && b.active ? spec.radarSight : spec.sight * (b.built ? 1 : 0.6);
+        this.stamp(st, b.x, b.z, sight);
+      }
       for (const b of this.buildings) if (b.side !== s && !st.known.has(b.id) && this.visibleTo(s, b)) st.known.add(b.id);
     }
   }
@@ -1627,6 +1690,7 @@ export function hashWorld(w: World): number {
     num(s.iron);
     num(s.oil);
     num(s.mono);
+    num(s.eff);
   }
   for (const u of w.units) {
     num(u.id);

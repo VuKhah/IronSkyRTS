@@ -73,8 +73,22 @@ export class Overlay {
     for (const b of world.buildings) {
       if (viewer !== null && b.side !== viewer && !world.sides[viewer].known.has(b.id)) continue;
       const sel = selected.has(b.id);
-      if (!sel && b.hp >= b.maxHp && b.built) continue;
       const spec = BUILDINGS[b.kind];
+      // công trình của ta đang thiếu điện / nhà máy không phát: nhấp nháy tia sét
+      const unpowered = b.side === viewer && b.built && ((spec.power < 0 && world.sides[b.side].eff < 1) || (spec.oilBurn !== undefined && !b.active));
+      if (unpowered && Math.floor(performance.now() / 500) % 2 === 0) {
+        const q = cam.project(b.x, groundY(b.x, b.z) + 4, b.z, w, h);
+        if (q.visible) {
+          g.font = "bold 18px 'Be Vietnam Pro', sans-serif";
+          g.textAlign = "center";
+          g.fillStyle = "#ffd36e";
+          g.strokeStyle = "rgba(0,0,0,0.7)";
+          g.lineWidth = 3;
+          g.strokeText("⚡", q.x, q.y);
+          g.fillText("⚡", q.x, q.y);
+        }
+      }
+      if (!sel && b.hp >= b.maxHp && b.built) continue;
       const p = cam.project(b.x, groundY(b.x, b.z) + (b.kind === "airfield" ? 5 : 6), b.z, w, h);
       if (!p.visible) continue;
       const bw = Math.max(30, Math.max(spec.half[0], spec.half[1]) * 10);

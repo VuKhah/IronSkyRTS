@@ -43,7 +43,7 @@ Bộ nhớ kỹ thuật của dự án. Đọc hết trước khi sửa code.
   - `map.ts`: bản đồ "Thung Lũng Sông Sắt" 160×160 m (hệ trục sông u/v, 3 lối qua, đá, đồi, 7 mỏ, vị trí HQ), `staticBlocked`, `terrainHeight`/`groundY` (cho phần vẽ).
   - `grid.ts`: lưới 2 m (80×80), A* 8 hướng + kéo thẳng đường bằng LOS, `nearestFree`.
   - `types.ts`: `Unit`, `Building`, `Mine`, `Order` (lệnh), `SimEvent` (sự kiện cho phần vẽ / âm thanh).
-  - `world.ts`: `World.step(cmds)` — 1 tick = 0.1 s; kinh tế, chiếm mỏ, Xe Vận Tải, sản xuất, chiến đấu, không quân + nhiên liệu, sương mù, 3 điều kiện thắng; `hashWorld()`.
+  - `world.ts`: `World.step(cmds)` — 1 tick = 0.1 s; kinh tế, chiếm mỏ, Xe Vận Tải, **điện** (`computePower`: phát/tiêu thụ/hiệu suất, Nhà Máy Điện đốt Dầu, vùng xây theo `zone`), sản xuất, chiến đấu, không quân + nhiên liệu (Bingo động, dầu dự trữ), sương mù + radar, 3 điều kiện thắng; `hashWorld()`.
   - `ai.ts`: AI 1 độ khó, chỉ ra lệnh và chỉ đọc phần mình thấy; dùng seed trận để mỗi trận một khác.
   - Kiểm thử: `content.test.ts`, `sim.test.ts` (tất định, tìm đường, kinh tế, AI đấu AI trọn trận).
 - **`src/render/models/`**: mô hình 3D bằng code. Mỗi mô hình là một `Rig` (`root`, `actions`, `defaultOn`, `radius`, `update()`, tùy chọn `setAim()` cho tháp pháo và `setFlight()` cho máy bay do chiến trường điều khiển). Điểm vào: `buildModel(id, faction, showcase)`; mỏ: `buildNode(res)` trong `nodes.ts`.

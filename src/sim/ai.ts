@@ -196,20 +196,28 @@ export class Ai {
     const count = (k: BuildingId): number => myB.filter((b) => b.kind === k).length;
     const t = w.tick;
     const st = w.sides[this.side];
-    if (count("factory") === 0) return "factory";
-    if (count("airfield") === 0 && t > sec(70)) return "airfield";
+    // Điện: thiếu thì xây Nhà Máy Điện trước (nếu còn Dầu để đốt)
+    const canPower = st.oil > 60;
+    if (st.eff < 1 && canPower) return "power-plant";
+    let want: BuildingId | null = null;
     const turrets = count("turret");
-    if (t > sec(110) && turrets < Math.min(3, 1 + Math.floor(t / sec(200)))) return "turret";
-    if (count("factory") < 2 && t > sec(280) && st.iron > 450) return "factory";
-    if (count("airfield") < 2 && t > sec(420) && st.oil > 250) return "airfield";
-    if (turrets < 5 && t > sec(480) && st.iron > 700) return "turret";
-    return null;
+    if (count("factory") === 0) want = "factory";
+    else if (count("airfield") === 0 && t > sec(70)) want = "airfield";
+    else if (t > sec(110) && turrets < Math.min(3, 1 + Math.floor(t / sec(200)))) want = "turret";
+    else if (count("factory") < 2 && t > sec(280) && st.iron > 450) want = "factory";
+    else if (count("radar") === 0 && t > sec(300) && st.iron > 350) want = "radar";
+    else if (count("airfield") < 2 && t > sec(420) && st.oil > 250) want = "airfield";
+    else if (turrets < 5 && t > sec(480) && st.iron > 700) want = "turret";
+    if (!want) return null;
+    const draw = -Math.min(0, BUILDINGS[want].power);
+    if (draw > 0 && st.powerUse + draw > st.powerGen && canPower) return "power-plant";
+    return want;
   }
 
   /** Tìm chỗ đặt công trình quanh căn cứ: công trình chiến đấu hướng ra sông, Sân Đáp lùi về sau. */
   private findSpot(w: World, kind: BuildingId, base: Building): [number, number] | null {
     const [cx, cz] = dirToCenter(base.x, base.z);
-    const back = kind === "airfield";
+    const back = kind === "airfield" || kind === "power-plant" || kind === "radar";
     const cands: { x: number; z: number; score: number }[] = [];
     for (const r of [13, 17, 21, 25, 29]) {
       for (const [dx, dz] of DIRS) {

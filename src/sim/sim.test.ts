@@ -92,6 +92,63 @@ describe("lõi mô phỏng", () => {
     expect(landed, "Falcon phải tự hạ cánh về sân").toBe(true);
   });
 
+  it("ĐIỆN: thiếu điện thì chậm lại, Nhà Máy Điện đốt Dầu, tắt máy thì ngừng phát", () => {
+    const w = new World(5);
+    const st = w.sides[0];
+    st.iron = 9000;
+    st.oil = 2000;
+    const hq = w.hqOf(0)!;
+    const place = (kind: "factory" | "airfield" | "power-plant" | "power-pylon" | "turret"): number => {
+      for (let r = 10; r <= 30; r += 2)
+        for (const [dx, dz] of [[1, 0], [0, -1], [1, -1], [-1, 0], [0, 1], [-1, -1], [1, 1]] as const) {
+          const x = Math.round(hq.x + dx * r);
+          const z = Math.round(hq.z + dz * r);
+          if (w.canPlace(0, kind, x, z) === null) {
+            w.step([{ side: 0, order: { t: "build", kind, x, z } }]);
+            return w.buildings[w.buildings.length - 1].id;
+          }
+        }
+      throw new Error(`không đặt được ${kind}`);
+    };
+    w.step([]);
+    expect(st.powerGen).toBe(20);
+    expect(st.eff).toBe(1);
+    place("factory");
+    for (let i = 0; i < sec(12); i++) w.step([]);
+    place("airfield");
+    for (let i = 0; i < sec(14); i++) w.step([]);
+    // Xưởng 10 + Sân Đáp 15 = 25 MW > 20 MW của HQ → hiệu suất 80%
+    expect(st.powerUse).toBe(25);
+    expect(st.eff).toBeCloseTo(0.8, 5);
+    const plant = place("power-plant");
+    for (let i = 0; i < sec(9); i++) w.step([]);
+    const oil0 = st.oil;
+    for (let i = 0; i < sec(10); i++) w.step([]);
+    expect(st.eff).toBe(1);
+    expect(st.powerGen).toBe(60);
+    expect(oil0 - st.oil).toBeCloseTo(4, 1); // 0.4 Dầu/s × 10 s
+    w.step([{ side: 0, order: { t: "toggle", building: plant } }]);
+    w.step([]);
+    expect(st.powerGen).toBe(20);
+  });
+
+  it("ĐIỆN: chỉ xây được trong vùng của HQ / Nhà Máy Điện / Cột Điện; Cột Điện kéo vùng xây ra xa", () => {
+    const w = new World(5);
+    w.sides[0].iron = 9000;
+    const hq = w.hqOf(0)!;
+    const far: [number, number] = [hq.x + 46, hq.z - 6];
+    expect(w.canPlace(0, "turret", far[0], far[1])).not.toBeNull();
+    // chuỗi cột điện từ căn cứ hướng ra điểm xa
+    let x = hq.x;
+    for (let i = 0; i < 3; i++) {
+      x += 14;
+      expect(w.canPlace(0, "power-pylon", x, hq.z - 6), `cột thứ ${i + 1}`).toBeNull();
+      w.step([{ side: 0, order: { t: "build", kind: "power-pylon", x, z: hq.z - 6 } }]);
+      for (let k = 0; k < sec(4); k++) w.step([]);
+    }
+    expect(w.canPlace(0, "turret", far[0], far[1])).toBeNull();
+  });
+
   it("kinh tế chạy: Xe Vận Tải chở Sắt về kho", () => {
     const w = new World(3);
     for (let i = 0; i < sec(60); i++) w.step([]);

@@ -32,9 +32,10 @@ export type BuildingId =
   | "factory"
   | "airfield"
   | "turret"
-  | "outpost"
   | "power-plant"
   | "power-pylon"
+  | "radar"
+  | "outpost"
   | "oil-extractor"
   | "ammo-depot"
   | "aa-ciws"
@@ -116,8 +117,14 @@ export interface BuildingSpec {
   /** Nửa kích thước nền móng theo X và Z (m): ô lưới bị chiếm, không đi xuyên được. */
   half: readonly [number, number];
   produces?: UnitId[];
-  /** MW: dương = phát điện, âm = tiêu thụ (lưới điện để sau MVP). */
+  /** MW: dương = phát điện, âm = tiêu thụ. */
   power: number;
+  /** Nhà Máy Điện: Dầu đốt mỗi giây để phát điện (hết Dầu thì không phát). */
+  oilBurn?: number;
+  /** Mở vùng xây dựng bán kính này (m) quanh công trình. Chỉ HQ, Nhà Máy Điện và Cột Điện có. */
+  zone?: number;
+  /** Trạm Radar: tầm nhìn xuyên sương mù khi đủ điện (m). */
+  radarSight?: number;
   strictPower?: boolean;
   weapon?: WeaponSpec;
   magazine?: number;
@@ -134,7 +141,8 @@ export const RULES = {
   /** Thu nhập gốc của Tổng Hành Dinh (Sắt/giây). */
   hqTrickle: 2,
   unitCap: 40,
-  buildRadius: 14,
+  /** Điện: hiệu suất = phát / tiêu thụ. Radar cần ít nhất mức này để chạy. */
+  power: { radarMin: 0.5, turretMin: 0.1 },
   sellRefund: 0.5,
   queueMax: 5,
   captureRadius: 8,
@@ -377,11 +385,13 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     sight: 28,
     half: [3.4, 3.4],
     produces: ["hauler"],
-    power: 40,
+    power: 20,
+    zone: 24,
     weapon: { name: "Pháo kép tự vệ", dmgGround: 40, dmgAir: 28, range: 22, cooldown: 1.2, splash: 1.5, visual: "cannon" },
     features: [
       "Nơi Xe Vận Tải dỡ hàng: Sắt và Dầu chỉ vào kho khi được chở về đây.",
       "Thu nhập gốc +2 Sắt mỗi giây, để bên mất hết mỏ vẫn còn đường gỡ.",
+      "Phát điện nền +20 MW và mở vùng xây dựng 24m.",
       "Có pháo kép tự vệ bắn cả mặt đất lẫn trên không."
     ]
   },
@@ -399,7 +409,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     sight: 16,
     half: [3.4, 3],
     produces: ["lynx", "titan", "skyguard"],
-    power: 0,
+    power: -10,
     features: ["Hàng chờ tối đa 5 xe.", "Đặt điểm tập kết để xe mới tự chạy ra tiền tuyến.", "Xây thêm xưởng để đúc quân nhanh hơn."]
   },
   airfield: {
@@ -416,7 +426,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     sight: 18,
     half: [5.5, 4.3],
     produces: ["falcon"],
-    power: -12,
+    power: -15,
     features: [
       "4 bãi đậu: mỗi sân nuôi được tối đa 4 máy bay.",
       "Máy bay đậu được nạp 10L dầu mỗi giây (trừ vào kho Dầu) và sửa 25 HP mỗi giây.",
@@ -436,9 +446,9 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     armor: 0.2,
     sight: 24,
     half: [1.5, 1.5],
-    power: 0,
+    power: -5,
     weapon: { name: "Pháo kép tự động 30mm", dmgGround: 30, dmgAir: 30, range: 20, cooldown: 0.6, splash: 0, visual: "bullet" },
-    features: ["Bắn cả xe lẫn máy bay trong tầm 20m.", "Rẻ và chắc: giữ mỏ và cửa ngõ căn cứ.", "Titan bắn xa hơn tháp một chút."]
+    features: ["Bắn cả xe lẫn máy bay trong tầm 20m.", "Rẻ và chắc: giữ mỏ và cửa ngõ căn cứ. Dùng Cột Điện để xây được tháp ở xa căn cứ.", "Thiếu điện thì bắn chậm, mất hẳn điện thì ngừng bắn."]
   },
   outpost: {
     id: "outpost",
@@ -458,34 +468,62 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
   "power-plant": {
     id: "power-plant",
     kind: "building",
-    name: "Nhà Máy Phát Điện",
-    label: "ĐIỆN +45MW",
-    role: "Nguồn điện chính của lưới. (Sau MVP)",
-    mvp: false,
-    cost: { iron: 145, oil: 0 },
-    buildTime: 5,
+    name: "Nhà Máy Điện",
+    label: "ĐIỆN +40MW",
+    role: "Đốt Dầu để phát điện cho cả căn cứ.",
+    mvp: true,
+    cost: { iron: 200, oil: 0 },
+    buildTime: 8,
     hp: 850,
     armor: 0.15,
     sight: 14,
     half: [3, 2.3],
-    power: 45,
-    features: ["Phát +45 MW, phủ lưới điện bán kính 30m.", "Mục tiêu số một của máy bay ném bom địch."]
+    power: 40,
+    oilBurn: 0.4,
+    zone: 18,
+    features: [
+      "Phát +40 MW, đốt 0.4 Dầu mỗi giây. Kho Dầu cạn thì ngừng phát.",
+      "Có thể tắt máy để tiết kiệm Dầu khi chưa cần điện.",
+      "Mở vùng xây dựng 18m. Mục tiêu béo bở của Falcon địch."
+    ]
   },
   "power-pylon": {
     id: "power-pylon",
     kind: "building",
-    name: "Trạm Truyền Tải Điện",
-    label: "DẪN ĐIỆN +8MW",
-    role: "Cột cáp cao thế kéo lưới điện ra tiền tuyến. (Sau MVP)",
-    mvp: false,
+    name: "Cột Điện",
+    label: "MỞ VÙNG XÂY",
+    role: "Cột cao thế kéo vùng xây dựng ra xa căn cứ.",
+    mvp: true,
     cost: { iron: 60, oil: 0 },
-    buildTime: 2.5,
+    buildTime: 3,
     hp: 380,
     armor: 0.1,
     sight: 12,
     half: [0.9, 0.9],
-    power: 8,
-    features: ["Nối lưới xa thêm 30m, kèm tụ bù +8 MW.", "Rẻ và mỏng: là mắt xích yếu mà Lynx địch luôn nhắm tới."]
+    power: 0,
+    zone: 16,
+    features: [
+      "Mở vùng xây dựng 16m quanh cột: nối nhiều cột để xây Tháp Phòng Thủ cạnh mỏ xa.",
+      "Rẻ và mỏng: mắt xích yếu mà Lynx địch luôn nhắm tới.",
+      "Mất cột thì công trình đã xây vẫn chạy, nhưng không xây thêm được ở đó."
+    ]
+  },
+  radar: {
+    id: "radar",
+    kind: "building",
+    name: "Trạm Radar",
+    label: "RADAR 55M",
+    role: "Nhìn xuyên sương mù chiến tranh trên vùng rộng.",
+    mvp: true,
+    cost: { iron: 200, oil: 0 },
+    buildTime: 8,
+    hp: 450,
+    armor: 0.1,
+    sight: 12,
+    half: [1.6, 1.6],
+    power: -15,
+    radarSight: 55,
+    features: ["Nhìn thấy mọi thứ trong bán kính 55m, xuyên sương mù.", "Tốn 15 MW; hiệu suất điện dưới 50% thì radar tắt."]
   },
   "oil-extractor": {
     id: "oil-extractor",
@@ -578,7 +616,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
 };
 
 /** Công trình người chơi được xây trong bản MVP, theo thứ tự trên thanh xây. */
-export const MVP_BUILDABLE: readonly BuildingId[] = ["factory", "airfield", "turret"];
+export const MVP_BUILDABLE: readonly BuildingId[] = ["factory", "airfield", "power-plant", "power-pylon", "turret", "radar"];
 
 export function isUnitId(id: string): id is UnitId {
   return id in UNITS;
@@ -610,4 +648,4 @@ export const PLANNED_UNITS: { name: string; group: string }[] = [
   { name: "Pháo Đài Di Động", group: "Siêu cỗ máy" }
 ];
 
-export const PLANNED_BUILDINGS: string[] = ["Trại Bộ Binh", "Trung Tâm Nghiên Cứu", "Trạm Radar"];
+export const PLANNED_BUILDINGS: string[] = ["Trại Bộ Binh", "Trung Tâm Nghiên Cứu"];

@@ -94,6 +94,10 @@ export interface Building {
   cells: number[];
   /** Sân Đáp: id máy bay giữ từng bãi (0 = trống). */
   pads: number[];
+  /** Nhà Máy Điện: người chơi tắt máy để tiết kiệm Dầu. */
+  off: boolean;
+  /** Đang hoạt động: nhà máy đang phát điện / công trình tiêu thụ đang có điện / radar đang chạy. */
+  active: boolean;
 }
 
 export interface Mine {
@@ -140,7 +144,8 @@ export type Order =
   | { t: "produce"; building: number; kind: UnitId }
   | { t: "cancel"; building: number }
   | { t: "rally"; building: number; x: number; z: number }
-  | { t: "sell"; building: number };
+  | { t: "sell"; building: number }
+  | { t: "toggle"; building: number };
 
 export interface Command {
   side: Side;
@@ -183,6 +188,10 @@ export interface SideState {
   /** Số tick đang giữ độc quyền liên tục. */
   mono: number;
   monoRes: Res | null;
+  /** Điện: tổng phát, tổng tiêu thụ (MW) và hiệu suất = phát / tiêu thụ (tối đa 1). */
+  powerGen: number;
+  powerUse: number;
+  eff: number;
   alerts: Record<AlertKind, number>;
   stats: SideStats;
 }

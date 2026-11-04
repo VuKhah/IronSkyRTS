@@ -53,7 +53,7 @@ Tên **in đậm** là quân và công trình đã có trong thiết kế Iron S
 | B1 | **Cơ chế bay khí động học**: nghiêng cánh, bay vòng chờ, bổ nhào, lượn né phòng không | Máy bay bay theo quỹ đạo thật trong không gian 3D, không lơ lửng như drone | P1 | 🟨 |
 | B2 | **Sân Đáp**: cất cánh, hạ cánh, đậu bãi, sửa chữa, nạp bom | Mỗi sân có 4 bãi đáp, giới hạn số máy bay theo số sân | P1 | ✅ |
 | B3 | **Nhiên liệu Dầu cho máy bay** | Đủ 35% mới cất cánh được; xuống 24% (mức Bingo) thì tự quay về; hết dầu thì rơi | P1 | ✅ |
-| B4 | **Lưới điện MW**: nhà máy điện, cột điện, dây cáp võng 3D | Thiếu điện thì quá tải, một số tháp ngừng bắn | P2 | ⬜ |
+| B4 | **Lưới điện MW**: nhà máy điện, cột điện, dây cáp võng 3D | Thiếu điện thì quá tải, một số tháp ngừng bắn | P2 | 🟨 |
 | B5 | **Nhà máy đào dầu** | Sản lượng cao hơn khi đặt gần giàn dầu | P2 | ⬜ |
 | B6 | **Kho đạn, đường ray và xe goòng tiếp đạn** cho phòng không | Đánh vào mắt xích hậu cần của địch là chiến thuật chính | P2 | ⬜ |
 | B7 | **Phòng không nhiều tầng**: CIWS, SAM, EMP | Mỗi tầng có tầm bắn và vai trò khác nhau | P2 | ⬜ |

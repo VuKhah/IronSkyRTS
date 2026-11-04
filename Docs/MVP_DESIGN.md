@@ -19,7 +19,7 @@
 | Thiết bị | **Cảm ứng và chuột ngang nhau** | Mọi thao tác phải làm được bằng một ngón tay. Phím tắt chỉ là lối tắt |
 | Kinh tế | **Chiếm mỏ rồi Xe Vận Tải chở về** | Hai lớp tranh chấp: giành mỏ và chặn tuyến xe chở |
 | Tài nguyên | **2 loại: Sắt và Dầu** *(sửa lần 2: trước đó là 1 loại)* | Sắt để xây và đúc quân. Dầu là nhiên liệu tiêu hao của máy bay |
-| Hậu cần | **Sân Đáp và nhiên liệu máy bay** | Lưới điện và đường ray đạn để sau |
+| Hậu cần | **Sân Đáp, nhiên liệu máy bay, điện** *(điện thêm sau bản chơi thử 04/11)* | Đường ray đạn để sau |
 | Dầu *(sửa lần 2)* | **Tiêu hao thật:** mỗi lần nạp trừ vào kho Dầu | Không quân **rất mạnh, xuất kích dày, áp lực lớn**, nhưng bị giới hạn bởi thời gian bay và kho Dầu |
 | Quân chiến | **Lynx, Titan, SkyGuard, Falcon** + Xe Vận Tải + **Xe Tư Lệnh** | Xe Tư Lệnh có mặt vì là điều kiện thắng. Kỹ năng của nó để sau. Valkyrie để sau |
 | Thắng trận *(sửa lần 2)* | **3 điều kiện**, đạt điều nào trước thì thắng | Diệt Tư Lệnh, phá hết công trình, độc quyền một loại mỏ trong 30s |
@@ -199,3 +199,20 @@ Bản v1 đã dựng đủ M0–M9 ở mức chơi được (chưa đăng GitHub
 | M9 Hoàn thiện | 🟨 | HUD, minimap, cảnh báo, âm thanh, màn kết thúc ✅ — đăng web ⬜ |
 
 **Phát hiện từ máy giả lập (dữ liệu cho buổi bàn chỉ số):** 10 trận AI đấu AI đều kết thúc trong 3–8 phút, đa số bằng **độc quyền tài nguyên** (giàn Dầu đổi chủ liên tục; 30 giây là ngắn). Dầu dư (chỉ máy bay dùng) trong khi Sắt luôn cạn.
+
+## 15. Điện (thêm sau bản chơi thử, 04/11/2026)
+
+Người dùng chọn: **mô hình kết hợp** (tổng điện toàn phe + Cột Điện kéo vùng xây), **Nhà Máy Điện đốt Dầu**, và cả 4 hậu quả khi thiếu điện.
+
+| | Thiết kế (số tạm) |
+|---|---|
+| Phát | Tổng Hành Dinh **+20 MW** miễn phí · **Nhà Máy Điện +40 MW**, đốt **0.4 Dầu/s**; kho Dầu cạn thì ngừng phát; có nút **Tắt máy** để tiết kiệm Dầu |
+| Tiêu thụ | Xưởng Xe −10 · Sân Đáp −15 · Tháp Phòng Thủ −5 · **Trạm Radar −15** |
+| Hiệu suất | `phát / tiêu thụ` (tối đa 100%), chung cho cả phe |
+| Thiếu điện | Đúc quân và xây công trình chậm theo hiệu suất (trừ Nhà Máy Điện và Cột Điện) · Tháp Phòng Thủ bắn chậm, dưới 10% thì ngừng · Sân Đáp nạp dầu và sửa chậm · Radar tắt khi dưới 50% |
+| Vùng xây | Chỉ **Tổng Hành Dinh (24 m), Nhà Máy Điện (18 m), Cột Điện (16 m)** mở vùng xây. Cột Điện (60 Sắt) dùng để kéo vùng xây ra xa, xây được Tháp Phòng Thủ cạnh mỏ xa |
+| Trạm Radar | 200 Sắt, nhìn xuyên sương mù bán kính 55 m khi đủ điện |
+
+Vì sao đốt Dầu: máy giả lập cho thấy Dầu dư trong khi Sắt cạn. Đốt Dầu để phát điện biến giàn Dầu thành mạch sống của cả căn cứ, không chỉ của không quân.
+
+**Phát hiện mới từ máy giả lập:** khi Dầu quý hơn, các trận AI đấu AI còn ngắn hơn (1.8–3.7 phút), gần như toàn bộ kết thúc bằng **độc quyền Dầu**. Cần quyết định ở buổi bàn chỉ số (xem đề xuất trong lịch sử trao đổi).

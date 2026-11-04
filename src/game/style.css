@@ -38,6 +38,9 @@ button { font: inherit; color: inherit; }
 .chip-res.iron i { background: var(--iron); }
 .chip-res.oil i { background: var(--oil); border-radius: 50%; }
 .chip-res.units i { background: var(--accent); border-radius: 50%; }
+.chip-res.power i { width: auto; height: auto; background: none; font-style: normal; color: #ffd36e; }
+.btn .pw { color: #ffd36e; }
+.btn .pwneg { color: #ff9b8f; }
 .chip-res.low { border-color: var(--bad); }
 .topbar .spacer { flex: 1; }
 .clock { pointer-events: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; font-weight: 700; font-variant-numeric: tabular-nums; }
