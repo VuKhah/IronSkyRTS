@@ -2,7 +2,7 @@
 
 Cập nhật 05/11/2026 · ✅ xong · 🔄 đang làm · ⏳ chưa làm · ⏸ sau MVP. Chi tiết từng mục ở `Docs/design/`.
 
-**Tiến độ: 25 xong · 22 chưa làm · 6 sau MVP**
+**Tiến độ: 25 xong · 37 chưa làm · 6 sau MVP**
 
 ## 1. Nền móng MVP (`MVP_DESIGN.md`)
 - ✅ Lõi sim tất định 10 Hz, hàng đợi lệnh, hàm băm
@@ -61,9 +61,26 @@ Cập nhật 05/11/2026 · ✅ xong · 🔄 đang làm · ⏳ chưa làm · ⏸ 
 - ⏳ Đúc theo lô / điều theo đội
 - ⏳ Giới hạn quân, đạn, đường ray tàu hỏa
 
-## 6. Sau MVP
+## 6. Bản cập nhật vui (sau bản đồ + quân đội, **trước bản Hải quân**; học từ v4 Battle Drones)
+- ⏳ Kỹ năng Tư lệnh gọi xuống (pháo kích, EMP…), gắn với lưới điện
+- ⏳ Điểm chiếm giữa bản đồ (lý do giao tranh ngoài mỏ)
+- ⏳ Thả tiếp tế bằng dù
+- ⏳ Xác quân trục vớt được
+- ⏳ Lối mở đầu chọn trước trận
+- ⏳ Cựu binh: lên cấp theo chiến công
+- ⏳ Nhạc thích ứng theo giao tranh
+- ⏳ Giọng báo chiến trường, người dẫn trận
+- ⏳ Chế độ Last Stand (đỡ các đợt tấn công)
+- ⏳ Chiến dịch nhiệm vụ
+- ⏳ Tiến trình người chơi, huy chương sau trận
+- ⏳ Biến thể luật, thử thách hằng ngày
+- ⏳ Camera điện ảnh khi xem AI đấu AI
+- ⏳ Tính cách AI (tấn công nhanh, không quân, kinh tế…)
+- ⏳ Bàn: có cây công nghệ không
+
+## 7. Sau MVP (theo thứ tự)
 - ⏸ Multiplayer lockstep, vào trận bằng mã phòng
-- ⏸ Hải quân và lưới nước
+- ⏸ Hải quân và lưới nước (sau bản cập nhật vui)
 - ⏸ Siêu vũ khí (sau Hải quân)
 - ⏸ Bộ binh, Trực Thăng (đang tạm bỏ)
 - ⏸ Tính cách AI, chế độ chơi, cựu binh, xác quân
