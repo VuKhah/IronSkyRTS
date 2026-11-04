@@ -282,6 +282,7 @@ Giữ lại ý tưởng trong kho thiết kế để phát triển thành bản 
 ### Trạng thái (04/11/2026)
 - **Bước 1 xong (bản nháp đầu):** đã điền vai trò cho Tư Lệnh, Xe Vận Tải, Tàu Hỏa, Lynx, Titan, SkyGuard, Pháo Tự Hành, Xe Tên Lửa Loạt, Falcon, Valkyrie, Drone Trinh Sát, Drone Sửa Chữa và loại mới **Drone Khiên/Khói** (#23).
 - **Tạm bỏ:** Xe Công Binh (trùng Drone Sửa Chữa), toàn bộ Bộ binh, Trực Thăng Tấn Công (Drone làm thay), Trực Thăng Vận Tải (để dành cho biển đảo), Pháo Đài Di Động (Pháo Tự Hành làm thay). Hải quân để dành cho bản mở rộng.
+- **Bước 3 đang làm:** bản đề xuất ma trận Giáp × Đạn ở cuối file, chờ người dùng duyệt.
 - **Bước 2 xong phần lớn (04/11/2026):** các quyết định ghi ở dòng **Chốt bước 2** trong từng loại quân, tóm tắt bên dưới.
 
 ### Rà soát bước 2 — tóm tắt
@@ -330,3 +331,84 @@ Khi chốt chỉ số (bước 4), kịch bản đã đạt sẽ chuyển thành
 - Drone Khiên/Khói: đã chốt hạn chế (10 giây, khiên vỡ theo sát thương, khói cho đạn xác suất trượt, sạc bằng điện, chỉ trong vùng lưới điện); còn mở: các con số, xem mục #23.
 - Thêm kịch bản thiết kế cho các ý đồ khác (Falcon tấn công SkyGuard, 3 Drone cảm tử hạ Lynx, 2–3 Lynx hạ một máy bay…) khi các loại quân đó có trong game.
 - Thứ tự đưa quân vào game: đề xuất đợt 1 là 7 loại đang có, chỉnh theo mô tả mới; sau đó Drone Sửa Chữa, Pháo Tự Hành, Drone Trinh Sát (ba loại này tạo combo).
+
+---
+
+## Bước 3 — Ma trận Giáp × Đạn (bản đề xuất, chờ duyệt — 04/11/2026)
+
+Gốc: ma trận 3×3 trong thiết kế gốc (`REF_ARTOFWAR_GDD_MASTER.md` mục 8), MVP_DESIGN đã chọn mang sang vì "gọn, dễ nhớ trên điện thoại". Bản dưới đây giữ khung 3×3 nhưng sửa theo các quyết định ở bước 2.
+
+### 1. Bốn trục độc lập (không gộp vào nhau)
+Bước 2 cho thấy nếu gộp các khái niệm này vào một chỗ sẽ sinh mâu thuẫn (ví dụ: Titan "bắn nổ" nhưng không được phá ray, lại phải "bắn đơn mục tiêu"). Vì vậy tách thành 4 trục:
+
+| Trục | Giá trị | Quyết định điều gì |
+|---|---|---|
+| **Bắn được** | đất / không / cả hai | Ai bắn được máy bay (đã có trong game) |
+| **Loại đạn** | Thường · Xuyên giáp · Nổ | Hệ số sát thương theo ma trận bên dưới |
+| **Nổ lan** | bán kính (m), 0 = đơn mục tiêu | Trúng một hay cả cụm. **Không** gắn với loại đạn: Titan bắn đạn Nổ nhưng nổ lan = 0 |
+| **Phá công sự** | có / không | Cắt được đường ray (sau này: mìn, công sự). Chỉ Pháo Tự Hành, Xe Tên Lửa Loạt, bom Valkyrie, mìn |
+
+### 2. Ma trận (hệ số nhân sát thương)
+
+| Giáp \ Đạn | Thường | Xuyên giáp | Nổ |
+|---|:---:|:---:|:---:|
+| **Nhẹ** | 100% | 60% | 125% |
+| **Nặng** | 50% | 150% | 60% |
+| **Kiên cố** | 25% | 100% | 150% |
+
+Ba câu để người chơi nhớ (hiện trong phần hướng dẫn):
+- **Thường** (súng máy, pháo nhỏ): diệt xe nhẹ; gần như vô hại với công trình.
+- **Xuyên giáp** (pháo xuyên, đạn 30mm xuyên giáp): diệt giáp nặng; phí khi bắn xe nhẹ.
+- **Nổ** (tên lửa, bom, đạn nổ): diệt xe nhẹ và san phẳng công trình; yếu với giáp nặng.
+
+So với ma trận gốc: hàng "Chống xuyên" và "Chống nổ" được thay bằng **Nặng** và **Kiên cố**. Lý do: ý đồ bước 2 cần công trình **sợ đạn Nổ** (Tên Lửa Loạt làm thành phố "bình địa", Valkyrie là "đòn kết liễu căn cứ"), trong khi bản gốc cho mọi công trình giáp Chống nổ (Nổ chỉ còn 50%). Các ô 10% / 30% của bản gốc cũng được nâng lên, để không có cặp nào gần như "miễn nhiễm" (khó đọc trên điện thoại và làm trận cứng nhắc).
+
+### 3. Phân loại từng binh chủng
+
+| Quân / công trình | Giáp | Loại đạn | Nổ lan | Phá công sự | Ghi chú |
+|---|---|---|---|---|---|
+| Xe Tư Lệnh | Nặng | Thường | nhỏ | – | + giáp phòng thủ điểm chặn 1–2 phát pháo |
+| Xe Vận Tải | Nhẹ | – | – | – | |
+| Lynx | Nhẹ | Thường | 0 | – | bắn được máy bay, sát thương lên không thấp |
+| Titan | **Nặng** | **Nổ** | **0** | – | "bắn đơn mục tiêu (bắn nổ)"; + giáp góc nghiêng mặt trước |
+| SkyGuard | Nhẹ | Nổ | nhỏ | – | chỉ bắn không (bỏ sát thương mặt đất) |
+| Pháo Tự Hành | Nhẹ | **Xuyên giáp** | nhỏ–vừa | ✅ | Nhẹ để Lynx khắc được |
+| Xe Tên Lửa Loạt | Nhẹ | Nổ | lớn, tản | ✅ | |
+| Falcon | Nhẹ | **Xuyên giáp** | 0 | – | đạn 30mm: diệt tăng + chặn Valkyrie |
+| Valkyrie | Nặng | Nổ | lớn | ✅ | |
+| Drone Trinh Sát (cảm tử) | Nhẹ | Nổ | nhỏ | – | |
+| Drone Sửa Chữa, Drone Khiên/Khói | Nhẹ | – | – | – | |
+| Tàu Hỏa | Kiên cố | – | – | – | tê liệt khi hết máu |
+| Mọi công trình | Kiên cố | (tháp: Thường; phòng không: Nổ) | | – | |
+
+### 4. Kiểm tra với ý đồ bước 2
+
+| Ý đồ | Ma trận cho ra | Khớp? |
+|---|---|---|
+| Lynx săn Xe Vận Tải, khắc Pháo / Tên Lửa Loạt | Thường → Nhẹ 100% | ✅ |
+| Lynx không phá được căn cứ | Thường → Kiên cố 25% | ✅ |
+| Titan hạ Lynx trong ≤ 3 phát | Nổ → Nhẹ 125% | ✅ (chỉnh số gốc ở bước 4) |
+| Pháo khắc giáp dày, xe nhẹ khắc Pháo | Xuyên → Nặng 150%, Xuyên → Nhẹ 60% | ✅ |
+| Tên Lửa Loạt diệt cụm giáp mỏng, công trình; yếu với giáp dày | Nổ → Nhẹ 125%, Kiên cố 150%, Nặng 60% | ✅ |
+| Falcon ưu tiên chặn Valkyrie; Titan cần SkyGuard che | Xuyên → Nặng 150% (cả Valkyrie lẫn Titan) | ✅ |
+| SkyGuard diệt Falcon và drone | Nổ → Nhẹ 125% | ✅ |
+| Valkyrie "máu và giáp vượt trội" trong không quân | Nặng: SkyGuard chỉ còn 60% | ✅ (vẫn dễ bị Falcon chặn) |
+| 3 Drone cảm tử hạ Lynx, không hạ được Titan | Nổ → Nhẹ 125%, Nặng 60% | ✅ |
+| Tàu hỏa "khó bị đánh nát" | Kiên cố: Thường 25% | ✅ |
+
+**Phép tính mẫu, từ ý đồ ra con số** (dùng số gốc hiện tại: Lynx 24 sát thương / 0,65 giây, Titan 72 / 1,55 giây, Titan 720 máu, Lynx 340 máu; bỏ qua lúc tiếp cận):
+- Titan (Nổ → Nhẹ 125%) gây 58 sát thương/giây → hạ một Lynx sau ≈ 5,9 giây.
+- "3 Lynx cùng lúc thắng, còn đúng 1" nghĩa là Titan phải chết sau khi Lynx thứ hai bị hạ (≈ 11,7 giây) và trước khi Lynx thứ ba bị hạ (≈ 17,6 giây). Suy ra mỗi Lynx phải gây 20,5–24,6 sát thương/giây lên Titan, tức hệ số **Thường → Nặng ≈ 56–67%**.
+- "Lần lượt thì Titan hạ đủ 3" thì chỉ cần mỗi Lynx gây dưới 41 sát thương/giây lên Titan: luôn đúng trong khoảng trên.
+- Vì vậy ô Thường → Nặng đề xuất 50% là **mức sàn**; bước 4 sẽ dùng kịch bản thiết kế để chốt (khoảng 50–65%), hoặc giữ 50% và tăng sát thương gốc của Lynx.
+
+### 5. Thay đổi trong code (làm ở bước 4, sau khi duyệt)
+- `content.ts`: thêm `armorClass` cho mọi thực thể; thêm `dmgType`, `siege` cho vũ khí; bảng `RULES.damageMatrix`. **Bỏ trường `armor` (giảm % riêng lẻ)** để chỉ còn một nguồn: hệ số giáp do ma trận quyết định. Cơ chế riêng (giáp góc nghiêng Titan, phòng thủ điểm của Tư Lệnh) là hệ số cộng thêm, viết riêng.
+- `world.ts`: `damage()` nhân theo ma trận; Titan bỏ nổ lan; SkyGuard bỏ sát thương mặt đất; Lynx có sát thương lên không.
+- Kiểm thử: bảng ma trận đúng 3×3, mọi binh chủng có giáp và loại đạn; các kịch bản thiết kế đã đạt chuyển thành kiểm thử bắt buộc.
+
+### 6. Câu hỏi chờ duyệt
+1. Đồng ý tách 4 trục (đặc biệt: **Titan = đạn Nổ nhưng nổ lan 0**)?
+2. Đồng ý **Falcon = Xuyên giáp** (diệt tăng, chặn Valkyrie; đổi lại bắn xe nhẹ chỉ 60%)?
+3. Đồng ý đổi hàng giáp thành **Nhẹ / Nặng / Kiên cố**, và bỏ trường giảm sát thương % riêng lẻ?
+4. Các ô hệ số: giữ như bảng, hay muốn chênh lệch mạnh hơn (giống bản gốc 10%–150%)?
