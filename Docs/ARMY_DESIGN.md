@@ -264,7 +264,11 @@ Giữ lại ý tưởng trong kho thiết kế để phát triển thành bản 
         - **Khiên** còn tắt sớm khi **bị bắn vỡ**: chỉ chịu được một lượng sát thương hữu hạn.
         - **Khói** che quân bên trong khỏi tầm nhìn của địch, và cho quân bên trong **tăng né tránh** (hoặc miễn thương, chốt sau).
         - Cả hai **phải sạc lại bằng tài nguyên** trước khi dùng lần tiếp theo.
-    - Còn mở: né tránh hay miễn thương cho Khói; sạc bằng Dầu, Sắt hay điện; thời lượng, sức chịu của khiên, bán kính.
+    - **Chốt thêm (04/11/2026):**
+        - Khói: đạn bắn vào quân bên trong có **xác suất trượt** (không miễn thương). Trong sim, tỉ lệ trượt dùng `Rng` có seed để vẫn tất định.
+        - Sạc lại bằng **điện** cho cả hai (Khói tạm dùng điện, xem lại khi cân bằng). Hậu cần tự lo việc sạc, đúng nguyên tắc "Tư lệnh, không phải tài xế".
+        - Thời lượng ≈ **một đợt tấn công**, số tạm **10 giây**.
+    - Còn mở: sạc ở đâu (chỉ khi drone ở trong vùng lưới điện, hay rút từ tổng điện của phe ở bất cứ đâu); sức chịu của khiên; tỉ lệ trượt trong khói; bán kính; thời gian sạc.
 
 ---
 
@@ -322,6 +326,6 @@ Giữ lại ý tưởng trong kho thiết kế để phát triển thành bản 
 Khi chốt chỉ số (bước 4), kịch bản đã đạt sẽ chuyển thành kiểm thử bắt buộc trong `npm test`.
 
 **Còn mở:**
-- Drone Khiên/Khói: đã chốt hạn chế (thời gian cố định + sạc bằng tài nguyên); còn mở chi tiết ở mục #23.
+- Drone Khiên/Khói: đã chốt hạn chế (10 giây, khiên vỡ theo sát thương, khói cho đạn xác suất trượt, sạc bằng điện); còn mở: sạc ở đâu và các con số, xem mục #23.
 - Thêm kịch bản thiết kế cho các ý đồ khác (Falcon tấn công SkyGuard, 3 Drone cảm tử hạ Lynx, 2–3 Lynx hạ một máy bay…) khi các loại quân đó có trong game.
 - Thứ tự đưa quân vào game: đề xuất đợt 1 là 7 loại đang có, chỉnh theo mô tả mới; sau đó Drone Sửa Chữa, Pháo Tự Hành, Drone Trinh Sát (ba loại này tạo combo).
