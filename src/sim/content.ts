@@ -76,6 +76,29 @@ export interface WeaponSpec {
   /** Công phá: cắt được đường ray, phá mìn (khi các thứ đó có trong game). Không ảnh hưởng sát thương. */
   breach?: boolean;
   visual: WeaponVisual;
+
+  // ---- Cơ chế bắn (Docs/ARMY_DESIGN.md). Tất cả là tùy chọn và dùng chung: quân nào khai báo thì có. ----
+  /** Bắn theo loạt: `shots` viên cách nhau `interval` giây; bắn hết loạt mới nạp lại `cooldown` giây. */
+  burst?: { shots: number; interval: number };
+  /** Tầm bắn tối thiểu (m): mục tiêu đứng gần hơn thì không bắn được (Pháo). */
+  minRange?: number;
+  /** Lộ vị trí: bắn xong thì đối phương nhìn thấy xuyên sương mù trong chừng này giây (Pháo). */
+  reveal?: number;
+  /** Độ tản (m): điểm rơi lệch ngẫu nhiên trong vòng tròn bán kính này, không bám mục tiêu (Tên Lửa Loạt). */
+  scatter?: number;
+  /** Vừa chạy vừa bắn: sát thương giảm `dmg` (tỉ lệ) và mỗi viên có xác suất `miss` bắn trượt (SkyGuard). */
+  movePenalty?: { dmg: number; miss: number };
+  /**
+   * Triển khai (Lockdown): đứng yên đủ `time` giây thì tầm bắn +`range`, sát thương +`dmg` (tỉ lệ).
+   * `required`: chưa triển khai xong thì không bắn được (dàn phóng phải dựng xong mới xả loạt).
+   */
+  deploy?: { time: number; range: number; dmg: number; required?: boolean };
+  /** Tháp pháo xoay chậm (độ/giây): phải quay nòng về mục tiêu rồi mới bắn được (Titan). */
+  traverse?: number;
+  /** Ném bom rải thảm: bom rơi theo đường bay thẳng phía trước máy bay, không bám mục tiêu (Valkyrie). */
+  carpet?: boolean;
+  /** Đạn pháo bay cầu vồng: hệ thống phòng thủ điểm (pointDefense) bắn chặn được. */
+  interceptable?: boolean;
 }
 
 export interface UnitSpec {
@@ -112,6 +135,10 @@ export interface UnitSpec {
   cargo?: number;
   /** Hào quang chỉ huy: bán kính và hệ số tốc bắn cho quân đồng minh. */
   aura?: { radius: number; fireRate: number };
+  /** Giáp mặt trước: đạn tới từ phía trước thân xe (trong góc ±`arc` độ) giảm `reduce` sát thương (Titan). */
+  frontArmor?: { reduce: number; arc: number };
+  /** Phòng thủ điểm: chặn `charges` viên đạn pháo (interceptable); mỗi `recharge` giây hồi 1 lượt (Xe Tư Lệnh). */
+  pointDefense?: { charges: number; recharge: number };
   features: string[];
   beats: EntityId[];
   fears: EntityId[];
@@ -227,9 +254,11 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     captureWeight: 2.2,
     weapon: { name: "Pháo kép 40mm", dmgGround: 44, dmgAir: 32, range: 20, cooldown: 1.05, dmgType: "normal", splash: 2, visual: "cannon" },
     aura: { radius: 13.5, fireRate: 1.18 },
+    pointDefense: { charges: 2, recharge: 20 },
     features: [
       "Hào quang chỉ huy (13.5m): quân đồng minh xung quanh bắn nhanh hơn 18%.",
       "Chiếm mỏ nhanh gấp 2.2 lần một xe thường.",
+      "Phòng thủ điểm: bắn chặn 2 viên đạn pháo đầu tiên, mỗi 20 giây hồi 1 lượt.",
       "Có từ đầu trận, không chế tạo thêm được. Bị diệt là thua ngay.",
       "Kỹ năng [Q][E][R] sẽ có sau bản MVP."
     ],
@@ -312,10 +341,13 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     sight: 22,
     radius: 1.9,
     captureWeight: 1,
-    weapon: { name: "Pháo chính 120mm", dmgGround: 136, dmgAir: 0, range: 19.5, cooldown: 3, dmgType: "he", splash: 1, visual: "cannon" },
+    weapon: { name: "Pháo chính 120mm", dmgGround: 136, dmgAir: 0, range: 19.5, cooldown: 3, dmgType: "he", splash: 1, visual: "cannon", traverse: 60 },
+    frontArmor: { reduce: 0.25, arc: 60 },
     features: [
       "Đạn nổ 120mm: diệt xe nhẹ, san nhà xưởng; nổ lan nhỏ (1m) nên chỉ trúng cả cụm khi địch dồn sát.",
       "Giáp Nặng: súng máy chỉ gây một nửa sát thương. Là lá chắn đi đầu đội hình.",
+      "Giáp góc nghiêng: đạn tới từ mặt trước (±60°) giảm thêm 25%. Bị đánh vào sườn và đuôi thì không.",
+      "Tháp pháo xoay chậm (60°/giây): phải quay nòng về mục tiêu rồi mới bắn.",
       "Không bắn được máy bay: cần SkyGuard đi kèm."
     ],
     beats: ["lynx", "skyguard", "hq", "factory"],
@@ -340,9 +372,24 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     sight: 28,
     radius: 1.6,
     captureWeight: 1,
-    weapon: { name: "Tên lửa tầm nhiệt", dmgGround: 0, dmgAir: 56, range: 26.5, cooldown: 0.9, dmgType: "he", splash: 1.5, visual: "missile" },
+    weapon: {
+      name: "Loạt 5 tên lửa tầm nhiệt",
+      dmgGround: 0,
+      dmgAir: 30,
+      range: 26.5,
+      cooldown: 2.4,
+      dmgType: "he",
+      splash: 1.5,
+      visual: "missile",
+      burst: { shots: 5, interval: 0.15 },
+      movePenalty: { dmg: 0.25, miss: 0.3 },
+      deploy: { time: 1.2, range: 0.25, dmg: 0.33 }
+    },
     features: [
       "Câu trả lời cho không quân: tầm bắn 26.5m, xa hơn mọi pháo mặt đất.",
+      "Bắn theo loạt 5 tên lửa rồi nạp lại 2.4 giây.",
+      "Lockdown: đứng yên 1.2 giây thì hạ chân chống, tầm +25% và sát thương +33%.",
+      "Vừa chạy vừa bắn: sát thương -25% và 30% tên lửa bắn trượt.",
       "Không cần lưới điện hay đường ray: phòng không mang theo được ra tiền tuyến.",
       "Chỉ bắn máy bay: bị xe tăng áp sát thì vô phương chống đỡ."
     ],
@@ -369,10 +416,21 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     sight: 30,
     radius: 1.8,
     captureWeight: 0,
-    weapon: { name: "Tên lửa không đối không / đất", dmgGround: 55, dmgAir: 70, range: 22, cooldown: 0.5, dmgType: "ap", splash: 0, visual: "missile" },
+    weapon: {
+      name: "Pháo tự động 30mm",
+      dmgGround: 22,
+      dmgAir: 26,
+      range: 22,
+      cooldown: 2.2,
+      dmgType: "ap",
+      splash: 0,
+      visual: "bullet",
+      burst: { shots: 8, interval: 0.1 }
+    },
     fuel: { tank: 40, burn: 1.2, turnRate: 110 },
     features: [
-      "Tên lửa xuyên giáp: diệt xe tăng và máy bay ném bom; bắn xe nhẹ kém hiệu quả.",
+      "Pháo 30mm xuyên giáp: diệt xe tăng và máy bay ném bom; bắn xe nhẹ kém hiệu quả.",
+      "Bổ nhào xả một loạt 8 viên, rồi vòng lại nạp đợt bắn tiếp (2.2 giây).",
       "Bình dầu 40L, đốt 1.2L/s: khoảng 33 giây bay mỗi lần xuất kích.",
       "Chỉ cất cánh khi còn ít nhất 35% dầu; xuống 24% (hoặc vừa đủ dầu bay về nếu đang ở xa) thì tự bay về Sân Đáp.",
       "Nạp dầu khoảng 4 giây tại bãi đậu, trừ vào kho Dầu. Kho cạn thì máy bay nằm sân.",
@@ -401,10 +459,23 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     sight: 26,
     radius: 2.4,
     captureWeight: 0,
-    weapon: { name: "Chuỗi 3 bom quán tính", dmgGround: 98, dmgAir: 0, range: 23, cooldown: 0.42, dmgType: "he", splash: 4.6, breach: true, visual: "bomb" },
+    weapon: {
+      name: "Chuỗi 6 bom rải thảm",
+      dmgGround: 98,
+      dmgAir: 0,
+      range: 23,
+      cooldown: 6,
+      dmgType: "he",
+      splash: 4.6,
+      breach: true,
+      visual: "bomb",
+      burst: { shots: 6, interval: 0.25 },
+      carpet: true
+    },
     fuel: { tank: 60, burn: 1.4, turnRate: 76 },
     features: [
-      "Rải chuỗi 3 quả bom rơi theo quỹ đạo parabol, nổ lan 4.6m. Bom công phá: san phẳng nhà xưởng.",
+      "Rải thảm: thả chuỗi 6 quả bom nổ liên hoàn dọc đường bay thẳng, nổ lan 4.6m. Bom công phá: san phẳng nhà xưởng.",
+      "Mỗi lượt ném xong phải vòng lại nạp 6 giây.",
       "Mục tiêu lý tưởng: Xưởng Xe, Sân Đáp và cụm xe tăng Titan.",
       "Ngoặt chậm: cần tiêm kích hộ tống."
     ],

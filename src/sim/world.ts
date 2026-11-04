@@ -7,8 +7,8 @@
  *   8. đạn tới đích → trừ máu   9. dọn xác   10. sương mù   11. kiểm tra thắng thua
  * Không có gì phụ thuộc thời gian thật hay số ngẫu nhiên không seed, nên cùng seed + cùng lệnh thì ra cùng trận.
  */
-import { BUILDINGS, RULES, UNITS, type BuildingId, type DmgType, type Res, type Side, type UnitId, type UnitSpec, type WeaponSpec, type WeaponVisual } from "./content";
-import { clamp, DEG, dist2, Rng, turnStep, turnToward, type TurnStep } from "./fmath";
+import { BUILDINGS, RULES, UNITS, type BuildingId, type Res, type Side, type UnitId, type UnitSpec, type WeaponSpec, type WeaponVisual } from "./content";
+import { clamp, dcos, DEG, dist2, Rng, turnStep, turnToward, type TurnStep } from "./fmath";
 import { Grid } from "./grid";
 import { CELL, EDGE, GRID, HQ_POS, MINES } from "./map";
 import type { AlertKind, Building, Command, Entity, Mine, Order, Shot, SideState, SimEvent, Target, Unit, WinReason } from "./types";
@@ -56,6 +56,30 @@ function airTurn(kind: UnitId): TurnStep {
   return t;
 }
 const TMP = { x: 0, z: 0 };
+
+/** Bước xoay tháp pháo mỗi tick, tính sẵn theo tốc độ xoay (độ/giây). */
+const TRAVERSE = new Map<number, TurnStep>();
+function traverseStep(degPerSec: number): TurnStep {
+  let t = TRAVERSE.get(degPerSec);
+  if (!t) {
+    t = turnStep(degPerSec * DEG * DT);
+    TRAVERSE.set(degPerSec, t);
+  }
+  return t;
+}
+/** Nòng lệch dưới ~5° là coi như đã ngắm trúng. */
+const AIM_COS = dcos(5 * DEG);
+/** Bom rơi từ độ cao bay tới đất mất chừng này giây (bom trôi theo đà máy bay). */
+const BOMB_FALL = 1.2;
+const COS_CACHE = new Map<number, number>();
+function cosDeg(deg: number): number {
+  let c = COS_CACHE.get(deg);
+  if (c === undefined) {
+    c = dcos(deg * DEG);
+    COS_CACHE.set(deg, c);
+  }
+  return c;
+}
 
 /** Vòng tròn ô cho sương mù, tính sẵn theo bán kính (đơn vị ô). */
 const DISCS = new Map<number, Int16Array>();
@@ -192,6 +216,11 @@ export class World {
 
   visibleTo(side: Side, e: Target | Mine): boolean {
     if (e.cat !== "mine" && e.side === side) return true;
+    // Lộ vị trí sau khi bắn (Pháo): thấy xuyên sương mù trong vài giây
+    if (e.cat === "unit") {
+      const rv = UNITS[e.kind].weapon?.reveal;
+      if (rv && this.tick - e.lastShot <= sec(rv)) return true;
+    }
     if (e.cat === "building") {
       const vis = this.sides[side].vis;
       for (const c of e.cells) if (vis[c] === 1) return true;
@@ -319,6 +348,12 @@ export class World {
       maxHp: spec.hp,
       cooldown: 0,
       lastShot: -1000,
+      burst: 0,
+      still: 0,
+      aimX: hx,
+      aimZ: hz,
+      pd: spec.pointDefense?.charges ?? 0,
+      pdT: 0,
       order: "idle",
       tx: px,
       tz: pz,
@@ -381,6 +416,7 @@ export class World {
       rallySet: false,
       cooldown: 0,
       lastShot: -1000,
+      burst: 0,
       targetId: 0,
       cells,
       pads: kind === "airfield" ? [0, 0, 0, 0] : [],
@@ -1052,9 +1088,21 @@ export class World {
     this.follow(u);
   }
 
-  private inRange(x: number, z: number, w: WeaponSpec, t: Target): boolean {
-    const reach = w.range + this.radiusOf(t) * (t.cat === "building" ? 1 : 0.5);
-    return dist2(x, z, t.x, t.z) <= reach * reach;
+  private inRange(x: number, z: number, w: WeaponSpec, t: Target, range = w.range): boolean {
+    const reach = range + this.radiusOf(t) * (t.cat === "building" ? 1 : 0.5);
+    const d2 = dist2(x, z, t.x, t.z);
+    if (w.minRange && d2 < w.minRange * w.minRange) return false;
+    return d2 <= reach * reach;
+  }
+
+  /** Đã triển khai xong (Lockdown) chưa: đứng yên đủ lâu. */
+  private deployed(src: Unit | Building, w: WeaponSpec): boolean {
+    return !!w.deploy && src.cat === "unit" && src.still >= sec(w.deploy.time);
+  }
+
+  /** Tầm bắn thực tế: cộng thêm khi đã triển khai. */
+  private reach(src: Unit | Building, w: WeaponSpec): number {
+    return this.deployed(src, w) ? w.range * (1 + w.deploy!.range) : w.range;
   }
 
   /** Chọn mục tiêu: giữ mục tiêu cũ nếu còn hợp lệ, nếu không thì chọn gần nhất (ưu tiên quân có vũ khí, rồi mới tới công trình). */
@@ -1070,7 +1118,7 @@ export class World {
       if (e.side === side || e.hp <= 0 || e === self || !this.canHit(w, e)) continue;
       const r = range + UNITS[e.kind].radius * 0.5;
       const d2 = dist2(x, z, e.x, e.z);
-      if (d2 > r * r || !this.visibleTo(side, e)) continue;
+      if (d2 > r * r || (w.minRange && d2 < w.minRange * w.minRange) || !this.visibleTo(side, e)) continue;
       const score = d2 + (UNITS[e.kind].weapon ? 0 : 60);
       if (score < bestScore) {
         bestScore = score;
@@ -1081,7 +1129,7 @@ export class World {
       if (b.side === side || b.hp <= 0 || !this.canHit(w, b)) continue;
       const r = range + Math.max(BUILDINGS[b.kind].half[0], BUILDINGS[b.kind].half[1]);
       const d2 = dist2(x, z, b.x, b.z);
-      if (d2 > r * r || !this.visibleTo(side, b)) continue;
+      if (d2 > r * r || (w.minRange && d2 < w.minRange * w.minRange) || !this.visibleTo(side, b)) continue;
       const score = d2 + 400;
       if (score < bestScore) {
         bestScore = score;
@@ -1104,6 +1152,7 @@ export class World {
       return;
     }
     const w = UNITS[u.kind].weapon;
+    const range = w ? this.reach(u, w) : 0;
     let fireAt: Target | null = null;
     switch (u.order) {
       case "attack": {
@@ -1113,15 +1162,15 @@ export class World {
           break;
         }
         fireAt = t;
-        if (this.inRange(u.x, u.z, w, t)) this.halt(u);
+        if (this.inRange(u.x, u.z, w, t, range)) this.halt(u);
         else this.chase(u, t);
         break;
       }
       case "amove": {
-        const t = w ? this.acquire(u, w, w.range + IDLE_ACQUIRE_BONUS) : null;
+        const t = w ? this.acquire(u, w, range + IDLE_ACQUIRE_BONUS) : null;
         if (t && w) {
           fireAt = t;
-          if (this.inRange(u.x, u.z, w, t)) this.halt(u);
+          if (this.inRange(u.x, u.z, w, t, range)) this.halt(u);
           else this.chase(u, t);
         } else {
           if (u.chasing || u.path.length === 0) {
@@ -1134,14 +1183,14 @@ export class World {
       }
       case "move": {
         if (this.follow(u)) this.setIdle(u);
-        if (w) fireAt = this.acquire(u, w, w.range);
+        if (w) fireAt = this.acquire(u, w, range);
         break;
       }
       case "idle": {
-        const t = w ? this.acquire(u, w, w.range + IDLE_ACQUIRE_BONUS) : null;
+        const t = w ? this.acquire(u, w, range + IDLE_ACQUIRE_BONUS) : null;
         if (t && w) {
           fireAt = t;
-          if (this.inRange(u.x, u.z, w, t)) this.halt(u);
+          if (this.inRange(u.x, u.z, w, t, range)) this.halt(u);
           else if (dist2(u.x, u.z, u.tx, u.tz) < LEASH * LEASH) this.chase(u, t);
           else this.halt(u);
         } else if (dist2(u.x, u.z, u.tx, u.tz) > 16) {
@@ -1161,7 +1210,59 @@ export class World {
         break;
       }
     }
+    if (w) this.aim(u, w, fireAt);
     if (fireAt && w) this.tryFire(u, w, fireAt);
+    // Lockdown: đếm thời gian đứng yên (chạy là mất triển khai)
+    u.still = u.moved ? 0 : Math.min(u.still + 1, 100000);
+    this.rechargePd(u);
+  }
+
+  /** Tháp pháo xoay về mục tiêu (hoặc về hướng thân khi rảnh) với tốc độ giới hạn. */
+  private aim(u: Unit, w: WeaponSpec, t: Target | null): void {
+    if (!w.traverse) {
+      u.aimX = u.hx;
+      u.aimZ = u.hz;
+      return;
+    }
+    let dx = u.hx;
+    let dz = u.hz;
+    if (t) {
+      const l = Math.sqrt(dist2(u.x, u.z, t.x, t.z));
+      if (l > 1e-6) {
+        dx = (t.x - u.x) / l;
+        dz = (t.z - u.z) / l;
+      }
+    }
+    turnToward(u.aimX, u.aimZ, dx, dz, traverseStep(w.traverse), TMP);
+    u.aimX = TMP.x;
+    u.aimZ = TMP.z;
+  }
+
+  private rechargePd(u: Unit): void {
+    const pd = UNITS[u.kind].pointDefense;
+    if (!pd || u.pd >= pd.charges) return;
+    if (++u.pdT >= sec(pd.recharge)) {
+      u.pd++;
+      u.pdT = 0;
+    }
+  }
+
+  /** Điểm ngẫu nhiên (có seed) trong hình tròn đơn vị: lấy mẫu loại bỏ, không dùng lượng giác. */
+  private randDisc(): [number, number] {
+    for (let i = 0; i < 16; i++) {
+      const x = this.rng.next() * 2 - 1;
+      const z = this.rng.next() * 2 - 1;
+      if (x * x + z * z <= 1) return [x, z];
+    }
+    return [0, 0];
+  }
+
+  /** Nhịp bắn: hết loạt thì nạp lại `cooldown`, đang giữa loạt thì chờ `burst.interval`. */
+  private nextCooldown(src: Unit | Building, w: WeaponSpec): number {
+    if (!w.burst) return w.cooldown;
+    if (src.burst <= 0) src.burst = w.burst.shots;
+    src.burst--;
+    return src.burst > 0 ? w.burst.interval : w.cooldown;
   }
 
   private auraFactor(u: Unit): number {
@@ -1172,19 +1273,77 @@ export class World {
   }
 
   private tryFire(src: Unit | Building, w: WeaponSpec, t: Target): boolean {
-    if (src.cooldown > 0 || !this.inRange(src.x, src.z, w, t)) return false;
+    if (src.cooldown > 0 || !this.inRange(src.x, src.z, w, t, this.reach(src, w))) return false;
     if (this.sandbox?.hold[src.side]) return false;
     const air = this.isAirborne(t);
-    const dmg = air ? w.dmgAir : w.dmgGround;
+    let dmg = air ? w.dmgAir : w.dmgGround;
     if (dmg <= 0) return false;
-    let cd = w.cooldown;
+    const ground = src.cat === "unit" && src.air === "none";
+    const d = Math.sqrt(dist2(src.x, src.z, t.x, t.z));
+    // Tháp pháo xoay chậm: nòng chưa về đúng hướng thì chưa bắn
+    if (w.traverse && ground && d > 1e-6 && (src.aimX * (t.x - src.x) + src.aimZ * (t.z - src.z)) / d < AIM_COS) return false;
+    const deployed = this.deployed(src, w);
+    if (w.deploy?.required && !deployed) return false;
+    if (deployed) dmg *= 1 + w.deploy!.dmg;
+    let miss = false;
+    if (w.movePenalty && ground && src.moved) {
+      dmg *= 1 - w.movePenalty.dmg;
+      miss = this.rng.next() < w.movePenalty.miss;
+    }
+    let cd = this.nextCooldown(src, w);
     if (src.cat === "unit") cd /= this.auraFactor(src);
     else if (BUILDINGS[src.kind].power < 0) cd /= Math.max(0.1, src.powerFrac);
     src.cooldown = Math.max(1, Math.round(cd * TICK_RATE));
     src.lastShot = this.tick;
-    const d = Math.sqrt(dist2(src.x, src.z, t.x, t.z));
+    // Điểm rơi: bám mục tiêu, trừ khi bắn trượt hoặc vũ khí có độ tản
+    let target = t.id;
+    let tx = t.x;
+    let tz = t.z;
+    if (miss) {
+      const [ox, oz] = this.randDisc();
+      const l = Math.sqrt(ox * ox + oz * oz) || 1;
+      const off = this.radiusOf(t) + 2.5;
+      tx += (ox / l) * off;
+      tz += (oz / l) * off;
+      target = 0;
+    } else if (w.scatter) {
+      const [ox, oz] = this.randDisc();
+      tx += ox * w.scatter;
+      tz += oz * w.scatter;
+      target = 0;
+    }
+    const talt = t.cat === "unit" ? t.alt : 0;
     const ticks = Math.max(1, Math.ceil((d / SHOT_SPEED[w.visual]) * TICK_RATE));
-    this.shots.push({ side: src.side, src: src.id, target: t.id, tx: t.x, tz: t.z, dmg, dmgType: w.dmgType, splash: w.splash, hitAir: air, impact: this.tick + ticks, visual: w.visual });
+    this.pushShot(src, w, target, tx, tz, talt, dmg, air, ticks);
+    if (ground && !w.traverse) {
+      // quay thân về phía mục tiêu khi đứng bắn (xe có tháp pháo xoay thì thân giữ nguyên, chỉ nòng quay)
+      if (src.path.length === 0) {
+        const l = d || 1;
+        src.hx = (t.x - src.x) / l;
+        src.hz = (t.z - src.z) / l;
+      }
+    }
+    return true;
+  }
+
+  private pushShot(src: Unit | Building, w: WeaponSpec, target: number, tx: number, tz: number, talt: number, dmg: number, air: boolean, ticks: number): void {
+    this.shots.push({
+      side: src.side,
+      src: src.id,
+      target,
+      tx,
+      tz,
+      dmg,
+      dmgType: w.dmgType,
+      sx: src.x,
+      sz: src.z,
+      talt,
+      interceptable: !!w.interceptable,
+      splash: w.splash,
+      hitAir: air,
+      impact: this.tick + ticks,
+      visual: w.visual
+    });
     this.events.push({
       t: "shot",
       src: src.id,
@@ -1193,21 +1352,23 @@ export class World {
       x: src.x,
       z: src.z,
       alt: src.cat === "unit" ? src.alt : 0,
-      target: t.id,
-      tx: t.x,
-      tz: t.z,
-      talt: t.cat === "unit" ? t.alt : 0,
+      target,
+      tx,
+      tz,
+      talt,
       ticks
     });
-    if (src.cat === "unit" && src.air === "none") {
-      // quay thân về phía mục tiêu khi đứng bắn (tháp pháo do phần vẽ lo)
-      if (src.path.length === 0) {
-        const l = d || 1;
-        src.hx = (t.x - src.x) / l;
-        src.hz = (t.z - src.z) / l;
-      }
-    }
-    return true;
+  }
+
+  /** Ném bom rải thảm: bom trôi theo đà máy bay, rơi xuống điểm phía trước đường bay, không bám mục tiêu. */
+  private dropBomb(u: Unit, w: WeaponSpec): void {
+    if (this.sandbox?.hold[u.side]) return;
+    const lead = u.speed * BOMB_FALL;
+    const tx = u.x + u.hx * lead;
+    const tz = u.z + u.hz * lead;
+    u.cooldown = Math.max(1, Math.round(this.nextCooldown(u, w) * TICK_RATE));
+    u.lastShot = this.tick;
+    this.pushShot(u, w, 0, tx, tz, 0, w.dmgGround, false, sec(BOMB_FALL));
   }
 
   // ------------------------------------------------------------------ Xe Vận Tải
@@ -1633,7 +1794,17 @@ export class World {
     u.x = clamp(u.x + u.hx * u.speed * DT, -78, 78);
     u.z = clamp(u.z + u.hz * u.speed * DT, -78, 78);
     u.alt = A.cruiseAlt;
-    if (tgt) {
+    if (w.carpet) {
+      // Rải thảm: đã bắt đầu loạt thì thả nốt dọc đường bay; loạt mới chỉ bắt đầu khi bom sẽ rơi trúng mục tiêu
+      if (u.cooldown === 0) {
+        if (u.burst > 0) this.dropBomb(u, w);
+        else if (tgt && !this.isAirborne(tgt)) {
+          const lead = u.speed * BOMB_FALL;
+          const r = w.splash + this.radiusOf(tgt);
+          if (dist2(u.x + u.hx * lead, u.z + u.hz * lead, tgt.x, tgt.z) <= r * r) this.dropBomb(u, w);
+        }
+      }
+    } else if (tgt) {
       const tx = tgt.x - u.x;
       const tz = tgt.z - u.z;
       const d = Math.sqrt(tx * tx + tz * tz);
@@ -1705,10 +1876,30 @@ export class World {
   }
 
   /** Sát thương gốc nhân hệ số Giáp × Đạn (RULES.damageMatrix). Không rẽ nhánh theo tên quân: mọi thứ là dữ liệu. */
-  private damage(e: Target, amount: number, by: Side, type: DmgType): void {
+  private damage(e: Target, s: Shot): void {
     if (e.hp <= 0) return;
+    const by = s.side;
+    let amount = s.dmg;
+    if (e.cat === "unit") {
+      const spec = UNITS[e.kind];
+      // Phòng thủ điểm: bắn chặn đạn pháo bay cầu vồng
+      if (s.interceptable && e.pd > 0) {
+        e.pd--;
+        e.pdT = 0;
+        this.events.push({ t: "hit", side: e.side, visual: "pulse", x: e.x, z: e.z, alt: e.alt + 3, splash: 0 });
+        return;
+      }
+      // Giáp mặt trước: đạn tới từ phía trước thân xe
+      const fa = spec.frontArmor;
+      if (fa) {
+        const dx = s.sx - e.x;
+        const dz = s.sz - e.z;
+        const l = Math.sqrt(dx * dx + dz * dz);
+        if (l > 1e-6 && (e.hx * dx + e.hz * dz) / l >= cosDeg(fa.arc)) amount *= 1 - fa.reduce;
+      }
+    }
     const armor = e.cat === "unit" ? UNITS[e.kind].armorClass : BUILDINGS[e.kind].armorClass;
-    const dealt = amount * RULES.damageMatrix[armor][type];
+    const dealt = amount * RULES.damageMatrix[armor][s.dmgType];
     this.sides[by].stats.damageDealt += Math.min(dealt, e.hp);
     e.hp -= dealt;
     if (e.cat === "unit") {
@@ -1729,7 +1920,7 @@ export class World {
       const t = this.target(s.target);
       let x = s.tx;
       let z = s.tz;
-      let alt = 0;
+      let alt = s.target === 0 ? s.talt : 0;
       if (t) {
         x = t.x;
         z = t.z;
@@ -1739,15 +1930,15 @@ export class World {
         for (const u of this.units) {
           if (u.side === s.side || u.hp <= 0 || (u.alt > AIRBORNE_ALT) !== s.hitAir) continue;
           const r = s.splash + UNITS[u.kind].radius * 0.5;
-          if (dist2(x, z, u.x, u.z) <= r * r) this.damage(u, s.dmg, s.side, s.dmgType);
+          if (dist2(x, z, u.x, u.z) <= r * r) this.damage(u, s);
         }
         if (!s.hitAir)
           for (const b of this.buildings) {
             if (b.side === s.side || b.hp <= 0) continue;
             const r = s.splash + Math.max(BUILDINGS[b.kind].half[0], BUILDINGS[b.kind].half[1]);
-            if (dist2(x, z, b.x, b.z) <= r * r) this.damage(b, s.dmg, s.side, s.dmgType);
+            if (dist2(x, z, b.x, b.z) <= r * r) this.damage(b, s);
           }
-      } else if (t) this.damage(t, s.dmg, s.side, s.dmgType);
+      } else if (t) this.damage(t, s);
       this.events.push({ t: "hit", side: s.side, visual: s.visual, x, z, alt, splash: s.splash });
     }
     this.shots = keep;
@@ -1920,6 +2111,11 @@ export function hashWorld(w: World): number {
     num(u.fuel);
     num(u.cargo);
     num(u.cooldown);
+    num(u.burst);
+    num(u.still);
+    num(u.aimX);
+    num(u.aimZ);
+    num(u.pd);
   }
   for (const b of w.buildings) {
     num(b.id);

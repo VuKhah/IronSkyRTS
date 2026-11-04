@@ -186,8 +186,9 @@ export class Views {
         if (u.cargo > 0) a.add(u.cargoRes === "oil" ? "loadOil" : "load");
       } else {
         const tid = u.targetId || u.autoTarget;
-        v.rig.setAim?.(this.aimAt(world, x, z, v.yaw, tid));
         const w = spec.weapon;
+        // xe có tháp pháo xoay chậm (sim giữ hướng nòng): vẽ đúng hướng nòng thật, để thấy độ trễ khi xoay
+        v.rig.setAim?.(w?.traverse ? wrap(Math.atan2(u.aimX, u.aimZ) - v.yaw) : this.aimAt(world, x, z, v.yaw, tid));
         if (w && (w.visual === "bullet" || w.visual === "cannon") && (world.tick - u.lastShot) * DT < Math.max(0.45, w.cooldown * 0.9)) a.add("fire");
       }
     }

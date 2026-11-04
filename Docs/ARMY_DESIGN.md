@@ -503,6 +503,40 @@ Nguyên nhân: quân chủ yếu chết ở **giữa bản đồ trong các tr�
 
 ---
 
+## Cơ chế bắn (05/11/2026)
+
+Người dùng chốt: thêm **toàn bộ cơ chế bắn** đã mô tả trước, cân bằng sau khi mọi thứ ổn. Mỗi cơ chế là một **trường dữ liệu dùng chung** trong vũ khí (`WeaponSpec`) hoặc binh chủng (`UnitSpec`) ở `content.ts`, không viết riêng cho từng quân. Quân sau này (Pháo Tự Hành, Xe Tên Lửa Loạt) chỉ cần khai báo số. Mỗi cơ chế có kiểm thử hành vi riêng trong `src/sim/mechanics.test.ts`.
+
+| Cơ chế | Trường dữ liệu | Đang dùng | Số tạm |
+|---|---|---|---|
+| Bắn theo loạt rồi nạp lại | `burst: { shots, interval }` + `cooldown` = thời gian nạp | SkyGuard, Falcon, Valkyrie | SkyGuard 5 quả × 0,15 giây, nạp 2,4 giây · Falcon 8 viên 30mm × 0,1 giây, nạp 2,2 giây · Valkyrie 6 bom × 0,25 giây, nạp 6 giây |
+| Lockdown (triển khai khi đứng yên) | `deploy: { time, range, dmg, required? }` | SkyGuard | 1,2 giây → tầm +25%, sát thương +33% |
+| Vừa chạy vừa bắn bị phạt | `movePenalty: { dmg, miss }` | SkyGuard | −25% sát thương, 30% tên lửa trượt (trượt = rơi lệch, không trúng) |
+| Tháp pháo xoay chậm | `traverse` (độ/giây) | Titan | 60°/giây; thân xe không còn tự quay theo mục tiêu, chỉ nòng quay |
+| Giáp góc nghiêng mặt trước | `frontArmor: { reduce, arc }` | Titan | −25% với đạn tới trong ±60° phía trước thân xe |
+| Phòng thủ điểm | `pointDefense: { charges, recharge }` + đạn `interceptable` | Xe Tư Lệnh | chặn 2 viên, 20 giây hồi 1 lượt. Chỉ chặn đạn `interceptable` (đạn pháo bay cầu vồng của Pháo Tự Hành, chưa có) |
+| Ném bom rải thảm | `carpet` | Valkyrie | bom trôi theo đà máy bay, rơi thành vệt dọc đường bay, không bám mục tiêu |
+| Tầm bắn tối thiểu | `minRange` | (chờ Pháo Tự Hành) | |
+| Lộ vị trí sau khi bắn | `reveal` (giây) | (chờ Pháo Tự Hành) | 2 giây |
+| Độ tản | `scatter` (m) | (chờ Xe Tên Lửa Loạt) | |
+| Dựng dàn phóng mới được bắn | `deploy.required` | (chờ Xe Tên Lửa Loạt) | |
+
+Mọi phép ngẫu nhiên (trượt, tản) dùng RNG có seed của trận, lấy điểm trong vòng tròn bằng phép lấy mẫu loại bỏ (không dùng lượng giác), nên vẫn tất định.
+
+**Ảnh hưởng tới các kịch bản thiết kế (chưa cân bằng):**
+- `titan-vs-lynx-sim`: Titan thắng, còn 15% máu. Giáp mặt trước làm Titan trâu hơn khi Lynx lao thẳng vào.
+- `falcon-flyover-skyguard`: hạ 0/10. Một lượt bay ngang chỉ ăn đúng **một loạt**: bắn xong 5 quả thì nạp 2,4 giây, trong lúc đó Falcon bay được ~43 m, ra khỏi tầm. Hàng Falcon đầu bị bắn còn 41/540 máu (chỉ thiếu chút nữa là rơi cả hàng). Khi cân bằng sẽ chỉnh số quả mỗi loạt, sát thương mỗi quả hoặc thời gian nạp.
+- Hai kịch bản này tạm ra khỏi danh sách kiểm thử bắt buộc, cân bằng xong đưa lại. `titan-vs-lynx-seq` và `reaction-time` vẫn đạt.
+- AI đấu AI: **8/20 trận hòa** (trước khi thêm cơ chế khoảng một nửa). Bắn loạt có giúp một chút nhưng chưa giải quyết thế giằng co quanh mỏ (xem mục Bước 4).
+
+**Chưa làm (không phải cơ chế bắn, hoặc cần thứ chưa có):**
+- Pháo Tự Hành "địa lợi tầm cao" (+20% tầm khi đứng trên đồi): cần sim đọc độ cao địa hình theo cách tất định.
+- Valkyrie: chọn đội hình mũi tên, cất cánh rồi không nhận lệnh điều hướng, nạp bom lâu gấp đôi.
+- Xe Tư Lệnh: Tổng động viên (kỹ năng kích hoạt), tự tăng tốc rút chạy khi dưới 30% máu.
+- Drone cảm tử, Drone Khiên/Khói (đạn trượt trong vùng khói): chờ có các loại drone.
+
+---
+
 ## Bài học từ đội hình Battle Drones (04/11/2026)
 
 So sánh chi tiết ở `Docs/BATTLEDRONES_REFERENCE.md` mục 5. Quyết định của người dùng:

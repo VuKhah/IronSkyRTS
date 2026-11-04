@@ -34,6 +34,16 @@ export interface Unit {
   /** Số tick còn lại trước khi được bắn tiếp. */
   cooldown: number;
   lastShot: number;
+  /** Số viên còn lại của loạt đang bắn (0 = loạt mới). */
+  burst: number;
+  /** Số tick đã đứng yên liên tục (Lockdown). */
+  still: number;
+  /** Hướng nòng tháp pháo (vector đơn vị). Quân không có `traverse` thì luôn trùng hướng thân. */
+  aimX: number;
+  aimZ: number;
+  /** Phòng thủ điểm: số lượt chặn còn lại và bộ đếm hồi lượt (tick). */
+  pd: number;
+  pdT: number;
   order: UnitOrder;
   /** Đích của lệnh, hoặc "điểm neo" khi đứng yên. */
   tx: number;
@@ -90,6 +100,7 @@ export interface Building {
   rallySet: boolean;
   cooldown: number;
   lastShot: number;
+  burst: number;
   targetId: number;
   cells: number[];
   /** Sân Đáp: id máy bay giữ từng bãi (0 = trống). */
@@ -132,6 +143,12 @@ export interface Shot {
   tz: number;
   dmg: number;
   dmgType: DmgType;
+  /** Điểm khai hỏa (giáp mặt trước tính hướng đạn tới từ đây). */
+  sx: number;
+  sz: number;
+  /** Độ cao điểm rơi (đạn trượt / bom không bám mục tiêu dùng số này để vẽ tiếng nổ). */
+  talt: number;
+  interceptable: boolean;
   splash: number;
   hitAir: boolean;
   impact: number;
