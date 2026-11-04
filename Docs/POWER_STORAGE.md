@@ -73,3 +73,31 @@ Hiện tại thiếu điện thì **mọi thứ** cùng chậm theo một tỉ l
 2. Trạm Tích Điện có được **đốt Dầu để nạp pin** không, hay chỉ nạp từ điện miễn phí của HQ?
 3. Có làm **kỹ năng Quá Tải** (mục 3.3) không? Nếu có thì cả hai loại hay chỉ một?
 4. Khi thiếu điện: **chia đều** như hiện tại hay **theo ưu tiên** (mục 3.4)?
+
+## 6. Phán quyết của người dùng và bản đã làm (04/11/2026)
+
+> *"Ta là Tư lệnh (đô đốc tối cao), vạch chiến thuật chứ không điều khiển một đội quân. Cắt điện, chỉnh đốt Dầu là việc của nhân sự hậu cần. Ta chỉ muốn biết điện bao nhiêu, tốn bao nhiêu. Trước khi thiếu điện phải có thông báo để ta phản ứng."*
+
+Nguyên tắc này đã được ghi vào `AGENTS.md` và áp dụng cho mọi hệ thống hậu cần về sau (ray, tiếp tế, đạn).
+
+| Câu hỏi (mục 5) | Đã làm |
+|---|---|
+| 1. Đốt Dầu theo tải | ✅ Tự động. Nhà máy chỉ đốt theo điện thực phát (0.01 Dầu/MW/s); không tải thì **dự phòng**, không đốt |
+| 2. Pin có đốt Dầu để nạp không | ✅ Hậu cần tự quyết: luôn nạp bằng điện thừa của HQ; chỉ dùng phần rảnh của nhà máy (đốt Dầu) khi kho Dầu > 250 |
+| 3. Kỹ năng Quá Tải | ⏸ Để sau (đòn bẩy chiến thuật của Tư lệnh, hợp tinh thần nhưng ngoài phạm vi lần này) |
+| 4. Thiếu điện | ✅ Tự cắt theo ưu tiên: Tháp Phòng Thủ + Radar (1) → Sân Đáp (2) → Xưởng Xe (3) |
+| Nút Tắt máy | ❌ Bỏ, vì là việc của hậu cần |
+
+**Trạm Tích Điện:** 150 Sắt, 1.200 MJ, nạp 15 MW, xả 30 MW, tự xả khi thiếu điện.
+
+**Tư lệnh thấy gì:**
+- Chip `⚡ đang dùng / khả năng phát MW · 🔋 %`. Chip đỏ khi đang thiếu điện, hoặc khi công trình đang xây sẽ làm thiếu.
+- Khi đặt công trình, dòng gợi ý hiện "Điện sau khi xây: X/Y MW ⚠ thiếu Z MW".
+
+**Báo trước** (thông báo từ "Hậu cần"):
+- Đặt công trình sẽ làm thiếu điện.
+- Dầu cho Nhà Máy Điện chỉ còn ≤ 45 giây.
+- Pin chỉ còn ≤ 25 giây.
+- Đang thiếu điện, và đã cắt điện chỗ nào.
+
+**Quan sát (chưa chạy máy giả lập theo yêu cầu):** vì đốt theo tải nên Dầu lại tích nhiều (AI có hơn 2.000 Dầu ở phút 5). Cần xem lại ở buổi bàn chỉ số.

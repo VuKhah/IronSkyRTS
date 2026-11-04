@@ -32,6 +32,8 @@ export interface Rig {
    * rig chỉ lo càng, lửa động cơ và độ nghiêng cánh.
    */
   setFlight?(airborne: boolean, roll: number): void;
+  /** Chỉ báo mức (0..1), ví dụ % pin của Trạm Tích Điện. */
+  setLevel?(k: number): void;
 }
 
 export interface Palette {

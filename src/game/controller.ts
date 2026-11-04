@@ -299,10 +299,20 @@ export class Controller implements GestureHandlers {
 
   hint(): string | null {
     switch (this.mode) {
-      case "place":
+      case "place": {
+        // dự báo điện sau khi xây (Tư lệnh biết trước, không cần tự tính)
+        let power = "";
+        if (this.me !== null && this.placeKind) {
+          const st = this.world.sides[this.me];
+          const sp = BUILDINGS[this.placeKind];
+          const use = st.powerUse + st.powerPending + Math.max(0, -sp.power);
+          const cap = st.powerCap + (sp.oilBurn ? sp.power : 0);
+          if (sp.power !== 0) power = ` · Điện sau khi xây: ${Math.round(use)}/${Math.round(cap)} MW${use > cap ? ` ⚠ thiếu ${Math.ceil(use - cap)} MW` : ""}`;
+        }
         return (
-          (this.mouse.used ? "Nhấp để đặt · giữ Shift để đặt nhiều · chuột phải để hủy" : "Chạm để chọn chỗ đặt, rồi bấm ✓") + (this.placeReason ? ` — ${this.placeReason}` : "")
+          (this.mouse.used ? "Nhấp để đặt · Shift đặt nhiều · chuột phải hủy" : "Chạm để chọn chỗ, rồi bấm ✓") + power + (this.placeReason ? ` — ${this.placeReason}` : "")
         );
+      }
       case "amove":
         return "Chọn điểm: quân sẽ đánh mọi kẻ địch trên đường đi";
       case "rally":
@@ -337,12 +347,6 @@ export class Controller implements GestureHandlers {
         break;
       case "cancel":
         if (b) this.issue({ t: "cancel", building: b.id });
-        break;
-      case "toggle":
-        if (b) {
-          this.issue({ t: "toggle", building: b.id });
-          this.sfx.ui("click");
-        }
         break;
       case "sell":
         if (b) {

@@ -84,10 +84,15 @@ function newSide(): SideState {
     known: new Set(),
     mono: 0,
     monoRes: null,
-    powerGen: 0,
+    powerCap: 0,
     powerUse: 0,
+    powerPending: 0,
     eff: 1,
-    alerts: { commander: -1000, base: -1000, hauler: -1000, lowfuel: -1000, nooil: -1000, mineLost: -1000 },
+    battery: 0,
+    batteryMax: 0,
+    batteryFlow: 0,
+    oilBurn: 0,
+    alerts: { commander: -1000, base: -1000, hauler: -1000, lowfuel: -1000, nooil: -1000, mineLost: -1000, powerShort: -1000, powerForecast: -1000, oilLow: -1000, batteryLow: -1000 },
     stats: { unitsBuilt: 0, unitsLost: 0, kills: 0, ironMined: 0, oilMined: 0, buildingsBuilt: 0 }
   };
 }
@@ -359,8 +364,10 @@ export class World {
       targetId: 0,
       cells,
       pads: kind === "airfield" ? [0, 0, 0, 0] : [],
-      off: false,
-      active: false
+      active: false,
+      powerFrac: 1,
+      load: 0,
+      charge: 0
     };
     this.buildings.push(b);
     this.byId.set(b.id, b);
@@ -457,11 +464,6 @@ export class World {
         b.rallyX = clamp(o.x, -EDGE, EDGE);
         b.rallyZ = clamp(o.z, -EDGE, EDGE);
         b.rallySet = true;
-        break;
-      }
-      case "toggle": {
-        const b = this.ownBuilding(side, o.building);
-        if (b && BUILDINGS[b.kind].oilBurn) b.off = !b.off;
         break;
       }
       case "sell": {
@@ -581,42 +583,137 @@ export class World {
     st.oil -= cost.oil;
     const b = this.addBuilding(kind, side, x, z, false);
     this.events.push({ t: "placed", id: b.id, kind, side });
+    // báo trước: xây xong công trình này thì căn cứ có đủ điện không?
+    if (spec.power < 0) {
+      const after = st.powerUse + st.powerPending - spec.power;
+      const cap = st.powerCap;
+      if (after > cap + 1e-6) this.alert(side, "powerForecast", x, z, Math.ceil(after - cap));
+      st.powerPending -= spec.power;
+    }
   }
 
   // ------------------------------------------------------------------ công trình
 
   /**
-   * Điện, tính lại mỗi tick cho từng phe: Tổng Hành Dinh phát nền, Nhà Máy Điện đốt Dầu để phát,
-   * công trình tiêu thụ cộng dồn. Hiệu suất = phát / tiêu thụ quyết định mọi thứ chạy nhanh hay chậm.
+   * ĐIỆN — bộ phận hậu cần tự điều độ mỗi tick (Tư lệnh không phải chỉnh tay):
+   *   1. Tổng Hành Dinh phát trước (miễn phí).
+   *   2. Nhà Máy Điện bù phần còn thiếu, đốt Dầu đúng theo lượng điện phát (không tải thì không đốt).
+   *   3. Trạm Tích Điện xả bù khi vẫn thiếu; khi dư thì nạp bằng điện miễn phí của HQ,
+   *      và chỉ đốt Dầu để nạp khi kho Dầu còn dư.
+   *   4. Vẫn thiếu thì cắt theo ưu tiên: phòng thủ (1) → Sân Đáp (2) → Xưởng Xe (3).
+   * Kèm cảnh báo sớm: sắp hết Dầu cho nhà máy, pin sắp cạn, đang thiếu điện.
    */
   private computePower(): void {
+    const P = RULES.power;
+    const plantSpec = BUILDINGS["power-plant"];
+    const oilPerMwTick = ((plantSpec.oilBurn ?? 0) / plantSpec.power) * DT;
     for (const s of [0, 1] as Side[]) {
       const st = this.sides[s];
-      let gen = 0;
-      let use = 0;
+      const tier = [0, 0, 0, 0];
+      let hqCap = 0;
+      let pending = 0;
+      const plants: Building[] = [];
+      const batteries: Building[] = [];
       for (const b of this.buildings) {
         if (b.side !== s) continue;
-        if (b.hp <= 0 || !b.built) {
+        const spec = BUILDINGS[b.kind];
+        b.load = 0;
+        if (b.hp <= 0) continue;
+        if (!b.built) {
+          if (spec.power < 0) pending -= spec.power;
           b.active = false;
           continue;
         }
-        const spec = BUILDINGS[b.kind];
-        if (spec.power > 0) {
-          const burn = (spec.oilBurn ?? 0) * DT;
-          if (!b.off && st.oil >= burn) {
-            st.oil -= burn;
-            gen += spec.power;
-            b.active = true;
-          } else b.active = false;
-        } else if (spec.power < 0) use -= spec.power;
+        if (spec.oilBurn) plants.push(b);
+        else if (spec.power > 0) hqCap += spec.power;
+        else if (spec.power < 0) tier[spec.priority ?? 3] -= spec.power;
+        if (spec.storage) batteries.push(b);
       }
-      st.powerGen = gen;
-      st.powerUse = use;
-      st.eff = use <= 0 ? 1 : Math.min(1, gen / use);
+      const use = tier[1] + tier[2] + tier[3];
+      const plantFull = plants.length * plantSpec.power;
+      const plantCap = oilPerMwTick > 0 ? Math.min(plantFull, st.oil / oilPerMwTick) : plantFull;
+      let stored = 0;
+      let maxStored = 0;
+      let disCap = 0;
+      let chgCap = 0;
+      for (const b of batteries) {
+        const sp = BUILDINGS[b.kind];
+        stored += b.charge;
+        maxStored += sp.storage!;
+        disCap += Math.min(sp.dischargeMax!, b.charge / DT);
+        chgCap += Math.min(sp.chargeMax!, (sp.storage! - b.charge) / DT);
+      }
+      // điều độ: HQ → nhà máy → pin
+      const fromHq = Math.min(hqCap, use);
+      let rest = use - fromHq;
+      const fromPlants = Math.min(plantCap, rest);
+      rest -= fromPlants;
+      const fromBattery = Math.min(disCap, rest);
+      rest -= fromBattery;
+      if (rest < 1e-9) rest = 0;
+      // nạp pin bằng phần dư
+      let charge = 0;
+      let plantCharge = 0;
+      if (rest === 0 && fromBattery < 1e-9 && chgCap > 0) {
+        charge = Math.min(chgCap, hqCap - fromHq);
+        if (charge < chgCap && st.oil > P.chargeOilReserve) {
+          plantCharge = Math.min(chgCap - charge, plantCap - fromPlants);
+          charge += plantCharge;
+        }
+      }
+      const plantLoad = fromPlants + plantCharge;
+      st.oil = Math.max(0, st.oil - plantLoad * oilPerMwTick);
+      for (const b of plants) {
+        b.load = plantLoad / plants.length;
+        b.active = b.load > 1e-6;
+      }
+      const flow = charge - fromBattery;
+      for (const b of batteries) {
+        const sp = BUILDINGS[b.kind];
+        let share = 0;
+        if (flow > 0) {
+          const room = maxStored - stored;
+          share = room > 0 ? (flow * (sp.storage! - b.charge)) / room : 0;
+        } else if (flow < 0) share = stored > 0 ? (flow * b.charge) / stored : 0;
+        b.charge = Math.min(sp.storage!, Math.max(0, b.charge + share * DT));
+        b.load = share;
+        b.active = Math.abs(share) > 1e-6;
+      }
+      // cắt điện theo ưu tiên
+      let avail = use - rest;
+      const frac = [1, 1, 1, 1];
+      for (let t = 1; t <= 3; t++) {
+        const got = Math.min(tier[t], avail);
+        avail -= got;
+        frac[t] = tier[t] > 0 ? got / tier[t] : 1;
+      }
       for (const b of this.buildings) {
         if (b.side !== s || !b.built || b.hp <= 0) continue;
         const spec = BUILDINGS[b.kind];
-        if (spec.power < 0) b.active = spec.radarSight ? st.eff >= RULES.power.radarMin : st.eff > 0;
+        if (spec.power >= 0) continue;
+        b.powerFrac = frac[spec.priority ?? 3];
+        b.active = spec.radarSight ? b.powerFrac >= P.radarMin : b.powerFrac > 0;
+      }
+      st.powerCap = hqCap + plantCap;
+      st.powerUse = use;
+      st.powerPending = pending;
+      st.eff = use > 0 ? (use - rest) / use : 1;
+      st.battery = batteries.reduce((a, b) => a + b.charge, 0);
+      st.batteryMax = maxStored;
+      st.batteryFlow = flow;
+      st.oilBurn = (plantLoad * oilPerMwTick) / DT;
+      // cảnh báo sớm cho Tư lệnh
+      const hq = this.hqOf(s);
+      const ax = hq ? hq.x : 0;
+      const az = hq ? hq.z : 0;
+      if (rest > 0) this.alert(s, "powerShort", ax, az, Math.ceil(rest));
+      if (fromPlants > 1e-6 && hqCap + disCap < use) {
+        const secs = st.oil / ((fromPlants * oilPerMwTick) / DT);
+        if (secs < P.warnOilSeconds) this.alert(s, "oilLow", ax, az, Math.max(1, Math.floor(secs)));
+      }
+      if (fromBattery > 1e-6) {
+        const secs = stored / fromBattery;
+        if (secs < P.warnBatterySeconds) this.alert(s, "batteryLow", ax, az, Math.max(1, Math.floor(secs)));
       }
     }
   }
@@ -630,7 +727,7 @@ export class World {
       if (!b.built) {
         const total = sec(spec.buildTime ?? 1);
         // thiếu điện thì xây chậm (trừ chính Nhà Máy Điện và Cột Điện, để luôn gỡ được thế thiếu điện)
-        const k = spec.power > 0 || b.kind === "power-pylon" ? 1 : this.sides[b.side].eff;
+        const k = spec.power > 0 || b.kind === "power-pylon" || spec.storage ? 1 : this.sides[b.side].eff;
         b.progress += k / total;
         b.hp = Math.min(b.maxHp, b.hp + (k * b.maxHp * 0.9) / total);
         if (b.progress >= 1 - 1e-9) {
@@ -643,7 +740,7 @@ export class World {
       }
       if (b.queue.length) this.produce(b);
       if (spec.weapon) {
-        if (spec.power < 0 && this.sides[b.side].eff < RULES.power.turretMin) {
+        if (spec.power < 0 && b.powerFrac < RULES.power.turretMin) {
           b.targetId = 0;
           continue;
         }
@@ -662,7 +759,7 @@ export class World {
     if (live >= RULES.unitCap) return;
     if (us.domain === "air" && b.pads.indexOf(0) < 0) return;
     // thiếu điện thì đúc chậm (Tổng Hành Dinh tự có điện nên không bị ảnh hưởng)
-    b.prog += BUILDINGS[b.kind].power < 0 ? this.sides[b.side].eff : 1;
+    b.prog += BUILDINGS[b.kind].power < 0 ? b.powerFrac : 1;
     if (b.prog < sec(us.buildTime ?? 5)) return;
     b.prog = 0;
     b.queue.shift();
@@ -967,7 +1064,7 @@ export class World {
     if (dmg <= 0) return false;
     let cd = w.cooldown;
     if (src.cat === "unit") cd /= this.auraFactor(src);
-    else if (BUILDINGS[src.kind].power < 0) cd /= Math.max(0.1, this.sides[src.side].eff);
+    else if (BUILDINGS[src.kind].power < 0) cd /= Math.max(0.1, src.powerFrac);
     src.cooldown = Math.max(1, Math.round(cd * TICK_RATE));
     src.lastShot = this.tick;
     const d = Math.sqrt(dist2(src.x, src.z, t.x, t.z));
@@ -1290,16 +1387,18 @@ export class World {
           u.x = pad[0];
           u.z = pad[1];
           const st = this.sides[u.side];
+          const field = this.byId.get(u.padB);
+          const pw = field && field.cat === "building" ? field.powerFrac : 1;
           if (u.fuel < fuel.tank) {
             // thiếu điện thì bơm dầu chậm
-            const want = Math.min(A.refuelRate * DT * st.eff, fuel.tank - u.fuel);
+            const want = Math.min(A.refuelRate * DT * pw, fuel.tank - u.fuel);
             const got = Math.min(want, st.oil / A.oilPerLiter);
             if (got > 1e-9) {
               u.fuel += got;
               st.oil -= got * A.oilPerLiter;
-            } else if (st.eff > 0) this.alert(u.side, "nooil", u.x, u.z);
+            } else if (pw > 0) this.alert(u.side, "nooil", u.x, u.z);
           }
-          if (u.hp < u.maxHp) u.hp = Math.min(u.maxHp, u.hp + A.repairRate * DT * st.eff);
+          if (u.hp < u.maxHp) u.hp = Math.min(u.maxHp, u.hp + A.repairRate * DT * pw);
         }
         if (u.mission !== "none" && u.fuel >= fuel.tank * A.takeoffMin) this.takeoff(u);
         return;
@@ -1482,11 +1581,12 @@ export class World {
     }
   }
 
-  private alert(side: Side, what: AlertKind, x: number, z: number): void {
+  private alert(side: Side, what: AlertKind, x: number, z: number, n?: number): void {
     const st = this.sides[side];
-    if (this.tick - st.alerts[what] < sec(8)) return;
+    const gap = what === "powerShort" || what === "oilLow" || what === "batteryLow" ? sec(15) : what === "powerForecast" ? 0 : sec(8);
+    if (this.tick - st.alerts[what] < gap) return;
     st.alerts[what] = this.tick;
-    this.events.push({ t: "alert", side, what, x, z });
+    this.events.push({ t: "alert", side, what, x, z, n });
   }
 
   private damage(e: Target, amount: number, by: Side): void {
@@ -1691,6 +1791,7 @@ export function hashWorld(w: World): number {
     num(s.oil);
     num(s.mono);
     num(s.eff);
+    num(s.battery);
   }
   for (const u of w.units) {
     num(u.id);

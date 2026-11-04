@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { Ai } from "./ai";
 import { dcos, dsin } from "./fmath";
 import { HQ_POS, MINES } from "./map";
+import type { BuildingId } from "./content";
 import type { Command } from "./types";
 import { hashWorld, sec, World } from "./world";
 
@@ -92,44 +93,76 @@ describe("lõi mô phỏng", () => {
     expect(landed, "Falcon phải tự hạ cánh về sân").toBe(true);
   });
 
-  it("ĐIỆN: thiếu điện thì chậm lại, Nhà Máy Điện đốt Dầu, tắt máy thì ngừng phát", () => {
+  /** Đặt công trình ở chỗ hợp lệ gần Tổng Hành Dinh phe 0, trả về công trình vừa đặt. */
+  const placeNear = (w: World, kind: BuildingId) => {
+    const hq = w.hqOf(0)!;
+    for (let r = 10; r <= 30; r += 2)
+      for (const [dx, dz] of [[1, 0], [0, -1], [1, -1], [-1, 0], [0, 1], [-1, -1], [1, 1]] as const) {
+        const x = Math.round(hq.x + dx * r);
+        const z = Math.round(hq.z + dz * r);
+        if (w.canPlace(0, kind, x, z) === null) {
+          w.step([{ side: 0, order: { t: "build", kind, x, z } }]);
+          return w.buildings[w.buildings.length - 1];
+        }
+      }
+    throw new Error(`không đặt được ${kind}`);
+  };
+  const wait = (w: World, s: number): void => {
+    for (let i = 0; i < sec(s); i++) w.step([]);
+  };
+
+  it("ĐIỆN: hậu cần tự điều độ — báo trước khi sắp thiếu, cắt theo ưu tiên, nhà máy đốt Dầu theo tải", () => {
     const w = new World(5);
     const st = w.sides[0];
     st.iron = 9000;
     st.oil = 2000;
-    const hq = w.hqOf(0)!;
-    const place = (kind: "factory" | "airfield" | "power-plant" | "power-pylon" | "turret"): number => {
-      for (let r = 10; r <= 30; r += 2)
-        for (const [dx, dz] of [[1, 0], [0, -1], [1, -1], [-1, 0], [0, 1], [-1, -1], [1, 1]] as const) {
-          const x = Math.round(hq.x + dx * r);
-          const z = Math.round(hq.z + dz * r);
-          if (w.canPlace(0, kind, x, z) === null) {
-            w.step([{ side: 0, order: { t: "build", kind, x, z } }]);
-            return w.buildings[w.buildings.length - 1].id;
-          }
-        }
-      throw new Error(`không đặt được ${kind}`);
-    };
     w.step([]);
-    expect(st.powerGen).toBe(20);
+    expect(st.powerCap).toBe(20);
     expect(st.eff).toBe(1);
-    place("factory");
-    for (let i = 0; i < sec(12); i++) w.step([]);
-    place("airfield");
-    for (let i = 0; i < sec(14); i++) w.step([]);
-    // Xưởng 10 + Sân Đáp 15 = 25 MW > 20 MW của HQ → hiệu suất 80%
+    const factory = placeNear(w, "factory");
+    wait(w, 12);
+    const airfield = placeNear(w, "airfield");
+    // Xưởng 10 + Sân Đáp 15 = 25 MW > 20 MW của HQ → phải báo trước ngay lúc đặt
+    expect(w.events.some((e) => e.t === "alert" && e.side === 0 && e.what === "powerForecast" && e.n === 5)).toBe(true);
+    wait(w, 14);
     expect(st.powerUse).toBe(25);
     expect(st.eff).toBeCloseTo(0.8, 5);
-    const plant = place("power-plant");
-    for (let i = 0; i < sec(9); i++) w.step([]);
+    // ưu tiên: Sân Đáp (tầng 2) đủ điện, Xưởng Xe (tầng 3) nhận phần còn lại 5/10 MW
+    expect(airfield.powerFrac).toBe(1);
+    expect(factory.powerFrac).toBeCloseTo(0.5, 5);
+    placeNear(w, "power-plant");
+    wait(w, 9);
     const oil0 = st.oil;
-    for (let i = 0; i < sec(10); i++) w.step([]);
+    wait(w, 10);
     expect(st.eff).toBe(1);
-    expect(st.powerGen).toBe(60);
-    expect(oil0 - st.oil).toBeCloseTo(4, 1); // 0.4 Dầu/s × 10 s
-    w.step([{ side: 0, order: { t: "toggle", building: plant } }]);
-    w.step([]);
-    expect(st.powerGen).toBe(20);
+    expect(st.powerCap).toBe(60);
+    // đốt theo tải: nhà máy chỉ phát 5 MW → 0.05 Dầu/s × 10 s = 0.5 Dầu (chứ không phải 4 Dầu như khi đốt hết công suất)
+    expect(oil0 - st.oil).toBeCloseTo(0.5, 2);
+  });
+
+  it("ĐIỆN: Trạm Tích Điện tự nạp khi dư, tự xả đỡ căn cứ khi mất nhà máy", () => {
+    const w = new World(5);
+    const st = w.sides[0];
+    st.iron = 9000;
+    st.oil = 2000;
+    placeNear(w, "factory");
+    wait(w, 11);
+    placeNear(w, "airfield");
+    wait(w, 13);
+    const plant = placeNear(w, "power-plant");
+    wait(w, 9);
+    const bat = placeNear(w, "battery");
+    wait(w, 7);
+    wait(w, 20);
+    // Dầu còn dư (> 250) nên hậu cần dùng phần rảnh của nhà máy để nạp tối đa 15 MW
+    expect(bat.charge).toBeGreaterThan(250);
+    const before = bat.charge;
+    plant.hp = 0;
+    wait(w, 3);
+    // mất nhà máy: thiếu 5 MW nhưng pin bù đủ, căn cứ vẫn chạy 100%
+    expect(st.eff).toBe(1);
+    expect(bat.charge).toBeLessThan(before);
+    expect(st.batteryFlow).toBeLessThan(0);
   });
 
   it("ĐIỆN: chỉ xây được trong vùng của HQ / Nhà Máy Điện / Cột Điện; Cột Điện kéo vùng xây ra xa", () => {

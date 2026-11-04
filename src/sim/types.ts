@@ -94,10 +94,14 @@ export interface Building {
   cells: number[];
   /** Sân Đáp: id máy bay giữ từng bãi (0 = trống). */
   pads: number[];
-  /** Nhà Máy Điện: người chơi tắt máy để tiết kiệm Dầu. */
-  off: boolean;
-  /** Đang hoạt động: nhà máy đang phát điện / công trình tiêu thụ đang có điện / radar đang chạy. */
+  /** Đang hoạt động: nhà máy đang phát / pin đang nạp hoặc xả / công trình tiêu thụ đang có điện / radar đang chạy. */
   active: boolean;
+  /** Công trình tiêu thụ: phần điện được cấp (0..1), do hậu cần phân theo ưu tiên. */
+  powerFrac: number;
+  /** Nhà Máy Điện: công suất đang phát (MW). Trạm Tích Điện: dòng điện (MW, dương = nạp, âm = xả). */
+  load: number;
+  /** Trạm Tích Điện: điện đang chứa (MJ). */
+  charge: number;
 }
 
 export interface Mine {
@@ -144,15 +148,14 @@ export type Order =
   | { t: "produce"; building: number; kind: UnitId }
   | { t: "cancel"; building: number }
   | { t: "rally"; building: number; x: number; z: number }
-  | { t: "sell"; building: number }
-  | { t: "toggle"; building: number };
+  | { t: "sell"; building: number };
 
 export interface Command {
   side: Side;
   order: Order;
 }
 
-export type AlertKind = "commander" | "base" | "hauler" | "lowfuel" | "nooil" | "mineLost";
+export type AlertKind = "commander" | "base" | "hauler" | "lowfuel" | "nooil" | "mineLost" | "powerShort" | "powerForecast" | "oilLow" | "batteryLow";
 export type WinReason = "commander" | "buildings" | "monopoly" | "timeout";
 
 export type SimEvent =
@@ -163,7 +166,7 @@ export type SimEvent =
   | { t: "placed"; id: number; kind: BuildingId; side: Side }
   | { t: "built"; id: number; kind: BuildingId; side: Side }
   | { t: "captured"; mine: number; res: Res; side: Side | -1; prev: Side | -1 }
-  | { t: "alert"; side: Side; what: AlertKind; x: number; z: number }
+  | { t: "alert"; side: Side; what: AlertKind; x: number; z: number; n?: number }
   | { t: "monopoly"; side: Side; res: Res }
   | { t: "end"; winner: Side | 2; reason: WinReason };
 
@@ -188,10 +191,18 @@ export interface SideState {
   /** Số tick đang giữ độc quyền liên tục. */
   mono: number;
   monoRes: Res | null;
-  /** Điện: tổng phát, tổng tiêu thụ (MW) và hiệu suất = phát / tiêu thụ (tối đa 1). */
-  powerGen: number;
+  /** Điện (hậu cần tự điều độ): khả năng phát (HQ + nhà máy còn Dầu), tiêu thụ, tiêu thụ của công trình đang xây (MW). */
+  powerCap: number;
   powerUse: number;
+  powerPending: number;
+  /** Phần tiêu thụ được đáp ứng (0..1). */
   eff: number;
+  /** Pin: đang chứa / tối đa (MJ), dòng (MW, dương = nạp). */
+  battery: number;
+  batteryMax: number;
+  batteryFlow: number;
+  /** Dầu Nhà Máy Điện đang đốt (Dầu/giây). */
+  oilBurn: number;
   alerts: Record<AlertKind, number>;
   stats: SideStats;
 }

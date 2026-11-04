@@ -75,7 +75,7 @@ export class Overlay {
       const sel = selected.has(b.id);
       const spec = BUILDINGS[b.kind];
       // công trình của ta đang thiếu điện / nhà máy không phát: nhấp nháy tia sét
-      const unpowered = b.side === viewer && b.built && ((spec.power < 0 && world.sides[b.side].eff < 1) || (spec.oilBurn !== undefined && !b.active));
+      const unpowered = b.side === viewer && b.built && spec.power < 0 && b.powerFrac < 1;
       if (unpowered && Math.floor(performance.now() / 500) % 2 === 0) {
         const q = cam.project(b.x, groundY(b.x, b.z) + 4, b.z, w, h);
         if (q.visible) {

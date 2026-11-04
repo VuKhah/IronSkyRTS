@@ -10,6 +10,7 @@ Bộ nhớ kỹ thuật của dự án. Đọc hết trước khi sửa code.
 - **Khung tính năng:** `Docs/FEATURE_FRAMEWORK.md` là danh sách việc cần làm chính, có ưu tiên P1–P3 và trạng thái. Cập nhật trạng thái mỗi khi xong một tính năng.
 - **Tài liệu thiết kế:** `Docs/GAME_DESIGN_DOCUMENT.md` và `Docs/GAME_CONTENT.md` được viết cho bản Unity; nội dung thiết kế vẫn dùng được, còn các chi tiết riêng của Unity thì bỏ qua.
 - **Ngôn ngữ:** tiếng Việt có dấu đầy đủ, cả trong game lẫn khi giao tiếp.
+- **NGUYÊN TẮC THIẾT KẾ: người chơi là Tư lệnh tối cao, không phải người lái xe** (phán quyết 04/11/2026). Mọi tối ưu hậu cần (điều độ điện, đốt Dầu, nạp/xả pin, cắt điện chỗ nào trước, sau này là ray, tiếp tế, đạn) do "bộ phận hậu cần" **tự động** làm. Người chơi chỉ thấy **con số tổng** (có bao nhiêu, dùng bao nhiêu) và được **báo trước** khi sắp thiếu để kịp phản ứng. Không thêm nút bật/tắt hay chỉnh tay kiểu vi quản lý; quyền của người chơi là quyết định chiến lược: xây gì, ở đâu, đánh lúc nào.
 
 ## 2. Công nghệ dự kiến
 - **Vite + TypeScript + Three.js**, xuất ra web tĩnh (PWA) và đăng trên GitHub Pages.

@@ -219,7 +219,7 @@ Vì sao đốt Dầu: máy giả lập cho thấy Dầu dư trong khi Sắt cạ
 
 ## 16. Ý tưởng chờ thực hiện (ghi lại 04/11/2026, làm ở lượt sau)
 
-1. **Điện đốt Dầu quá hao, và chưa có cách lưu trữ điện.** → Đã nghiên cứu: xem `Docs/POWER_STORAGE.md` (chờ người dùng chốt 4 câu hỏi).
+1. **Điện đốt Dầu quá hao, và chưa có cách lưu trữ điện.** → ✅ Đã làm (04/11): hậu cần tự điều độ, đốt Dầu theo tải, Trạm Tích Điện, cắt điện theo ưu tiên, báo trước. Xem `Docs/POWER_STORAGE.md` mục 6.
    - Vấn đề: Nhà Máy Điện đốt Dầu liên tục kể cả khi điện đang dư, nên Dầu bị phí. Ngoài nút Tắt máy thì chưa có gì để "để dành" phần điện thừa.
    - Hướng cần thiết kế: một công trình **lưu trữ điện** (ví dụ Trạm Tích Điện / pin), nạp từ phần điện dư và xả ra khi thiếu. Cần chốt:
      - Dung lượng mỗi trạm (MWh), tốc độ nạp và xả.

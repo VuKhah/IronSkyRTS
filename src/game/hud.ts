@@ -55,7 +55,7 @@ export class Hud {
             : `<div class="chip-res iron" title="Sắt: xây công trình và đúc quân"><i></i><span data-n="iron"></span><small data-n="ironRate"></small></div>
                <div class="chip-res oil" title="Dầu: nhiên liệu máy bay"><i></i><span data-n="oil"></span></div>
                <div class="chip-res units" title="Số quân / giới hạn"><i></i><span data-n="units"></span></div>
-               <div class="chip-res power" title="Điện: phát / tiêu thụ (MW). Thiếu điện thì đúc, xây, bắn và nạp dầu đều chậm lại"><i>⚡</i><span data-n="power"></span></div>`
+               <div class="chip-res power" title="Điện: đang dùng / khả năng phát (MW) · % pin dự trữ. Hậu cần tự điều độ; thiếu điện thì cắt theo ưu tiên: phòng thủ → Sân Đáp → Xưởng Xe"><i>⚡</i><span data-n="power"></span></div>`
         }
         <span class="spacer"></span>
         <div class="clock" data-n="clock">00:00</div>
@@ -120,7 +120,7 @@ export class Hud {
         return `units:${kinds}`;
       }
       case "building":
-        return `b:${ctx.b.id}:${ctx.b.built}:${ctx.own}:${ctx.b.off}`;
+        return `b:${ctx.b.id}:${ctx.b.built}:${ctx.own}`;
       case "enemy":
         return `e:${ctx.u.id}`;
       case "mine":
@@ -169,7 +169,6 @@ export class Hud {
           html += `<div class="row">
             ${b.queue.length || !b.built ? "" : ""}
             ${s.produces ? `<button class="btn" data-act="cancel"><span>↶</span><span>Hủy đúc</span></button><button class="btn" data-act="rally" data-mode="rally"><span>⚑</span><span>Tập kết</span></button>` : ""}
-            ${s.oilBurn && b.built ? `<button class="btn" data-act="toggle"><span>⏻</span><span>${b.off ? "Bật máy" : "Tắt máy"}</span><span class="cost">${b.off ? "phát điện" : "tiết kiệm Dầu"}</span></button>` : ""}
             ${b.kind !== "hq" ? `<button class="btn danger" data-act="sell"><span>$</span><span data-sell>${b.built ? "Bán" : "Hủy xây"}</span><span class="cost">${b.built ? "hoàn 50%" : "hoàn 100%"}</span></button>` : ""}
             <button class="btn" data-act="deselect"><span>✕</span><span>Bỏ chọn</span></button>
           </div>`;
@@ -233,11 +232,16 @@ export class Hud {
           status = `Đang đúc ${u.short} ${Math.floor(k * 100)}%${b.queue.length > 1 ? ` · chờ ${b.queue.length - 1}` : ""}`;
           if (u.domain === "air" && !b.pads.includes(0)) status = "Hết bãi đậu: chờ máy bay cất cánh";
         } else if (b.kind === "airfield") status = `Bãi đậu ${b.pads.filter((p) => p).length}/${RULES.air.pads}`;
-        if (b.built && s.oilBurn) status = b.off ? "Đã tắt máy" : b.active ? `Phát ${s.power} MW · đốt ${s.oilBurn} Dầu/s` : "Hết Dầu: không phát điện";
-        else if (b.built && s.power < 0 && ctx.own) {
-          const eff = w.sides[b.side].eff;
-          if (eff < 1) status = `${status ? status + " · " : ""}${s.radarSight && !b.active ? "Radar tắt vì thiếu điện" : `Thiếu điện: chạy ${Math.round(eff * 100)}%`}`;
-        }
+        if (b.built && s.oilBurn)
+          status = b.active
+            ? `Đang phát ${Math.round(b.load)}/${s.power} MW · đốt ${((b.load / s.power) * s.oilBurn).toFixed(2)} Dầu/s`
+            : w.sides[b.side].oil <= 0.01
+              ? "Hết Dầu: không phát điện"
+              : "Dự phòng: chưa cần điện, không đốt Dầu";
+        else if (b.built && s.storage)
+          status = `Pin ${Math.round(b.charge)}/${s.storage} MJ · ${b.load > 0.01 ? `đang nạp ${b.load.toFixed(1)} MW` : b.load < -0.01 ? `đang xả ${(-b.load).toFixed(1)} MW` : "chờ"}`;
+        else if (b.built && s.power < 0 && ctx.own && b.powerFrac < 1)
+          status = `${status ? status + " · " : ""}${s.radarSight && !b.active ? "Radar tắt vì thiếu điện" : `Thiếu điện: chạy ${Math.round(b.powerFrac * 100)}%`}`;
         const owner = ctx.own ? "" : `<small>${SIDE_NAME[b.side]}</small>`;
         return `<b>${esc(s.name)}</b>${this.hpBar(b.hp, b.maxHp)}<small>${status}</small>${owner}`;
       }
@@ -275,14 +279,15 @@ export class Hud {
       set("iron", fmt(st.iron));
       set("oil", fmt(st.oil));
       set("units", `${w.unitCount(me)}/${RULES.unitCap}`);
-      set("power", `${st.powerGen}/${st.powerUse} MW`);
-      this.topbar.querySelector(".chip-res.power")?.classList.toggle("low", st.eff < 1);
+      set("power", `${Math.round(st.powerUse)}/${Math.round(st.powerCap)} MW${st.batteryMax > 0 ? ` · 🔋${Math.round((st.battery / st.batteryMax) * 100)}%` : ""}`);
+      // đỏ khi đang thiếu, hoặc khi công trình đang xây sẽ làm thiếu
+      this.topbar.querySelector(".chip-res.power")?.classList.toggle("low", st.eff < 1 || st.powerUse + st.powerPending > st.powerCap + 1e-6);
       this.topbar.querySelector(".chip-res.oil")?.classList.toggle("low", st.oil < 40);
     } else {
       const sides = this.topbar.querySelectorAll<HTMLElement>(".spectate-res .side");
       ([0, 1] as Side[]).forEach((s) => {
         const st = w.sides[s];
-        const txt = `${s === 0 ? "Lam" : "Đỏ"} · Sắt ${fmt(st.iron)} · Dầu ${fmt(st.oil)} · ⚡${st.powerGen}/${st.powerUse} · Quân ${w.unitCount(s)}`;
+        const txt = `${s === 0 ? "Lam" : "Đỏ"} · Sắt ${fmt(st.iron)} · Dầu ${fmt(st.oil)} · ⚡${Math.round(st.powerUse)}/${Math.round(st.powerCap)} · Quân ${w.unitCount(s)}`;
         if (sides[s].textContent !== txt) sides[s].textContent = txt;
       });
     }

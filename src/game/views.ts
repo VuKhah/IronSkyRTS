@@ -194,8 +194,9 @@ export class Views {
     if (b.built) {
       if (b.kind === "factory") {
         if (b.queue.length && b.active) a.add("work");
-      } else if (b.kind === "power-plant" || b.kind === "radar" || spec.power < 0) {
+      } else if (b.kind === "power-plant" || b.kind === "radar" || b.kind === "battery" || spec.power < 0) {
         if (b.active) a.add("work");
+        if (spec.storage) v.rig.setLevel?.(b.charge / spec.storage);
       } else a.add("work");
       if (spec.weapon) {
         v.rig.setAim?.(this.aimAt(world, b.x, b.z, 0, b.targetId));

@@ -34,6 +34,7 @@ export type BuildingId =
   | "turret"
   | "power-plant"
   | "power-pylon"
+  | "battery"
   | "radar"
   | "outpost"
   | "oil-extractor"
@@ -125,6 +126,12 @@ export interface BuildingSpec {
   zone?: number;
   /** Trạm Radar: tầm nhìn xuyên sương mù khi đủ điện (m). */
   radarSight?: number;
+  /** Công trình tiêu thụ điện: thứ tự được cấp điện khi thiếu (1 = trước nhất). Hậu cần tự phân. */
+  priority?: 1 | 2 | 3;
+  /** Trạm Tích Điện: dung lượng (MJ = MW × giây), nạp và xả tối đa (MW). */
+  storage?: number;
+  chargeMax?: number;
+  dischargeMax?: number;
   strictPower?: boolean;
   weapon?: WeaponSpec;
   magazine?: number;
@@ -142,7 +149,15 @@ export const RULES = {
   hqTrickle: 2,
   unitCap: 40,
   /** Điện: hiệu suất = phát / tiêu thụ. Radar cần ít nhất mức này để chạy. */
-  power: { radarMin: 0.5, turretMin: 0.1 },
+  power: {
+    radarMin: 0.5,
+    turretMin: 0.1,
+    /** Hậu cần chỉ đốt Dầu để nạp pin khi kho Dầu còn trên mức này. */
+    chargeOilReserve: 250,
+    /** Báo trước khi Dầu cho Nhà Máy Điện / pin dự trữ chỉ còn đủ chừng này giây. */
+    warnOilSeconds: 45,
+    warnBatterySeconds: 25
+  },
   sellRefund: 0.5,
   queueMax: 5,
   captureRadius: 8,
@@ -410,6 +425,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     half: [3.4, 3],
     produces: ["lynx", "titan", "skyguard"],
     power: -10,
+    priority: 3,
     features: ["Hàng chờ tối đa 5 xe.", "Đặt điểm tập kết để xe mới tự chạy ra tiền tuyến.", "Xây thêm xưởng để đúc quân nhanh hơn."]
   },
   airfield: {
@@ -427,6 +443,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     half: [5.5, 4.3],
     produces: ["falcon"],
     power: -15,
+    priority: 2,
     features: [
       "4 bãi đậu: mỗi sân nuôi được tối đa 4 máy bay.",
       "Máy bay đậu được nạp 10L dầu mỗi giây (trừ vào kho Dầu) và sửa 25 HP mỗi giây.",
@@ -447,6 +464,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     sight: 24,
     half: [1.5, 1.5],
     power: -5,
+    priority: 1,
     weapon: { name: "Pháo kép tự động 30mm", dmgGround: 30, dmgAir: 30, range: 20, cooldown: 0.6, splash: 0, visual: "bullet" },
     features: ["Bắn cả xe lẫn máy bay trong tầm 20m.", "Rẻ và chắc: giữ mỏ và cửa ngõ căn cứ. Dùng Cột Điện để xây được tháp ở xa căn cứ.", "Thiếu điện thì bắn chậm, mất hẳn điện thì ngừng bắn."]
   },
@@ -482,8 +500,8 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     oilBurn: 0.4,
     zone: 18,
     features: [
-      "Phát +40 MW, đốt 0.4 Dầu mỗi giây. Kho Dầu cạn thì ngừng phát.",
-      "Có thể tắt máy để tiết kiệm Dầu khi chưa cần điện.",
+      "Công suất 40 MW. Hậu cần tự điều độ: chỉ đốt Dầu theo lượng điện thực dùng (tối đa 0.4 Dầu/s); không có tải thì chờ dự phòng, không đốt.",
+      "Kho Dầu cạn thì ngừng phát — sẽ có cảnh báo trước khoảng 45 giây.",
       "Mở vùng xây dựng 18m. Mục tiêu béo bở của Falcon địch."
     ]
   },
@@ -508,6 +526,29 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
       "Mất cột thì công trình đã xây vẫn chạy, nhưng không xây thêm được ở đó."
     ]
   },
+  battery: {
+    id: "battery",
+    kind: "building",
+    name: "Trạm Tích Điện",
+    label: "PIN 1.200 MJ",
+    role: "Tích điện thừa, tự xả khi thiếu để căn cứ không sụp ngay.",
+    mvp: true,
+    cost: { iron: 150, oil: 0 },
+    buildTime: 6,
+    hp: 500,
+    armor: 0.1,
+    sight: 10,
+    half: [1.6, 1.4],
+    power: 0,
+    storage: 1200,
+    chargeMax: 15,
+    dischargeMax: 30,
+    features: [
+      "Chứa 1.200 MJ (đủ cấp 30 MW trong 40 giây). Nạp tối đa 15 MW, xả tối đa 30 MW.",
+      "Hậu cần tự nạp bằng điện thừa của Tổng Hành Dinh; chỉ đốt Dầu để nạp khi kho Dầu còn dư.",
+      "Tự xả khi nhà máy bị phá hoặc hết Dầu: cho Tư lệnh thời gian phản ứng. Bị phá thì mất hết điện đang chứa."
+    ]
+  },
   radar: {
     id: "radar",
     kind: "building",
@@ -522,6 +563,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     sight: 12,
     half: [1.6, 1.6],
     power: -15,
+    priority: 1,
     radarSight: 55,
     features: ["Nhìn thấy mọi thứ trong bán kính 55m, xuyên sương mù.", "Tốn 15 MW; hiệu suất điện dưới 50% thì radar tắt."]
   },
@@ -616,7 +658,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
 };
 
 /** Công trình người chơi được xây trong bản MVP, theo thứ tự trên thanh xây. */
-export const MVP_BUILDABLE: readonly BuildingId[] = ["factory", "airfield", "power-plant", "power-pylon", "turret", "radar"];
+export const MVP_BUILDABLE: readonly BuildingId[] = ["factory", "airfield", "power-plant", "battery", "power-pylon", "turret", "radar"];
 
 export function isUnitId(id: string): id is UnitId {
   return id in UNITS;

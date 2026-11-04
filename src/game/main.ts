@@ -62,7 +62,7 @@ function makeThumbs(): Map<string, string> {
   const out = new Map<string, string>();
   try {
     const shooter = new Thumbnailer();
-    for (const id of ["hauler", "lynx", "titan", "skyguard", "falcon", "factory", "airfield", "turret", "power-plant", "power-pylon", "radar"] as const) {
+    for (const id of ["hauler", "lynx", "titan", "skyguard", "falcon", "factory", "airfield", "turret", "power-plant", "power-pylon", "battery", "radar"] as const) {
       const rig = buildModel(id, "lam");
       out.set(id, shooter.shoot(rig));
       disposeRig(rig);
@@ -81,13 +81,17 @@ const REASON: Record<string, string> = {
   timeout: "Hết giờ"
 };
 
-const ALERT_TEXT: Record<string, string> = {
-  commander: "Xe Tư Lệnh đang bị tấn công!",
-  base: "Căn cứ đang bị tấn công!",
-  hauler: "Xe Vận Tải bị tấn công",
-  lowfuel: "Máy bay sắp hết dầu, đang quay về Sân Đáp",
-  nooil: "Kho Dầu cạn: máy bay không nạp được!",
-  mineLost: "Ta vừa mất một mỏ!"
+const ALERT_TEXT: Record<string, (n: number) => string> = {
+  commander: () => "Xe Tư Lệnh đang bị tấn công!",
+  base: () => "Căn cứ đang bị tấn công!",
+  hauler: () => "Xe Vận Tải bị tấn công",
+  lowfuel: () => "Máy bay sắp hết dầu, đang quay về Sân Đáp",
+  nooil: () => "Kho Dầu cạn: máy bay không nạp được!",
+  mineLost: () => "Ta vừa mất một mỏ!",
+  powerShort: (n) => `Hậu cần: thiếu ${n} MW — đã cắt điện Xưởng Xe / Sân Đáp trước, giữ điện cho phòng thủ`,
+  powerForecast: (n) => `Hậu cần: xây xong sẽ thiếu ${n} MW — cần thêm Nhà Máy Điện`,
+  oilLow: (n) => `Hậu cần: Dầu cho Nhà Máy Điện chỉ còn khoảng ${n} giây!`,
+  batteryLow: (n) => `Hậu cần: pin dự trữ chỉ còn khoảng ${n} giây!`
 };
 
 function startGame(mode: Mode, seed: number, skip = 0): void {
@@ -271,9 +275,9 @@ function startGame(mode: Mode, seed: number, skip = 0): void {
           break;
         case "alert":
           if (e.side === me) {
-            hud.alert(ALERT_TEXT[e.what] ?? "", "bad");
+            hud.alert(ALERT_TEXT[e.what]?.(e.n ?? 0) ?? "", "bad");
             ctrl.lastAlert = { x: e.x, z: e.z };
-            if (e.what === "commander" || e.what === "base" || e.what === "nooil") sfx.ui("alert");
+            if (e.what === "commander" || e.what === "base" || e.what === "nooil" || e.what === "powerShort" || e.what === "oilLow" || e.what === "batteryLow") sfx.ui("alert");
           }
           break;
         case "captured": {
