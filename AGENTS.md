@@ -76,6 +76,7 @@ Bộ nhớ kỹ thuật của dự án. Đọc hết trước khi sửa code.
 - **Đổi luật chơi thì chạy lại `npm run simulate`**, không chỉ `npm run balance`: AI được viết theo luật cũ. Ví dụ: bỏ sát thương mặt đất của SkyGuard làm trận AI đấu AI hòa gần một nửa, dù mọi kịch bản vẫn đạt (`Docs/ARMY_DESIGN.md` Bước 4).
 - **Chỉnh nhịp trận bằng máu, không bằng sát thương:** nhân máu mọi quân cùng hệ số thì ai thắng ai giữ nguyên, chỉ có trận dài ra. Đừng nhân theo vũ khí công trình, vì làm vậy phòng thủ áp đảo.
 - **Máy bay đuổi mục tiêu bằng cách quay mũi về nó sẽ bay vòng tròn quanh mục tiêu** (bán kính ngoặt giới hạn). `fly()` có lượt bổ nhào: bay qua thì giữ thẳng (`u.ext`) tới khi đủ xa mới quay lại. Máy bay lái bằng `steerAir()`: tốc độ ngoặt tăng giảm dần (`u.yawRate`), đừng quay lại kiểu ngoặt hết cỡ ngay vì đường bay và độ nghiêng cánh sẽ giật. Có kiểm thử trong `mechanics.test.ts`.
+- **Tìm đường thất bại thì đừng thử lại mỗi tick**: A* thất bại quét gần cả bản đồ (~10 ms). `chase()` chỉ tìm lại khi tới hẹn (1 giây) hoặc đã đi hết một đường tìm được; đuổi công trình thì nhắm ô trống gần nhất cạnh nó (ô ở tâm bị chính nó chiếm). Lỗi cũ: 2 xe đuổi một tháp làm trận AI chậm 20 lần.
 - `tsconfig` tắt `noUncheckedIndexedAccess`: mã lưới / mảng kiểu (typed array) truy cập chỉ số liên tục, bật lên thì toàn dấu `!` mà không an toàn hơn.
 
 ## 5. Quy trình và lệnh

@@ -7,7 +7,7 @@
  * Chỉ kiểm HÀNH VI (có loạt, có chặn, có trượt…), không khóa con số cân bằng.
  */
 import { describe, expect, it } from "vitest";
-import { UNITS, type BuildingId, type Side, type UnitId, type WeaponSpec } from "./content";
+import { RULES, UNITS, type BuildingId, type Side, type UnitId, type WeaponSpec } from "./content";
 import { fromUV } from "./map";
 import { ARENA_U } from "./scenarios";
 import type { Building, SimEvent, Unit } from "./types";
@@ -277,7 +277,7 @@ describe("cơ chế bắn", () => {
     for (let i = 0; i < sec(15); i++) {
       w.step([]);
       low = Math.min(low, f.alt);
-      if (low < 6 && f.alt > 11) climbedBack = true;
+      if (low <= UNITS.falcon.diveAlt! + 0.5 && f.alt >= RULES.air.cruiseAlt - 0.5) climbedBack = true;
     }
     expect(low).toBeLessThanOrEqual(UNITS.falcon.diveAlt! + 0.5);
     expect(climbedBack).toBe(true);

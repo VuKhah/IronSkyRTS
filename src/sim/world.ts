@@ -63,7 +63,7 @@ const AIM_COS = dcos(5 * DEG);
 /** Lái máy bay: vùng nắn nhẹ ±30° và thời gian để tốc độ ngoặt lên hết cỡ (giây). */
 const STEER_SOFT_COS = dcos(30 * DEG);
 const STEER_SOFT_SIN = dsin(30 * DEG);
-const STEER_RAMP = 0.4;
+const STEER_RAMP = 0.25;
 /** Khoảng cách giữa hai nòng súng đôi (m), ví dụ súng ở hai bên cánh. */
 const BARREL_GAP = 1.6;
 /** Bom rơi từ độ cao bay tới đất mất chừng này giây (bom trôi theo đà máy bay). */
@@ -1079,8 +1079,18 @@ export class World {
   }
 
   private chase(u: Unit, t: Target): void {
-    if (!u.chasing || u.pathI * 2 >= u.path.length || this.tick >= u.repathAt) {
-      this.setPath(u, t.x, t.z);
+    // Đi hết đường mà chưa tới tầm thì tìm lại ngay. Tìm thất bại (đường rỗng) thì chờ hẹn lại, đừng thử lại
+    // mỗi tick: mỗi lần thất bại A* quét gần cả bản đồ (~10 ms), hai xe là đủ làm trận chậm hẳn.
+    const done = u.pathI * 2 >= u.path.length;
+    if (!u.chasing || this.tick >= u.repathAt || (done && u.path.length > 0)) {
+      let gx = t.x;
+      let gz = t.z;
+      // công trình chiếm chỗ ô ở tâm: nhắm ô trống gần nhất cạnh nó
+      if (t.cat === "building") {
+        const f = this.grid.nearestFree(t.x, t.z, 10);
+        if (f) [gx, gz] = f;
+      }
+      this.setPath(u, gx, gz);
       u.repathAt = this.tick + sec(1);
       u.chasing = true;
     }
@@ -1795,7 +1805,8 @@ export class World {
         const turnR = spec.speed / (fuel.turnRate * DEG);
         const facing = d > 1e-6 ? (u.hx * dx + u.hz * dz) / d : 1;
         if (!u.ext && d < turnR * 1.5 && facing < 0.3) u.ext = true;
-        if (u.ext && d >= Math.max(w.range * 0.8, turnR * 2.6)) u.ext = false;
+        // chỉ kéo ra đủ để lúc quay lại mục tiêu nằm ngoài vòng ngoặt (không rơi vào bay vòng tròn), không hơn
+        if (u.ext && d >= Math.max(turnR * 1.8, 8)) u.ext = false;
         if (u.ext) {
           dx = u.hx;
           dz = u.hz;
