@@ -54,7 +54,7 @@ Ký hiệu: ✅ đang có trong game · 🗓 đã lên kế hoạch · 💡 từ
 - **Ghi chú:** Tàu không thể bị phá hủy nhưng vẫn có thể bị tấn công, có gia tốc và khi đã gia tốc thì không một đơn vị mặt đất nào đuổi kịp
 - **Chốt bước 2:**
     - Tàu rất khó đánh nát. Hết máu thì **tê liệt** (dừng lại, tự sửa rồi chạy tiếp), không bị xóa khỏi trận.
-    - **Phá ray kiểu "cà vạt Sherman"**: không phải quân nào cũng phá được ray. Chỉ **đòn nổ phá công sự** (đạn Pháo Tự Hành, tên lửa Xe Tên Lửa Loạt, bom Valkyrie; sau này thêm mìn, công binh phá hoại) mới cắt được ray. Đạn pháo xe tăng hay súng máy bắn trúng ray thì không có tác dụng.
+    - **Phá ray kiểu "cà vạt Sherman"**: không phải quân nào cũng phá được ray. Chỉ **đòn công phá** (đạn Pháo Tự Hành, tên lửa Xe Tên Lửa Loạt, bom Valkyrie; sau này thêm mìn, công binh phá hoại) mới cắt được ray. Đạn pháo xe tăng hay súng máy bắn trúng ray thì không có tác dụng.
     - Cần bản đồ có đường ray: **ngoài phạm vi MVP**.
 
 ---
@@ -288,7 +288,8 @@ Giữ lại ý tưởng trong kho thiết kế để phát triển thành bản 
 ### Trạng thái (04/11/2026)
 - **Bước 1 xong (bản nháp đầu):** đã điền vai trò cho Tư Lệnh, Xe Vận Tải, Tàu Hỏa, Lynx, Titan, SkyGuard, Pháo Tự Hành, Xe Tên Lửa Loạt, Falcon, Valkyrie, Drone Trinh Sát, Drone Sửa Chữa và loại mới **Drone Khiên/Khói** (#23).
 - **Tạm bỏ:** Xe Công Binh (trùng Drone Sửa Chữa), toàn bộ Bộ binh, Trực Thăng Tấn Công (Drone làm thay), Trực Thăng Vận Tải (để dành cho biển đảo), Pháo Đài Di Động (Pháo Tự Hành làm thay). Hải quân để dành cho bản mở rộng.
-- **Bước 3 đang làm:** bản đề xuất ma trận Giáp × Đạn ở cuối file, chờ người dùng duyệt.
+- **Bước 3 xong (04/11/2026):** ma trận 4 lớp giáp × 3 loại đạn đã duyệt.
+- **Bước 4 xong phần chính (04/11/2026):** ma trận đã vào code, 4 kịch bản thiết kế đạt và thành kiểm thử bắt buộc. Còn mở: AI đấu AI hay hòa (mục Bước 4).
 - **Bước 2 xong phần lớn (04/11/2026):** các quyết định ghi ở dòng **Chốt bước 2** trong từng loại quân, tóm tắt bên dưới.
 
 ### Rà soát bước 2 — tóm tắt
@@ -312,7 +313,7 @@ Giữ lại ý tưởng trong kho thiết kế để phát triển thành bản 
 - Valkyrie là đòn đánh sâu vào hậu phương, bị chặn bằng phòng không. Mỗi loại phá thành có một cách chặn riêng.
 
 **Luật cho ma trận Giáp × Đạn (bước 3) rút ra từ bước 2:**
-- Có loại đạn **phá công sự** (Pháo, Tên Lửa Loạt, bom Valkyrie, sau này mìn): chỉ loại này cắt được đường ray.
+- Có loại đạn **công phá** (Pháo, Tên Lửa Loạt, bom Valkyrie, sau này mìn): chỉ loại này cắt được đường ray.
 - Titan trâu nhất trên mặt đất: 3 Drone cảm tử hạ được Lynx nhưng không hạ được Titan.
 - Lynx bắn được máy bay để chữa cháy đầu trận: 2–3 Lynx mới hạ được một máy bay.
 - SkyGuard: vừa chạy vừa bắn thì giảm sát thương và độ chính xác; Lockdown mới đạt 100%.
@@ -340,9 +341,9 @@ Khi chốt chỉ số (bước 4), kịch bản đã đạt sẽ chuyển thành
 
 ---
 
-## Bước 3 — Ma trận Giáp × Đạn (đã duyệt 04/11/2026, còn chờ giáp công trình)
+## Bước 3 — Ma trận Giáp × Đạn (đã duyệt 04/11/2026)
 
-Gốc: ma trận 3×3 trong thiết kế gốc (`REF_ARTOFWAR_GDD_MASTER.md` mục 8), MVP_DESIGN đã chọn mang sang vì "gọn, dễ nhớ trên điện thoại". Bản dưới đây giữ khung 3×3 nhưng sửa theo các quyết định ở bước 2.
+Gốc: ma trận 3×3 trong thiết kế gốc (`REF_ARTOFWAR_GDD_MASTER.md` mục 8), MVP_DESIGN đã chọn mang sang vì "gọn, dễ nhớ trên điện thoại". Bản chốt giữ 3 loại đạn, nhưng có **4 lớp giáp** (thêm Công sự) và sửa hệ số theo các quyết định ở bước 2.
 
 ### 1. Bốn trục độc lập (không gộp vào nhau)
 Bước 2 cho thấy nếu gộp các khái niệm này vào một chỗ sẽ sinh mâu thuẫn (ví dụ: Titan "bắn nổ" nhưng không được phá ray, lại phải "bắn đơn mục tiêu"). Vì vậy tách thành 4 trục:
@@ -352,7 +353,7 @@ Bước 2 cho thấy nếu gộp các khái niệm này vào một chỗ sẽ si
 | **Bắn được** | đất / không / cả hai | Ai bắn được máy bay (đã có trong game) |
 | **Loại đạn** | Thường · Xuyên giáp · Nổ | Hệ số sát thương theo ma trận bên dưới |
 | **Nổ lan** | bán kính (m), 0 = đơn mục tiêu | Trúng một hay cả cụm. **Không** gắn với loại đạn: cùng là đạn Nổ, Titan lan nhỏ nhất (~1 m), Tên Lửa Loạt lan lớn và tản |
-| **Phá công sự** | có / không | Cắt được đường ray (sau này: mìn, công sự). Chỉ Pháo Tự Hành, Xe Tên Lửa Loạt, bom Valkyrie, mìn |
+| **Công phá** | có / không | Cắt được đường ray (sau này: mìn, cầu). Chỉ Pháo Tự Hành, Xe Tên Lửa Loạt, bom Valkyrie, mìn. **Không** liên quan tới lớp giáp Công sự: quân nào cũng bắn được tháp, hệ số do ma trận quyết định |
 
 ### 2. Ma trận (hệ số nhân sát thương)
 
@@ -360,18 +361,24 @@ Bước 2 cho thấy nếu gộp các khái niệm này vào một chỗ sẽ si
 |---|:---:|:---:|:---:|
 | **Nhẹ** | 100% | 60% | 125% |
 | **Nặng** | 50% | 150% | 60% |
-| **Kiên cố** | 25% | 100% | 150% |
+| **Công sự** | 25% | 150% | 60% |
+| **Kết cấu** | 25% | 100% | 150% |
 
-Ba câu để người chơi nhớ (hiện trong phần hướng dẫn):
+Câu để người chơi nhớ (hiện trong phần hướng dẫn):
 - **Thường** (súng máy, pháo nhỏ): diệt xe nhẹ; gần như vô hại với công trình.
-- **Xuyên giáp** (pháo xuyên, đạn 30mm xuyên giáp): diệt giáp nặng; phí khi bắn xe nhẹ.
-- **Nổ** (tên lửa, bom, đạn nổ): diệt xe nhẹ và san phẳng công trình; yếu với giáp nặng.
+- **Xuyên giáp** (pháo xuyên, đạn 30mm xuyên giáp): diệt giáp nặng và công sự; phí khi bắn xe nhẹ.
+- **Nổ** (tên lửa, bom, đạn nổ): diệt xe nhẹ và san phẳng nhà xưởng; yếu với giáp nặng và công sự.
+- **Công sự: chỉ Pháo phá nhanh.**
 
-So với ma trận gốc: hàng "Chống xuyên" và "Chống nổ" được thay bằng **Nặng** và **Kiên cố**. Lý do: ý đồ bước 2 cần công trình **sợ đạn Nổ** (Tên Lửa Loạt làm thành phố "bình địa", Valkyrie là "đòn kết liễu căn cứ"), trong khi bản gốc cho mọi công trình giáp Chống nổ (Nổ chỉ còn 50%). Các ô 10% / 30% của bản gốc cũng được nâng lên, để không có cặp nào gần như "miễn nhiễm" (khó đọc trên điện thoại và làm trận cứng nhắc).
+So với ma trận gốc: hàng "Chống xuyên" và "Chống nổ" được thay bằng **Nặng**, **Công sự** và **Kết cấu**. Lý do: ý đồ bước 2 cần nhà xưởng **sợ đạn Nổ** (Tên Lửa Loạt làm thành phố "bình địa", Valkyrie là "đòn kết liễu căn cứ"), trong khi bản gốc cho mọi công trình giáp Chống nổ (Nổ chỉ còn 50%). Các ô 10% / 30% của bản gốc cũng được nâng lên, để không có cặp nào gần như "miễn nhiễm" (khó đọc trên điện thoại và làm trận cứng nhắc).
+
+**Vì sao Công sự là lớp riêng, không gộp vào Nặng** (quyết định 04/11/2026): lúc đầu hai hàng gần giống nhau (chỉ khác cột Thường), nhưng chúng phải **chỉnh tách nhau**. Ví dụ ô Thường → Nặng có thể phải nâng lên 56–67% để 3 Lynx hạ được Titan (mục 4); nếu tháp cũng mang giáp Nặng thì Lynx sẽ vô tình bắn tháp mạnh hơn. Sau này hầm ngầm, tường, ụ súng, công sự bộ binh cũng thuộc lớp này.
+
+**Vì sao "Kết cấu" thay cho "Kiên cố":** tránh hai lớp nghe gần nghĩa (Công sự / Kiên cố). Đọc "Giáp: Kết cấu" là hiểu "nhà xưởng, công trình lớn, sợ đạn Nổ".
 
 ### 3. Phân loại từng binh chủng
 
-| Quân / công trình | Giáp | Loại đạn | Nổ lan | Phá công sự | Ghi chú |
+| Quân / công trình | Giáp | Loại đạn | Nổ lan | Công phá | Ghi chú |
 |---|---|---|---|---|---|
 | Xe Tư Lệnh | Nặng | Thường | nhỏ | – | + giáp phòng thủ điểm chặn 1–2 phát pháo |
 | Xe Vận Tải | Nhẹ | – | – | – | |
@@ -384,43 +391,44 @@ So với ma trận gốc: hàng "Chống xuyên" và "Chống nổ" được tha
 | Valkyrie | Nặng | Nổ | lớn | ✅ | |
 | Drone Trinh Sát (cảm tử) | Nhẹ | Nổ | nhỏ | – | |
 | Drone Sửa Chữa, Drone Khiên/Khói | Nhẹ | – | – | – | |
-| Tàu Hỏa | Kiên cố | – | – | – | tê liệt khi hết máu |
+| Tàu Hỏa | Kết cấu | – | – | – | tê liệt khi hết máu |
 | Công trình | xem mục 3b | (tháp: Thường; phòng không: Nổ) | | – | |
 
-### 3b. Giáp công trình (đề xuất, chờ duyệt)
+### 3b. Giáp công trình (đã duyệt 04/11/2026)
 
-Nếu mọi công trình cùng một hàng Kiên cố thì có hai vấn đề (tính bằng số tạm hiện tại):
-- **Titan san tháp pháo quá nhanh.** Titan bắn Nổ, vào Kiên cố được 150%: hạ một Tháp Pháo (700 máu) trong ~10 giây, mất chừng một phần ba máu. Tuyến phòng thủ gần như vô dụng trước xe tăng chủ lực, xây tháp không còn đáng tiền.
-- **Không có mục tiêu đột kích nào cho xe nhẹ.** Lynx bắn Thường vào Kiên cố chỉ 25%: phá một Cột Điện mất ~41 giây. Lối chơi "Lynx săn hậu cần" dừng ở Xe Vận Tải.
+Nếu mọi công trình cùng một lớp giáp thì có hai lỗ hổng (tính bằng số tạm hiện tại):
+- **Titan san tháp pháo quá nhanh.** Titan bắn Nổ vào Kết cấu được 150%: hạ một Tháp Pháo (700 máu) trong ~10 giây. Xây tháp không còn đáng tiền.
+- **Không có mục tiêu đột kích nào cho xe nhẹ.** Lynx bắn Thường vào Kết cấu chỉ 25%: phá một Cột Điện mất ~41 giây.
 
-Đề xuất chia công trình vào **cả ba hàng giáp sẵn có** (không thêm hàng mới), mỗi nhóm cho một cách đánh khác nhau:
+Vì vậy công trình chia vào ba lớp giáp, mỗi nhóm cho một cách đánh khác nhau:
 
 | Nhóm | Giáp | Công trình | Ai phá giỏi | Vì sao |
 |---|---|---|---|---|
-| **Công sự phòng thủ** | **Nặng** | Tháp Pháo, Tiền Đồn | Pháo Tự Hành (Xuyên 150%, lại bắn ngoài tầm tháp) | Bê tông cốt thép chịu nổ. Titan chỉ còn 60%: một Titan đấu một Tháp Pháo là ngang ngửa (~25 giây so với ~29 giây), muốn phá tuyến phải dồn quân hoặc mang Pháo theo |
-| **Căn cứ, nhà xưởng** | **Kiên cố** | HQ, Xưởng Xe, Sân Bay, Nhà Máy Điện, Nhà Máy Dầu, Kho Đạn, Pin, Phòng không (CIWS, SAM, EMP) | Tên Lửa Loạt, bom Valkyrie, Titan (Nổ 150%) | Đúng ý đồ "Tên Lửa Loạt làm bình địa, Valkyrie kết liễu căn cứ". Phòng không xếp ở đây vì điểm yếu của nó là không bắn được quân đất: phải có tháp hoặc quân che |
+| **Công sự phòng thủ** | **Công sự** | Tháp Pháo, Tiền Đồn | Pháo Tự Hành (Xuyên 150%, lại bắn ngoài tầm tháp) | Lynx đánh tháp ~76 giây (vô vọng). Một Titan đấu một Tháp Pháo là ngang ngửa (~25 giây so với ~29 giây); tháp rẻ hơn Titan (250 so với 350 Sắt) nhưng đứng yên. Muốn phá tuyến phải dồn quân hoặc mang Pháo |
+| **Căn cứ, nhà xưởng** | **Kết cấu** | HQ, Xưởng Xe, Sân Bay, Nhà Máy Điện, Nhà Máy Dầu, Kho Đạn, Pin, Phòng không (CIWS, SAM, EMP) | Tên Lửa Loạt, bom Valkyrie, Titan (Nổ 150%) | Đúng ý đồ "Tên Lửa Loạt làm bình địa, Valkyrie kết liễu căn cứ". Phòng không xếp ở đây vì điểm yếu của nó là không bắn được quân đất: phải có tháp hoặc quân che |
 | **Hạ tầng lộ thiên** | **Nhẹ** | Cột Điện, Radar | Lynx (Thường 100%): ~10 giây một Cột Điện | Rẻ, mỏng, rải khắp bản đồ: mục tiêu đột kích. Cắt Cột Điện làm mất vùng điện, phá Radar làm địch mù |
 
-Hệ quả cho lối chơi: muốn phá một căn cứ phải **qua ba lớp, mỗi lớp cần một công cụ khác nhau**: Pháo cạy tuyến tháp, Titan và Tên Lửa Loạt san nhà xưởng, Lynx cắt điện phía sau. Không có binh chủng nào phá được tất cả một mình.
+Hệ quả cho lối chơi: muốn phá một căn cứ phải **qua ba lớp, mỗi lớp cần một công cụ khác nhau**: Pháo cạy tuyến tháp, Titan và Tên Lửa Loạt san nhà xưởng, Lynx cắt điện phía sau. Không binh chủng nào phá được tất cả một mình.
 
-Theo nguyên tắc "Tư lệnh, không phải tài xế": khi Cột Điện hay Radar bị đánh, bộ phận hậu cần **tự báo** ("Cột Điện phía Đông đang bị tấn công, vùng xây phía Đông sắp mất điện") và tự điều độ lại điện. Người chơi chỉ quyết định có điều quân về giữ hay không.
+Theo nguyên tắc "Tư lệnh, không phải tài xế": khi Cột Điện hay Radar bị đánh, bộ phận hậu cần **tự báo** ("vùng xây phía Đông sắp mất điện") và tự điều độ lại điện. Người chơi chỉ quyết định có điều quân về giữ hay không.
 
-Một chỗ dễ gây nhầm: với chia nhóm này, Tháp Pháo (thật sự kiên cố) lại mang giáp **Nặng**, còn nhà xưởng mang giáp **Kiên cố**. Đề xuất **đổi tên hàng thứ ba thành "Kết cấu"** (nhà xưởng, Tàu Hỏa, công trình lớn) để người chơi đọc "Giáp: Kết cấu" là hiểu ngay "sợ đạn Nổ".
+⚠️ Lưu ý khi cân bằng: Falcon bắn Xuyên giáp với sát thương mặt đất cao, vào Công sự 150% hạ một Tháp Pháo chỉ ~4 giây. Thêm một lý do Falcon còn là "tạm".
 
 ### 4. Kiểm tra với ý đồ bước 2
 
 | Ý đồ | Ma trận cho ra | Khớp? |
 |---|---|---|
 | Lynx săn Xe Vận Tải, khắc Pháo / Tên Lửa Loạt | Thường → Nhẹ 100% | ✅ |
-| Lynx không phá được căn cứ | Thường → Kiên cố 25% | ✅ |
+| Lynx không phá được căn cứ, nhưng cắt được Cột Điện | Thường → Kết cấu / Công sự 25%, → Nhẹ 100% | ✅ |
 | Titan hạ Lynx trong ≤ 3 phát | Nổ → Nhẹ 125% | ✅ (chỉnh số gốc ở bước 4) |
 | Pháo khắc giáp dày, xe nhẹ khắc Pháo | Xuyên → Nặng 150%, Xuyên → Nhẹ 60% | ✅ |
-| Tên Lửa Loạt diệt cụm giáp mỏng, công trình; yếu với giáp dày | Nổ → Nhẹ 125%, Kiên cố 150%, Nặng 60% | ✅ |
+| Tên Lửa Loạt diệt cụm giáp mỏng, công trình; yếu với giáp dày | Nổ → Nhẹ 125%, Kết cấu 150%, Nặng 60% | ✅ |
 | Falcon ưu tiên chặn Valkyrie; Titan cần SkyGuard che | Xuyên → Nặng 150% (cả Valkyrie lẫn Titan) | ✅ |
 | SkyGuard diệt Falcon và drone | Nổ → Nhẹ 125% | ✅ |
 | Valkyrie "máu và giáp vượt trội" trong không quân | Nặng: SkyGuard chỉ còn 60% | ✅ (vẫn dễ bị Falcon chặn) |
 | 3 Drone cảm tử hạ Lynx, không hạ được Titan | Nổ → Nhẹ 125%, Nặng 60% | ✅ |
-| Tàu hỏa "khó bị đánh nát" | Kiên cố: Thường 25% | ✅ |
+| Tàu hỏa "khó bị đánh nát" | Kết cấu: Thường 25% | ✅ |
+| Tuyến tháp phải có giá trị; Pháo là chuyên gia phá tuyến | Công sự: Nổ 60%, Xuyên 150% | ✅ |
 
 **Phép tính mẫu, từ ý đồ ra con số** (dùng số gốc hiện tại: Lynx 24 sát thương / 0,65 giây, Titan 72 / 1,55 giây, Titan 720 máu, Lynx 340 máu; bỏ qua lúc tiếp cận):
 - Titan (Nổ → Nhẹ 125%) gây 58 sát thương/giây → hạ một Lynx sau ≈ 5,9 giây.
@@ -429,14 +437,14 @@ Một chỗ dễ gây nhầm: với chia nhóm này, Tháp Pháo (thật sự ki
 - Vì vậy ô Thường → Nặng đề xuất 50% là **mức sàn**; bước 4 sẽ dùng kịch bản thiết kế để chốt (khoảng 50–65%), hoặc giữ 50% và tăng sát thương gốc của Lynx.
 
 ### 5. Thay đổi trong code (làm ở bước 4, sau khi duyệt)
-- `content.ts`: thêm `armorClass` cho mọi thực thể; thêm `dmgType`, `siege` cho vũ khí; bảng `RULES.damageMatrix`. **Bỏ trường `armor` (giảm % riêng lẻ)** để chỉ còn một nguồn: hệ số giáp do ma trận quyết định. Cơ chế riêng (giáp góc nghiêng Titan, phòng thủ điểm của Tư Lệnh) là hệ số cộng thêm, viết riêng.
+- `content.ts`: thêm `armorClass` cho mọi thực thể; thêm `dmgType`, `breach` (công phá) cho vũ khí; bảng `RULES.damageMatrix`. **Bỏ trường `armor` (giảm % riêng lẻ)** để chỉ còn một nguồn: hệ số giáp do ma trận quyết định. Cơ chế riêng (giáp góc nghiêng Titan, phòng thủ điểm của Tư Lệnh) là hệ số cộng thêm, viết riêng.
 - `world.ts`: `damage()` nhân theo ma trận; Titan nổ lan nhỏ nhất (tạm 1,0 m); SkyGuard bỏ sát thương mặt đất; Lynx có sát thương lên không.
-- Kiểm thử: bảng ma trận đúng 3×3, mọi binh chủng có giáp và loại đạn; các kịch bản thiết kế đã đạt chuyển thành kiểm thử bắt buộc.
+- Kiểm thử: bảng ma trận đủ 4 giáp × 3 đạn, mọi binh chủng có giáp và loại đạn; các kịch bản thiết kế đã đạt chuyển thành kiểm thử bắt buộc.
 
 **Nguyên tắc "chỉnh được về sau"** (yêu cầu của người dùng 04/11/2026: mọi cập nhật nhẹ về quân đội phải chỉnh lại được):
-- Mọi lựa chọn về quân là **dữ liệu** trong `content.ts`: giáp, loại đạn, bán kính nổ lan, phá công sự, bắn đất/không, và chính bảng ma trận (`RULES.damageMatrix`). Đổi Falcon sang đạn Thường hay đổi một ô ma trận chỉ là sửa một chữ, không đụng `world.ts`.
+- Mọi lựa chọn về quân là **dữ liệu** trong `content.ts`: giáp, loại đạn, bán kính nổ lan, công phá, bắn đất/không, và chính bảng ma trận (`RULES.damageMatrix`). Đổi Falcon sang đạn Thường hay đổi một ô ma trận chỉ là sửa một chữ, không đụng `world.ts`.
 - `world.ts` **không rẽ nhánh theo tên quân** khi tính sát thương (không có `if (kind === "titan")`). Cơ chế riêng (giáp góc nghiêng, phòng thủ điểm) cũng khai báo bằng trường dữ liệu.
-- Kiểm thử chỉ kiểm **cấu trúc** (đủ trường, bảng đúng 3×3, tất định), không khóa con số. Con số được chấm bằng kịch bản thiết kế (`npm run balance`): sửa số xong chạy lại là biết ý đồ nào còn đạt.
+- Kiểm thử chỉ kiểm **cấu trúc** (đủ trường, bảng đủ ô, tất định), không khóa con số. Con số được chấm bằng kịch bản thiết kế (`npm run balance`): sửa số xong chạy lại là biết ý đồ nào còn đạt.
 
 ### 6. Tiêu chí chung cho cả đội hình
 - **Thời gian kịp phản ứng (chốt 04/11/2026, học từ Battle Drones):** một trận giao tranh tầm trung (nửa đạo quân của một bên) phải kéo dài **ít nhất khoảng 8 giây** (mục tiêu 7–9 giây) trước khi bị xóa sổ, để người chơi trên điện thoại kịp nhìn ra và ra lệnh. Khi chỉnh máu và sát thương ở bước 4, tiêu chí này đứng trên mọi con số riêng lẻ. Sẽ có kịch bản thiết kế đo nó.
@@ -444,8 +452,54 @@ Một chỗ dễ gây nhầm: với chia nhóm này, Tháp Pháo (thật sự ki
 ### 7. Duyệt (04/11/2026)
 1. ✅ Tách 4 trục. Sửa: Titan **vẫn nổ lan**, nhưng bán kính nhỏ nhất.
 2. ✅ Falcon = Xuyên giáp, **tạm thời**; sẽ điều chỉnh khi cân bằng.
-3. ✅ Ba hàng giáp, bỏ giảm sát thương % riêng lẻ. Còn chờ: **giáp công trình** (mục 3b) và tên hàng thứ ba.
+3. ✅ Bỏ giảm sát thương % riêng lẻ. Thêm lớp giáp **Công sự** (Tháp Pháo, Tiền Đồn: 25% / 150% / 60%), đổi "Kiên cố" → **Kết cấu**, chia công trình 3 nhóm (mục 3b), đổi tên trục "Phá công sự" → **Công phá**.
 4. ✅ Giữ nguyên các hệ số như bảng.
+
+---
+
+## Bước 4 — Đưa ma trận vào code và chỉnh số (04/11/2026)
+
+### Đã làm
+- `content.ts`: `ArmorClass` (Nhẹ / Nặng / Công sự / Kết cấu), `DmgType` (Thường / Xuyên giáp / Nổ), `RULES.damageMatrix`, trường `armorClass` cho mọi thực thể, `dmgType` và `breach` (công phá) cho vũ khí. **Đã bỏ** trường `armor` (giảm % riêng lẻ).
+- `world.ts`: viên đạn mang theo loại đạn; `damage()` nhân hệ số ma trận theo lớp giáp mục tiêu (cả đạn nổ lan). Không có nhánh nào theo tên quân.
+- Xưởng Mô Hình hiện lớp giáp, loại đạn, "công phá".
+- Kịch bản mới `reaction-time` (tiêu chí "kịp phản ứng", Bước 3 mục 6). Cả 4 kịch bản thiết kế đạt và **đã thành kiểm thử bắt buộc** trong `npm test`.
+
+### Con số đã chỉnh (vẫn là số tạm) và vì sao
+
+| Chỉ số | Cũ | Mới | Lý do |
+|---|---|---|---|
+| Máu mọi quân | — | **×1,5** | Tiêu chí "kịp phản ứng": nhân máu mọi quân cùng một hệ số thì ai thắng ai giữ nguyên, chỉ có trận dài ra |
+| Titan: sát thương / nạp đạn | 72 / 1,55 giây | **136 / 3,0 giây** | "Tối đa 3 viên hạ một Lynx" cố định thời gian hạ Lynx ≈ 2 lần nạp đạn, bất kể máu. Muốn trận đủ lâu thì Titan phải nạp chậm (đúng điểm yếu "nạp đạn chậm" đã ghi) |
+| Titan: máu | 720 | **960** | Ở giữa vùng đạt (900–1020 đều đạt) |
+| Titan: nổ lan | 2,8 m | **1 m** | Nhỏ nhất trong các vũ khí nổ (chốt Bước 3) |
+| Lynx: sát thương | 24 | **32** (+14 lên máy bay) | 3 Lynx cùng lúc phải hạ được Titan qua giáp Nặng 50%; bắn được máy bay (chốt bước 2) |
+| SkyGuard: sát thương mặt đất | 16 | **0** | Chỉ bắn máy bay (chốt Bước 3) |
+| Falcon: nổ lan | 1,8 m | **0** | Xuyên giáp, đơn mục tiêu (tạm) |
+
+Cách chọn số: quét nhiều bộ số, chạy mọi kịch bản cho từng bộ, rồi chọn điểm **ở giữa** vùng đạt chứ không ở mép, để sau này chỉnh nhẹ chỗ khác không làm rơi ý đồ.
+
+Kết quả kịch bản: Titan lần lượt còn 48% máu, hạ đủ 3 · 3 Lynx cùng lúc thắng, còn 1 · giao tranh tầm trung mất nửa quân sau 7,5 giây · SkyGuard hạ 5/10 Falcon bay ngang (Falcon rơi theo cả hàng 5 chiếc vì tên lửa nổ lan rải đều lên hàng đầu, nên kết quả ổn định ở 5 dù chỉnh sát thương 56–72).
+
+Đã thử rồi bỏ: nhân vũ khí công trình ×1,5 "để giữ tương quan". Làm vậy đi ngược tiêu chí kịp phản ứng (tháp hạ quân nhanh như cũ trong khi quân khó phá tháp hơn), làm phòng thủ áp đảo.
+
+### ⚠️ Vấn đề còn mở: AI đấu AI hay hòa
+Với bộ số mới, `npm run simulate -- 20` có khoảng **một nửa số trận hòa vì hết 30 phút** (trước đó gần như không trận nào). Đã khoanh vùng bằng thí nghiệm đối chứng (mỗi lần đổi một yếu tố, cùng 10 trận):
+
+| Thay đổi thử | Trận hòa / 10 |
+|---|---|
+| Bộ số mới | 5 |
+| Bỏ hẳn ma trận (mọi hệ số 1) | 4 |
+| Lớp Công sự mềm hơn (Nổ 100%, Thường 50%) | 3 |
+| AI chỉ đúc SkyGuard khi thấy máy bay địch | 13 / 20 (tệ hơn, đã hoàn tác) |
+| SkyGuard có lại 8 sát thương mặt đất | **1** (trận dài TB 12,5 phút) |
+| SkyGuard có lại 16 sát thương mặt đất | **0** |
+
+Nguyên nhân: quân chủ yếu chết ở **giữa bản đồ trong các trận giành mỏ**, không phải trước tuyến tháp. AI gửi từng tổ 2–4 xe đi giành mỏ, hai bên đổi quân ngang nhau và không bên nào gom đủ quân cho đợt tổng tấn công. Trước đây SkyGuard (tầm 26,5 m) góp sát thương vào các trận này nên một bên thắng hẳn rồi lăn cầu tuyết. Chờ người dùng chọn: (a) cho SkyGuard sát thương mặt đất nhỏ để tự vệ, (b) giữ thiết kế và sửa AI (gom quân trước khi đánh, không ném quân lẻ vào mỏ), (c) đưa Pháo Tự Hành vào sớm.
+
+### Ghi chú khác
+- Trong kịch bản `reaction-time`, hai đạo quân giống hệt nhau nhưng kết quả lệch (Lam mất 4, Đỏ mất 2). Có thể do vị trí bãi thử hoặc thứ tự xử lý hai phe; cần xem nếu sau này dùng đấu gương để cân bằng.
+- Chưa làm (cơ chế riêng, sau): giáp góc nghiêng mặt trước của Titan, giáp phòng thủ điểm của Xe Tư Lệnh, SkyGuard vừa đi vừa bắn giảm chính xác, Pháo Tự Hành (tầm tối thiểu, lộ 2 giây).
 
 ---
 

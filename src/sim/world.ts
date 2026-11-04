@@ -7,7 +7,7 @@
  *   8. đạn tới đích → trừ máu   9. dọn xác   10. sương mù   11. kiểm tra thắng thua
  * Không có gì phụ thuộc thời gian thật hay số ngẫu nhiên không seed, nên cùng seed + cùng lệnh thì ra cùng trận.
  */
-import { BUILDINGS, RULES, UNITS, type BuildingId, type Res, type Side, type UnitId, type UnitSpec, type WeaponSpec, type WeaponVisual } from "./content";
+import { BUILDINGS, RULES, UNITS, type BuildingId, type DmgType, type Res, type Side, type UnitId, type UnitSpec, type WeaponSpec, type WeaponVisual } from "./content";
 import { clamp, DEG, dist2, Rng, turnStep, turnToward, type TurnStep } from "./fmath";
 import { Grid } from "./grid";
 import { CELL, EDGE, GRID, HQ_POS, MINES } from "./map";
@@ -1184,7 +1184,7 @@ export class World {
     src.lastShot = this.tick;
     const d = Math.sqrt(dist2(src.x, src.z, t.x, t.z));
     const ticks = Math.max(1, Math.ceil((d / SHOT_SPEED[w.visual]) * TICK_RATE));
-    this.shots.push({ side: src.side, src: src.id, target: t.id, tx: t.x, tz: t.z, dmg, splash: w.splash, hitAir: air, impact: this.tick + ticks, visual: w.visual });
+    this.shots.push({ side: src.side, src: src.id, target: t.id, tx: t.x, tz: t.z, dmg, dmgType: w.dmgType, splash: w.splash, hitAir: air, impact: this.tick + ticks, visual: w.visual });
     this.events.push({
       t: "shot",
       src: src.id,
@@ -1704,10 +1704,11 @@ export class World {
     this.events.push({ t: "alert", side, what, x, z, n });
   }
 
-  private damage(e: Target, amount: number, by: Side): void {
+  /** Sát thương gốc nhân hệ số Giáp × Đạn (RULES.damageMatrix). Không rẽ nhánh theo tên quân: mọi thứ là dữ liệu. */
+  private damage(e: Target, amount: number, by: Side, type: DmgType): void {
     if (e.hp <= 0) return;
-    const armor = e.cat === "unit" ? UNITS[e.kind].armor : BUILDINGS[e.kind].armor;
-    const dealt = amount * (1 - armor);
+    const armor = e.cat === "unit" ? UNITS[e.kind].armorClass : BUILDINGS[e.kind].armorClass;
+    const dealt = amount * RULES.damageMatrix[armor][type];
     this.sides[by].stats.damageDealt += Math.min(dealt, e.hp);
     e.hp -= dealt;
     if (e.cat === "unit") {
@@ -1738,15 +1739,15 @@ export class World {
         for (const u of this.units) {
           if (u.side === s.side || u.hp <= 0 || (u.alt > AIRBORNE_ALT) !== s.hitAir) continue;
           const r = s.splash + UNITS[u.kind].radius * 0.5;
-          if (dist2(x, z, u.x, u.z) <= r * r) this.damage(u, s.dmg, s.side);
+          if (dist2(x, z, u.x, u.z) <= r * r) this.damage(u, s.dmg, s.side, s.dmgType);
         }
         if (!s.hitAir)
           for (const b of this.buildings) {
             if (b.side === s.side || b.hp <= 0) continue;
             const r = s.splash + Math.max(BUILDINGS[b.kind].half[0], BUILDINGS[b.kind].half[1]);
-            if (dist2(x, z, b.x, b.z) <= r * r) this.damage(b, s.dmg, s.side);
+            if (dist2(x, z, b.x, b.z) <= r * r) this.damage(b, s.dmg, s.side, s.dmgType);
           }
-      } else if (t) this.damage(t, s.dmg, s.side);
+      } else if (t) this.damage(t, s.dmg, s.side, s.dmgType);
       this.events.push({ t: "hit", side: s.side, visual: s.visual, x, z, alt, splash: s.splash });
     }
     this.shots = keep;

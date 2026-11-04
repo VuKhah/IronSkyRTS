@@ -5,7 +5,7 @@
  * đều gửi cùng một loại lệnh. Nhờ vậy, chỉ cần lưu seed + danh sách lệnh là chiếu lại được cả trận.
  * Sự kiện thì chạy theo chiều ngược lại: sim báo cho phần vẽ / âm thanh biết chuyện gì vừa xảy ra.
  */
-import type { BuildingId, Res, Side, UnitId, WeaponVisual } from "./content";
+import type { BuildingId, DmgType, Res, Side, UnitId, WeaponVisual } from "./content";
 
 export type UnitOrder = "idle" | "move" | "amove" | "attack";
 export type HaulState = "idle" | "toMine" | "mining" | "toDock" | "unloading";
@@ -131,6 +131,7 @@ export interface Shot {
   tx: number;
   tz: number;
   dmg: number;
+  dmgType: DmgType;
   splash: number;
   hitAir: boolean;
   impact: number;

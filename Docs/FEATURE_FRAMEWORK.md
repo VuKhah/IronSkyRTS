@@ -15,7 +15,7 @@ Trạng thái: ⬜ chưa làm · 🟨 đang làm / làm một phần · ✅ xong
 |---|---|---|---|---|
 | A1 | **Toàn bộ là mô hình 3D**: công trình, xe mặt đất, máy bay, bộ binh, kèm trang xem mô hình | Mô hình dựng bằng code Three.js, có trang `models.html` để xem từng mô hình. **Đã có Xưởng Mô Hình và 16 mô hình bản nhẹ; chờ bản chi tiết** | P1 | 🟨 |
 | A2 | **Sương mù chiến tranh** | Tính theo địa hình 3D: đồi che tầm nhìn, đứng trên cao nhìn xa hơn. Thêm Trạm Radar | P1 | 🟨 |
-| A3 | **Vũ khí khác nhau cho mục tiêu trên không và mặt đất** | Ma trận *loại sát thương × lớp giáp*, cờ "bắn được: đất / không / cả hai" | P1 | ✅ |
+| A3 | **Vũ khí khác nhau cho mục tiêu trên không và mặt đất** | Ma trận *loại sát thương × lớp giáp* (4 giáp Nhẹ / Nặng / Công sự / Kết cấu × 3 đạn Thường / Xuyên giáp / Nổ, `RULES.damageMatrix`, 04/11/2026), cờ "bắn được: đất / không / cả hai" | P1 | ✅ |
 | A4 | **Chế độ giao tranh**: Xanh đấu Đỏ trên bản đồ đối xứng xoay | Liên Minh Lam đấu Tập Đoàn Đỏ, đối xứng 180° qua dòng sông chéo | P1 | ✅ |
 | A5 | **Sáu bản đồ trên năm vùng khí hậu**: ôn đới, sa mạc, Bắc Cực, núi lửa, nhiệt đới | Mỗi vùng có bảng màu, địa hình, vật trang trí và luật riêng (ví dụ băng trơn, dung nham) | P2 | ⬜ |
 | A6 | **Trình tạo bản đồ ngẫu nhiên** theo seed, đối xứng xoay | Sinh địa hình có độ cao, sông, cầu, mỏ, căn cứ. Cùng seed thì ra cùng bản đồ | P2 | ⬜ |

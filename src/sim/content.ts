@@ -45,6 +45,18 @@ export type BuildingId =
 
 export type EntityId = UnitId | BuildingId;
 
+/**
+ * Lớp giáp (Docs/ARMY_DESIGN.md Bước 3). Mỗi thực thể thuộc đúng một lớp; hệ số sát thương nằm ở RULES.damageMatrix.
+ * Nhẹ: xe nhẹ, máy bay nhẹ, hạ tầng lộ thiên · Nặng: xe tăng, máy bay ném bom · Công sự: tháp phòng thủ ·
+ * Kết cấu: nhà xưởng, căn cứ, công trình lớn.
+ */
+export type ArmorClass = "light" | "heavy" | "fort" | "struct";
+export const ARMOR_NAME: Record<ArmorClass, string> = { light: "Nhẹ", heavy: "Nặng", fort: "Công sự", struct: "Kết cấu" };
+
+/** Loại đạn: Thường (súng máy, pháo nhỏ), Xuyên giáp, Nổ (tên lửa, bom, đạn nổ). */
+export type DmgType = "normal" | "ap" | "he";
+export const DMG_NAME: Record<DmgType, string> = { normal: "Thường", ap: "Xuyên giáp", he: "Nổ" };
+
 /** Kiểu đạn để vẽ hiệu ứng và tính tốc độ bay của đạn. */
 export type WeaponVisual = "bullet" | "cannon" | "missile" | "bomb" | "pulse";
 
@@ -57,8 +69,12 @@ export interface WeaponSpec {
   range: number;
   /** Giây giữa 2 phát. */
   cooldown: number;
-  /** Bán kính nổ lan (m), 0 = trúng đơn mục tiêu. */
+  /** Loại đạn: tra hệ số trong RULES.damageMatrix theo lớp giáp của mục tiêu. */
+  dmgType: DmgType;
+  /** Bán kính nổ lan (m), 0 = trúng đơn mục tiêu. Độc lập với loại đạn. */
   splash: number;
+  /** Công phá: cắt được đường ray, phá mìn (khi các thứ đó có trong game). Không ảnh hưởng sát thương. */
+  breach?: boolean;
   visual: WeaponVisual;
 }
 
@@ -79,8 +95,7 @@ export interface UnitSpec {
   buildTime?: number;
   builtAt?: BuildingId;
   hp: number;
-  /** Tỉ lệ giảm sát thương nhận vào (0..1). */
-  armor: number;
+  armorClass: ArmorClass;
   /** m/s; máy bay có thêm tốc độ tối thiểu. */
   speed: number;
   minSpeed?: number;
@@ -113,7 +128,7 @@ export interface BuildingSpec {
   cost?: Cost;
   buildTime?: number;
   hp: number;
-  armor: number;
+  armorClass: ArmorClass;
   sight: number;
   /** Nửa kích thước nền móng theo X và Z (m): ô lưới bị chiếm, không đi xuyên được. */
   half: readonly [number, number];
@@ -158,6 +173,16 @@ export const RULES = {
     warnOilSeconds: 45,
     warnBatterySeconds: 25
   },
+  /**
+   * Ma trận Giáp × Đạn: hệ số nhân sát thương [lớp giáp][loại đạn]. Docs/ARMY_DESIGN.md Bước 3 mục 2.
+   * Hàng Công sự lúc đầu gần giống hàng Nặng, nhưng cố ý tách để chỉnh riêng.
+   */
+  damageMatrix: {
+    light: { normal: 1, ap: 0.6, he: 1.25 },
+    heavy: { normal: 0.5, ap: 1.5, he: 0.6 },
+    fort: { normal: 0.25, ap: 1.5, he: 0.6 },
+    struct: { normal: 0.25, ap: 1, he: 1.5 }
+  } as Record<ArmorClass, Record<DmgType, number>>,
   sellRefund: 0.5,
   queueMax: 5,
   captureRadius: 8,
@@ -194,13 +219,13 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     role: "Trái tim của binh đoàn. Mất Xe Tư Lệnh là thua trận.",
     domain: "ground",
     mvp: true,
-    hp: 1350,
-    armor: 0.25,
+    hp: 2025,
+    armorClass: "heavy",
     speed: 5,
     sight: 26,
     radius: 1.9,
     captureWeight: 2.2,
-    weapon: { name: "Pháo kép 40mm", dmgGround: 44, dmgAir: 32, range: 20, cooldown: 1.05, splash: 2, visual: "cannon" },
+    weapon: { name: "Pháo kép 40mm", dmgGround: 44, dmgAir: 32, range: 20, cooldown: 1.05, dmgType: "normal", splash: 2, visual: "cannon" },
     aura: { radius: 13.5, fireRate: 1.18 },
     features: [
       "Hào quang chỉ huy (13.5m): quân đồng minh xung quanh bắn nhanh hơn 18%.",
@@ -224,8 +249,8 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     cost: { iron: 150, oil: 0 },
     buildTime: 6,
     builtAt: "hq",
-    hp: 300,
-    armor: 0.1,
+    hp: 450,
+    armorClass: "light",
     speed: 4.6,
     sight: 16,
     radius: 1.7,
@@ -252,17 +277,18 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     cost: { iron: 150, oil: 0 },
     buildTime: 4.5,
     builtAt: "factory",
-    hp: 340,
-    armor: 0.08,
+    hp: 510,
+    armorClass: "light",
     speed: 7.2,
     sight: 28,
     radius: 1.4,
     captureWeight: 1,
-    weapon: { name: "Súng máy 20mm", dmgGround: 24, dmgAir: 0, range: 15.5, cooldown: 0.65, splash: 0, visual: "bullet" },
+    weapon: { name: "Súng máy 20mm", dmgGround: 32, dmgAir: 14, range: 15.5, cooldown: 0.65, dmgType: "normal", splash: 0, visual: "bullet" },
     features: [
       "Nhanh nhất trên mặt đất và nhìn xa: đến mỏ trung lập trước mọi đối thủ.",
       "Săn Xe Vận Tải địch để cắt kinh tế.",
-      "Giáp mỏng: tránh đối đầu trực diện với Titan."
+      "Giáp mỏng: tránh đối đầu trực diện với Titan.",
+      "Súng máy bắn được máy bay nhưng yếu: 2–3 chiếc mới hạ được một Falcon."
     ],
     beats: ["skyguard", "hauler"],
     fears: ["titan", "falcon"]
@@ -280,19 +306,19 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     cost: { iron: 350, oil: 0 },
     buildTime: 7.5,
     builtAt: "factory",
-    hp: 720,
-    armor: 0.24,
+    hp: 960,
+    armorClass: "heavy",
     speed: 4.4,
     sight: 22,
     radius: 1.9,
     captureWeight: 1,
-    weapon: { name: "Pháo chính 120mm", dmgGround: 72, dmgAir: 0, range: 19.5, cooldown: 1.55, splash: 2.8, visual: "cannon" },
+    weapon: { name: "Pháo chính 120mm", dmgGround: 136, dmgAir: 0, range: 19.5, cooldown: 3, dmgType: "he", splash: 1, visual: "cannon" },
     features: [
-      "Đạn 120mm nổ lan 2.8m: nghiền nát đội hình xe và công trình.",
-      "Giáp giảm 24% sát thương: là lá chắn đi đầu đội hình.",
+      "Đạn nổ 120mm: diệt xe nhẹ, san nhà xưởng; nổ lan nhỏ (1m) nên chỉ trúng cả cụm khi địch dồn sát.",
+      "Giáp Nặng: súng máy chỉ gây một nửa sát thương. Là lá chắn đi đầu đội hình.",
       "Không bắn được máy bay: cần SkyGuard đi kèm."
     ],
-    beats: ["lynx", "skyguard", "turret", "hq"],
+    beats: ["lynx", "skyguard", "hq", "factory"],
     fears: ["falcon"]
   },
   skyguard: {
@@ -308,17 +334,17 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     cost: { iron: 250, oil: 0 },
     buildTime: 6,
     builtAt: "factory",
-    hp: 430,
-    armor: 0.12,
+    hp: 645,
+    armorClass: "light",
     speed: 5.2,
     sight: 28,
     radius: 1.6,
     captureWeight: 1,
-    weapon: { name: "Tên lửa tầm nhiệt", dmgGround: 16, dmgAir: 56, range: 26.5, cooldown: 0.9, splash: 1.5, visual: "missile" },
+    weapon: { name: "Tên lửa tầm nhiệt", dmgGround: 0, dmgAir: 56, range: 26.5, cooldown: 0.9, dmgType: "he", splash: 1.5, visual: "missile" },
     features: [
       "Câu trả lời cho không quân: tầm bắn 26.5m, xa hơn mọi pháo mặt đất.",
       "Không cần lưới điện hay đường ray: phòng không mang theo được ra tiền tuyến.",
-      "Yếu khi bị xe tăng áp sát."
+      "Chỉ bắn máy bay: bị xe tăng áp sát thì vô phương chống đỡ."
     ],
     beats: ["falcon"],
     fears: ["titan", "lynx"]
@@ -336,17 +362,17 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     cost: { iron: 300, oil: 50 },
     buildTime: 6.5,
     builtAt: "airfield",
-    hp: 360,
-    armor: 0.08,
+    hp: 540,
+    armorClass: "light",
     speed: 18,
     minSpeed: 12,
     sight: 30,
     radius: 1.8,
     captureWeight: 0,
-    weapon: { name: "Tên lửa không đối không / đất", dmgGround: 55, dmgAir: 70, range: 22, cooldown: 0.5, splash: 1.8, visual: "missile" },
+    weapon: { name: "Tên lửa không đối không / đất", dmgGround: 55, dmgAir: 70, range: 22, cooldown: 0.5, dmgType: "ap", splash: 0, visual: "missile" },
     fuel: { tank: 40, burn: 1.2, turnRate: 110 },
     features: [
-      "Sát thương rất cao lên cả mặt đất lẫn trên không.",
+      "Tên lửa xuyên giáp: diệt xe tăng và máy bay ném bom; bắn xe nhẹ kém hiệu quả.",
       "Bình dầu 40L, đốt 1.2L/s: khoảng 33 giây bay mỗi lần xuất kích.",
       "Chỉ cất cánh khi còn ít nhất 35% dầu; xuống 24% (hoặc vừa đủ dầu bay về nếu đang ở xa) thì tự bay về Sân Đáp.",
       "Nạp dầu khoảng 4 giây tại bãi đậu, trừ vào kho Dầu. Kho cạn thì máy bay nằm sân.",
@@ -368,17 +394,17 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     cost: { iron: 230, oil: 90 },
     buildTime: 9,
     builtAt: "airfield",
-    hp: 580,
-    armor: 0.16,
+    hp: 870,
+    armorClass: "heavy",
     speed: 14,
     minSpeed: 10,
     sight: 26,
     radius: 2.4,
     captureWeight: 0,
-    weapon: { name: "Chuỗi 3 bom quán tính", dmgGround: 98, dmgAir: 0, range: 23, cooldown: 0.42, splash: 4.6, visual: "bomb" },
+    weapon: { name: "Chuỗi 3 bom quán tính", dmgGround: 98, dmgAir: 0, range: 23, cooldown: 0.42, dmgType: "he", splash: 4.6, breach: true, visual: "bomb" },
     fuel: { tank: 60, burn: 1.4, turnRate: 76 },
     features: [
-      "Rải chuỗi 3 quả bom rơi theo quỹ đạo parabol, nổ lan 4.6m.",
+      "Rải chuỗi 3 quả bom rơi theo quỹ đạo parabol, nổ lan 4.6m. Bom công phá: san phẳng nhà xưởng.",
       "Mục tiêu lý tưởng: Xưởng Xe, Sân Đáp và cụm xe tăng Titan.",
       "Ngoặt chậm: cần tiêm kích hộ tống."
     ],
@@ -396,13 +422,13 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     role: "Đầu não căn cứ: đúc Xe Vận Tải và nhận Sắt, Dầu chở về.",
     mvp: true,
     hp: 3600,
-    armor: 0.2,
+    armorClass: "struct",
     sight: 28,
     half: [3.4, 3.4],
     produces: ["hauler"],
     power: 20,
     zone: 24,
-    weapon: { name: "Pháo kép tự vệ", dmgGround: 40, dmgAir: 28, range: 22, cooldown: 1.2, splash: 1.5, visual: "cannon" },
+    weapon: { name: "Pháo kép tự vệ", dmgGround: 40, dmgAir: 28, range: 22, cooldown: 1.2, dmgType: "normal", splash: 1.5, visual: "cannon" },
     features: [
       "Nơi Xe Vận Tải dỡ hàng: Sắt và Dầu chỉ vào kho khi được chở về đây.",
       "Thu nhập gốc +2 Sắt mỗi giây, để bên mất hết mỏ vẫn còn đường gỡ.",
@@ -420,7 +446,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     cost: { iron: 300, oil: 0 },
     buildTime: 10,
     hp: 1000,
-    armor: 0.15,
+    armorClass: "struct",
     sight: 16,
     half: [3.4, 3],
     produces: ["lynx", "titan", "skyguard"],
@@ -438,7 +464,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     cost: { iron: 400, oil: 0 },
     buildTime: 12,
     hp: 1150,
-    armor: 0.15,
+    armorClass: "struct",
     sight: 18,
     half: [5.5, 4.3],
     produces: ["falcon"],
@@ -460,13 +486,13 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     cost: { iron: 250, oil: 0 },
     buildTime: 8,
     hp: 700,
-    armor: 0.2,
+    armorClass: "fort",
     sight: 24,
     half: [1.5, 1.5],
     power: -5,
     priority: 1,
-    weapon: { name: "Pháo kép tự động 30mm", dmgGround: 30, dmgAir: 30, range: 20, cooldown: 0.6, splash: 0, visual: "bullet" },
-    features: ["Bắn cả xe lẫn máy bay trong tầm 20m.", "Rẻ và chắc: giữ mỏ và cửa ngõ căn cứ. Dùng Cột Điện để xây được tháp ở xa căn cứ.", "Thiếu điện thì bắn chậm, mất hẳn điện thì ngừng bắn."]
+    weapon: { name: "Pháo kép tự động 30mm", dmgGround: 30, dmgAir: 30, range: 20, cooldown: 0.6, dmgType: "normal", splash: 0, visual: "bullet" },
+    features: ["Bắn cả xe lẫn máy bay trong tầm 20m.", "Giáp Công sự: chỉ đạn xuyên giáp (Pháo) phá nhanh. Giữ mỏ và cửa ngõ căn cứ. Dùng Cột Điện để xây được tháp ở xa căn cứ.", "Thiếu điện thì bắn chậm, mất hẳn điện thì ngừng bắn."]
   },
   outpost: {
     id: "outpost",
@@ -476,11 +502,11 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     role: "Căn cứ trung lập để chiếm. (Sau MVP)",
     mvp: false,
     hp: 1150,
-    armor: 0.2,
+    armorClass: "fort",
     sight: 20,
     half: [2.6, 2.6],
     power: 0,
-    weapon: { name: "Tháp pháo tự động", dmgGround: 26, dmgAir: 18, range: 18, cooldown: 0.9, splash: 0, visual: "bullet" },
+    weapon: { name: "Tháp pháo tự động", dmgGround: 26, dmgAir: 18, range: 18, cooldown: 0.9, dmgType: "normal", splash: 0, visual: "bullet" },
     features: ["Chiếm được: đứng trong vùng chiếm đóng đủ lâu để cắm cờ phe mình.", "Mở rộng vùng xây dựng ra tiền tuyến."]
   },
   "power-plant": {
@@ -493,7 +519,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     cost: { iron: 200, oil: 0 },
     buildTime: 8,
     hp: 850,
-    armor: 0.15,
+    armorClass: "struct",
     sight: 14,
     half: [3, 2.3],
     power: 40,
@@ -515,7 +541,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     cost: { iron: 60, oil: 0 },
     buildTime: 3,
     hp: 380,
-    armor: 0.1,
+    armorClass: "light",
     sight: 12,
     half: [0.9, 0.9],
     power: 0,
@@ -536,7 +562,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     cost: { iron: 150, oil: 0 },
     buildTime: 6,
     hp: 500,
-    armor: 0.1,
+    armorClass: "struct",
     sight: 10,
     half: [1.6, 1.4],
     power: 0,
@@ -559,7 +585,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     cost: { iron: 200, oil: 0 },
     buildTime: 8,
     hp: 450,
-    armor: 0.1,
+    armorClass: "light",
     sight: 12,
     half: [1.6, 1.6],
     power: -15,
@@ -577,7 +603,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     cost: { iron: 160, oil: 0 },
     buildTime: 5.5,
     hp: 780,
-    armor: 0.15,
+    armorClass: "struct",
     sight: 12,
     half: [3, 2],
     power: -10,
@@ -593,7 +619,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     cost: { iron: 180, oil: 20 },
     buildTime: 5.5,
     hp: 950,
-    armor: 0.15,
+    armorClass: "struct",
     sight: 12,
     half: [2.7, 2.2],
     power: -10,
@@ -609,11 +635,11 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     cost: { iron: 140, oil: 15 },
     buildTime: 4,
     hp: 620,
-    armor: 0.15,
+    armorClass: "struct",
     sight: 22,
     half: [1.4, 1.4],
     power: -6,
-    weapon: { name: "Pháo 6 nòng Vulcan", dmgGround: 0, dmgAir: 19, range: 22.5, cooldown: 0.24, splash: 0, visual: "bullet" },
+    weapon: { name: "Pháo 6 nòng Vulcan", dmgGround: 0, dmgAir: 19, range: 22.5, cooldown: 0.24, dmgType: "he", splash: 0, visual: "bullet" },
     magazine: 28,
     features: ["Bắn 0.24 giây/viên: lưới đạn dày đặc tầm gần.", "Hết đạn từ đường ray thì ngừng bắn."]
   },
@@ -627,12 +653,12 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     cost: { iron: 210, oil: 35 },
     buildTime: 5.5,
     hp: 700,
-    armor: 0.15,
+    armorClass: "struct",
     sight: 30,
     half: [1.8, 1.8],
     power: -14,
     strictPower: true,
-    weapon: { name: "Tên lửa Patriot", dmgGround: 0, dmgAir: 112, range: 38.5, cooldown: 1.65, splash: 2.6, visual: "missile" },
+    weapon: { name: "Tên lửa Patriot", dmgGround: 0, dmgAir: 112, range: 38.5, cooldown: 1.65, dmgType: "he", splash: 2.6, visual: "missile" },
     magazine: 14,
     features: ["Tầm bắn cực xa 38.5m, 2 đạn mỗi phát.", "Bắt buộc có điện."]
   },
@@ -646,12 +672,12 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     cost: { iron: 200, oil: 40 },
     buildTime: 5,
     hp: 680,
-    armor: 0.15,
+    armorClass: "struct",
     sight: 24,
     half: [1.8, 1.8],
     power: -16,
     strictPower: true,
-    weapon: { name: "Xung điện từ", dmgGround: 0, dmgAir: 48, range: 30, cooldown: 1.25, splash: 5.2, visual: "pulse" },
+    weapon: { name: "Xung điện từ", dmgGround: 0, dmgAir: 48, range: 30, cooldown: 1.25, dmgType: "he", splash: 5.2, visual: "pulse" },
     magazine: 16,
     features: ["Nổ xung bán kính 5.2m trên không.", "Máy bay trúng xung: -35% tốc bay và tốc ngoặt trong 3.8 giây.", "Bắt buộc có điện."]
   }

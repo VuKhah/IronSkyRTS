@@ -119,6 +119,39 @@ export const SCENARIOS: Record<string, () => Scenario> = {
       };
     }
   }),
+  "reaction-time": () => {
+    // Hai đạo quân giống hệt nhau (4 Lynx đi trước, 2 Titan theo sau) lao vào nhau.
+    // Đo từ phát bắn đầu tiên tới lúc một bên mất nửa quân.
+    const PER_SIDE = 6;
+    let first = -1;
+    let at = -1;
+    const lost = (w: World, side: Side) => PER_SIDE - (alive(w, side, "lynx") + alive(w, side, "titan"));
+    const half = (w: World) => lost(w, 0) >= PER_SIDE / 2 || lost(w, 1) >= PER_SIDE / 2;
+    return {
+      id: "reaction-time",
+      name: "Thời gian kịp phản ứng",
+      intent: "Giao tranh tầm trung (mỗi bên 4 Lynx + 2 Titan): từ phát bắn đầu tới lúc một bên mất nửa quân phải ít nhất ~8 giây (đạt nếu 7–12 giây), để người chơi điện thoại kịp ra lệnh.",
+      seconds: 90,
+      setup: () => [
+        ...group(0, "lynx", 4, -22, 22, { v: 30, mode: "amove" }),
+        ...group(0, "titan", 2, -27, 22, { v: 30, mode: "amove" }),
+        ...group(1, "lynx", 4, 22, -22, { v: -30, mode: "amove" }),
+        ...group(1, "titan", 2, 27, -22, { v: -30, mode: "amove" })
+      ],
+      step(w) {
+        if (first < 0 && w.sides[0].stats.damageDealt + w.sides[1].stats.damageDealt > 0) first = w.tick;
+        if (at < 0 && half(w)) at = w.tick;
+        return [];
+      },
+      done: (w) => half(w),
+      judge(w) {
+        if (at < 0 && half(w)) at = w.tick;
+        if (first < 0 || at < 0) return { ok: false, text: "Hai bên chưa giao tranh xong" };
+        const t = (at - first) / TICK_RATE;
+        return { ok: t >= 7 && t <= 12, text: `Mất nửa quân sau ${t.toFixed(1)} giây giao tranh (mục tiêu 7–9; Lam mất ${lost(w, 0)}, Đỏ mất ${lost(w, 1)})` };
+      }
+    };
+  },
   "falcon-flyover-skyguard": () => {
     const N = 10;
     const [dx, dz] = fromUV(ARENA_U, 55);

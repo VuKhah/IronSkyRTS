@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BUILDINGS, UNITS, getSpec, type EntityId } from "./content";
+import { ARMOR_NAME, BUILDINGS, DMG_NAME, RULES, UNITS, getSpec, type ArmorClass, type DmgType, type EntityId } from "./content";
 
 const ALL = [...Object.keys(UNITS), ...Object.keys(BUILDINGS)] as EntityId[];
 
@@ -21,10 +21,27 @@ describe("content", () => {
   it("chỉ số hợp lệ", () => {
     for (const u of Object.values(UNITS)) {
       expect(u.hp).toBeGreaterThan(0);
-      expect(u.armor).toBeGreaterThanOrEqual(0);
-      expect(u.armor).toBeLessThan(1);
       if (u.weapon) expect(u.weapon.cooldown).toBeGreaterThan(0);
       if (u.domain === "air") expect(u.fuel, `${u.id} là máy bay nên phải có bình dầu`).toBeDefined();
+    }
+  });
+
+  // Chỉ kiểm cấu trúc, không khóa con số: con số do kịch bản thiết kế chấm (npm run balance).
+  it("ma trận Giáp × Đạn đủ mọi ô, hệ số dương", () => {
+    const armors = Object.keys(ARMOR_NAME) as ArmorClass[];
+    const types = Object.keys(DMG_NAME) as DmgType[];
+    expect(Object.keys(RULES.damageMatrix).sort()).toEqual([...armors].sort());
+    for (const a of armors) for (const t of types) expect(RULES.damageMatrix[a][t], `${a} × ${t}`).toBeGreaterThan(0);
+  });
+
+  it("mọi thực thể có lớp giáp, mọi vũ khí có loại đạn hợp lệ", () => {
+    for (const id of ALL) {
+      const s = getSpec(id);
+      expect(ARMOR_NAME[s.armorClass], id).toBeDefined();
+      if (s.weapon) {
+        expect(DMG_NAME[s.weapon.dmgType], id).toBeDefined();
+        expect(s.weapon.splash, id).toBeGreaterThanOrEqual(0);
+      }
     }
   });
 

@@ -290,10 +290,11 @@ describe("Phòng Thử Nghiệm", () => {
 });
 
 describe("kịch bản thiết kế", () => {
-  // Chỉ kiểm tra kịch bản chạy trọn và tất định. Đạt / chưa đạt ý đồ thì xem `npm run balance`
-  // (chỉ số còn là số tạm; khi chốt chỉ số, kịch bản nào đã chốt sẽ chuyển thành kiểm thử bắt buộc).
+  // Mọi kịch bản phải chạy trọn và tất định. Kịch bản trong REQUIRED là ý đồ đã chốt (bước 4, 04/11/2026):
+  // chỉnh chỉ số mà làm hỏng ý đồ thì kiểm thử báo ngay. Cố ý đổi ý đồ thì sửa kịch bản và Docs/ARMY_DESIGN.md.
+  const REQUIRED = new Set(["titan-vs-lynx-seq", "titan-vs-lynx-sim", "reaction-time", "falcon-flyover-skyguard"]);
   for (const id of Object.keys(SCENARIOS)) {
-    it(`${id}: chạy trọn, hai lần ra cùng kết quả`, () => {
+    it(`${id}: chạy trọn, hai lần ra cùng kết quả${REQUIRED.has(id) ? ", đạt ý đồ" : ""}`, () => {
       const a = new World(1, { sandbox: true });
       const b = new World(1, { sandbox: true });
       const va = runScenario(id, a);
@@ -301,6 +302,7 @@ describe("kịch bản thiết kế", () => {
       expect(va).toEqual(vb);
       expect(hashWorld(a)).toBe(hashWorld(b));
       expect(a.tick).toBeLessThanOrEqual(sec(SCENARIOS[id]().seconds) + 2);
+      if (REQUIRED.has(id)) expect(va.ok, va.text).toBe(true);
     });
   }
 });

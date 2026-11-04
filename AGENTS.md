@@ -39,13 +39,13 @@ Bộ nhớ kỹ thuật của dự án. Đọc hết trước khi sửa code.
 
 ## 4. Cấu trúc mã nguồn (bản v1 — MVP chơi được, từ 04/11/2026)
 - **`src/sim/` — lõi mô phỏng tất định** (không import Three.js / DOM):
-  - `content.ts`: chỉ số binh chủng, công trình và `RULES` (luật MVP). Nguồn số liệu duy nhất. **Mọi số là số tạm** chờ buổi bàn chỉ số sau bản demo. Mọi lựa chọn về quân (giáp, loại đạn, nổ lan, phá công sự, ma trận sát thương) phải là dữ liệu ở đây; `world.ts` không rẽ nhánh theo tên quân khi tính sát thương, để chỉnh về sau chỉ cần sửa số (`Docs/ARMY_DESIGN.md` Bước 3 mục 5).
+  - `content.ts`: chỉ số binh chủng, công trình và `RULES` (luật MVP). Nguồn số liệu duy nhất. **Mọi số là số tạm** chờ buổi bàn chỉ số sau bản demo. Sát thương = gốc × `RULES.damageMatrix[armorClass][dmgType]` (4 lớp giáp Nhẹ/Nặng/Công sự/Kết cấu × 3 loại đạn Thường/Xuyên giáp/Nổ; không còn giảm % riêng lẻ). Mọi lựa chọn về quân (giáp, loại đạn, nổ lan, công phá `breach`, ma trận) phải là dữ liệu ở đây; `world.ts` không rẽ nhánh theo tên quân khi tính sát thương, để chỉnh về sau chỉ cần sửa số (`Docs/ARMY_DESIGN.md` Bước 3 mục 5).
   - `fmath.ts`: `dsin/dcos` tự viết, `turnToward` (ngoặt không dùng góc), `Rng` (mulberry32).
   - `map.ts`: bản đồ "Thung Lũng Sông Sắt" 160×160 m (hệ trục sông u/v, 3 lối qua, đá, đồi, 7 mỏ, vị trí HQ), `staticBlocked`, `terrainHeight`/`groundY` (cho phần vẽ).
   - `grid.ts`: lưới 2 m (80×80), A* 8 hướng + kéo thẳng đường bằng LOS, `nearestFree`.
   - `types.ts`: `Unit`, `Building`, `Mine`, `Order` (lệnh), `SimEvent` (sự kiện cho phần vẽ / âm thanh). Lệnh `sb*` (`sbSpawn`, `sbRemove`, `sbHeal`, `sbClear`, `sbHold`, `sbFuel`) chỉ có tác dụng khi `World` tạo với `{ sandbox: true }`; trận thường bỏ qua (có kiểm thử).
   - `world.ts`: `World.step(cmds)` — 1 tick = 0.1 s; kinh tế, chiếm mỏ, Xe Vận Tải, **điện** (`computePower`: phát/tiêu thụ/hiệu suất, Nhà Máy Điện đốt Dầu, vùng xây theo `zone`), sản xuất, chiến đấu, không quân + nhiên liệu (Bingo động, dầu dự trữ), sương mù + radar, 3 điều kiện thắng; `hashWorld()`. Chế độ thử nghiệm (`sandbox`): chỉ có 2 HQ, tài nguyên vô hạn, không xử thắng thua, `stats.damageDealt` để đo sát thương.
-  - `scenarios.ts`: **kịch bản thiết kế**: ý đồ trong `Docs/ARMY_DESIGN.md` viết thành phép thử có tiêu chí đạt/chưa đạt (đạo diễn ra lệnh `sb*` mỗi tick, chấm điểm khi ngã ngũ). Chạy trong Phòng Thử Nghiệm hoặc `npm run balance`.
+  - `scenarios.ts`: **kịch bản thiết kế**: ý đồ trong `Docs/ARMY_DESIGN.md` viết thành phép thử có tiêu chí đạt/chưa đạt (đạo diễn ra lệnh `sb*` mỗi tick, chấm điểm khi ngã ngũ). Chạy trong Phòng Thử Nghiệm hoặc `npm run balance`. Kịch bản đã chốt nằm trong `REQUIRED` của `sim.test.ts`: chỉnh số làm hỏng ý đồ thì `npm test` báo. Gồm `reaction-time` (giao tranh tầm trung mất nửa quân sau ≥ 7 giây, tiêu chí kịp phản ứng).
   - `ai.ts`: AI 1 độ khó, chỉ ra lệnh và chỉ đọc phần mình thấy; dùng seed trận để mỗi trận một khác.
   - Kiểm thử: `content.test.ts`, `sim.test.ts` (tất định, tìm đường, kinh tế, AI đấu AI trọn trận).
 - **`src/render/models/`**: mô hình 3D bằng code. Mỗi mô hình là một `Rig` (`root`, `actions`, `defaultOn`, `radius`, `update()`, tùy chọn `setAim()` cho tháp pháo và `setFlight()` cho máy bay do chiến trường điều khiển). Điểm vào: `buildModel(id, faction, showcase)`; mỏ: `buildNode(res)` trong `nodes.ts`.
@@ -73,6 +73,8 @@ Bộ nhớ kỹ thuật của dự án. Đọc hết trước khi sửa code.
 - Three.js 0.187 đã bỏ `PCFSoftShadowMap` → dùng `PCFShadowMap`.
 - Chrome không giao diện vẽ bằng CPU nên ~1–2 giây mỗi khung hình: muốn xem giữa trận thì dùng `skip`/`script`, đừng chờ thời gian thật.
 - **`Math.hypot` cũng không dùng trong sim**: chuẩn JS không bắt buộc kết quả giống nhau giữa các trình duyệt. Dùng `Math.sqrt(dx*dx + dz*dz)` (sqrt được IEEE bảo đảm làm tròn đúng). Phần giao diện tính tọa độ cho lệnh thì dùng thoải mái, vì lệnh được ghi lại nguyên giá trị.
+- **Đổi luật chơi thì chạy lại `npm run simulate`**, không chỉ `npm run balance`: AI được viết theo luật cũ. Ví dụ: bỏ sát thương mặt đất của SkyGuard làm trận AI đấu AI hòa gần một nửa, dù mọi kịch bản vẫn đạt (`Docs/ARMY_DESIGN.md` Bước 4).
+- **Chỉnh nhịp trận bằng máu, không bằng sát thương:** nhân máu mọi quân cùng hệ số thì ai thắng ai giữ nguyên, chỉ có trận dài ra. Đừng nhân theo vũ khí công trình, vì làm vậy phòng thủ áp đảo.
 - `tsconfig` tắt `noUncheckedIndexedAccess`: mã lưới / mảng kiểu (typed array) truy cập chỉ số liên tục, bật lên thì toàn dấu `!` mà không an toàn hơn.
 
 ## 5. Quy trình và lệnh

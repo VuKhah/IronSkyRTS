@@ -3,7 +3,7 @@
  * Mọi con số đọc từ src/sim/content.ts, cùng nguồn với trận đấu.
  */
 import {
-  BUILDINGS, PLANNED_BUILDINGS, PLANNED_UNITS, UNITS, getSpec, targetsOf,
+  ARMOR_NAME, BUILDINGS, DMG_NAME, PLANNED_BUILDINGS, PLANNED_UNITS, UNITS, getSpec, targetsOf,
   type BuildingSpec, type Cost, type EntityId, type EntitySpec, type Faction, type UnitSpec, type WeaponSpec
 } from "../sim/content";
 import { buildModel, disposeRig } from "../render/models";
@@ -62,8 +62,9 @@ function weaponHtml(w: WeaponSpec | undefined): string {
   const bits = [`<b>${esc(w.name)}</b>`];
   if (w.dmgGround) bits.push(`${w.dmgGround} ST mặt đất`);
   if (w.dmgAir) bits.push(`${w.dmgAir} ST trên không`);
-  bits.push(`mỗi ${num(w.cooldown)}s`, `tầm ${num(w.range)}m`);
+  bits.push(`đạn ${DMG_NAME[w.dmgType]}`, `mỗi ${num(w.cooldown)}s`, `tầm ${num(w.range)}m`);
   if (w.splash) bits.push(`nổ lan ${num(w.splash)}m`);
+  if (w.breach) bits.push("công phá");
   return `<p class="weapon">${bits.join(" · ")}</p>`;
 }
 
@@ -113,7 +114,7 @@ function unitSheet(s: UnitSpec): string {
   ].join("");
   const stats = [
     stat(s.hp, "Máu"),
-    stat(`${Math.round(s.armor * 100)}%`, "Giáp giảm ST"),
+    stat(ARMOR_NAME[s.armorClass], "Giáp"),
     stat(s.minSpeed ? `${num(s.minSpeed)}–${num(s.speed)}` : num(s.speed), "Tốc độ m/s"),
     stat(`${s.sight}m`, "Tầm nhìn"),
     ...(w ? [stat(`${num(w.range)}m`, "Tầm bắn"), stat(dps(w), "ST mỗi giây"), stat(w.splash ? `${num(w.splash)}m` : "—", "Nổ lan")] : []),
@@ -142,6 +143,7 @@ function buildingSheet(s: BuildingSpec): string {
   const power = s.power > 0 ? `+${s.power} MW` : s.power < 0 ? `${s.power} MW` : "0 MW";
   const stats = [
     stat(s.hp, "Độ bền"),
+    stat(ARMOR_NAME[s.armorClass], "Giáp"),
     stat(power, s.power >= 0 ? "Phát điện" : "Tiêu thụ điện"),
     ...(s.weapon ? [stat(`${num(s.weapon.range)}m`, "Tầm bắn"), stat(dps(s.weapon), "ST mỗi giây")] : []),
     ...(s.magazine ? [stat(s.magazine, "Băng đạn")] : [])
