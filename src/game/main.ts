@@ -315,6 +315,10 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
           }
           break;
         }
+        case "salvage":
+          if (visible(e.x, e.z)) overlay.float(e.x, map.groundY(e.x, e.z) + 2, e.z, `+${e.value} Sắt`, e.side === 0 ? "#8fd0ff" : "#ff9a8f");
+          if (e.side === me) sfx.ui("salvage");
+          break;
         case "rank":
           if (e.side === me) {
             hud.alert(`${UNITS[e.kind].short} lên cựu binh cấp ${e.rank}${e.rank >= RULES.veterancy.regenRank ? ": tự hồi máu" : ""}`, "good");
@@ -433,6 +437,8 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
     selectedSet.clear();
     for (const id of ctrl.selected) selectedSet.add(id);
     views.sync(world, viewer, ctrl.alpha, dt, time, selectedSet);
+    // khói bốc lên từ xác xe
+    if (!noFx) for (const p of views.wreckPositions()) if (Math.random() < dt * 1.4) fx.wreckSmoke(p);
     fx.update(dt, world, targetPos);
     hud.update(ctrl.panelCtx(), ctrl.mode, ctrl.placeKind, ctrl.hint());
     const anchor = ctrl.confirmAnchor();

@@ -268,6 +268,11 @@ export const RULES = {
     oilWeight: 2,
     noCostValue: 500
   },
+  /**
+   * Xác quân (Bản cập nhật vui): xe / máy bay bị hạ để lại xác chứa Sắt = `share` × giá trị, tồn tại `seconds` giây.
+   * Xe mặt đất nào (của bất kỳ phe nào) tới trong `radius` mét trước thì nhặt được, tự động, không cần ra lệnh.
+   */
+  salvage: { share: 0.3, seconds: 60, radius: 2.6 },
   sellRefund: 0.5,
   queueMax: 5,
   captureRadius: 8,

@@ -5,7 +5,7 @@
  */
 import type { WeaponVisual } from "../sim/content";
 
-export type UiSound = "click" | "ack" | "error" | "alert" | "build" | "ready" | "win" | "lose" | "rank";
+export type UiSound = "click" | "ack" | "error" | "alert" | "build" | "ready" | "win" | "lose" | "rank" | "salvage";
 
 export class Sfx {
   private ctx: AudioContext | null = null;
@@ -121,6 +121,10 @@ export class Sfx {
         break;
       case "rank":
         [784, 988, 1319].forEach((f, i) => this.tone(f, 0.12, 0.13, "triangle", undefined, i * 0.07));
+        break;
+      case "salvage":
+        this.tone(1320, 0.05, 0.1, "square");
+        this.tone(1760, 0.09, 0.08, "square", undefined, 0.05);
         break;
       case "win":
         [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.35, 0.18, "triangle", undefined, i * 0.14));

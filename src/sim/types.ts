@@ -91,6 +91,23 @@ export interface Unit {
   lastHit: number;
 }
 
+/** Xác quân trên chiến trường: chứa Sắt, xe mặt đất chạm vào trước thì nhặt được. */
+export interface Wreck {
+  id: number;
+  /** Loại quân đã bị hạ (để vẽ đúng hình xác) và phe của nó. */
+  kind: UnitId;
+  side: Side;
+  x: number;
+  z: number;
+  /** Hướng thân lúc bị hạ (vector đơn vị). */
+  hx: number;
+  hz: number;
+  /** Lượng Sắt nhặt được. */
+  value: number;
+  /** Tick xác biến mất. */
+  until: number;
+}
+
 export interface Building {
   id: number;
   cat: "building";
@@ -210,6 +227,7 @@ export type SimEvent =
   | { t: "alert"; side: Side; what: AlertKind; x: number; z: number; n?: number }
   | { t: "monopoly"; side: Side; res: Res }
   | { t: "rank"; id: number; kind: UnitId; side: Side; rank: number; x: number; z: number }
+  | { t: "salvage"; wreck: number; side: Side; value: number; x: number; z: number }
   | { t: "end"; winner: Side | 2; reason: WinReason };
 
 export interface SideStats {
@@ -221,6 +239,8 @@ export interface SideStats {
   buildingsBuilt: number;
   /** Tổng sát thương thực gây ra (sau giáp, không tính phần dư khi mục tiêu đã hết máu). */
   damageDealt: number;
+  /** Sắt nhặt được từ xác quân. */
+  salvaged: number;
 }
 
 export interface SideState {

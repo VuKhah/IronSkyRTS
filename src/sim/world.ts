@@ -11,7 +11,7 @@ import { BUILDINGS, RULES, UNITS, valueOf, type BuildingId, type Res, type Side,
 import { clamp, dcos, DEG, dist2, dsin, Rng, turnStep, turnToward, type TurnStep } from "./fmath";
 import { Grid } from "./grid";
 import { CELL, GameMap, getMap, TERRAIN, TERRAIN_KINDS } from "./maps";
-import type { AlertKind, Building, Command, Entity, Mine, Order, Shot, SideState, SimEvent, Target, Unit, WinReason } from "./types";
+import type { AlertKind, Building, Command, Entity, Mine, Order, Shot, SideState, SimEvent, Target, Unit, WinReason, Wreck } from "./types";
 
 export const TICK_RATE = RULES.tickRate;
 export const DT = 1 / TICK_RATE;
@@ -152,7 +152,7 @@ function newSide(cells: number): SideState {
     batteryFlow: 0,
     oilBurn: 0,
     alerts: { commander: -1000, base: -1000, hauler: -1000, lowfuel: -1000, nooil: -1000, mineLost: -1000, powerShort: -1000, powerForecast: -1000, oilLow: -1000, batteryLow: -1000 },
-    stats: { unitsBuilt: 0, unitsLost: 0, kills: 0, ironMined: 0, oilMined: 0, buildingsBuilt: 0, damageDealt: 0 }
+    stats: { unitsBuilt: 0, unitsLost: 0, kills: 0, ironMined: 0, oilMined: 0, buildingsBuilt: 0, damageDealt: 0, salvaged: 0 }
   };
 }
 
@@ -188,6 +188,8 @@ export class World {
   buildings: Building[] = [];
   readonly mines: Mine[] = [];
   shots: Shot[] = [];
+  /** Xác quân còn nằm trên chiến trường. */
+  wrecks: Wreck[] = [];
   readonly byId = new Map<number, Entity>();
   readonly sides: [SideState, SideState];
   events: SimEvent[] = [];
@@ -364,6 +366,7 @@ export class World {
     this.resolveShots();
     this.veteranRegen();
     this.cleanup();
+    this.updateWrecks();
     this.updateFog();
     if (!this.sandbox) this.checkVictory();
     this.tick++;
@@ -660,7 +663,8 @@ export class World {
           const e = this.target(id);
           if (!e) continue;
           e.hp = 0;
-          if (e.cat === "building") this.sold.add(e.id);
+          // xóa bằng công cụ: công trình không nổ to, quân không để lại xác
+          this.sold.add(e.id);
         }
         break;
       case "sbHeal":
@@ -672,7 +676,11 @@ export class World {
         }
         break;
       case "sbClear":
-        for (const u of this.units) u.hp = 0;
+        for (const u of this.units) {
+          u.hp = 0;
+          this.sold.add(u.id);
+        }
+        this.wrecks = [];
         for (const b of this.buildings)
           if (b.kind !== "hq") {
             b.hp = 0;
@@ -2187,6 +2195,44 @@ export class World {
     this.shots = keep;
   }
 
+  /** Xác quân: để lại xác chứa Sắt (trừ khi rơi xuống chỗ xe không tới được: sông, đá). */
+  private leaveWreck(u: Unit): void {
+    if (this.sold.delete(u.id) || this.grid.blockedAt(u.x, u.z)) return;
+    const S = RULES.salvage;
+    const value = Math.round(valueOf(u.kind) * S.share);
+    if (value <= 0) return;
+    this.wrecks.push({ id: this.nextId++, kind: u.kind, side: u.side, x: u.x, z: u.z, hx: u.hx, hz: u.hz, value, until: this.tick + sec(S.seconds) });
+  }
+
+  /** Xác quân hết hạn thì biến mất; xe mặt đất gần nhất trong bán kính nhặt (tự động, bất kể phe). */
+  private updateWrecks(): void {
+    if (this.wrecks.length === 0) return;
+    const r2 = RULES.salvage.radius * RULES.salvage.radius;
+    const keep: Wreck[] = [];
+    for (const wr of this.wrecks) {
+      if (this.tick >= wr.until) continue;
+      let best: Unit | null = null;
+      let bestD = r2;
+      for (const u of this.units) {
+        if (u.air !== "none" || u.hp <= 0) continue;
+        const d = dist2(u.x, u.z, wr.x, wr.z);
+        if (d <= bestD) {
+          bestD = d;
+          best = u;
+        }
+      }
+      if (!best) {
+        keep.push(wr);
+        continue;
+      }
+      const st = this.sides[best.side];
+      st.iron += wr.value;
+      st.stats.salvaged += wr.value;
+      this.events.push({ t: "salvage", wreck: wr.id, side: best.side, value: wr.value, x: wr.x, z: wr.z });
+    }
+    this.wrecks = keep;
+  }
+
   private cleanup(): void {
     let deadUnits = false;
     for (const u of this.units) if (u.hp <= 0) deadUnits = true;
@@ -2203,6 +2249,7 @@ export class World {
         this.sides[u.side].stats.unitsLost++;
         if (this.commanders[u.side] === u) this.commanders[u.side] = null;
         this.events.push({ t: "death", id: u.id, kind: u.kind, side: u.side, x: u.x, z: u.z, alt: u.alt, building: false, crash: u.crashed, sold: false });
+        this.leaveWreck(u);
       }
       this.units = alive;
     }
@@ -2427,6 +2474,10 @@ export function hashWorld(w: World): number {
     num(b.progress);
     num(b.queue.length);
     num(b.prog);
+  }
+  for (const wr of w.wrecks) {
+    num(wr.id);
+    num(wr.until);
   }
   for (const m of w.mines) {
     num(m.amount);

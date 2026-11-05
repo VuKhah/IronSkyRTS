@@ -7,7 +7,7 @@
 import * as THREE from "three";
 import { BUILDINGS, FACTION_OF, UNITS, type Side } from "../sim/content";
 import type { GameMap } from "../sim/maps";
-import type { Building, Mine, Target, Unit } from "../sim/types";
+import type { Building, Mine, Target, Unit, Wreck } from "../sim/types";
 import { AIRBORNE_ALT, DT, type World } from "../sim/world";
 import { buildModel, buildNode, disposeRig, type NodeRig, type Rig } from "../render/models";
 import { bakeObject, bakeStatic } from "../render/models/bake";
@@ -52,10 +52,14 @@ const RING_MAT = {
   neutral: new THREE.MeshBasicMaterial({ color: 0xffd36e, transparent: true, opacity: 0.9, depthWrite: false })
 };
 
+/** Vật liệu cháy đen dùng chung cho mọi xác quân (một vật liệu → mỗi xác gộp được thành một lệnh vẽ). */
+const WRECK_MAT = new THREE.MeshStandardMaterial({ color: 0x3b3733, roughness: 0.95, metalness: 0.15 });
+
 export class Views {
   private units = new Map<number, View>();
   private buildings = new Map<number, View>();
   private mines = new Map<number, MineView>();
+  private wrecks = new Map<number, { root: THREE.Object3D; seen: number }>();
   private frame = 0;
 
   constructor(
@@ -120,8 +124,50 @@ export class Views {
       }
       this.updateMine(m, v, dt, time, selected.has(m.id));
     }
+    for (const wr of world.wrecks) {
+      // xác trong sương mù thì không thấy
+      if (viewer !== null && !world.cellVisible(viewer, wr.x, wr.z)) continue;
+      let v = this.wrecks.get(wr.id);
+      if (!v) {
+        v = { root: this.buildWreck(wr), seen: f };
+        this.scene.add(v.root);
+        this.wrecks.set(wr.id, v);
+      }
+      v.seen = f;
+    }
+    for (const [id, v] of this.wrecks) {
+      if (v.seen === f) continue;
+      this.scene.remove(v.root);
+      v.root.traverse((o) => {
+        if (o instanceof THREE.Mesh) o.geometry.dispose();
+      });
+      this.wrecks.delete(id);
+    }
     this.sweep(this.units, f);
     this.sweep(this.buildings, f);
+  }
+
+  /** Xác: chính mô hình chiếc xe, cháy đen, nghiêng, lún xuống đất; gộp thành một lệnh vẽ. */
+  private buildWreck(wr: Wreck): THREE.Object3D {
+    const rig = buildModel(wr.kind, FACTION_OF[wr.side], false);
+    rig.root.traverse((o) => {
+      if (o instanceof THREE.Mesh) {
+        o.material = WRECK_MAT;
+        o.castShadow = true;
+      }
+    });
+    bakeObject(rig.root, () => {});
+    const root = rig.root;
+    const tilt = ((wr.id % 7) - 3) * 0.05;
+    root.position.set(wr.x, this.map.groundY(wr.x, wr.z) - 0.15, wr.z);
+    root.rotation.set(tilt, Math.atan2(wr.hx, wr.hz) + tilt * 2, -tilt * 0.8, "YXZ");
+    root.scale.setScalar(0.95);
+    return root;
+  }
+
+  /** Các xác đang hiện (để phần hiệu ứng thả khói). */
+  wreckPositions(): THREE.Vector3[] {
+    return [...this.wrecks.values()].map((v) => v.root.position);
   }
 
   private sweep(map: Map<number, View>, f: number): void {

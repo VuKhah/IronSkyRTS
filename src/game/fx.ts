@@ -162,6 +162,12 @@ export class Fx {
     }
   }
 
+  /** Một cụm khói bốc lên từ xác xe. */
+  wreckSmoke(pos: THREE.Vector3): void {
+    const p = pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.2, 1, (Math.random() - 0.5) * 1.2));
+    this.spawn(this.geo.sphere, this.mat.smoke, p, 0.45, 2.6, { grow: 1.1, vel: new THREE.Vector3(0.3, 1.3, 0.2), fade: true });
+  }
+
   /** Dấu lệnh trên mặt đất (xanh = đi, đỏ = tấn công, vàng = khai thác). */
   marker(x: number, z: number, color: number): void {
     this.spawn(this.geo.ring, add(color, 0.95), new THREE.Vector3(x, this.map.groundY(x, z) + 0.25, z), 2.2, 0.5, { grow: -3 });

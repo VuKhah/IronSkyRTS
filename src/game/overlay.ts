@@ -11,6 +11,8 @@ const SIDE_COLOR = ["#3ea8ff", "#ff4d4d"];
 
 export class Overlay {
   private ctx: CanvasRenderingContext2D;
+  /** Chữ nổi bay lên rồi mờ dần (ví dụ "+45 Sắt" khi nhặt xác). */
+  private floats: { x: number; y: number; z: number; text: string; color: string; t0: number }[] = [];
   constructor(readonly canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext("2d")!;
   }
@@ -20,6 +22,31 @@ export class Overlay {
     this.canvas.width = Math.round(w * dpr);
     this.canvas.height = Math.round(h * dpr);
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  /** Thêm chữ nổi tại điểm 3D (x, y, z). */
+  float(x: number, y: number, z: number, text: string, color: string): void {
+    this.floats.push({ x, y, z, text, color, t0: performance.now() });
+  }
+
+  private drawFloats(cam: RtsCamera, w: number, h: number): void {
+    const g = this.ctx;
+    const now = performance.now();
+    this.floats = this.floats.filter((f) => now - f.t0 < 1400);
+    g.font = "bold 13px 'Be Vietnam Pro', sans-serif";
+    g.textAlign = "center";
+    for (const f of this.floats) {
+      const k = (now - f.t0) / 1400;
+      const p = cam.project(f.x, f.y + k * 2.5, f.z, w, h);
+      if (!p.visible) continue;
+      g.globalAlpha = 1 - k * k;
+      g.lineWidth = 3;
+      g.strokeStyle = "rgba(0,0,0,0.75)";
+      g.strokeText(f.text, p.x, p.y);
+      g.fillStyle = f.color;
+      g.fillText(f.text, p.x, p.y);
+    }
+    g.globalAlpha = 1;
   }
 
   /** Quân hàm cựu binh: `n` vạch chữ V vàng xếp chồng, đáy ở (x, y). */
@@ -167,5 +194,6 @@ export class Overlay {
       g.fillRect(x, y, Math.abs(box.x1 - box.x0), Math.abs(box.y1 - box.y0));
       g.strokeRect(x, y, Math.abs(box.x1 - box.x0), Math.abs(box.y1 - box.y0));
     }
+    this.drawFloats(cam, w, h);
   }
 }

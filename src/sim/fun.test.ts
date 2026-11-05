@@ -85,3 +85,49 @@ describe("Cựu binh", () => {
     expect(green.hp).toBeCloseTo(green.maxHp * 0.5, 6);
   });
 });
+
+describe("Xác quân", () => {
+  /** Hạ một chiếc Lynx của phe 1 bằng Lynx phe 0, trả về thế giới sau khi xác vừa xuất hiện. */
+  function killed(): { w: World; me: Unit } {
+    const w = new World(1, { sandbox: true });
+    hold(w, 1);
+    const me = spawn(w, "lynx", 0, -8);
+    const foe = spawn(w, "lynx", 1, 8);
+    run(w, 30, () => foe.hp <= 0 && w.wrecks.length > 0);
+    return { w, me };
+  }
+
+  it("xe bị hạ để lại xác chứa Sắt = phần trăm giá trị", () => {
+    const { w } = killed();
+    expect(w.wrecks.length).toBe(1);
+    const wr = w.wrecks[0];
+    expect(wr.kind).toBe("lynx");
+    expect(wr.value).toBe(Math.round(valueOf("lynx") * RULES.salvage.share));
+  });
+
+  it("xe mặt đất phe nào chạm vào trước thì nhặt được (kể cả xác của địch)", () => {
+    const { w, me } = killed();
+    const wr = w.wrecks[0];
+    const before = w.sides[0].stats.salvaged;
+    w.step([{ side: 0, order: { t: "move", ids: [me.id], x: wr.x, z: wr.z } }]);
+    run(w, 20, () => w.wrecks.length === 0);
+    expect(w.wrecks.length).toBe(0);
+    expect(w.sides[0].stats.salvaged - before).toBe(wr.value);
+  });
+
+  it("xác biến mất sau một thời gian nếu không ai nhặt", () => {
+    const { w } = killed();
+    run(w, RULES.salvage.seconds - 2);
+    expect(w.wrecks.length).toBe(1);
+    run(w, 3);
+    expect(w.wrecks.length).toBe(0);
+  });
+
+  it("xóa quân bằng công cụ Phòng Thử Nghiệm thì không để lại xác", () => {
+    const w = new World(1, { sandbox: true });
+    const u = spawn(w, "titan", 0, 0);
+    w.step([{ side: 0, order: { t: "sbRemove", ids: [u.id] } }]);
+    w.step([]);
+    expect(w.wrecks.length).toBe(0);
+  });
+});
