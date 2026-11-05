@@ -5,6 +5,9 @@ Game chiến thuật thời gian thực 3D chạy ngay trên trình duyệt. Hai
 > 🎮 **Bản v1 (MVP) chơi được.** TypeScript + Three.js, chạy trên trình duyệt, điều khiển bằng chạm hoặc chuột.
 
 ## Chơi thử
+**Chơi ngay trên trình duyệt (cả điện thoại):** https://vukhah.github.io/IronSkyRTS/ · Xưởng Mô Hình: https://vukhah.github.io/IronSkyRTS/models.html
+
+Chạy trên máy mình:
 ```
 npm install
 npm run dev

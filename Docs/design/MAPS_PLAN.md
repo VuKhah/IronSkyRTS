@@ -18,7 +18,7 @@
 
 ## 2. Quyết định của người dùng (05/11/2026)
 
-1. **Bản đồ hiện hình vuông, đúng hướng gốc** (không xoay thành hình thoi), vì thân thiện với người dùng.
+1. **Bản đồ hiện hình vuông, đúng hướng gốc** (không xoay thành hình thoi), vì thân thiện với người dùng. *Làm rõ (05/11/2026):* nghĩa là **cạnh dưới bản đồ nằm ngang** trên màn hình (bản đồ chữ nhật, hình trụ hay hình que cũng vậy), giống tờ bản đồ đặt thẳng trước mặt.
 2. **Bản đồ là thành phần riêng**, để làm được nhiều bản đồ như tác giả Battle Drones, với **nhiều kích cỡ và hình dáng khác nhau**.
 3. **Vị trí cố định (mỏ Sắt, giàn Dầu, căn cứ…) do ta đặt tay** trong dữ liệu từng bản đồ. Không có trình sinh bản đồ tự đặt mỏ.
 4. **Hiệu ứng địa hình do bản đồ quyết định:** mỗi bản đồ tự "tô" các vùng địa hình (bùn, cát, rừng, đường…), luật của từng loại địa hình thì dùng chung, **nằm trong một file chung duy nhất `src/sim/maps/terrain.ts`** để dễ cập nhật.
@@ -68,7 +68,7 @@ src/sim/maps/
 Máy bay không chịu hiệu ứng địa hình. Độ dốc làm chậm (mục còn lại của B11) tính chung với bảng này: tốc độ = hệ số loại địa hình × hệ số độ dốc.
 
 ### 3.4. Góc nhìn
-- Camera mặc định nhìn thẳng hướng Bắc; minimap hình vuông (hình chữ nhật nếu bản đồ chữ nhật), không xoay theo camera.
+- Camera mặc định nhìn thẳng hướng Bắc, **cạnh dưới bản đồ nằm ngang** trên màn hình; minimap hình vuông (hình chữ nhật nếu bản đồ chữ nhật), cạnh dưới cũng nằm ngang, không xoay theo camera.
 - Lam ở góc dưới trái. Phe Đỏ được xoay góc nhìn ban đầu 180° (đã chốt) để cũng thấy nhà mình ở góc dưới trái.
 - Người chơi vẫn xoay camera tự do như hiện tại.
 

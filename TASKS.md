@@ -18,7 +18,7 @@ Cập nhật 05/11/2026 · ✅ xong · 🔄 đang làm · ⏳ chưa làm · ⏸ 
 - ✅ HUD, minimap, cảnh báo, âm thanh, màn kết thúc
 - ✅ Đẩy code lên GitHub (VuKhah/IronSkyRTS)
 - ⏳ Đăng game lên GitHub Pages
-- ⏳ Độc quyền Dầu thắng quá sớm: chọn cách sửa (`MVP_DESIGN.md` 16.3)
+- ⏳ Độc quyền Dầu thắng quá sớm (`MVP_DESIGN.md` 16.3): để các phiên cân bằng, chưa sửa bây giờ
 
 ## 2. Công cụ
 - ✅ Xưởng Mô Hình (`models.html`)
@@ -32,7 +32,7 @@ Cập nhật 05/11/2026 · ✅ xong · 🔄 đang làm · ⏳ chưa làm · ⏸ 
 - ✅ Cơ chế bắn: loạt, Lockdown, xoay tháp, giáp mặt trước, phòng thủ điểm, rải thảm
 - ✅ Falcon: bổ nhào, pháo đôi, 2 tên lửa, đường đạn thẳng
 - ⏳ Phiên riêng không quân: Falcon còn giật khi bay
-- ⏳ AI đấu AI hay hòa (giằng co quanh mỏ): chọn hướng sửa
+- ⏳ AI đấu AI hay hòa: do chưa tối ưu kinh tế, sát thương và chưa đủ quân; để các phiên cân bằng, chưa sửa bây giờ
 - ⏳ AI thắng lệch về phe Đỏ: tìm nguyên nhân
 - ⏳ Buổi cân bằng chỉ số (Falcon quá mạnh, 2 kịch bản chờ đưa lại)
 - ⏳ Pháo Tự Hành (tầm tối thiểu, lộ 2 giây, cộng tầm trên đồi)

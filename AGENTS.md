@@ -90,6 +90,7 @@ Bộ nhớ kỹ thuật của dự án. Đọc hết trước khi sửa code.
 - `npm run simulate -- N`: N trận AI đấu AI không giao diện, in kết quả và thống kê (dùng để cân bằng).
 - `npm run balance`: chấm các kịch bản thiết kế (ý đồ binh chủng) với chỉ số hiện tại.
 - `npm run build`: kiểm tra kiểu rồi build ra `dist/`. `npm run preview`: chạy thử bản build (http://localhost:4173).
+- **Đăng web:** `.github/workflows/pages.yml` tự chạy mỗi lần push lên `main`: `npm ci` → `npm test` → `npm run build` → đăng `dist/` lên GitHub Pages (https://vukhah.github.io/IronSkyRTS/). Kiểm thử hỏng thì không đăng. Vite dùng `base: "./"` nên mọi đường dẫn phải tương đối (không viết `/models.html`, viết `./models.html`).
 - **Tự xem kết quả bằng Chrome không giao diện** (WebGL qua SwiftShader):
   `"/c/Program Files/Google/Chrome/Application/chrome.exe" --headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --hide-scrollbars --window-size=1280,800 --virtual-time-budget=5000 --screenshot=<file.png> "http://localhost:4173/?play=aivai&seed=3&skip=170&hq=1"`
   Đọc log console: thêm `--enable-logging=stderr --v=0` và lọc dòng `CONSOLE`.
