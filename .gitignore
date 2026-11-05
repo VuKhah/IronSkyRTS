@@ -6,3 +6,9 @@ coverage/
 Thumbs.db
 .env
 .env.*
+
+# Tài liệu làm việc riêng: chỉ giữ trên máy, không đưa lên GitHub (quyết định 05/11/2026)
+CLAUDE.md
+AGENTS.md
+TASKS.md
+Docs/
