@@ -4,7 +4,7 @@
  * (không phải tự dọn hàng nghìn đối tượng 3D của trận trước).
  */
 import * as THREE from "three";
-import { BUILDINGS, FACTION_OF, RES_NAME, SIDE_NAME, UNITS, type EntityId, type Side, type UnitId } from "../sim/content";
+import { BUILDINGS, FACTION_OF, RES_NAME, RULES, SIDE_NAME, UNITS, type EntityId, type Side, type UnitId } from "../sim/content";
 import type { SimEvent } from "../sim/types";
 import { TICK_RATE } from "../sim/world";
 import { buildModel, disposeRig } from "../render/models";
@@ -315,6 +315,12 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
           }
           break;
         }
+        case "rank":
+          if (e.side === me) {
+            hud.alert(`${UNITS[e.kind].short} lên cựu binh cấp ${e.rank}${e.rank >= RULES.veterancy.regenRank ? ": tự hồi máu" : ""}`, "good");
+            sfx.ui("rank");
+          }
+          break;
         case "built":
           if (e.side === me) {
             hud.alert(`${BUILDINGS[e.kind].name} đã xây xong`, "good");

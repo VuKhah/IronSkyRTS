@@ -252,6 +252,22 @@ export const RULES = {
      */
     coverBy: { normal: 1, ap: 1, he: 0 }
   },
+  /**
+   * Cựu binh (Bản cập nhật vui): quân nhận kinh nghiệm theo GIÁ TRỊ phần sát thương đã gây cho địch
+   * (hạ trọn một chiếc Titan 350 Sắt = 350 kinh nghiệm, chia cho mọi xe cùng bắn theo phần sát thương).
+   * Lên cấp khi kinh nghiệm đạt `ranks[i]` × giá trị của chính mình (quân rẻ lên cấp nhanh hơn).
+   * Mỗi cấp +`dmgPerRank` sát thương; từ cấp `regenRank` tự hồi máu khi đã `regenDelay` giây không trúng đạn.
+   */
+  veterancy: {
+    ranks: [1, 3, 6],
+    dmgPerRank: 0.15,
+    regenRank: 3,
+    regenPerSec: 0.015,
+    regenDelay: 5,
+    /** Giá trị = Sắt + Dầu × oilWeight; thứ không có giá (Xe Tư Lệnh, Tổng Hành Dinh) tính bằng noCostValue. */
+    oilWeight: 2,
+    noCostValue: 500
+  },
   sellRefund: 0.5,
   queueMax: 5,
   captureRadius: 8,
@@ -826,6 +842,13 @@ export const MVP_BUILDABLE: readonly BuildingId[] = ["factory", "airfield", "pow
 
 export function isUnitId(id: string): id is UnitId {
   return id in UNITS;
+}
+
+/** Giá trị của một loại quân / công trình (cho kinh nghiệm cựu binh, điểm chỉ huy): Sắt + Dầu × trọng số. */
+export function valueOf(id: EntityId): number {
+  const spec = getSpec(id);
+  const V = RULES.veterancy;
+  return spec.cost ? spec.cost.iron + spec.cost.oil * V.oilWeight : V.noCostValue;
 }
 
 export function getSpec(id: EntityId): EntitySpec {

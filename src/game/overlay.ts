@@ -22,6 +22,26 @@ export class Overlay {
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
+  /** Quân hàm cựu binh: `n` vạch chữ V vàng xếp chồng, đáy ở (x, y). */
+  private chevrons(x: number, y: number, n: number): void {
+    const g = this.ctx;
+    g.lineWidth = 2;
+    g.lineJoin = "round";
+    for (let i = 0; i < n; i++) {
+      const yy = y - i * 4.6;
+      g.beginPath();
+      g.moveTo(x - 6.5, yy - 4);
+      g.lineTo(x, yy);
+      g.lineTo(x + 6.5, yy - 4);
+      g.strokeStyle = "rgba(0,0,0,0.7)";
+      g.lineWidth = 3.6;
+      g.stroke();
+      g.strokeStyle = "#ffd34d";
+      g.lineWidth = 2;
+      g.stroke();
+    }
+  }
+
   private bar(x: number, y: number, w: number, k: number, color: string): void {
     const g = this.ctx;
     g.fillStyle = "rgba(0,0,0,0.6)";
@@ -50,10 +70,13 @@ export class Overlay {
       const spec = UNITS[u.kind];
       const isAir = u.air !== "none";
       const showFuel = isAir && spec.fuel && (viewer === null || u.side === viewer) && (sel || u.air !== "parked" || u.fuel < spec.fuel.tank * RULES.air.takeoffMin);
-      if (!sel && u.hp >= u.maxHp && !showFuel && !(u.kind === "hauler" && u.cargo > 0 && sel)) continue;
+      const bars = sel || u.hp < u.maxHp || showFuel;
+      if (!bars && u.rank === 0) continue;
       const [x, y, z] = Views.displayPos(world.map, u, alpha);
       const p = cam.project(x, y + (isAir ? 2.2 : 3.4), z, w, h);
       if (!p.visible || p.x < -40 || p.y < -40 || p.x > w + 40 || p.y > h + 40) continue;
+      if (u.rank > 0) this.chevrons(p.x, p.y - (bars ? 4 : -2), u.rank);
+      if (!bars) continue;
       const bw = Math.max(18, spec.radius * 14);
       const k = u.hp / u.maxHp;
       this.bar(p.x, p.y, bw, k, hpColor(k));

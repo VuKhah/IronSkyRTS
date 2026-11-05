@@ -184,6 +184,13 @@ export class Hud {
     this.rows.innerHTML = html;
   }
 
+  /** Cựu binh: cấp và phần thưởng (bỏ trống nếu chưa lên cấp). */
+  private rankNote(u: Unit): string {
+    if (u.rank === 0) return "";
+    const V = RULES.veterancy;
+    return ` · Cựu binh ${"▲".repeat(u.rank)} +${Math.round(u.rank * V.dmgPerRank * 100)}% sát thương${u.rank >= V.regenRank ? ", tự hồi máu" : ""}`;
+  }
+
   /** Địa hình dưới xe mặt đất: tên loại + ảnh hưởng tốc độ (và nấp nếu là rừng). Đứng trên cỏ thì bỏ trống. */
   private terrainNote(u: Unit): string {
     if (u.air !== "none") return "";
@@ -231,7 +238,7 @@ export class Hud {
           } else if (single.kind === "hauler") {
             const st = { idle: single.manual ? "Chờ lệnh" : "Tìm mỏ", toMine: "Ra mỏ", mining: "Đang đào", toDock: "Chở về", unloading: "Dỡ hàng" }[single.hState];
             extra = `<small>${st}${single.cargo > 0 ? ` · ${Math.round(single.cargo)} ${RES_NAME[single.cargoRes]}` : ""}${this.terrainNote(single)}</small>`;
-          } else extra = `<small>${Math.ceil(single.hp)}/${single.maxHp}${this.terrainNote(single)}</small>`;
+          } else extra = `<small>${Math.ceil(single.hp)}/${single.maxHp}${this.rankNote(single)}${this.terrainNote(single)}</small>`;
         }
         return `<b>${esc(single ? UNITS[single.kind].name : names)}</b>${this.hpBar(hp, max)}${extra}`;
       }

@@ -85,6 +85,10 @@ export interface Unit {
   /** Vũ khí phụ: số tick chờ bắn tiếp và số viên còn lại của lần xuất kích này. */
   cd2: number;
   ammo2: number;
+  /** Cựu binh: kinh nghiệm (theo giá trị sát thương gây ra), cấp 0..3, tick trúng đạn gần nhất (để tự hồi máu). */
+  xp: number;
+  rank: number;
+  lastHit: number;
 }
 
 export interface Building {
@@ -205,6 +209,7 @@ export type SimEvent =
   | { t: "captured"; mine: number; res: Res; side: Side | -1; prev: Side | -1 }
   | { t: "alert"; side: Side; what: AlertKind; x: number; z: number; n?: number }
   | { t: "monopoly"; side: Side; res: Res }
+  | { t: "rank"; id: number; kind: UnitId; side: Side; rank: number; x: number; z: number }
   | { t: "end"; winner: Side | 2; reason: WinReason };
 
 export interface SideStats {

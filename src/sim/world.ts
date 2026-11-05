@@ -7,7 +7,7 @@
  *   8. đạn tới đích → trừ máu   9. dọn xác   10. sương mù   11. kiểm tra thắng thua
  * Không có gì phụ thuộc thời gian thật hay số ngẫu nhiên không seed, nên cùng seed + cùng lệnh thì ra cùng trận.
  */
-import { BUILDINGS, RULES, UNITS, type BuildingId, type Res, type Side, type UnitId, type UnitSpec, type WeaponSpec, type WeaponVisual } from "./content";
+import { BUILDINGS, RULES, UNITS, valueOf, type BuildingId, type Res, type Side, type UnitId, type UnitSpec, type WeaponSpec, type WeaponVisual } from "./content";
 import { clamp, dcos, DEG, dist2, dsin, Rng, turnStep, turnToward, type TurnStep } from "./fmath";
 import { Grid } from "./grid";
 import { CELL, GameMap, getMap, TERRAIN, TERRAIN_KINDS } from "./maps";
@@ -362,6 +362,7 @@ export class World {
     }
     this.separate();
     this.resolveShots();
+    this.veteranRegen();
     this.cleanup();
     this.updateFog();
     if (!this.sandbox) this.checkVictory();
@@ -437,7 +438,10 @@ export class World {
       ext: false,
       yawRate: 0,
       cd2: 0,
-      ammo2: spec.secondary?.ammo ?? 0
+      ammo2: spec.secondary?.ammo ?? 0,
+      xp: 0,
+      rank: 0,
+      lastHit: -1000
     };
     this.units.push(u);
     this.byId.set(u.id, u);
@@ -1462,6 +1466,8 @@ export class World {
   }
 
   private pushShot(src: Unit | Building, w: WeaponSpec, target: number, tx: number, tz: number, talt: number, dmg: number, air: boolean, ticks: number, ox = 0, oz = 0): void {
+    // cựu binh: mỗi cấp bắn mạnh hơn
+    if (src.cat === "unit" && src.rank > 0) dmg *= 1 + src.rank * RULES.veterancy.dmgPerRank;
     this.shots.push({
       side: src.side,
       src: src.id,
@@ -2110,13 +2116,40 @@ export class World {
     }
     const armor = e.cat === "unit" ? UNITS[e.kind].armorClass : BUILDINGS[e.kind].armorClass;
     const dealt = amount * RULES.damageMatrix[armor][s.dmgType];
-    this.sides[by].stats.damageDealt += Math.min(dealt, e.hp);
+    const real = Math.min(dealt, e.hp);
+    this.sides[by].stats.damageDealt += real;
     e.hp -= dealt;
+    if (e.cat === "unit") e.lastHit = this.tick;
+    if (real > 0 && e.side !== by) this.gainXp(s.src, (real / e.maxHp) * valueOf(e.kind));
     if (e.cat === "unit") {
       if (e.kind === "commander") this.alert(e.side, "commander", e.x, e.z);
       else if (e.kind === "hauler") this.alert(e.side, "hauler", e.x, e.z);
     } else this.alert(e.side, "base", e.x, e.z);
     if (e.hp <= 0) this.sides[by].stats.kills++;
+  }
+
+  /** Cựu binh: cộng kinh nghiệm cho xe đã bắn (nếu còn sống), lên cấp khi đủ ngưỡng. */
+  private gainXp(srcId: number, xp: number): void {
+    const u = this.byId.get(srcId);
+    if (!u || u.cat !== "unit" || u.hp <= 0) return;
+    const V = RULES.veterancy;
+    u.xp += xp;
+    const own = valueOf(u.kind);
+    let rank = 0;
+    // sai số nhỏ: kinh nghiệm cộng từ nhiều phần lẻ (hạ trọn một xe có thể ra 149,99999999 thay vì 150)
+    while (rank < V.ranks.length && u.xp >= V.ranks[rank] * own - 1e-6) rank++;
+    if (rank > u.rank) {
+      u.rank = rank;
+      this.events.push({ t: "rank", id: u.id, kind: u.kind, side: u.side, rank, x: u.x, z: u.z });
+    }
+  }
+
+  /** Cựu binh cấp cao tự hồi máu khi đã lâu không trúng đạn. */
+  private veteranRegen(): void {
+    const V = RULES.veterancy;
+    const delay = sec(V.regenDelay);
+    for (const u of this.units)
+      if (u.rank >= V.regenRank && u.hp > 0 && u.hp < u.maxHp && this.tick - u.lastHit >= delay) u.hp = Math.min(u.maxHp, u.hp + u.maxHp * V.regenPerSec * DT);
   }
 
   private resolveShots(): void {
@@ -2385,6 +2418,8 @@ export function hashWorld(w: World): number {
     num(u.yawRate);
     num(u.ammo2);
     num(u.cd2);
+    num(u.xp);
+    num(u.rank);
   }
   for (const b of w.buildings) {
     num(b.id);

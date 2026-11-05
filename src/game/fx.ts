@@ -142,6 +142,13 @@ export class Fx {
           scorch.mesh.renderOrder = 1;
           break;
         }
+        case "rank": {
+          if (!visible(e.x, e.z)) break;
+          const y = this.map.groundY(e.x, e.z);
+          this.spawn(this.geo.ring, add(0xffd34d, 0.95), new THREE.Vector3(e.x, y + 0.3, e.z), 1.5, 0.9, { grow: 9, fade: true });
+          this.spawn(this.geo.sphere, this.mat.flash, new THREE.Vector3(e.x, y + 2.5, e.z), 0.5, 0.35, { grow: 4 });
+          break;
+        }
         case "captured": {
           const m = world.byId.get(e.mine);
           if (!m) break;
