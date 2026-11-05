@@ -34,6 +34,11 @@ export class Sfx {
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
   }
 
+  /** Cho nhạc nền dùng chung: ngữ cảnh âm thanh, kênh tổng và bộ nhiễu (null nếu chưa mở khóa âm thanh). */
+  audio(): { ctx: AudioContext; out: GainNode; noise: AudioBuffer } | null {
+    return this.ctx && this.master && this.noise ? { ctx: this.ctx, out: this.master, noise: this.noise } : null;
+  }
+
   /** Giới hạn số tiếng mỗi 80 ms để trận đông không thành một mớ ồn. */
   private ok(): boolean {
     if (!this.ctx || !this.master || this.muted) return false;

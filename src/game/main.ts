@@ -10,6 +10,7 @@ import { TICK_RATE } from "../sim/world";
 import { buildModel, disposeRig } from "../render/models";
 import { Thumbnailer } from "../models-page/stage";
 import { Sfx } from "./audio";
+import { Music } from "./music";
 import { homeYaw, RtsCamera } from "./camera";
 import { Controller } from "./controller";
 import { Fx } from "./fx";
@@ -162,6 +163,17 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
   const views = new Views(scene.scene, map);
   const fx = new Fx(scene.scene, map);
   const sfx = new Sfx();
+  // nhạc thích ứng: độ căng thẳng tăng theo giao tranh mình thấy, tự giảm dần khi yên (nửa đời ~5 giây)
+  const music = new Music(sfx);
+  // ?audio=1: mở âm thanh ngay (để tự kiểm tra bằng Chrome không giao diện, cần thêm cờ cho phép tự phát)
+  if (new URLSearchParams(location.search).has("audio")) {
+    sfx.unlock();
+    window.setInterval(() => console.log(`[music] ${music.debug()}`), 1500);
+  }
+  let tension = 0;
+  const tense = (k: number): void => {
+    tension = Math.min(1, tension + k);
+  };
   const thumbs = makeThumbs(sandboxMode ? ([...Object.keys(UNITS), ...Object.keys(BUILDINGS)] as EntityId[]) : HUD_THUMBS, me ?? 0);
   const overlay = new Overlay(overlayCanvas);
 
@@ -291,16 +303,24 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
     for (const e of evs) {
       switch (e.t) {
         case "shot":
-          if (visible(e.x, e.z)) sfx.shot(e.visual, vol(e.x, e.z));
+          if (visible(e.x, e.z)) {
+            sfx.shot(e.visual, vol(e.x, e.z));
+            tense(0.012);
+          }
           break;
         case "hit":
-          if (e.splash > 0 && visible(e.x, e.z)) sfx.boom(e.splash * 0.4, vol(e.x, e.z) * 0.6);
+          if (e.splash > 0 && visible(e.x, e.z)) {
+            sfx.boom(e.splash * 0.4, vol(e.x, e.z) * 0.6);
+            tense(0.02);
+          }
           break;
         case "death":
+          if (!e.sold && visible(e.x, e.z)) tense(e.building ? 0.15 : 0.07);
           if (!e.sold && visible(e.x, e.z)) sfx.boom(e.building ? 3 : 1.5, vol(e.x, e.z));
           if (me !== null && e.side === me && e.kind === "falcon" && e.crash) hud.alert("Một Falcon hết dầu và rơi vì không còn Sân Đáp!", "bad");
           break;
         case "alert":
+          if (e.side === me && (e.what === "commander" || e.what === "base")) tense(0.35);
           if (e.side === me) {
             hud.alert(ALERT_TEXT[e.what]?.(e.n ?? 0) ?? "", "bad");
             ctrl.lastAlert = { x: e.x, z: e.z };
@@ -326,6 +346,7 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
           } else if (e.side !== -1) hud.alert("Địch chiếm một Đài Liên Lạc", "bad");
           break;
         case "barrage":
+          if (e.side === me || visible(e.x, e.z)) tense(0.3);
           if (e.side === me) sfx.ui("incoming");
           else if (visible(e.x, e.z)) {
             sfx.ui("incoming");
@@ -373,6 +394,7 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
           }
           break;
         case "end":
+          music.stop();
           window.setTimeout(showEnd, 1200);
           break;
         default:
@@ -444,6 +466,8 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
     const dt = Math.max(0, Math.min(0.1, (now - last) / 1000));
     last = now;
     time += dt;
+    tension *= Math.exp(-dt / 7);
+    music.update(dt, tension);
     me = match.player;
     viewer = sandbox ? sandbox.viewer() : me;
     ctrl.alpha = match.advance(dt);
