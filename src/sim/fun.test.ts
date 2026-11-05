@@ -131,3 +131,70 @@ describe("Xác quân", () => {
     expect(w.wrecks.length).toBe(0);
   });
 });
+
+describe("Kỹ năng Tư lệnh", () => {
+  it("điểm chỉ huy tự tích lũy theo thời gian (và không vượt mức tối đa)", () => {
+    const A = RULES.abilities;
+    const w = new World(1);
+    run(w, 10);
+    const cp = w.sides[0].cp;
+    expect(cp).toBeGreaterThanOrEqual(A.cpPerSec * 10 - 1e-6);
+    w.sides[0].cp = A.cpMax - 0.01;
+    run(w, 5);
+    expect(w.sides[0].cp).toBeLessThanOrEqual(A.cpMax);
+  });
+
+  it("pháo kích cần đủ điểm chỉ huy và phải nhìn thấy điểm bắn; gọi được thì trừ điểm", () => {
+    const B = RULES.abilities.barrage;
+    const w = new World(1);
+    w.step([]);
+    const hq = w.hqOf(0)!;
+    w.sides[0].cp = B.cost - 1;
+    expect(w.barrageError(0, hq.x, hq.z)).not.toBeNull();
+    w.sides[0].cp = B.cost + 5;
+    // căn cứ địch ở góc kia: không nhìn thấy
+    const foe = w.hqOf(1)!;
+    expect(w.barrageError(0, foe.x, foe.z)).toMatch(/nhìn thấy/);
+    expect(w.barrageError(0, hq.x + 5, hq.z)).toBeNull();
+    w.step([{ side: 0, order: { t: "barrage", x: hq.x + 5, z: hq.z } }]);
+    expect(w.sides[0].cp).toBeLessThan(6 + RULES.abilities.cpPerSec);
+    expect(w.strikes.length).toBe(1);
+  });
+
+  it("đạn pháo kích chỉ rơi sau thời gian báo trước, trúng quân địch trong vùng, không trúng quân mình", () => {
+    const B = RULES.abilities.barrage;
+    const w = new World(1, { sandbox: true });
+    hold(w, 0);
+    hold(w, 1);
+    const foes = [spawn(w, "lynx", 1, 0), spawn(w, "lynx", 1, 2), spawn(w, "lynx", 1, -2)];
+    const mine = spawn(w, "lynx", 0, 1);
+    const [x, z] = arenaPoint(0);
+    w.step([{ side: 0, order: { t: "barrage", x, z } }]);
+    expect(w.events.some((e) => e.t === "barrage")).toBe(true);
+    // trong thời gian báo trước: chưa ai mất máu
+    run(w, B.delay - 0.3);
+    for (const f of foes) expect(f.hp).toBe(f.maxHp);
+    run(w, B.duration + B.fall + 1);
+    const hurt = foes.filter((f) => f.hp < f.maxHp).length;
+    expect(hurt).toBeGreaterThanOrEqual(2);
+    expect(mine.hp).toBe(mine.maxHp);
+    expect(w.strikes.length).toBe(0);
+  });
+
+  it("Tổng động viên: quân quanh Xe Tư Lệnh chạy nhanh hơn đúng hệ số, rồi phải chờ hồi", () => {
+    const M = RULES.abilities.mobilize;
+    const speedOver = (on: boolean): number => {
+      const w = new World(1, { sandbox: true });
+      spawn(w, "commander", 0, -2);
+      const u = spawn(w, "lynx", 0, 2);
+      if (on) w.step([{ side: 0, order: { t: "mobilize" } }]);
+      w.step([{ side: 0, order: { t: "move", ids: [u.id], x: u.x + 30, z: u.z } }]);
+      const x0 = u.x;
+      const z0 = u.z;
+      run(w, 1);
+      if (on) expect(w.mobilizeError(0)).toMatch(/giây/);
+      return Math.sqrt((u.x - x0) ** 2 + (u.z - z0) ** 2);
+    };
+    expect(speedOver(true) / speedOver(false)).toBeCloseTo(1 + M.speed, 2);
+  });
+});

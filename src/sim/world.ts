@@ -11,7 +11,7 @@ import { BUILDINGS, RULES, UNITS, valueOf, type BuildingId, type Res, type Side,
 import { clamp, dcos, DEG, dist2, dsin, Rng, turnStep, turnToward, type TurnStep } from "./fmath";
 import { Grid } from "./grid";
 import { CELL, GameMap, getMap, TERRAIN, TERRAIN_KINDS } from "./maps";
-import type { AlertKind, Building, Command, Entity, Mine, Order, Shot, SideState, SimEvent, Target, Unit, WinReason, Wreck } from "./types";
+import type { AlertKind, Building, Command, Entity, Mine, Order, Shot, SideState, SimEvent, Strike, Target, Unit, WinReason, Wreck } from "./types";
 
 export const TICK_RATE = RULES.tickRate;
 export const DT = 1 / TICK_RATE;
@@ -138,6 +138,9 @@ function newSide(cells: number): SideState {
   return {
     iron: RULES.startIron,
     oil: RULES.startOil,
+    cp: 0,
+    mobilizeUntil: -1,
+    mobilizeReady: 0,
     vis: new Uint8Array(cells),
     explored: new Uint8Array(cells),
     known: new Set(),
@@ -190,6 +193,8 @@ export class World {
   shots: Shot[] = [];
   /** Xác quân còn nằm trên chiến trường. */
   wrecks: Wreck[] = [];
+  /** Các đợt pháo kích đang diễn ra. */
+  strikes: Strike[] = [];
   readonly byId = new Map<number, Entity>();
   readonly sides: [SideState, SideState];
   events: SimEvent[] = [];
@@ -352,9 +357,12 @@ export class World {
       for (const st of this.sides) {
         st.iron = SANDBOX_RES;
         st.oil = SANDBOX_RES;
+        st.cp = RULES.abilities.cpMax;
       }
     for (const c of cmds) this.applyOrder(c.side, c.order);
     for (const s of [0, 1] as Side[]) if (this.hqOf(s)?.built) this.sides[s].iron += RULES.hqTrickle * DT;
+    this.updateCommandPoints();
+    this.updateStrikes();
     this.updateBuildings();
     this.updateMines();
     for (const u of this.units) {
@@ -512,6 +520,12 @@ export class World {
       case "move":
       case "amove":
         this.orderMove(side, o.ids, o.x, o.z, o.t);
+        break;
+      case "barrage":
+        this.callBarrage(side, o.x, o.z);
+        break;
+      case "mobilize":
+        this.mobilize(side);
         break;
       case "attack": {
         const t = this.target(o.target);
@@ -1143,7 +1157,8 @@ export class World {
     const fdx = u.path[u.pathI * 2] - u.x;
     const fdz = u.path[u.pathI * 2 + 1] - u.z;
     const fd = Math.sqrt(fdx * fdx + fdz * fdz);
-    const full = spec.speed * DT * (fd > 1e-6 ? this.moveFactor(u, fdx / fd, fdz / fd) : this.moveFactor(u, 0, 0));
+    const rally = this.mobilized(u) ? 1 + RULES.abilities.mobilize.speed : 1;
+    const full = spec.speed * DT * rally * (fd > 1e-6 ? this.moveFactor(u, fdx / fd, fdz / fd) : this.moveFactor(u, 0, 0));
     let step = full;
     const ox = u.x;
     const oz = u.z;
@@ -1405,9 +1420,21 @@ export class World {
 
   private auraFactor(u: Unit): number {
     const c = this.commanders[u.side];
-    if (!c || c === u || c.hp <= 0) return 1;
+    if (!c || c.hp <= 0) return 1;
     const aura = UNITS.commander.aura!;
-    return dist2(u.x, u.z, c.x, c.z) <= aura.radius * aura.radius ? aura.fireRate : 1;
+    const near = c === u || dist2(u.x, u.z, c.x, c.z) <= aura.radius * aura.radius;
+    let k = near && c !== u ? aura.fireRate : 1;
+    if (near && this.sides[u.side].mobilizeUntil > this.tick) k *= 1 + RULES.abilities.mobilize.fireRate;
+    return k;
+  }
+
+  /** Quân đang được Tổng động viên (trong bán kính hào quang của Xe Tư Lệnh khi kỹ năng còn hiệu lực). */
+  mobilized(u: Unit): boolean {
+    if (this.sides[u.side].mobilizeUntil <= this.tick) return false;
+    const c = this.commanders[u.side];
+    if (!c || c.hp <= 0) return false;
+    const r = UNITS.commander.aura!.radius;
+    return c === u || dist2(u.x, u.z, c.x, c.z) <= r * r;
   }
 
   private tryFire(src: Unit | Building, w: WeaponSpec, t: Target): boolean {
@@ -2128,12 +2155,103 @@ export class World {
     this.sides[by].stats.damageDealt += real;
     e.hp -= dealt;
     if (e.cat === "unit") e.lastHit = this.tick;
-    if (real > 0 && e.side !== by) this.gainXp(s.src, (real / e.maxHp) * valueOf(e.kind));
+    if (real > 0 && e.side !== by) {
+      const value = (real / e.maxHp) * valueOf(e.kind);
+      this.gainXp(s.src, value);
+      const st = this.sides[by];
+      st.cp = Math.min(RULES.abilities.cpMax, st.cp + value * RULES.abilities.cpPerValue);
+    }
     if (e.cat === "unit") {
       if (e.kind === "commander") this.alert(e.side, "commander", e.x, e.z);
       else if (e.kind === "hauler") this.alert(e.side, "hauler", e.x, e.z);
     } else this.alert(e.side, "base", e.x, e.z);
     if (e.hp <= 0) this.sides[by].stats.kills++;
+  }
+
+  // ------------------------------------------------------------------ kỹ năng Tư lệnh
+
+  /** Điểm chỉ huy tự tích lũy: theo thời gian + theo điện dư (tối đa cpSurplusCap MW). */
+  private updateCommandPoints(): void {
+    const A = RULES.abilities;
+    for (const s of [0, 1] as Side[]) {
+      const st = this.sides[s];
+      if (!this.hqOf(s)) continue;
+      const surplus = Math.min(A.cpSurplusCap, Math.max(0, st.powerCap - st.powerUse));
+      st.cp = Math.min(A.cpMax, st.cp + (A.cpPerSec + surplus * A.cpPerSurplusMw) * DT);
+    }
+  }
+
+  /** null = gọi pháo kích được; ngược lại là lý do (tiếng Việt) để hiện cho người chơi. */
+  barrageError(side: Side, x: number, z: number): string | null {
+    const B = RULES.abilities.barrage;
+    if (!this.hqOf(side)) return "Cần Tổng Hành Dinh để liên lạc pháo binh";
+    if (this.sides[side].cp < B.cost) return `Cần ${B.cost} điểm chỉ huy`;
+    if (Math.abs(x) > this.map.halfW || Math.abs(z) > this.map.halfH) return "Ngoài bản đồ";
+    if (!this.sandbox && !this.cellVisible(side, x, z)) return "Phải nhìn thấy điểm bắn (cần trinh sát)";
+    return null;
+  }
+
+  private callBarrage(side: Side, x: number, z: number): void {
+    if (this.barrageError(side, x, z)) return;
+    const B = RULES.abilities.barrage;
+    this.sides[side].cp -= B.cost;
+    const delay = sec(B.delay);
+    this.strikes.push({ side, x, z, next: this.tick + delay, left: B.shells, interval: (B.duration * TICK_RATE) / B.shells });
+    this.events.push({ t: "barrage", side, x, z, r: B.radius, ticks: delay });
+  }
+
+  /** Đạn pháo kích rơi dần: điểm rơi ngẫu nhiên (RNG có seed) trong bán kính; đạn bay cầu vồng, chặn được. */
+  private updateStrikes(): void {
+    if (this.strikes.length === 0) return;
+    const B = RULES.abilities.barrage;
+    const fall = sec(B.fall);
+    for (const st of this.strikes) {
+      while (st.left > 0 && this.tick >= st.next) {
+        const [ox, oz] = this.randDisc();
+        const tx = st.x + ox * B.radius;
+        const tz = st.z + oz * B.radius;
+        this.shots.push({
+          side: st.side,
+          src: 0,
+          target: 0,
+          tx,
+          tz,
+          dmg: B.dmg,
+          dmgType: "he",
+          sx: tx,
+          sz: tz,
+          talt: 0,
+          interceptable: true,
+          splash: B.splash,
+          hitAir: false,
+          impact: this.tick + fall,
+          visual: "cannon"
+        });
+        this.events.push({ t: "shell", side: st.side, x: tx, z: tz, ticks: fall });
+        st.next += st.interval;
+        st.left--;
+      }
+    }
+    this.strikes = this.strikes.filter((s) => s.left > 0);
+  }
+
+  /** null = Tổng động viên được; ngược lại là lý do. */
+  mobilizeError(side: Side): string | null {
+    const c = this.commanders[side];
+    if (!c || c.hp <= 0) return "Cần Xe Tư Lệnh";
+    const st = this.sides[side];
+    if (this.tick < st.mobilizeReady) return `Còn ${Math.ceil((st.mobilizeReady - this.tick) / TICK_RATE)} giây`;
+    return null;
+  }
+
+  private mobilize(side: Side): void {
+    if (this.mobilizeError(side)) return;
+    const M = RULES.abilities.mobilize;
+    const st = this.sides[side];
+    st.mobilizeUntil = this.tick + sec(M.duration);
+    st.mobilizeReady = this.tick + sec(M.cooldown);
+    const c = this.commanders[side]!;
+    this.events.push({ t: "mobilize", side, x: c.x, z: c.z, r: UNITS.commander.aura!.radius });
   }
 
   /** Cựu binh: cộng kinh nghiệm cho xe đã bắn (nếu còn sống), lên cấp khi đủ ngưỡng. */
@@ -2441,7 +2559,13 @@ export function hashWorld(w: World): number {
     mix(u32[1]);
   };
   num(w.tick);
+  for (const st of w.strikes) {
+    num(st.next);
+    num(st.left);
+  }
   for (const s of w.sides) {
+    num(s.cp);
+    num(s.mobilizeUntil);
     num(s.iron);
     num(s.oil);
     num(s.mono);

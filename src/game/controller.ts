@@ -7,7 +7,7 @@
  * Trên máy tính: nhấp trái để chọn, nhấp phải để ra lệnh. Trên điện thoại: chạm đất khi đang chọn quân là ra lệnh đi.
  */
 import * as THREE from "three";
-import { BUILDINGS, FACTION_OF, RES_NAME, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
+import { BUILDINGS, FACTION_OF, RES_NAME, RULES, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
 import type { Building, Entity, Mine, Order, Unit } from "../sim/types";
 import { buildModel, disposeRig, type Rig } from "../render/models";
 import type { Sfx } from "./audio";
@@ -20,6 +20,9 @@ import { Views } from "./views";
 
 const GHOST_OK = new THREE.MeshBasicMaterial({ color: 0x6fdc8c, transparent: true, opacity: 0.45, depthWrite: false });
 const GHOST_BAD = new THREE.MeshBasicMaterial({ color: 0xff6b5e, transparent: true, opacity: 0.45, depthWrite: false });
+/** Vòng chọn điểm pháo kích: đỏ = bắn được, xám = không (kèm lý do ở dòng gợi ý). */
+const AIM_OK = new THREE.MeshBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.75, depthWrite: false });
+const AIM_BAD = new THREE.MeshBasicMaterial({ color: 0x9aa0a6, transparent: true, opacity: 0.6, depthWrite: false });
 
 export class Controller implements GestureHandlers {
   selected: number[] = [];
@@ -46,6 +49,8 @@ export class Controller implements GestureHandlers {
   private ghostKind: BuildingId | null = null;
   private ghostValid = true;
   private sellArmed = { id: 0, t: 0 };
+  /** Vòng ngắm pháo kích (bán kính = vùng đạn rơi). */
+  private aim: THREE.Mesh | null = null;
 
   constructor(
     private match: Match,
@@ -278,6 +283,58 @@ export class Controller implements GestureHandlers {
     this.placeKind = null;
     this.placePos = null;
     this.clearGhost();
+    if (this.aim) this.aim.visible = false;
+  }
+
+  // ------------------------------------------------------------------ kỹ năng Tư lệnh
+
+  /** Bắt đầu chọn điểm pháo kích (giống đặt công trình: nhấp để bắn, hoặc chạm rồi bấm ✓). */
+  private startBarrage(): void {
+    if (this.me === null) return;
+    const st = this.world.sides[this.me];
+    const B = RULES.abilities.barrage;
+    if (st.cp < B.cost) {
+      this.sfx.ui("error");
+      this.hud?.alert(`Cần ${B.cost} điểm chỉ huy để pháo kích (đang có ${Math.floor(st.cp)})`, "bad");
+      return;
+    }
+    this.cancelPlace();
+    this.mode = "barrage";
+    if (!this.aim) {
+      const geo = new THREE.RingGeometry(B.radius - 0.35, B.radius, 64).rotateX(-Math.PI / 2);
+      this.aim = new THREE.Mesh(geo, AIM_OK);
+      this.aim.renderOrder = 4;
+      this.scene.add(this.aim);
+    }
+    const { w, h } = this.size();
+    const g = this.mouse.used && this.mouse.inside ? this.cam.ground(this.mouse.x, this.mouse.y, w, h) : null;
+    this.placePos = g ? { x: g.x, z: g.z } : { x: this.cam.tx, z: this.cam.tz };
+    this.sfx.ui("click");
+  }
+
+  private tryBarrage(): void {
+    if (this.me === null || !this.placePos) return;
+    const { x, z } = this.placePos;
+    const reason = this.world.barrageError(this.me, x, z);
+    if (reason) {
+      this.sfx.ui("error");
+      this.hud?.alert(reason, "bad");
+      return;
+    }
+    this.issue({ t: "barrage", x, z });
+    this.sfx.ui("ack");
+    this.cancelPlace();
+  }
+
+  private mobilizeNow(): void {
+    if (this.me === null) return;
+    const reason = this.world.mobilizeError(this.me);
+    if (reason) {
+      this.sfx.ui("error");
+      this.hud?.alert(`Tổng động viên: ${reason}`, "bad");
+      return;
+    }
+    this.issue({ t: "mobilize" });
   }
 
   private tryPlace(keep: boolean): void {
@@ -298,7 +355,7 @@ export class Controller implements GestureHandlers {
 
   /** Vị trí màn hình để đặt nút ✓ ✕ (chỉ khi dùng cảm ứng). */
   confirmAnchor(): { x: number; y: number } | null {
-    if (this.mode !== "place" || !this.placePos || this.mouse.used) return null;
+    if ((this.mode !== "place" && this.mode !== "barrage") || !this.placePos || this.mouse.used) return null;
     const { w, h } = this.size();
     const p = this.cam.project(this.placePos.x, this.match.world.map.groundY(this.placePos.x, this.placePos.z), this.placePos.z, w, h);
     return p.visible ? { x: p.x, y: Math.min(h - 220, p.y + 50) } : null;
@@ -320,6 +377,8 @@ export class Controller implements GestureHandlers {
           (this.mouse.used ? "Nhấp để đặt · Shift đặt nhiều · chuột phải hủy" : "Chạm để chọn chỗ, rồi bấm ✓") + power + (this.placeReason ? ` — ${this.placeReason}` : "")
         );
       }
+      case "barrage":
+        return (this.mouse.used ? "Pháo kích: nhấp vào điểm đang nhìn thấy · chuột phải hủy" : "Pháo kích: chạm chọn điểm, rồi bấm ✓") + (this.placeReason ? ` — ${this.placeReason}` : "");
       case "amove":
         return "Chọn điểm: quân sẽ đánh mọi kẻ địch trên đường đi";
       case "rally":
@@ -341,7 +400,12 @@ export class Controller implements GestureHandlers {
         this.startPlace(arg as BuildingId);
         break;
       case "placeOk":
-        this.tryPlace(false);
+        if (this.mode === "barrage") this.tryBarrage();
+        else this.tryPlace(false);
+        break;
+      case "ability":
+        if (arg === "barrage") this.startBarrage();
+        else if (arg === "mobilize") this.mobilizeNow();
         break;
       case "placeCancel":
         this.cancelPlace();
@@ -427,6 +491,14 @@ export class Controller implements GestureHandlers {
   // ------------------------------------------------------------------ cử chỉ
 
   tap(x: number, y: number, info: TapInfo): void {
+    if (this.mode === "barrage") {
+      const { w, h } = this.size();
+      const g = this.cam.ground(x, y, w, h);
+      if (!g) return;
+      this.placePos = { x: g.x, z: g.z };
+      if (info.mouse) this.tryBarrage();
+      return;
+    }
     if (this.mode === "place") {
       const { w, h } = this.size();
       const g = this.cam.ground(x, y, w, h);
@@ -458,7 +530,7 @@ export class Controller implements GestureHandlers {
   }
 
   command(x: number, y: number): void {
-    if (this.mode === "place") {
+    if (this.mode === "place" || this.mode === "barrage") {
       this.cancelPlace();
       return;
     }
@@ -560,6 +632,11 @@ export class Controller implements GestureHandlers {
       const g = this.cam.ground(x, y, w, h);
       if (g) this.placePos = { x: Math.round(g.x), z: Math.round(g.z) };
     }
+    if (this.mode === "barrage") {
+      const { w, h } = this.size();
+      const g = this.cam.ground(x, y, w, h);
+      if (g) this.placePos = { x: g.x, z: g.z };
+    }
   }
 
   longPressFeedback(): void {
@@ -581,7 +658,7 @@ export class Controller implements GestureHandlers {
     this.mouse.used = true;
     const units = this.ownUnits();
     if (k === "escape") {
-      if (this.mode === "place") this.cancelPlace();
+      if (this.mode === "place" || this.mode === "barrage") this.cancelPlace();
       else if (this.mode !== "normal") this.mode = "normal";
       else this.select([]);
     } else if (k === "s" && units.length) this.act("stop");
@@ -598,6 +675,8 @@ export class Controller implements GestureHandlers {
       if (sel) this.cam.focus(sel.x, sel.z);
       else if (this.lastAlert) this.cam.focus(this.lastAlert.x, this.lastAlert.z);
     } else if (k === "p" || k === "pause") this.match.paused = !this.match.paused;
+    else if (k === "t") this.act("ability", "barrage");
+    else if (k === "r") this.act("ability", "mobilize");
     else if (/^[1-5]$/.test(k)) {
       const n = Number(k);
       if (e.ctrlKey || e.metaKey) {
@@ -661,9 +740,17 @@ export class Controller implements GestureHandlers {
           if (o instanceof THREE.Mesh) o.material = valid ? GHOST_OK : GHOST_BAD;
         });
       }
+    } else if (this.mode === "barrage" && this.aim && this.placePos && this.me !== null) {
+      // vòng ngắm pháo kích theo chuột / điểm chạm
+      const { x, z } = this.placePos;
+      this.aim.position.set(x, this.match.world.map.groundY(x, z) + 0.3, z);
+      this.aim.visible = true;
+      this.placeReason = this.world.barrageError(this.me, x, z);
+      this.aim.material = this.placeReason === null ? AIM_OK : AIM_BAD;
     } else {
       this.placeReason = null;
       if (this.ghost && this.mode !== "place") this.clearGhost();
+      if (this.aim) this.aim.visible = false;
     }
   }
 }

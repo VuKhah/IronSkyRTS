@@ -142,6 +142,14 @@ export class Fx {
           scorch.mesh.renderOrder = 1;
           break;
         }
+        case "mobilize": {
+          if (!visible(e.x, e.z)) break;
+          const y = this.map.groundY(e.x, e.z) + 0.3;
+          const color = e.side === 0 ? 0x5ab8ff : 0xff6a5e;
+          this.spawn(this.geo.ring, add(color, 0.9), new THREE.Vector3(e.x, y, e.z), 2, 1.1, { grow: e.r * 1.6, fade: true });
+          this.spawn(this.geo.ring, add(0xffd34d, 0.8), new THREE.Vector3(e.x, y + 0.05, e.z), 1, 0.9, { grow: e.r * 1.2, fade: true });
+          break;
+        }
         case "rank": {
           if (!visible(e.x, e.z)) break;
           const y = this.map.groundY(e.x, e.z);

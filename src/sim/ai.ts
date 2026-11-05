@@ -6,7 +6,7 @@
  * chủ sở hữu các mỏ (thông tin công khai trên HUD) và vị trí 2 Tổng Hành Dinh (bản đồ cố định).
  * AI chạy bên trong vòng tick nên cũng phải tất định: không Math.random, không thời gian thật.
  */
-import { BUILDINGS, UNITS, type BuildingId, type Side, type UnitId } from "./content";
+import { BUILDINGS, RULES, UNITS, valueOf, type BuildingId, type Side, type UnitId } from "./content";
 import { dcos, dist2, dsin, Rng, TAU } from "./fmath";
 import type { Building, Mine, Order, Unit } from "./types";
 import { dirToCenter, sec, type World } from "./world";
@@ -178,6 +178,9 @@ export class Ai {
       out.push({ t: "move", ids: [cmd.id], x: hq.x + dx * 10, z: hq.z + dz * 10 });
     }
 
+    // 6. Kỹ năng Tư lệnh (chỉ dùng thông tin đang thấy, ra lệnh như người chơi)
+    this.useAbilities(w, mine, enemyUnits, out);
+
     // 5. Falcon: xuất kích khi đủ dầu, ưu tiên săn Xe Vận Tải, rồi quân đang đánh vào nhà, rồi quân địch thấy được
     for (const f of mine) {
       if (f.kind !== "falcon" || f.air !== "parked" || f.mission !== "none") continue;
@@ -291,6 +294,38 @@ export class Ai {
     if (m) return [m.x, m.z];
     const [x, z] = w.map.bases[1 - this.side];
     return [x, z];
+  }
+
+  /**
+   * Pháo kích: khi đủ điểm, bắn vào chỗ quân địch (đang thấy, trên mặt đất) dồn đông nhất, tính theo tổng giá trị
+   * trong vùng nổ; chỉ bắn khi đáng (≥ 500 giá trị, ví dụ một Titan và hai Lynx).
+   * Tổng động viên: khi địch đã ở gần Xe Tư Lệnh (≤ 30 m) và có ít nhất 2 xe chiến đấu mình quanh xe.
+   */
+  private useAbilities(w: World, mine: Unit[], enemyUnits: Unit[], out: Order[]): void {
+    const me = this.side;
+    const A = RULES.abilities;
+    const ground = enemyUnits.filter((u) => u.air === "none" && u.hp > 0);
+    if (w.sides[me].cp >= A.barrage.cost && ground.length) {
+      const r2 = (A.barrage.radius * 0.8) ** 2;
+      let best: Unit | null = null;
+      let bestScore = 0;
+      for (const c of ground) {
+        let score = 0;
+        for (const e of ground) if (dist2(c.x, c.z, e.x, e.z) <= r2) score += valueOf(e.kind);
+        if (score > bestScore) {
+          bestScore = score;
+          best = c;
+        }
+      }
+      if (best && bestScore >= 500 && w.barrageError(me, best.x, best.z) === null) out.push({ t: "barrage", x: best.x, z: best.z });
+    }
+    const cmd = mine.find((u) => u.kind === "commander");
+    if (cmd && w.mobilizeError(me) === null) {
+      const r2 = UNITS.commander.aura!.radius ** 2;
+      const allies = mine.filter((u) => u !== cmd && UNITS[u.kind].weapon && u.air === "none" && dist2(u.x, u.z, cmd.x, cmd.z) <= r2).length;
+      const threat = ground.some((e) => dist2(e.x, e.z, cmd.x, cmd.z) <= 30 * 30);
+      if (allies >= 2 && threat) out.push({ t: "mobilize" });
+    }
   }
 
   private nearest<T extends { x: number; z: number; id: number }>(list: readonly T[], x: number, z: number): T | null {

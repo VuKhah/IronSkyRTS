@@ -195,6 +195,10 @@ export type Order =
   | { t: "cancel"; building: number }
   | { t: "rally"; building: number; x: number; z: number }
   | { t: "sell"; building: number }
+  /** Kỹ năng Tư lệnh: pháo kích vào một điểm đang nhìn thấy (tốn điểm chỉ huy). */
+  | { t: "barrage"; x: number; z: number }
+  /** Kỹ năng Xe Tư Lệnh: tổng động viên quân quanh xe (có thời gian hồi). */
+  | { t: "mobilize" }
   // ---- Phòng Thử Nghiệm: chỉ có tác dụng khi World tạo với { sandbox: true }, trận thường bỏ qua
   /** Thả quân / công trình (đã xây xong) cho phe `side`. Có (gx, gz) thì quân tự đi tới đó: mặc định tấn công-di chuyển, `go: "move"` thì chỉ đi (máy bay bay ngang). */
   | { t: "sbSpawn"; kind: UnitId | BuildingId; side: Side; x: number; z: number; gx?: number; gz?: number; go?: "move" | "amove" }
@@ -228,6 +232,11 @@ export type SimEvent =
   | { t: "monopoly"; side: Side; res: Res }
   | { t: "rank"; id: number; kind: UnitId; side: Side; rank: number; x: number; z: number }
   | { t: "salvage"; wreck: number; side: Side; value: number; x: number; z: number }
+  /** Pháo kích được gọi: vòng báo trước ở (x, z), bán kính r, đạn bắt đầu rơi sau `ticks` tick. */
+  | { t: "barrage"; side: Side; x: number; z: number; r: number; ticks: number }
+  /** Một quả đạn pháo kích đang rơi xuống (x, z), chạm đất sau `ticks` tick. */
+  | { t: "shell"; side: Side; x: number; z: number; ticks: number }
+  | { t: "mobilize"; side: Side; x: number; z: number; r: number }
   | { t: "end"; winner: Side | 2; reason: WinReason };
 
 export interface SideStats {
@@ -243,9 +252,24 @@ export interface SideStats {
   salvaged: number;
 }
 
+/** Một đợt pháo kích đang diễn ra. */
+export interface Strike {
+  side: Side;
+  x: number;
+  z: number;
+  /** Tick quả đạn kế tiếp rơi, số quả còn lại, khoảng cách giữa hai quả (tick, có phần lẻ). */
+  next: number;
+  left: number;
+  interval: number;
+}
+
 export interface SideState {
   iron: number;
   oil: number;
+  /** Kỹ năng Tư lệnh: điểm chỉ huy; Tổng động viên còn hiệu lực tới tick nào, dùng lại được từ tick nào. */
+  cp: number;
+  mobilizeUntil: number;
+  mobilizeReady: number;
   /** Ô đang thấy (1) — tính lại mỗi tick. */
   vis: Uint8Array;
   /** Ô đã từng thấy. */

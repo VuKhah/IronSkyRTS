@@ -5,7 +5,7 @@
  */
 import type { WeaponVisual } from "../sim/content";
 
-export type UiSound = "click" | "ack" | "error" | "alert" | "build" | "ready" | "win" | "lose" | "rank" | "salvage";
+export type UiSound = "click" | "ack" | "error" | "alert" | "build" | "ready" | "win" | "lose" | "rank" | "salvage" | "incoming" | "horn";
 
 export class Sfx {
   private ctx: AudioContext | null = null;
@@ -125,6 +125,14 @@ export class Sfx {
       case "salvage":
         this.tone(1320, 0.05, 0.1, "square");
         this.tone(1760, 0.09, 0.08, "square", undefined, 0.05);
+        break;
+      case "incoming":
+        // tiếng rít đạn pháo bay tới: cao trượt xuống thấp
+        this.tone(1500, 1.1, 0.09, "sine", 380);
+        break;
+      case "horn":
+        this.tone(330, 0.25, 0.16, "sawtooth");
+        this.tone(440, 0.4, 0.16, "sawtooth", undefined, 0.22);
         break;
       case "win":
         [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.35, 0.18, "triangle", undefined, i * 0.14));

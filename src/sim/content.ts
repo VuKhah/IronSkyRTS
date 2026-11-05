@@ -273,6 +273,26 @@ export const RULES = {
    * Xe mặt đất nào (của bất kỳ phe nào) tới trong `radius` mét trước thì nhặt được, tự động, không cần ra lệnh.
    */
   salvage: { share: 0.3, seconds: 60, radius: 2.6 },
+  /**
+   * Kỹ năng Tư lệnh (Bản cập nhật vui). Điểm chỉ huy tự tích lũy theo thời gian, nhanh hơn khi lưới điện dư công suất
+   * (điện thừa không bỏ phí: hậu cần dồn vào liên lạc / chỉ huy), và theo giá trị sát thương gây cho địch.
+   */
+  abilities: {
+    cpPerSec: 0.15,
+    /** mỗi MW điện dư (khả năng phát − tiêu thụ), tính tối đa cpSurplusCap MW */
+    cpPerSurplusMw: 0.005,
+    cpSurplusCap: 30,
+    /** mỗi đơn vị giá trị sát thương gây cho địch (hạ một Titan 350 Sắt ≈ 10 điểm) */
+    cpPerValue: 0.03,
+    cpMax: 200,
+    /**
+     * Pháo kích: chọn một điểm ĐANG NHÌN THẤY; sau `delay` giây báo trước (vòng đỏ, ai thấy chỗ đó đều thấy), `shells`
+     * quả đạn rơi rải trong bán kính `radius` m suốt `duration` giây. Đạn bay cầu vồng: phòng thủ điểm chặn được.
+     */
+    barrage: { cost: 100, delay: 3, shells: 12, duration: 2.5, radius: 8, dmg: 70, splash: 3.2, fall: 1.2 },
+    /** Tổng động viên (Xe Tư Lệnh): quân trong bán kính hào quang chạy nhanh hơn `speed`, bắn nhanh hơn `fireRate`. */
+    mobilize: { cooldown: 60, duration: 10, speed: 0.3, fireRate: 0.2 }
+  },
   sellRefund: 0.5,
   queueMax: 5,
   captureRadius: 8,

@@ -16,7 +16,7 @@ export type PanelCtx =
   | { t: "enemy"; u: Unit }
   | { t: "mine"; m: Mine };
 
-export type Mode = "normal" | "place" | "amove" | "rally" | "harvest";
+export type Mode = "normal" | "place" | "amove" | "rally" | "harvest" | "barrage";
 
 const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 const fmt = (n: number): string => Math.floor(n).toLocaleString("vi-VN");
@@ -67,6 +67,15 @@ export class Hud {
       <div class="banner" hidden></div>
       <div class="alerts"></div>
       <div class="hint-line" hidden></div>
+      ${
+        spectator
+          ? ""
+          : `<div class="abilities">
+               <div class="cp" title="Điểm chỉ huy: tự tích lũy theo thời gian, nhanh hơn khi lưới điện dư công suất và khi gây sát thương cho địch"><span data-n="cp"></span><div class="bar"><i data-n="cpbar"></i></div></div>
+               <button data-act="ability:barrage" title="Pháo kích vào một điểm đang nhìn thấy: báo trước 3 giây rồi đạn rơi rải vùng 8 m"><b>💥 Pháo kích</b><small data-n="barrage"></small></button>
+               <button data-act="ability:mobilize" title="Tổng động viên: quân quanh Xe Tư Lệnh chạy nhanh hơn 30%, bắn nhanh hơn 20% trong 10 giây"><b>📯 Động viên</b><small data-n="mobilize"></small></button>
+             </div>`
+      }
       <div class="place-confirm" hidden><button class="no" data-act="placeCancel" aria-label="Hủy">✕</button><button class="ok" data-act="placeOk" aria-label="Xây">✓</button></div>
       <div class="bottom">
         <canvas class="minimap"></canvas>
@@ -91,7 +100,8 @@ export class Hud {
       this.act(a, arg);
     });
     // chạm vào giao diện không được lọt xuống bản đồ
-    for (const el of [this.panel, this.topbar, this.confirm]) el.addEventListener("pointerdown", (e) => e.stopPropagation());
+    const abil = this.root.querySelector<HTMLElement>(".abilities");
+    for (const el of [this.panel, this.topbar, this.confirm, abil]) el?.addEventListener("pointerdown", (e) => e.stopPropagation());
   }
 
   private img(id: string): string {
@@ -182,6 +192,32 @@ export class Hud {
         break;
     }
     this.rows.innerHTML = html;
+  }
+
+  /** Cột kỹ năng Tư lệnh: điểm chỉ huy, nút Pháo kích (mờ khi chưa đủ điểm), nút Động viên (đếm thời gian hồi). */
+  private updateAbilities(cp: number, mode: Mode): void {
+    const box = this.root.querySelector<HTMLElement>(".abilities");
+    const me = this.match.player;
+    if (!box || me === null) return;
+    const w = this.match.world;
+    const A = RULES.abilities;
+    const q = (n: string): HTMLElement | null => box.querySelector<HTMLElement>(`[data-n="${n}"]`);
+    const txt = (n: string, v: string): void => {
+      const el = q(n);
+      if (el && el.textContent !== v) el.textContent = v;
+    };
+    txt("cp", `★ ${Math.floor(cp)} điểm chỉ huy`);
+    const bar = q("cpbar");
+    if (bar) bar.style.width = `${Math.min(100, (cp / A.cpMax) * 100)}%`;
+    const bBtn = box.querySelector<HTMLButtonElement>('[data-act="ability:barrage"]')!;
+    bBtn.disabled = cp < A.barrage.cost || !w.hqOf(me);
+    bBtn.classList.toggle("on", mode === "barrage");
+    txt("barrage", `[T] · ${A.barrage.cost} ★`);
+    const mErr = w.mobilizeError(me);
+    const mBtn = box.querySelector<HTMLButtonElement>('[data-act="ability:mobilize"]')!;
+    mBtn.disabled = mErr !== null;
+    const active = w.sides[me].mobilizeUntil > w.tick;
+    txt("mobilize", active ? `[R] · đang hiệu lực ${Math.ceil((w.sides[me].mobilizeUntil - w.tick) / TICK_RATE)}s` : mErr ? `[R] · ${mErr}` : "[R] · sẵn sàng");
   }
 
   /** Cựu binh: cấp và phần thưởng (bỏ trống nếu chưa lên cấp). */
@@ -304,6 +340,7 @@ export class Hud {
       // đỏ khi đang thiếu, hoặc khi công trình đang xây sẽ làm thiếu
       this.topbar.querySelector(".chip-res.power")?.classList.toggle("low", st.eff < 1 || st.powerUse + st.powerPending > st.powerCap + 1e-6);
       this.topbar.querySelector(".chip-res.oil")?.classList.toggle("low", st.oil < 40);
+      this.updateAbilities(st.cp, mode);
     } else {
       const sides = this.topbar.querySelectorAll<HTMLElement>(".spectate-res .side");
       ([0, 1] as Side[]).forEach((s) => {
