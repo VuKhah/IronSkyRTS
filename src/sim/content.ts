@@ -277,6 +277,8 @@ export const RULES = {
    * Kỹ năng Tư lệnh (Bản cập nhật vui). Điểm chỉ huy tự tích lũy theo thời gian, nhanh hơn khi lưới điện dư công suất
    * (điện thừa không bỏ phí: hậu cần dồn vào liên lạc / chỉ huy), và theo giá trị sát thương gây cho địch.
    */
+  /** Đài Liên Lạc (điểm chiếm, Bản cập nhật vui): chiếm như mỏ; mỗi đài giữ được cộng điểm chỉ huy, nhìn xa quanh đài. */
+  uplink: { cpPerSec: 0.3, sight: 24 },
   abilities: {
     cpPerSec: 0.15,
     /** mỗi MW điện dư (khả năng phát − tiêu thụ), tính tối đa cpSurplusCap MW */

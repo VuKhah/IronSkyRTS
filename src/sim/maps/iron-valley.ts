@@ -26,6 +26,9 @@ export const IRON_VALLEY: MapDef = {
     // giàn Dầu nhà: đủ khởi động điện và máy bay, cạn sớm nên vẫn phải ra tranh giàn giữa bản đồ
     { res: "oil", x: -42, z: 68, owner: 0, amount: 1200 }
   ],
+  // Đài Liên Lạc trên cây cầu cánh Nam (máy tự thêm đài trên cầu cánh Bắc): hai cầu nằm đúng trung trực
+  // giữa hai căn cứ nên cách đều hai nhà; giữ cầu là giữ đài
+  points: [[-56 * S, -56 * S]],
   // đồi thấp: đứng trên đồi được cộng tầm nhìn / tầm bắn, đồi che tầm nhìn
   hills: [
     { x: -28, z: 66, r: 13, h: 4 },

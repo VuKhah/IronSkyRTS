@@ -37,7 +37,7 @@ const HELP = `
     <tr><td>Mục tiêu</td><td>Thắng khi: <b>diệt Xe Tư Lệnh địch</b>, hoặc <b>phá hết công trình địch</b>, hoặc <b>giữ trọn một loại mỏ</b> (4/4 Sắt hoặc 5/5 Dầu) liên tục 30 giây.</td></tr>
     <tr><td>Kinh tế</td><td>Đưa quân đứng cạnh mỏ để chiếm. Xe Vận Tải tự đào và chở Sắt / Dầu về Tổng Hành Dinh. Sắt để xây và đúc quân, Dầu để nạp cho máy bay.</td></tr>
     <tr><td>Địa hình</td><td>Xe <b>bánh</b> (Tư Lệnh, Lynx, Vận Tải) nhanh trên <b>đường</b>, sa lầy trong <b>bùn</b>; xe <b>xích</b> (Titan, SkyGuard) đều hơn trên mọi loại đất. Lên dốc chậm. Xe tự chọn đường nhanh nhất. <b>Rừng</b> che tầm nhìn: đứng trong nhìn ra được, đứng ngoài không nhìn vào được; nấp trong rừng giảm 20% sát thương đạn thẳng (đạn Nổ thì không). Đứng trên cao nhìn xa, bắn xa hơn.</td></tr>
-    <tr><td>Kỹ năng</td><td><b>Điểm chỉ huy</b> tự tích lũy (nhanh hơn khi điện dư và khi gây sát thương). <b>Pháo kích</b> [T] (100 điểm): chọn một điểm đang nhìn thấy, báo trước 3 giây rồi đạn rơi rải vùng 8 m. <b>Tổng động viên</b> [R]: quân quanh Xe Tư Lệnh chạy nhanh, bắn nhanh 10 giây. Quân lập công lên <b>cựu binh</b> (vạch vàng), xe bị hạ để lại <b>xác</b> chứa Sắt cho ai nhặt trước.</td></tr>
+    <tr><td>Kỹ năng</td><td><b>Điểm chỉ huy</b> tự tích lũy (nhanh hơn khi điện dư và khi gây sát thương). <b>Pháo kích</b> [T] (100 điểm): chọn một điểm đang nhìn thấy, báo trước 3 giây rồi đạn rơi rải vùng 8 m. <b>Tổng động viên</b> [R]: quân quanh Xe Tư Lệnh chạy nhanh, bắn nhanh 10 giây. <b>Đài Liên Lạc</b> (📡, chiếm như mỏ): mỗi đài cộng điểm chỉ huy và cho nhìn xa quanh đài. Quân lập công lên <b>cựu binh</b> (vạch vàng), xe bị hạ để lại <b>xác</b> chứa Sắt cho ai nhặt trước.</td></tr>
     <tr><td>Không quân</td><td>Falcon rất mạnh nhưng chỉ bay ~33 giây. Hết dầu tự về Sân Đáp nạp (trừ vào kho Dầu). Kho Dầu cạn thì máy bay nằm sân.</td></tr>
     <tr><td>Chạm</td><td>Chạm quân để chọn · chạm đất / địch / mỏ để ra lệnh · <b>giữ rồi kéo</b> để chọn nhiều · chạm đúp để chọn cả loại · một ngón kéo để cuộn · hai ngón để thu phóng và xoay.</td></tr>
     <tr><td>Chuột</td><td>Trái: chọn (kéo để quét) · Phải: ra lệnh (kéo để xoay camera) · Giữa kéo / mũi tên / sát mép: cuộn · Lăn: thu phóng · Q/E: xoay.</td></tr>
@@ -98,6 +98,7 @@ const ALERT_TEXT: Record<string, (n: number) => string> = {
   lowfuel: () => "Máy bay sắp hết dầu, đang quay về Sân Đáp",
   nooil: () => "Kho Dầu cạn: máy bay không nạp được!",
   mineLost: () => "Ta vừa mất một mỏ!",
+  uplinkLost: () => "Mất Đài Liên Lạc! Chiếm lại để giữ điểm chỉ huy",
   powerShort: (n) => `Hậu cần: thiếu ${n} MW — đã cắt điện Xưởng Xe / Sân Đáp trước, giữ điện cho phòng thủ`,
   powerForecast: (n) => `Hậu cần: xây xong sẽ thiếu ${n} MW — cần thêm Nhà Máy Điện`,
   oilLow: (n) => `Hậu cần: Dầu cho Nhà Máy Điện chỉ còn khoảng ${n} giây!`,
@@ -303,7 +304,7 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
           if (e.side === me) {
             hud.alert(ALERT_TEXT[e.what]?.(e.n ?? 0) ?? "", "bad");
             ctrl.lastAlert = { x: e.x, z: e.z };
-            if (e.what === "commander" || e.what === "base" || e.what === "nooil" || e.what === "powerShort" || e.what === "oilLow" || e.what === "batteryLow") sfx.ui("alert");
+            if (e.what === "commander" || e.what === "base" || e.what === "nooil" || e.what === "powerShort" || e.what === "oilLow" || e.what === "batteryLow" || e.what === "uplinkLost") sfx.ui("alert");
           }
           break;
         case "captured": {
@@ -316,6 +317,14 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
           }
           break;
         }
+        case "uplink":
+          if (me === null) {
+            if (e.side !== -1) hud.alert(`${SIDE_NAME[e.side]} chiếm Đài Liên Lạc`);
+          } else if (e.side === me) {
+            hud.alert(`Đã chiếm Đài Liên Lạc: +${String(RULES.uplink.cpPerSec).replace(".", ",")} điểm chỉ huy/giây, nhìn xa quanh đài`, "good");
+            sfx.ui("ready");
+          } else if (e.side !== -1) hud.alert("Địch chiếm một Đài Liên Lạc", "bad");
+          break;
         case "barrage":
           if (e.side === me) sfx.ui("incoming");
           else if (visible(e.x, e.z)) {

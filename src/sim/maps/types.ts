@@ -84,6 +84,8 @@ export interface MapDef {
   /** Vị trí căn cứ theo phe: [0] = Lam (góc dưới trái), [1] = Đỏ (góc trên phải). Với `symmetric`: chỉ ghi căn cứ Lam. */
   bases: readonly Vec2[];
   mines: readonly MineDef[];
+  /** Đài Liên Lạc (điểm chiếm): chiếm như mỏ; phe giữ được cộng điểm chỉ huy và nhìn xa quanh đài. Đặt chỗ cách đều hai nhà. */
+  points?: readonly Vec2[];
   hills: readonly Blob[];
   /** Cao nguyên / đồi cao nhiều bậc (đa giác). */
   plateaus?: readonly PlateauDef[];

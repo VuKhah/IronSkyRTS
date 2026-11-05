@@ -30,6 +30,7 @@ export const PROVING_GROUND: MapDef = {
     { res: "iron", x: -40, z: -30, owner: -1 },
     { res: "oil", x: 0, z: 0, owner: -1 }
   ],
+  points: [[20, 55]],
   hills: [
     { x: -84, z: -18, r: 12, h: 3.5 },
     { x: -26, z: 48, r: 10, h: 3 }

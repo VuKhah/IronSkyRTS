@@ -185,6 +185,27 @@ export class Overlay {
       g.fillText(m.res === "iron" ? "S" : "D", p.x, p.y + 3.5);
     }
 
+    // vòng tiến độ chiếm Đài Liên Lạc (khi đang giằng co / chiếm dở)
+    for (const up of world.uplinks) {
+      if (!(up.cap > 0 && up.cap < 1)) continue;
+      const p = cam.project(up.x, world.map.groundY(up.x, up.z) + 8.5, up.z, w, h);
+      if (!p.visible) continue;
+      const side = up.owner !== -1 ? up.owner : up.capSide;
+      g.lineWidth = 4;
+      g.strokeStyle = "rgba(0,0,0,0.55)";
+      g.beginPath();
+      g.arc(p.x, p.y, 13, 0, Math.PI * 2);
+      g.stroke();
+      g.strokeStyle = side === -1 ? "#dddddd" : SIDE_COLOR[side];
+      g.beginPath();
+      g.arc(p.x, p.y, 13, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * up.cap);
+      g.stroke();
+      g.font = "bold 11px 'Be Vietnam Pro', sans-serif";
+      g.textAlign = "center";
+      g.fillStyle = "#ffe2b3";
+      g.fillText("📡", p.x, p.y + 4);
+    }
+
     if (box) {
       g.strokeStyle = "#6fdc8c";
       g.lineWidth = 1.5;

@@ -140,6 +140,21 @@ export class Minimap {
       g.fill();
       g.stroke();
     }
+    // Đài Liên Lạc: hình thoi theo màu chủ
+    for (const up of world.uplinks) {
+      const r = 4.5 * dpr;
+      g.fillStyle = up.owner === -1 ? "#9aa0a6" : SIDE_COLOR[up.owner];
+      g.strokeStyle = "#ffffff";
+      g.lineWidth = 1.5 * dpr;
+      g.beginPath();
+      g.moveTo(up.x * s, up.z * s - r);
+      g.lineTo(up.x * s + r, up.z * s);
+      g.lineTo(up.x * s, up.z * s + r);
+      g.lineTo(up.x * s - r, up.z * s);
+      g.closePath();
+      g.fill();
+      g.stroke();
+    }
     for (const b of world.buildings) {
       if (viewer !== null && b.side !== viewer && !world.sides[viewer].known.has(b.id)) continue;
       const [hw, hd] = BUILDINGS[b.kind].half;

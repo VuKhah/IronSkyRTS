@@ -142,6 +142,11 @@ export class Fx {
           scorch.mesh.renderOrder = 1;
           break;
         }
+        case "uplink": {
+          const color = e.side === 0 ? 0x2e9eff : e.side === 1 ? 0xf23d3d : 0xdddddd;
+          this.spawn(this.geo.ring, add(color, 0.9), new THREE.Vector3(e.x, this.map.groundY(e.x, e.z) + 0.3, e.z), 3, 1, { grow: 16, fade: true });
+          break;
+        }
         case "mobilize": {
           if (!visible(e.x, e.z)) break;
           const y = this.map.groundY(e.x, e.z) + 0.3;

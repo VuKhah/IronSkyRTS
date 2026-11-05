@@ -198,3 +198,46 @@ describe("Kỹ năng Tư lệnh", () => {
     expect(speedOver(true) / speedOver(false)).toBeCloseTo(1 + M.speed, 2);
   });
 });
+
+describe("Đài Liên Lạc (điểm chiếm)", () => {
+  it("Thung Lũng Sông Sắt có 2 đài trên hai cây cầu, cách đều hai căn cứ", () => {
+    const w = new World(1);
+    expect(w.uplinks.length).toBe(2);
+    const [a, b] = w.map.bases;
+    for (const up of w.uplinks) {
+      const da = Math.hypot(up.x - a[0], up.z - a[1]);
+      const db = Math.hypot(up.x - b[0], up.z - b[1]);
+      expect(da).toBeCloseTo(db, 6);
+    }
+  });
+
+  it("đứng gần thì chiếm được như mỏ; hai phe cùng có mặt thì giằng co", () => {
+    const w = new World(1, { sandbox: true });
+    hold(w, 0);
+    hold(w, 1);
+    const up = w.uplinks[0];
+    w.step([{ side: 0, order: { t: "sbSpawn", kind: "lynx", side: 0, x: up.x + 2, z: up.z } }]);
+    run(w, RULES.captureSeconds + 3, () => up.owner === 0);
+    expect(up.owner).toBe(0);
+    // địch tới cùng lúc với quân mình: tiến độ không đổi
+    w.step([{ side: 1, order: { t: "sbSpawn", kind: "lynx", side: 1, x: up.x - 2, z: up.z } }]);
+    const cap = up.cap;
+    run(w, 3);
+    expect(up.owner).toBe(0);
+    expect(up.cap).toBeCloseTo(cap, 6);
+  });
+
+  it("phe giữ đài được cộng điểm chỉ huy và nhìn thấy quanh đài (không cần quân ở đó)", () => {
+    const U = RULES.uplink;
+    const a = new World(1);
+    const b = new World(1);
+    b.uplinks[0].owner = 0;
+    b.uplinks[0].cap = 1;
+    run(a, 10);
+    run(b, 10);
+    expect(b.sides[0].cp - a.sides[0].cp).toBeCloseTo(U.cpPerSec * 10, 1);
+    const up = b.uplinks[0];
+    expect(b.cellVisible(0, up.x + U.sight * 0.8, up.z)).toBe(true);
+    expect(a.cellVisible(0, up.x + U.sight * 0.8, up.z)).toBe(false);
+  });
+});

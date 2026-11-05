@@ -11,7 +11,7 @@ import { BUILDINGS, RULES, UNITS, valueOf, type BuildingId, type Res, type Side,
 import { clamp, dcos, DEG, dist2, dsin, Rng, turnStep, turnToward, type TurnStep } from "./fmath";
 import { Grid } from "./grid";
 import { CELL, GameMap, getMap, TERRAIN, TERRAIN_KINDS } from "./maps";
-import type { AlertKind, Building, Command, Entity, Mine, Order, Shot, SideState, SimEvent, Strike, Target, Unit, WinReason, Wreck } from "./types";
+import type { AlertKind, Building, Command, Entity, Mine, Order, Shot, SideState, SimEvent, Strike, Target, Unit, Uplink, WinReason, Wreck } from "./types";
 
 export const TICK_RATE = RULES.tickRate;
 export const DT = 1 / TICK_RATE;
@@ -154,7 +154,7 @@ function newSide(cells: number): SideState {
     batteryMax: 0,
     batteryFlow: 0,
     oilBurn: 0,
-    alerts: { commander: -1000, base: -1000, hauler: -1000, lowfuel: -1000, nooil: -1000, mineLost: -1000, powerShort: -1000, powerForecast: -1000, oilLow: -1000, batteryLow: -1000 },
+    alerts: { commander: -1000, base: -1000, hauler: -1000, lowfuel: -1000, nooil: -1000, mineLost: -1000, powerShort: -1000, powerForecast: -1000, oilLow: -1000, batteryLow: -1000, uplinkLost: -1000 },
     stats: { unitsBuilt: 0, unitsLost: 0, kills: 0, ironMined: 0, oilMined: 0, buildingsBuilt: 0, damageDealt: 0, salvaged: 0 }
   };
 }
@@ -195,6 +195,8 @@ export class World {
   wrecks: Wreck[] = [];
   /** Các đợt pháo kích đang diễn ra. */
   strikes: Strike[] = [];
+  /** Đài Liên Lạc (điểm chiếm), theo vị trí trong dữ liệu bản đồ. */
+  readonly uplinks: Uplink[] = [];
   readonly byId = new Map<number, Entity>();
   readonly sides: [SideState, SideState];
   events: SimEvent[] = [];
@@ -240,6 +242,7 @@ export class World {
       this.mines.push(mine);
       this.byId.set(mine.id, mine);
     }
+    for (const [x, z] of map.points) this.uplinks.push({ id: this.nextId++, x, z, owner: -1, cap: 0, capSide: -1 });
     for (const s of [0, 1] as Side[]) {
       const [hx, hz] = map.bases[s];
       this.addBuilding("hq", s, hx, hz, true);
@@ -1015,57 +1018,72 @@ export class World {
   // ------------------------------------------------------------------ mỏ
 
   private updateMines(): void {
+    for (const m of this.mines) {
+      const prev = m.owner;
+      const now = this.captureStep(m);
+      if (now === null) continue;
+      m.slots = [];
+      if (now === -1) this.alert(prev as Side, "mineLost", m.x, m.z);
+      this.events.push({ t: "captured", mine: m.id, res: m.res, side: now, prev: now === -1 ? prev : -1 });
+    }
+    for (const up of this.uplinks) {
+      const prev = up.owner;
+      const now = this.captureStep(up);
+      if (now === null) continue;
+      if (now === -1) this.alert(prev as Side, "uplinkLost", up.x, up.z);
+      this.events.push({ t: "uplink", id: up.id, side: now, prev, x: up.x, z: up.z });
+    }
+  }
+
+  /**
+   * Chiếm (mỏ, Đài Liên Lạc): xe mặt đất có sức chiếm trong bán kính đẩy tiến độ; hai phe cùng có mặt thì giằng co;
+   * không ai thì chủ cũ tự hồi, chiếm dở thì phai dần. Trả về chủ mới khi đổi chủ (-1 = vừa bị giành thành trung lập), không đổi thì null.
+   */
+  private captureStep(m: { x: number; z: number; owner: Side | -1; cap: number; capSide: Side | -1 }): Side | -1 | null {
     const R2 = RULES.captureRadius * RULES.captureRadius;
     const step = 1 / sec(RULES.captureSeconds);
-    for (const m of this.mines) {
-      let w0 = 0;
-      let w1 = 0;
-      for (const u of this.units) {
-        if (u.air !== "none" || u.hp <= 0) continue;
-        const cw = UNITS[u.kind].captureWeight;
-        if (cw <= 0 || dist2(u.x, u.z, m.x, m.z) > R2) continue;
-        if (u.side === 0) w0 += cw;
-        else w1 += cw;
+    let w0 = 0;
+    let w1 = 0;
+    for (const u of this.units) {
+      if (u.air !== "none" || u.hp <= 0) continue;
+      const cw = UNITS[u.kind].captureWeight;
+      if (cw <= 0 || dist2(u.x, u.z, m.x, m.z) > R2) continue;
+      if (u.side === 0) w0 += cw;
+      else w1 += cw;
+    }
+    if (w0 > 0 && w1 > 0) return null;
+    if (w0 === 0 && w1 === 0) {
+      if (m.owner >= 0) m.cap = Math.min(1, m.cap + step * 0.25);
+      else if (m.cap > 0) m.cap = Math.max(0, m.cap - step * 0.1);
+      return null;
+    }
+    const s: Side = w0 > 0 ? 0 : 1;
+    const rate = Math.min(RULES.captureMaxWeight, w0 + w1) * step;
+    if (m.owner === s) m.cap = Math.min(1, m.cap + rate);
+    else if (m.owner !== -1) {
+      m.cap -= rate;
+      if (m.cap <= 0) {
+        m.owner = -1;
+        m.cap = 0;
+        m.capSide = s;
+        return -1;
       }
-      const prev = m.owner;
-      if (w0 > 0 && w1 > 0) continue;
-      if (w0 === 0 && w1 === 0) {
-        if (m.owner >= 0) m.cap = Math.min(1, m.cap + step * 0.25);
-        else if (m.cap > 0) m.cap = Math.max(0, m.cap - step * 0.1);
-        continue;
+    } else if (m.capSide !== s && m.cap > 0) {
+      m.cap -= rate;
+      if (m.cap <= 0) {
+        m.cap = 0;
+        m.capSide = s;
       }
-      const s: Side = w0 > 0 ? 0 : 1;
-      const rate = Math.min(RULES.captureMaxWeight, w0 + w1) * step;
-      if (m.owner === s) m.cap = Math.min(1, m.cap + rate);
-      else if (m.owner !== -1) {
-        m.cap -= rate;
-        if (m.cap <= 0) {
-          m.owner = -1;
-          m.cap = 0;
-          m.capSide = s;
-          m.slots = [];
-          this.alert(prev as Side, "mineLost", m.x, m.z);
-          this.events.push({ t: "captured", mine: m.id, res: m.res, side: -1, prev });
-        }
-      } else {
-        if (m.capSide !== s && m.cap > 0) {
-          m.cap -= rate;
-          if (m.cap <= 0) {
-            m.cap = 0;
-            m.capSide = s;
-          }
-        } else {
-          m.capSide = s;
-          m.cap += rate;
-          if (m.cap >= 1) {
-            m.cap = 1;
-            m.owner = s;
-            m.slots = [];
-            this.events.push({ t: "captured", mine: m.id, res: m.res, side: s, prev: -1 });
-          }
-        }
+    } else {
+      m.capSide = s;
+      m.cap += rate;
+      if (m.cap >= 1) {
+        m.cap = 1;
+        m.owner = s;
+        return s;
       }
     }
+    return null;
   }
 
   // ------------------------------------------------------------------ quân mặt đất
@@ -2177,7 +2195,9 @@ export class World {
       const st = this.sides[s];
       if (!this.hqOf(s)) continue;
       const surplus = Math.min(A.cpSurplusCap, Math.max(0, st.powerCap - st.powerUse));
-      st.cp = Math.min(A.cpMax, st.cp + (A.cpPerSec + surplus * A.cpPerSurplusMw) * DT);
+      let uplinks = 0;
+      for (const up of this.uplinks) if (up.owner === s) uplinks++;
+      st.cp = Math.min(A.cpMax, st.cp + (A.cpPerSec + surplus * A.cpPerSurplusMw + uplinks * RULES.uplink.cpPerSec) * DT);
     }
   }
 
@@ -2481,6 +2501,8 @@ export class World {
         if (spec.radarSight && b.active) this.stamp(st, b.x, b.z, spec.radarSight);
         else this.stampLos(st, b.x, b.z, this.sightOf(spec.sight, b.x, b.z, false) * (b.built ? 1 : 0.6), this.heightAt(b.x, b.z) + T.eyeBuilding);
       }
+      // Đài Liên Lạc của mình: nhìn xa quanh đài (cột ăng-ten cao, không bị đồi che)
+      for (const up of this.uplinks) if (up.owner === s) this.stamp(st, up.x, up.z, RULES.uplink.sight);
       for (const b of this.buildings) if (b.side !== s && !st.known.has(b.id) && this.visibleTo(s, b)) st.known.add(b.id);
     }
   }
@@ -2602,6 +2624,10 @@ export function hashWorld(w: World): number {
   for (const wr of w.wrecks) {
     num(wr.id);
     num(wr.until);
+  }
+  for (const up of w.uplinks) {
+    num(up.owner);
+    num(up.cap);
   }
   for (const m of w.mines) {
     num(m.amount);

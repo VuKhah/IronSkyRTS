@@ -28,6 +28,8 @@ describe.each([...MAP_DEFS, ...DEV_MAP_DEFS].map((d) => [d.id]))("bản đồ %s
       );
       expect(twin, `mỏ ${mine.res} (${mine.x}, ${mine.z}) thiếu mỏ đối xứng`).toBeDefined();
     }
+    for (const [px, pz] of m.points) expect(m.points.some(([qx, qz]) => Math.abs(qx + px) < 1e-6 && Math.abs(qz + pz) < 1e-6), `Đài Liên Lạc (${px}, ${pz}) thiếu đài đối xứng`).toBe(true);
+    for (const [px, pz] of m.points) expect(m.staticBlocked(px, pz), `Đài Liên Lạc (${px}, ${pz}) nằm chỗ không đi được`).toBe(false);
     for (let r = 0; r < m.rows; r++)
       for (let c = 0; c < m.cols; c++) {
         const x = cx(c);

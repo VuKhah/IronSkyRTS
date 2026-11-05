@@ -68,6 +68,8 @@ export class GameMap {
   // Các danh sách dưới đây đã ĐỦ cả hai nửa (MapDef.symmetric chỉ khai báo một nửa).
   readonly bases: readonly Vec2[];
   readonly mines: readonly MineDef[];
+  /** Vị trí các Đài Liên Lạc (điểm chiếm). */
+  readonly points: readonly Vec2[];
   readonly hills: readonly Blob[];
   readonly plateaus: readonly PlateauDef[];
   readonly rocks: readonly Blob[];
@@ -90,6 +92,7 @@ export class GameMap {
     const full = def.symmetric ? mirrorDef(def) : def;
     this.bases = full.bases;
     this.mines = full.mines;
+    this.points = full.points ?? [];
     this.hills = full.hills;
     this.plateaus = full.plateaus ?? [];
     this.rocks = full.rocks;
@@ -368,6 +371,7 @@ function mirrorDef(def: MapDef): MapDef {
     ...def,
     bases: def.bases.flatMap((b) => [b, flip(b)]),
     mines: withTwins(def.mines, (m) => ({ ...m, x: -m.x, z: -m.z, owner: swap(m.owner) })),
+    points: (def.points ?? []).flatMap((p) => (atCenter(p[0], p[1]) ? [p] : [p, flip(p)])),
     hills: withTwins(def.hills, blob),
     plateaus: (def.plateaus ?? []).flatMap((p) => [p, { ...p, poly: p.poly.map(flip) }]),
     rocks: withTwins(def.rocks, blob),

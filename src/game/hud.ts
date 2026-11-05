@@ -71,7 +71,7 @@ export class Hud {
         spectator
           ? ""
           : `<div class="abilities">
-               <div class="cp" title="Điểm chỉ huy: tự tích lũy theo thời gian, nhanh hơn khi lưới điện dư công suất và khi gây sát thương cho địch"><span data-n="cp"></span><div class="bar"><i data-n="cpbar"></i></div></div>
+               <div class="cp" title="Điểm chỉ huy: tự tích lũy theo thời gian, nhanh hơn khi lưới điện dư công suất và khi gây sát thương cho địch"><span data-n="cp"></span><div class="bar"><i data-n="cpbar"></i></div><div class="up" data-n="uplinks"></div></div>
                <button data-act="ability:barrage" title="Pháo kích vào một điểm đang nhìn thấy: báo trước 3 giây rồi đạn rơi rải vùng 8 m"><b>💥 Pháo kích</b><small data-n="barrage"></small></button>
                <button data-act="ability:mobilize" title="Tổng động viên: quân quanh Xe Tư Lệnh chạy nhanh hơn 30%, bắn nhanh hơn 20% trong 10 giây"><b>📯 Động viên</b><small data-n="mobilize"></small></button>
              </div>`
@@ -207,6 +207,9 @@ export class Hud {
       if (el && el.textContent !== v) el.textContent = v;
     };
     txt("cp", `★ ${Math.floor(cp)} điểm chỉ huy`);
+    const ups = w.uplinks.length;
+    const own = w.uplinks.filter((u) => u.owner === me).length;
+    txt("uplinks", ups ? `📡 Đài ${own}/${ups}${own ? ` · +${(own * RULES.uplink.cpPerSec).toFixed(1).replace(".", ",")}★/giây` : ""}` : "");
     const bar = q("cpbar");
     if (bar) bar.style.width = `${Math.min(100, (cp / A.cpMax) * 100)}%`;
     const bBtn = box.querySelector<HTMLButtonElement>('[data-act="ability:barrage"]')!;

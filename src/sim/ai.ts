@@ -8,7 +8,7 @@
  */
 import { BUILDINGS, RULES, UNITS, valueOf, type BuildingId, type Side, type UnitId } from "./content";
 import { dcos, dist2, dsin, Rng, TAU } from "./fmath";
-import type { Building, Mine, Order, Unit } from "./types";
+import type { Building, Mine, Order, Unit, Uplink } from "./types";
 import { dirToCenter, sec, type World } from "./world";
 
 const DIRS: readonly (readonly [number, number])[] = Array.from({ length: 16 }, (_, i) => [dcos((i * TAU) / 16), dsin((i * TAU) / 16)] as const);
@@ -264,10 +264,11 @@ export class Ai {
     return null;
   }
 
-  private captureTarget(w: World, base: Building): Mine | null {
-    const cur = w.byId.get(this.capChoice);
-    if (cur && cur.cat === "mine" && cur.owner !== this.side) return cur;
-    let best: Mine | null = null;
+  /** Mục tiêu chiếm: mỏ hoặc Đài Liên Lạc chưa thuộc phe mình (gần nhà trước, Dầu và Đài được ưu tiên hơn). */
+  private captureTarget(w: World, base: Building): Mine | Uplink | null {
+    const cur = w.mines.find((m) => m.id === this.capChoice) ?? w.uplinks.find((u) => u.id === this.capChoice);
+    if (cur && cur.owner !== this.side) return cur;
+    let best: Mine | Uplink | null = null;
     let bestD = Infinity;
     for (const m of w.mines) {
       if (m.owner === this.side) continue;
@@ -277,6 +278,15 @@ export class Ai {
       if (d < bestD) {
         bestD = d;
         best = m;
+      }
+    }
+    for (const up of w.uplinks) {
+      if (up.owner === this.side) continue;
+      let d = dist2(up.x, up.z, base.x, base.z) * (0.8 + this.rng.next() * 0.4) * 0.6;
+      if (up.owner !== -1) d *= 1.6;
+      if (d < bestD) {
+        bestD = d;
+        best = up;
       }
     }
     this.capChoice = best ? best.id : 0;

@@ -7,7 +7,7 @@
 import * as THREE from "three";
 import { BUILDINGS, FACTION_OF, RULES, UNITS, type Side } from "../sim/content";
 import type { GameMap } from "../sim/maps";
-import type { Building, Mine, Shot, Strike, Target, Unit, Wreck } from "../sim/types";
+import type { Building, Mine, Shot, Strike, Target, Unit, Uplink, Wreck } from "../sim/types";
 import { AIRBORNE_ALT, DT, sec, type World } from "../sim/world";
 import { buildModel, buildNode, disposeRig, type NodeRig, type Rig } from "../render/models";
 import { bakeObject, bakeStatic } from "../render/models/bake";
@@ -62,6 +62,52 @@ const SHELL_GEO = new THREE.SphereGeometry(0.32, 8, 6).scale(1, 1, 5);
 /** Đạn pháo kích rơi từ hướng này (xiên một chút cho thấy đường bay, đủ thấp để nằm trong khung camera). */
 const SKY = new THREE.Vector3(-9, 28, -6);
 
+/** Đài Liên Lạc: màu theo phe (trung lập = xám). */
+const UPLINK_COLOR = [0x3ea8ff, 0xff4d4d];
+const UPLINK_NEUTRAL = 0xdddddd;
+const UPLINK_METAL = new THREE.MeshStandardMaterial({ color: 0x59616b, roughness: 0.6, metalness: 0.5 });
+const UPLINK_DISH = new THREE.MeshStandardMaterial({ color: 0xd9dde2, roughness: 0.4, metalness: 0.3, side: THREE.DoubleSide });
+
+interface UplinkView {
+  root: THREE.Group;
+  beacon: THREE.MeshStandardMaterial;
+  ring: THREE.MeshBasicMaterial;
+}
+
+/** Cột ăng-ten: đế, cột, hai thanh ngang, chảo, đèn hiệu đổi màu theo phe; vòng trên đất = bán kính chiếm. */
+function buildUplink(): UplinkView {
+  const root = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.5, 2.4), UPLINK_METAL);
+  base.position.y = 0.25;
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.22, 6.6, 6), UPLINK_METAL);
+  mast.position.y = 3.8;
+  root.add(base, mast);
+  for (const y of [2.6, 4.6]) {
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.09, 0.09), UPLINK_METAL);
+    bar.position.y = y;
+    bar.rotation.y = y > 3 ? Math.PI / 2 : 0;
+    root.add(bar);
+  }
+  const dish = new THREE.Mesh(new THREE.SphereGeometry(0.95, 14, 8, 0, Math.PI * 2, 0, Math.PI / 3.2), UPLINK_DISH);
+  dish.position.set(0, 5.4, 0.25);
+  dish.rotation.x = Math.PI / 2.4;
+  root.add(dish);
+  const beacon = new THREE.MeshStandardMaterial({ color: UPLINK_NEUTRAL, emissive: UPLINK_NEUTRAL, emissiveIntensity: 0.8 });
+  const light = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), beacon);
+  light.position.y = 7.25;
+  root.add(light);
+  const ring = new THREE.MeshBasicMaterial({ color: UPLINK_NEUTRAL, transparent: true, opacity: 0.35, depthWrite: false });
+  const r = RULES.captureRadius;
+  const area = new THREE.Mesh(new THREE.RingGeometry(r - 0.3, r, 72).rotateX(-Math.PI / 2), ring);
+  area.position.y = 0.15;
+  area.renderOrder = 3;
+  root.add(area);
+  root.traverse((o) => {
+    if (o instanceof THREE.Mesh && o !== area) o.castShadow = true;
+  });
+  return { root, beacon, ring };
+}
+
 /** Vật liệu cháy đen dùng chung cho mọi xác quân (một vật liệu → mỗi xác gộp được thành một lệnh vẽ). */
 const WRECK_MAT = new THREE.MeshStandardMaterial({ color: 0x3b3733, roughness: 0.95, metalness: 0.15 });
 
@@ -72,6 +118,7 @@ export class Views {
   private wrecks = new Map<number, { root: THREE.Object3D; seen: number }>();
   private strikeViews = new Map<Strike, { outer: THREE.Mesh; inner: THREE.Mesh }>();
   private shellViews = new Map<Shot, THREE.Mesh>();
+  private uplinkViews = new Map<number, UplinkView>();
   private frame = 0;
 
   constructor(
@@ -137,6 +184,7 @@ export class Views {
       this.updateMine(m, v, dt, time, selected.has(m.id));
     }
     this.syncStrikes(world, viewer, alpha);
+    for (const up of world.uplinks) this.syncUplink(up, time);
     for (const wr of world.wrecks) {
       // xác trong sương mù thì không thấy
       if (viewer !== null && !world.cellVisible(viewer, wr.x, wr.z)) continue;
@@ -158,6 +206,26 @@ export class Views {
     }
     this.sweep(this.units, f);
     this.sweep(this.buildings, f);
+  }
+
+  /** Đài Liên Lạc: màu đèn hiệu và vòng chiếm theo chủ; đang bị giành thì nhấp nháy màu phe đang chiếm. */
+  private syncUplink(up: Uplink, time: number): void {
+    let v = this.uplinkViews.get(up.id);
+    if (!v) {
+      v = buildUplink();
+      v.root.position.set(up.x, this.map.groundY(up.x, up.z), up.z);
+      // chảo quay về phía tâm bản đồ
+      v.root.rotation.y = Math.atan2(-up.x, -up.z);
+      this.scene.add(v.root);
+      this.uplinkViews.set(up.id, v);
+    }
+    const contested = up.cap > 0 && up.cap < 1 && up.capSide !== -1 && up.capSide !== up.owner;
+    const side = contested ? up.capSide : up.owner;
+    const color = side === -1 ? UPLINK_NEUTRAL : UPLINK_COLOR[side];
+    v.beacon.color.setHex(color);
+    v.beacon.emissive.setHex(color);
+    v.ring.color.setHex(color);
+    v.ring.opacity = contested ? 0.35 + 0.3 * Math.abs(Math.sin(time * 6)) : up.owner === -1 ? 0.3 : 0.45;
   }
 
   /**

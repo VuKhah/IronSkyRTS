@@ -91,6 +91,17 @@ export interface Unit {
   lastHit: number;
 }
 
+/** Đài Liên Lạc (điểm chiếm): đứng gần để chiếm như mỏ; phe giữ được cộng điểm chỉ huy và nhìn xa quanh đài. */
+export interface Uplink {
+  id: number;
+  x: number;
+  z: number;
+  owner: Side | -1;
+  /** Tiến độ chiếm (0..1) và phe đang chiếm dở. */
+  cap: number;
+  capSide: Side | -1;
+}
+
 /** Xác quân trên chiến trường: chứa Sắt, xe mặt đất chạm vào trước thì nhặt được. */
 export interface Wreck {
   id: number;
@@ -217,7 +228,7 @@ export interface Command {
   order: Order;
 }
 
-export type AlertKind = "commander" | "base" | "hauler" | "lowfuel" | "nooil" | "mineLost" | "powerShort" | "powerForecast" | "oilLow" | "batteryLow";
+export type AlertKind = "commander" | "base" | "hauler" | "lowfuel" | "nooil" | "mineLost" | "powerShort" | "powerForecast" | "oilLow" | "batteryLow" | "uplinkLost";
 export type WinReason = "commander" | "buildings" | "monopoly" | "timeout";
 
 export type SimEvent =
@@ -232,6 +243,8 @@ export type SimEvent =
   | { t: "monopoly"; side: Side; res: Res }
   | { t: "rank"; id: number; kind: UnitId; side: Side; rank: number; x: number; z: number }
   | { t: "salvage"; wreck: number; side: Side; value: number; x: number; z: number }
+  /** Đài Liên Lạc đổi chủ (side = -1: vừa bị giành mất, thành trung lập). */
+  | { t: "uplink"; id: number; side: Side | -1; prev: Side | -1; x: number; z: number }
   /** Pháo kích được gọi: vòng báo trước ở (x, z), bán kính r, đạn bắt đầu rơi sau `ticks` tick. */
   | { t: "barrage"; side: Side; x: number; z: number; r: number; ticks: number }
   /** Một quả đạn pháo kích đang rơi xuống (x, z), chạm đất sau `ticks` tick. */

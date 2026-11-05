@@ -108,6 +108,8 @@ button { font: inherit; color: inherit; }
 .abilities { position: absolute; right: 8px; top: 56px; width: 138px; display: flex; flex-direction: column; gap: 6px; pointer-events: auto; }
 .abilities .cp { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 5px 8px; font-size: 12px; font-weight: 700; color: #ffe2b3; }
 .abilities .cp .bar { height: 4px; margin-top: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.14); overflow: hidden; }
+.abilities .cp .up { margin-top: 3px; font-size: 11px; font-weight: 600; color: var(--dim); }
+.abilities .cp .up:empty { display: none; }
 .abilities .cp .bar i { display: block; height: 100%; width: 0; background: #ffd34d; transition: width 0.2s; }
 .abilities button { background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: 10px; padding: 6px 8px; color: inherit; font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
 .abilities button small { display: block; font-size: 11px; font-weight: 500; color: var(--dim); }
