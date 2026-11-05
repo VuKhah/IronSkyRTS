@@ -4,13 +4,13 @@
  * (không phải tự dọn hàng nghìn đối tượng 3D của trận trước).
  */
 import * as THREE from "three";
-import { BUILDINGS, RES_NAME, SIDE_NAME, UNITS, type EntityId, type Side, type UnitId } from "../sim/content";
+import { BUILDINGS, FACTION_OF, RES_NAME, SIDE_NAME, UNITS, type EntityId, type Side, type UnitId } from "../sim/content";
 import type { SimEvent } from "../sim/types";
 import { TICK_RATE } from "../sim/world";
 import { buildModel, disposeRig } from "../render/models";
 import { Thumbnailer } from "../models-page/stage";
 import { Sfx } from "./audio";
-import { RtsCamera } from "./camera";
+import { homeYaw, RtsCamera } from "./camera";
 import { Controller } from "./controller";
 import { Fx } from "./fx";
 import { Hud } from "./hud";
@@ -25,9 +25,11 @@ import { Views } from "./views";
 const app = document.getElementById("app")!;
 const randomSeed = (): number => Math.floor(Math.random() * 1e9) + 1;
 const go = (mode: Mode | null, seed = randomSeed()): void => {
-  // giữ nguyên bản đồ đang chơi khi mở trận mới (menu chọn bản đồ: bước B6)
-  const map = new URLSearchParams(location.search).get("map");
-  location.search = mode ? `?play=${mode}&seed=${seed}${map ? `&map=${encodeURIComponent(map)}` : ""}` : "";
+  // giữ nguyên bản đồ và phe đang chơi khi mở trận mới (menu chọn bản đồ: bước B6)
+  const cur = new URLSearchParams(location.search);
+  const map = cur.get("map");
+  const side = cur.get("side");
+  location.search = mode ? `?play=${mode}&seed=${seed}${map ? `&map=${encodeURIComponent(map)}` : ""}${side === "1" ? "&side=1" : ""}` : "";
 };
 
 const HELP = `
@@ -63,12 +65,13 @@ function showMenu(): void {
 
 const HUD_THUMBS = ["hauler", "lynx", "titan", "skyguard", "falcon", "factory", "airfield", "turret", "power-plant", "power-pylon", "battery", "radar"] as const;
 
-function makeThumbs(ids: readonly EntityId[]): Map<string, string> {
+/** Ảnh nút bấm, vẽ theo màu phe người chơi (chơi phe Đỏ thì nút cũng màu Đỏ). */
+function makeThumbs(ids: readonly EntityId[], side: Side): Map<string, string> {
   const out = new Map<string, string>();
   try {
     const shooter = new Thumbnailer();
     for (const id of ids) {
-      const rig = buildModel(id, "lam");
+      const rig = buildModel(id, FACTION_OF[side]);
       out.set(id, shooter.shoot(rig));
       disposeRig(rig);
     }
@@ -99,7 +102,7 @@ const ALERT_TEXT: Record<string, (n: number) => string> = {
   batteryLow: (n) => `Hậu cần: pin dự trữ chỉ còn khoảng ${n} giây!`
 };
 
-function startGame(mode: Mode, seed: number, skip = 0, mapId?: string): void {
+function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Side = 0): void {
   app.innerHTML = "";
   const canvas = document.createElement("canvas");
   canvas.className = "view";
@@ -108,7 +111,7 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string): void {
   app.append(canvas, overlayCanvas);
   if (new URLSearchParams(location.search).has("nooverlay")) overlayCanvas.style.display = "none";
 
-  const match = new Match(mode, seed, mapId);
+  const match = new Match(mode, seed, mapId, side);
   const map = match.world.map;
   let scene: BattleScene;
   try {
@@ -129,20 +132,21 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string): void {
   /** Phe mà sương mù / phần vẽ nhìn theo: null = thấy toàn bản đồ. */
   let viewer = me;
   const cam = new RtsCamera(map);
+  // Bản đồ hiện đúng hướng (cạnh dưới nằm ngang); phe Đỏ xoay 180° để nhà mình cũng ở góc dưới trái.
+  // Phòng Thử Nghiệm luôn nhìn như phe Lam (đổi phe giữa chừng không xoay camera).
+  const homeSide = sandboxMode ? 0 : me;
+  cam.yaw = homeYaw(homeSide);
   if (sandboxMode) {
     cam.focus(DUEL_CENTER[0], DUEL_CENTER[1]);
-    cam.yaw = Math.atan2(map.bases[0][0], map.bases[0][1]);
     cam.dist = 70;
   } else if (me !== null) {
     const [hx, hz] = map.bases[me];
     const l = Math.hypot(hx, hz);
     cam.focus(hx - (hx / l) * 7, hz - (hz / l) * 7);
-    cam.yaw = Math.atan2(hx, hz);
     cam.dist = 66;
   } else {
     cam.focus(0, 0);
-    cam.yaw = Math.atan2(map.bases[0][0], map.bases[0][1]);
-    cam.dist = 128;
+    cam.dist = Math.max(map.w, map.h) * 0.8;
     cam.pitch = 1.05;
   }
   // ?cam=x,z,dist: đặt camera (để thử nghiệm / chụp ảnh)
@@ -155,7 +159,7 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string): void {
   const views = new Views(scene.scene, map);
   const fx = new Fx(scene.scene, map);
   const sfx = new Sfx();
-  const thumbs = makeThumbs(sandboxMode ? ([...Object.keys(UNITS), ...Object.keys(BUILDINGS)] as EntityId[]) : HUD_THUMBS);
+  const thumbs = makeThumbs(sandboxMode ? ([...Object.keys(UNITS), ...Object.keys(BUILDINGS)] as EntityId[]) : HUD_THUMBS, me ?? 0);
   const overlay = new Overlay(overlayCanvas);
 
   let screenEl: HTMLElement | null = null;
@@ -197,6 +201,7 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string): void {
   const minimap = new Minimap(
     hud.minimapCanvas,
     map,
+    homeYaw(homeSide),
     (x, z) => cam.focus(x, z),
     (x, z) => {
       const ids = ctrl.ownUnits().map((u) => u.id);
@@ -445,7 +450,7 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string): void {
         const g = cam.ground(sx, sy, w, h) ?? cam.ground(sx, Math.max(sy, h * 0.35), w, h);
         if (g) corners.push([g.x, g.z]);
       }
-      minimap.draw(world, viewer, cam.yaw, corners);
+      minimap.draw(world, viewer, corners);
     }
     sandbox?.update(now);
     scene.render(cam.cam);
@@ -484,5 +489,5 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string): void {
 
 const params = new URLSearchParams(location.search);
 const play = params.get("play");
-if (play === "vsai" || play === "aivai" || play === "sandbox") startGame(play, Number(params.get("seed")) || randomSeed(), Number(params.get("skip")) || 0, params.get("map") ?? undefined);
+if (play === "vsai" || play === "aivai" || play === "sandbox") startGame(play, Number(params.get("seed")) || randomSeed(), Number(params.get("skip")) || 0, params.get("map") ?? undefined, params.get("side") === "1" ? 1 : 0);
 else showMenu();

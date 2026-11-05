@@ -33,11 +33,13 @@ export class Match {
     readonly mode: Mode,
     readonly seed: number,
     /** Mã bản đồ (mặc định "Thung Lũng Sông Sắt"). */
-    mapId?: string
+    mapId?: string,
+    /** Phe người chơi khi đấu AI (mặc định Lam). */
+    side: Side = 0
   ) {
     this.world = new World(seed, { sandbox: mode === "sandbox", map: mapId });
-    this.player = mode === "aivai" ? null : 0;
-    this.ais = mode === "vsai" ? [new Ai(1, seed)] : mode === "aivai" ? [new Ai(0, seed), new Ai(1, seed)] : [];
+    this.player = mode === "aivai" ? null : mode === "vsai" ? side : 0;
+    this.ais = mode === "vsai" ? [new Ai((1 - side) as Side, seed)] : mode === "aivai" ? [new Ai(0, seed), new Ai(1, seed)] : [];
   }
 
   issue(order: Order): void {

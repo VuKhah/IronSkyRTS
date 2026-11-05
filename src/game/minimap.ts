@@ -1,5 +1,6 @@
 /**
- * Bản đồ nhỏ: xoay theo camera (phía trên minimap = hướng camera đang nhìn).
+ * Bản đồ nhỏ: hiện đúng hướng, cạnh dưới nằm ngang, KHÔNG xoay theo camera (Docs/design/MAPS_PLAN.md mục 3.4).
+ * Góc xoay cố định theo phe: Lam 0°, Đỏ 180° (nhà mình luôn ở góc dưới trái). Khung có tỉ lệ của bản đồ.
  * Chạm / nhấp để đưa camera tới đó; chuột phải để ra lệnh di chuyển cho quân đang chọn.
  */
 import { BUILDINGS, type Side } from "../sim/content";
@@ -14,16 +15,20 @@ export class Minimap {
   private bg: HTMLCanvasElement;
   private fog: HTMLCanvasElement;
   private fogImg: ImageData;
-  private yaw = 0;
   private dragging = false;
 
   constructor(
     readonly canvas: HTMLCanvasElement,
     private map: GameMap,
+    /** Góc xoay cố định (rad), lấy theo hướng nhìn ban đầu của phe: 0 hoặc π. */
+    private turn: number,
     private onJump: (x: number, z: number) => void,
     private onCommand: (x: number, z: number) => void
   ) {
     this.ctx = canvas.getContext("2d")!;
+    // khung theo tỉ lệ bản đồ: giữ bề rộng trong CSS, chiều cao tự tính (bản đồ chữ nhật nằm ngang thì minimap thấp hơn)
+    canvas.style.aspectRatio = `${map.w} / ${map.h}`;
+    canvas.style.height = "auto";
     // ảnh nền: 1 điểm ảnh = 1 m
     const W = Math.round(map.w);
     const H = Math.round(map.h);
@@ -73,36 +78,38 @@ export class Minimap {
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
   }
 
+  /** Điểm ảnh trên mỗi mét: cả bản đồ lọt khung, chừa viền 1%. */
   private scale(): number {
-    // minimap xoay theo camera: đường chéo bản đồ phải lọt khung
-    return this.canvas.width / (Math.hypot(this.map.w, this.map.h) * 1.004);
+    return Math.min(this.canvas.width / this.map.w, this.canvas.height / this.map.h) * 0.99;
   }
 
   private toWorld(e: PointerEvent): [number, number] {
     const r = this.canvas.getBoundingClientRect();
-    const k = this.canvas.width / r.width;
-    const cx = (e.clientX - r.left) * k - this.canvas.width / 2;
-    const cy = (e.clientY - r.top) * k - this.canvas.height / 2;
+    const cx = (e.clientX - r.left) * (this.canvas.width / r.width) - this.canvas.width / 2;
+    const cy = (e.clientY - r.top) * (this.canvas.height / r.height) - this.canvas.height / 2;
     const s = this.scale();
-    const c = Math.cos(-this.yaw);
-    const sn = Math.sin(-this.yaw);
+    const c = Math.cos(-this.turn);
+    const sn = Math.sin(-this.turn);
     return [(cx * c - cy * sn) / s, (cx * sn + cy * c) / s];
   }
 
-  draw(world: World, viewer: Side | null, yaw: number, view: [number, number][]): void {
+  draw(world: World, viewer: Side | null, view: [number, number][]): void {
     const cv = this.canvas;
     const r = cv.getBoundingClientRect();
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const W = Math.round(r.width * dpr);
-    if (cv.width !== W) cv.width = cv.height = W;
-    this.yaw = yaw;
+    const H = Math.round(r.height * dpr);
+    if (cv.width !== W || cv.height !== H) {
+      cv.width = W;
+      cv.height = H;
+    }
     const g = this.ctx;
     const s = this.scale();
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.fillStyle = "#0d131c";
-    g.fillRect(0, 0, W, W);
-    g.translate(W / 2, W / 2);
-    g.rotate(yaw);
+    g.fillRect(0, 0, W, H);
+    g.translate(W / 2, H / 2);
+    g.rotate(this.turn);
     g.imageSmoothingEnabled = true;
     const m = this.map;
     g.drawImage(this.bg, -m.halfW * s, -m.halfH * s, m.w * s, m.h * s);

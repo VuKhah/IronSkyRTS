@@ -7,6 +7,16 @@ import type { GameMap } from "../sim/maps";
 
 const clamp = (v: number, a: number, b: number): number => (v < a ? a : v > b ? b : v);
 
+/**
+ * Hướng nhìn ban đầu của mỗi phe (Docs/design/MAPS_PLAN.md mục 3.4): bản đồ hiện "đúng hướng", cạnh dưới nằm ngang.
+ * yaw = 0: camera đứng phía Nam nhìn về Bắc, trục x nằm ngang màn hình, Lam (góc Tây Nam) ở góc dưới trái.
+ * Phe Đỏ xoay 180°: nhìn từ phía Bắc, nhà Đỏ (góc Đông Bắc) cũng hiện ở góc dưới trái.
+ * null (người xem AI đấu AI) nhìn như phe Lam.
+ */
+export function homeYaw(side: 0 | 1 | null): number {
+  return side === 1 ? Math.PI : 0;
+}
+
 export class RtsCamera {
   tx = 0;
   tz = 0;
