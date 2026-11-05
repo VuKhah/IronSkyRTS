@@ -90,6 +90,11 @@ export class Sfx {
       this.tone(110, 0.25, 0.45 * vol, "sine", 38);
       this.burst(0.2, "lowpass", 1100, 0.3 * vol);
     } else if (visual === "missile") this.burst(0.5, "bandpass", 700, 0.25 * vol, 2600);
+    else if (visual === "rocket") {
+      // tên lửa loạt rời dàn: tiếng xì phụt trầm hơn tên lửa phòng không, kèm tiếng nổ đẩy
+      this.burst(0.8, "bandpass", 420, 0.3 * vol, 1500);
+      this.tone(85, 0.25, 0.22 * vol, "sine", 45);
+    }
     else this.burst(0.3, "lowpass", 600, 0.3 * vol);
   }
 

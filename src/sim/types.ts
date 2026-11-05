@@ -7,7 +7,8 @@
  */
 import type { BuildingId, DmgType, Res, Side, UnitId, WeaponVisual } from "./content";
 
-export type UnitOrder = "idle" | "move" | "amove" | "attack";
+/** "strike": rải thảm vào điểm (tx, tz): chạy tới tầm, dựng dàn, xả hết loạt rồi về "idle" (Xe Tên Lửa Loạt). */
+export type UnitOrder = "idle" | "move" | "amove" | "attack" | "strike";
 /** Xe Vận Tải: khai thác mỏ (toMine → mining → toDock → unloading) hoặc trục vớt xác (toWreck → salvaging → toDock → unloading). */
 export type HaulState = "idle" | "toMine" | "mining" | "toDock" | "unloading" | "toWreck" | "salvaging";
 export type AirState = "none" | "parked" | "takeoff" | "flying" | "returning" | "landing";
@@ -95,7 +96,7 @@ export interface Unit {
   lastHit: number;
 }
 
-/** Đài Liên Lạc (điểm chiếm): đứng gần để chiếm như mỏ; phe giữ được cộng điểm chỉ huy và nhìn xa quanh đài. */
+/** Đài Liên Lạc (điểm chiếm): đứng gần để chiếm như mỏ; phe giữ được nhìn xa quanh đài. */
 export interface Uplink {
   id: number;
   x: number;
@@ -220,8 +221,8 @@ export type Order =
   | { t: "cancel"; building: number }
   | { t: "rally"; building: number; x: number; z: number }
   | { t: "sell"; building: number }
-  /** Kỹ năng Tư lệnh: pháo kích vào một điểm đang nhìn thấy (tốn điểm chỉ huy). */
-  | { t: "barrage"; x: number; z: number }
+  /** Rải thảm: các xe có vũ khí rải thảm (Xe Tên Lửa Loạt) trong `ids` chạy tới tầm và xả hết loạt vào vùng quanh (x, z). */
+  | { t: "barrage"; ids: number[]; x: number; z: number }
   /** Kỹ năng Xe Tư Lệnh: tổng động viên quân quanh xe (có thời gian hồi). */
   | { t: "mobilize" }
   // ---- Phòng Thử Nghiệm: chỉ có tác dụng khi World tạo với { sandbox: true }, trận thường bỏ qua
@@ -260,10 +261,8 @@ export type SimEvent =
   | { t: "salvage"; side: Side; value: number; x: number; z: number }
   /** Đài Liên Lạc đổi chủ (side = -1: vừa bị giành mất, thành trung lập). */
   | { t: "uplink"; id: number; side: Side | -1; prev: Side | -1; x: number; z: number }
-  /** Pháo kích được gọi: vòng báo trước ở (x, z), bán kính r, đạn bắt đầu rơi sau `ticks` tick. */
-  | { t: "barrage"; side: Side; x: number; z: number; r: number; ticks: number }
-  /** Một quả đạn pháo kích đang rơi xuống (x, z), chạm đất sau `ticks` tick. */
-  | { t: "shell"; side: Side; x: number; z: number; ticks: number }
+  /** Một xe rải thảm bắt đầu xả loạt mới từ (x, z) nhắm vào vùng quanh (tx, tz) (cho tiếng rít báo động, số liệu). */
+  | { t: "salvo"; id: number; side: Side; x: number; z: number; tx: number; tz: number }
   | { t: "mobilize"; side: Side; x: number; z: number; r: number }
   | { t: "end"; winner: Side | 2; reason: WinReason };
 
@@ -278,29 +277,17 @@ export interface SideStats {
   damageDealt: number;
   /** Sắt nhặt được từ xác quân. */
   salvaged: number;
-  /** Số lần gọi pháo kích; số lần quân lên cấp cựu binh, cấp cao nhất đạt được; số giây giữ Đài Liên Lạc (cộng mọi đài). */
-  barrages: number;
+  /** Số loạt tên lửa đã xả; số lần quân lên cấp cựu binh, cấp cao nhất đạt được; số giây giữ Đài Liên Lạc (cộng mọi đài). */
+  salvos: number;
   promotions: number;
   topRank: number;
   uplinkTime: number;
 }
 
-/** Một đợt pháo kích đang diễn ra. */
-export interface Strike {
-  side: Side;
-  x: number;
-  z: number;
-  /** Tick quả đạn kế tiếp rơi, số quả còn lại, khoảng cách giữa hai quả (tick, có phần lẻ). */
-  next: number;
-  left: number;
-  interval: number;
-}
-
 export interface SideState {
   iron: number;
   oil: number;
-  /** Kỹ năng Tư lệnh: điểm chỉ huy; Tổng động viên còn hiệu lực tới tick nào, dùng lại được từ tick nào. */
-  cp: number;
+  /** Tổng động viên (kỹ năng của Xe Tư Lệnh): còn hiệu lực tới tick nào, dùng lại được từ tick nào. */
   mobilizeUntil: number;
   mobilizeReady: number;
   /** Ô đang thấy (1) — tính lại mỗi tick. */

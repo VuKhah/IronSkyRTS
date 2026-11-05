@@ -7,7 +7,7 @@
  * Trên máy tính: nhấp trái để chọn, nhấp phải để ra lệnh. Trên điện thoại: chạm đất khi đang chọn quân là ra lệnh đi.
  */
 import * as THREE from "three";
-import { BUILDINGS, FACTION_OF, RES_NAME, RULES, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
+import { BUILDINGS, canStrike, FACTION_OF, RES_NAME, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
 import type { Building, Entity, Mine, Order, Unit, Wreck } from "../sim/types";
 import { buildModel, disposeRig, type Rig } from "../render/models";
 import type { Sfx } from "./audio";
@@ -20,7 +20,7 @@ import { Views } from "./views";
 
 const GHOST_OK = new THREE.MeshBasicMaterial({ color: 0x6fdc8c, transparent: true, opacity: 0.45, depthWrite: false });
 const GHOST_BAD = new THREE.MeshBasicMaterial({ color: 0xff6b5e, transparent: true, opacity: 0.45, depthWrite: false });
-/** Vòng chọn điểm pháo kích: đỏ = bắn được, xám = không (kèm lý do ở dòng gợi ý). */
+/** Vòng chọn vùng rải thảm: đỏ = bắn được, xám = không (kèm lý do ở dòng gợi ý). */
 const AIM_OK = new THREE.MeshBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.75, depthWrite: false });
 const AIM_BAD = new THREE.MeshBasicMaterial({ color: 0x9aa0a6, transparent: true, opacity: 0.6, depthWrite: false });
 
@@ -49,7 +49,7 @@ export class Controller implements GestureHandlers {
   private ghostKind: BuildingId | null = null;
   private ghostValid = true;
   private sellArmed = { id: 0, t: 0 };
-  /** Vòng ngắm pháo kích (bán kính = vùng đạn rơi). */
+  /** Vòng ngắm rải thảm (bán kính = độ tản của dàn phóng: vùng tên lửa rơi). */
   private aim: THREE.Mesh | null = null;
 
   constructor(
@@ -315,23 +315,41 @@ export class Controller implements GestureHandlers {
     if (this.aim) this.aim.visible = false;
   }
 
-  // ------------------------------------------------------------------ kỹ năng Tư lệnh
+  // ------------------------------------------------------------------ kỹ năng của binh chủng
 
-  /** Bắt đầu chọn điểm pháo kích (giống đặt công trình: nhấp để bắn, hoặc chạm rồi bấm ✓). */
-  private startBarrage(): void {
+  /**
+   * Xe nhận lệnh rải thảm: các Xe Tên Lửa Loạt đang chọn; không chọn chiếc nào thì mọi xe phe mình (Tư lệnh chỉ vùng,
+   * không phải chọn từng xe). Xe đang nạp vẫn nhận lệnh: chạy tới tầm, nạp xong là bắn.
+   */
+  private strikeIds(): number[] {
+    if (this.me === null) return [];
+    const sel = this.ownUnits().filter((u) => canStrike(u.kind));
+    const pool = sel.length ? sel : this.world.units.filter((u) => u.side === this.me && canStrike(u.kind));
+    return pool.map((u) => u.id);
+  }
+
+  /** Bán kính vùng rơi của các xe sẽ bắn (độ tản lớn nhất). */
+  private strikeRadius(): number {
+    let r = 0;
+    for (const id of this.strikeIds()) {
+      const e = this.world.byId.get(id);
+      if (e && e.cat === "unit") r = Math.max(r, UNITS[e.kind].weapon?.scatter ?? 0);
+    }
+    return r || 5;
+  }
+
+  /** Bắt đầu chọn vùng rải thảm (giống đặt công trình: nhấp để bắn, hoặc chạm rồi bấm ✓). */
+  private startStrike(): void {
     if (this.me === null) return;
-    const st = this.world.sides[this.me];
-    const B = RULES.abilities.barrage;
-    if (st.cp < B.cost) {
+    if (!this.strikeIds().length) {
       this.sfx.ui("error");
-      this.hud?.alert(`Cần ${B.cost} điểm chỉ huy để pháo kích (đang có ${Math.floor(st.cp)})`, "bad");
+      this.hud?.alert(`Chưa có Xe Tên Lửa Loạt: đúc ở Xưởng Xe [${UNITS.rocket.hotkey}]`, "bad");
       return;
     }
     this.cancelPlace();
     this.mode = "barrage";
     if (!this.aim) {
-      const geo = new THREE.RingGeometry(B.radius - 0.35, B.radius, 64).rotateX(-Math.PI / 2);
-      this.aim = new THREE.Mesh(geo, AIM_OK);
+      this.aim = new THREE.Mesh(new THREE.RingGeometry(0.93, 1, 64).rotateX(-Math.PI / 2), AIM_OK);
       this.aim.renderOrder = 4;
       this.scene.add(this.aim);
     }
@@ -341,16 +359,18 @@ export class Controller implements GestureHandlers {
     this.sfx.ui("click");
   }
 
-  private tryBarrage(): void {
+  private tryStrike(): void {
     if (this.me === null || !this.placePos) return;
     const { x, z } = this.placePos;
-    const reason = this.world.barrageError(this.me, x, z);
+    const ids = this.strikeIds();
+    const reason = this.world.strikeError(this.me, ids, x, z);
     if (reason) {
       this.sfx.ui("error");
       this.hud?.alert(reason, "bad");
       return;
     }
-    this.issue({ t: "barrage", x, z });
+    this.issue({ t: "barrage", ids, x, z });
+    this.fx.marker(x, z, 0xff6b5e);
     this.sfx.ui("ack");
     this.cancelPlace();
   }
@@ -406,8 +426,10 @@ export class Controller implements GestureHandlers {
           (this.mouse.used ? "Nhấp để đặt · Shift đặt nhiều · chuột phải hủy" : "Chạm để chọn chỗ, rồi bấm ✓") + power + (this.placeReason ? ` — ${this.placeReason}` : "")
         );
       }
-      case "barrage":
-        return (this.mouse.used ? "Pháo kích: nhấp vào điểm đang nhìn thấy · chuột phải hủy" : "Pháo kích: chạm chọn điểm, rồi bấm ✓") + (this.placeReason ? ` — ${this.placeReason}` : "");
+      case "barrage": {
+        const who = `Rải thảm (${this.strikeIds().length} xe): `;
+        return who + (this.mouse.used ? "nhấp chọn vùng · chuột phải hủy" : "chạm chọn vùng, rồi bấm ✓") + (this.placeReason ? ` — ${this.placeReason}` : "");
+      }
       case "amove":
         return "Chọn điểm: quân sẽ đánh mọi kẻ địch trên đường đi";
       case "rally":
@@ -431,11 +453,11 @@ export class Controller implements GestureHandlers {
         this.startPlace(arg as BuildingId);
         break;
       case "placeOk":
-        if (this.mode === "barrage") this.tryBarrage();
+        if (this.mode === "barrage") this.tryStrike();
         else this.tryPlace(false);
         break;
       case "ability":
-        if (arg === "barrage") this.startBarrage();
+        if (arg === "barrage") this.startStrike();
         else if (arg === "mobilize") this.mobilizeNow();
         break;
       case "placeCancel":
@@ -528,7 +550,7 @@ export class Controller implements GestureHandlers {
       const g = this.cam.ground(x, y, w, h);
       if (!g) return;
       this.placePos = { x: g.x, z: g.z };
-      if (info.mouse) this.tryBarrage();
+      if (info.mouse) this.tryStrike();
       return;
     }
     if (this.mode === "place") {
@@ -773,11 +795,12 @@ export class Controller implements GestureHandlers {
         });
       }
     } else if (this.mode === "barrage" && this.aim && this.placePos && this.me !== null) {
-      // vòng ngắm pháo kích theo chuột / điểm chạm
+      // vòng ngắm rải thảm theo chuột / điểm chạm
       const { x, z } = this.placePos;
       this.aim.position.set(x, this.match.world.map.groundY(x, z) + 0.3, z);
+      this.aim.scale.setScalar(this.strikeRadius());
       this.aim.visible = true;
-      this.placeReason = this.world.barrageError(this.me, x, z);
+      this.placeReason = this.world.strikeError(this.me, this.strikeIds(), x, z);
       this.aim.material = this.placeReason === null ? AIM_OK : AIM_BAD;
     } else {
       this.placeReason = null;

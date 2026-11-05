@@ -25,7 +25,7 @@ export interface Cost {
   oil: number;
 }
 
-export type UnitId = "commander" | "hauler" | "lynx" | "titan" | "skyguard" | "falcon" | "valkyrie";
+export type UnitId = "commander" | "hauler" | "lynx" | "titan" | "skyguard" | "rocket" | "falcon" | "valkyrie";
 
 export type BuildingId =
   | "hq"
@@ -60,8 +60,8 @@ export type Mobility = "wheel" | "track";
 export const MOBILITY_NAME: Record<Mobility, string> = { wheel: "Bánh", track: "Xích" };
 export const DMG_NAME: Record<DmgType, string> = { normal: "Thường", ap: "Xuyên giáp", he: "Nổ" };
 
-/** Kiểu đạn để vẽ hiệu ứng và tính tốc độ bay của đạn. */
-export type WeaponVisual = "bullet" | "cannon" | "missile" | "bomb" | "pulse";
+/** Kiểu đạn để vẽ hiệu ứng và tính tốc độ bay của đạn ("rocket": tên lửa loạt bay cầu vồng cao, kéo vệt khói). */
+export type WeaponVisual = "bullet" | "cannon" | "missile" | "rocket" | "bomb" | "pulse";
 
 export interface WeaponSpec {
   name: string;
@@ -276,25 +276,14 @@ export const RULES = {
    * phe mình `mineArea` m) khi không thấy quân địch có vũ khí trong `threat` m quanh xác. Xác ở xa: Tư lệnh chỉ định.
    */
   salvage: { share: 0.3, seconds: 90, load: 3, reach: 3.2, autoMax: 2, mineArea: 18, threat: 22 },
+  /** Đài Liên Lạc (điểm chiếm, Bản cập nhật vui): chiếm như mỏ; phe giữ đài nhìn xa quanh đài (cột ăng-ten cao, không bị đồi che). */
+  uplink: { sight: 24 },
   /**
-   * Kỹ năng Tư lệnh (Bản cập nhật vui). Điểm chỉ huy tự tích lũy theo thời gian, nhanh hơn khi lưới điện dư công suất
-   * (điện thừa không bỏ phí: hậu cần dồn vào liên lạc / chỉ huy), và theo giá trị sát thương gây cho địch.
+   * Kỹ năng: MỌI kỹ năng thuộc về một binh chủng có thật, phải đúc ra và có hình thù (quyết định 05/11/2026):
+   * không có "điểm chỉ huy" để gọi đòn từ trên trời như game tham chiếu. Rải thảm là của Xe Tên Lửa Loạt (vũ khí
+   * trong UNITS.rocket), Tổng động viên là của Xe Tư Lệnh.
    */
-  /** Đài Liên Lạc (điểm chiếm, Bản cập nhật vui): chiếm như mỏ; mỗi đài giữ được cộng điểm chỉ huy, nhìn xa quanh đài. */
-  uplink: { cpPerSec: 0.3, sight: 24 },
   abilities: {
-    cpPerSec: 0.15,
-    /** mỗi MW điện dư (khả năng phát − tiêu thụ), tính tối đa cpSurplusCap MW */
-    cpPerSurplusMw: 0.005,
-    cpSurplusCap: 30,
-    /** mỗi đơn vị giá trị sát thương gây cho địch (hạ một Titan 350 Sắt ≈ 10 điểm) */
-    cpPerValue: 0.03,
-    cpMax: 200,
-    /**
-     * Pháo kích: chọn một điểm ĐANG NHÌN THẤY; sau `delay` giây báo trước (vòng đỏ, ai thấy chỗ đó đều thấy), `shells`
-     * quả đạn rơi rải trong bán kính `radius` m suốt `duration` giây. Đạn bay cầu vồng: phòng thủ điểm chặn được.
-     */
-    barrage: { cost: 100, delay: 3, shells: 12, duration: 2.5, radius: 8, dmg: 70, splash: 3.2, fall: 1.2 },
     /** Tổng động viên (Xe Tư Lệnh): quân trong bán kính hào quang chạy nhanh hơn `speed`, bắn nhanh hơn `fireRate`. */
     mobilize: { cooldown: 60, duration: 10, speed: 0.3, fireRate: 0.2 }
   },
@@ -352,7 +341,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
       "Chiếm mỏ nhanh gấp 2.2 lần một xe thường.",
       "Phòng thủ điểm: bắn chặn 2 viên đạn pháo đầu tiên, mỗi 20 giây hồi 1 lượt.",
       "Có từ đầu trận, không chế tạo thêm được. Bị diệt là thua ngay.",
-      "Kỹ năng [Q][E][R] sẽ có sau bản MVP."
+      "Tổng động viên [R]: quân trong vòng hào quang chạy nhanh hơn 30%, bắn nhanh hơn 20% trong 10 giây; 60 giây dùng lại được."
     ],
     beats: ["lynx"],
     fears: ["titan", "falcon"]
@@ -493,6 +482,53 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     beats: ["falcon"],
     fears: ["titan", "lynx"]
   },
+  rocket: {
+    id: "rocket",
+    kind: "unit",
+    name: "Xe Tên Lửa Loạt",
+    short: "Tên Lửa Loạt",
+    code: "MLRS",
+    hotkey: "G",
+    role: "Dàn phóng tên lửa loạt: chọn một vùng, xe dựng dàn rồi xả cả loạt 12 quả. San phẳng cụm xe giáp mỏng và nhà xưởng.",
+    domain: "ground",
+    mvp: true,
+    cost: { iron: 300, oil: 40 },
+    buildTime: 9,
+    builtAt: "factory",
+    hp: 480,
+    armorClass: "light",
+    speed: 4.3,
+    mobility: "wheel",
+    sight: 20,
+    radius: 1.8,
+    captureWeight: 1,
+    weapon: {
+      name: "Dàn 12 tên lửa 122mm",
+      dmgGround: 50,
+      dmgAir: 0,
+      range: 24,
+      cooldown: 15,
+      dmgType: "he",
+      splash: 2.8,
+      breach: true,
+      visual: "rocket",
+      burst: { shots: 12, interval: 0.2 },
+      minRange: 8,
+      scatter: 5,
+      deploy: { time: 1.5, range: 0, dmg: 0, required: true },
+      interceptable: true
+    },
+    features: [
+      "Rải thảm [T]: chọn một vùng tròn; xe tự chạy tới tầm, dựng dàn phóng 1.5 giây rồi xả hết 12 quả trong khoảng 2 giây, sau đó nạp lại 15 giây.",
+      "Tên lửa rơi tản trong vòng 5 m, nổ lan 2.8 m, đạn Nổ công phá: mạnh với cụm xe giáp mỏng và nhà xưởng, yếu với Titan và tháp phòng thủ.",
+      "Rải thảm không cần nhìn thấy điểm bắn: bắn được vào sương mù, ví dụ công trình địch đã phát hiện.",
+      "Tầm 24 m, xa hơn tháp phòng thủ một chút; không bắn được mục tiêu gần hơn 8 m.",
+      "Lúc dựng dàn và nạp đạn là lúc đứng im: bị Lynx áp sát hay Falcon lao xuống thì bất lực. Không bắn được máy bay.",
+      "Tên lửa bay cầu vồng: phòng thủ điểm của Xe Tư Lệnh chặn được."
+    ],
+    beats: ["skyguard", "hauler", "factory"],
+    fears: ["lynx", "falcon"]
+  },
   falcon: {
     id: "falcon",
     kind: "unit",
@@ -626,7 +662,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     kind: "building",
     name: "Xưởng Xe",
     label: "XƯỞNG XE",
-    role: "Đúc quân mặt đất: Lynx, Titan, SkyGuard.",
+    role: "Đúc quân mặt đất: Lynx, Titan, SkyGuard, Xe Tên Lửa Loạt.",
     mvp: true,
     cost: { iron: 300, oil: 0 },
     buildTime: 10,
@@ -634,7 +670,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     armorClass: "struct",
     sight: 16,
     half: [3.4, 3],
-    produces: ["lynx", "titan", "skyguard"],
+    produces: ["lynx", "titan", "skyguard", "rocket"],
     power: -10,
     priority: 3,
     features: ["Hàng chờ tối đa 5 xe.", "Đặt điểm tập kết để xe mới tự chạy ra tiền tuyến.", "Xây thêm xưởng để đúc quân nhanh hơn."]
@@ -875,7 +911,16 @@ export function isUnitId(id: string): id is UnitId {
   return id in UNITS;
 }
 
-/** Giá trị của một loại quân / công trình (cho kinh nghiệm cựu binh, điểm chỉ huy): Sắt + Dầu × trọng số. */
+/**
+ * Rải thảm được không: xe mặt đất có vũ khí bắn đất có độ tản (Xe Tên Lửa Loạt). Đọc từ dữ liệu vũ khí, không theo tên quân,
+ * để sau này quân khác có vũ khí tản (pháo phản lực, dàn mìn…) tự có kỹ năng này.
+ */
+export function canStrike(id: UnitId): boolean {
+  const u = UNITS[id];
+  return u.domain === "ground" && !!u.weapon && !!u.weapon.scatter && u.weapon.dmgGround > 0;
+}
+
+/** Giá trị của một loại quân / công trình (cho kinh nghiệm cựu binh, xác quân, AI chọn chỗ bắn): Sắt + Dầu × trọng số. */
 export function valueOf(id: EntityId): number {
   const spec = getSpec(id);
   const V = RULES.veterancy;

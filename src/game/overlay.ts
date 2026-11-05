@@ -2,7 +2,7 @@
  * Lớp vẽ 2D phủ lên cảnh 3D: thanh máu, thanh dầu máy bay, vòng tiến độ chiếm mỏ,
  * khung quét chọn và đường tới điểm tập kết. Vẽ bằng canvas 2D cho nét và rẻ.
  */
-import { BUILDINGS, RULES, UNITS, type Side } from "../sim/content";
+import { BUILDINGS, canStrike, RULES, UNITS, type Side } from "../sim/content";
 import type { World } from "../sim/world";
 import type { RtsCamera } from "./camera";
 import { Views } from "./views";
@@ -97,7 +97,9 @@ export class Overlay {
       const spec = UNITS[u.kind];
       const isAir = u.air !== "none";
       const showFuel = isAir && spec.fuel && (viewer === null || u.side === viewer) && (sel || u.air !== "parked" || u.fuel < spec.fuel.tank * RULES.air.takeoffMin);
-      const bars = sel || u.hp < u.maxHp || showFuel;
+      // dàn phóng đang nạp đạn (của ta): vạch cam dưới thanh máu, đầy là bắn được loạt mới
+      const reload = canStrike(u.kind) && (viewer === null || u.side === viewer) && u.cooldown > 0 && u.burst === 0;
+      const bars = sel || u.hp < u.maxHp || showFuel || reload;
       if (!bars && u.rank === 0) continue;
       const [x, y, z] = Views.displayPos(world.map, u, alpha);
       const p = cam.project(x, y + (isAir ? 2.2 : 3.4), z, w, h);
@@ -111,6 +113,7 @@ export class Overlay {
         const f = u.fuel / spec.fuel.tank;
         this.bar(p.x, p.y + 5, bw, f, f <= RULES.air.bingo ? "#ff6b5e" : "#d17af2");
       }
+      if (reload) this.bar(p.x, p.y + 5, bw, 1 - u.cooldown / (spec.weapon!.cooldown * RULES.tickRate), "#ffb547");
       if (u.kind === "commander") {
         g.fillStyle = SIDE_COLOR[u.side];
         g.font = "bold 11px 'Be Vietnam Pro', sans-serif";

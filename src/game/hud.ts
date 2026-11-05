@@ -3,7 +3,7 @@
  * Bảng lệnh chỉ dựng lại khi NGỮ CẢNH đổi (chọn thứ khác); còn số liệu (máu, tiền, hàng chờ)
  * được cập nhật tại chỗ — dựng lại nút liên tục sẽ làm hỏng cú chạm đang bấm dở trên điện thoại.
  */
-import { BUILDINGS, MVP_BUILDABLE, RES_NAME, RULES, SIDE_NAME, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
+import { BUILDINGS, canStrike, MVP_BUILDABLE, RES_NAME, RULES, SIDE_NAME, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
 import { TERRAIN } from "../sim/maps";
 import type { Building, Mine, Unit } from "../sim/types";
 import { sec, TICK_RATE } from "../sim/world";
@@ -71,9 +71,9 @@ export class Hud {
         spectator
           ? ""
           : `<div class="abilities">
-               <div class="cp" title="Điểm chỉ huy: tự tích lũy theo thời gian, nhanh hơn khi lưới điện dư công suất và khi gây sát thương cho địch"><span data-n="cp"></span><div class="bar"><i data-n="cpbar"></i></div><div class="up" data-n="uplinks"></div></div>
-               <button data-act="ability:barrage" title="Pháo kích vào một điểm đang nhìn thấy: báo trước 3 giây rồi đạn rơi rải vùng 8 m"><b>💥 Pháo kích</b><small data-n="barrage"></small></button>
-               <button data-act="ability:mobilize" title="Tổng động viên: quân quanh Xe Tư Lệnh chạy nhanh hơn 30%, bắn nhanh hơn 20% trong 10 giây"><b>📯 Động viên</b><small data-n="mobilize"></small></button>
+               <button data-act="ability:barrage" title="Rải thảm (kỹ năng của Xe Tên Lửa Loạt): chọn một vùng; các xe đang chọn (không chọn thì mọi xe) tự chạy tới tầm, dựng dàn rồi xả cả loạt 12 quả"><b>🚀 Rải thảm</b><small data-n="barrage"></small></button>
+               <button data-act="ability:mobilize" title="Tổng động viên (kỹ năng của Xe Tư Lệnh): quân quanh xe chạy nhanh hơn 30%, bắn nhanh hơn 20% trong 10 giây"><b>📯 Động viên</b><small data-n="mobilize"></small></button>
+               <div class="up" data-n="uplinks" title="Đài Liên Lạc đang giữ: nhìn xa quanh mỗi đài"></div>
              </div>`
       }
       <div class="place-confirm" hidden><button class="no" data-act="placeCancel" aria-label="Hủy">✕</button><button class="ok" data-act="placeOk" aria-label="Xây">✓</button></div>
@@ -195,33 +195,38 @@ export class Hud {
     this.rows.innerHTML = html;
   }
 
-  /** Cột kỹ năng Tư lệnh: điểm chỉ huy, nút Pháo kích (mờ khi chưa đủ điểm), nút Động viên (đếm thời gian hồi). */
-  private updateAbilities(cp: number, mode: Mode): void {
+  /**
+   * Cột kỹ năng: mỗi kỹ năng thuộc về một binh chủng có thật. Rải thảm: số Xe Tên Lửa Loạt sẵn sàng / đang bắn / thời gian
+   * nạp còn lại (mờ khi chưa có xe). Động viên: Xe Tư Lệnh, đếm thời gian hồi. Dòng cuối: số Đài Liên Lạc đang giữ.
+   */
+  private updateAbilities(mode: Mode): void {
     const box = this.root.querySelector<HTMLElement>(".abilities");
     const me = this.match.player;
     if (!box || me === null) return;
     const w = this.match.world;
-    const A = RULES.abilities;
     const q = (n: string): HTMLElement | null => box.querySelector<HTMLElement>(`[data-n="${n}"]`);
     const txt = (n: string, v: string): void => {
       const el = q(n);
       if (el && el.textContent !== v) el.textContent = v;
     };
-    txt("cp", `★ ${Math.floor(cp)} điểm chỉ huy`);
-    const ups = w.uplinks.length;
-    const own = w.uplinks.filter((u) => u.owner === me).length;
-    txt("uplinks", ups ? `📡 Đài ${own}/${ups}${own ? ` · +${(own * RULES.uplink.cpPerSec).toFixed(1).replace(".", ",")}★/giây` : ""}` : "");
-    const bar = q("cpbar");
-    if (bar) bar.style.width = `${Math.min(100, (cp / A.cpMax) * 100)}%`;
+    const rockets = w.units.filter((u) => u.side === me && canStrike(u.kind));
+    const ready = rockets.filter((u) => u.cooldown === 0 && u.burst === 0).length;
+    const firing = rockets.filter((u) => u.burst > 0).length;
     const bBtn = box.querySelector<HTMLButtonElement>('[data-act="ability:barrage"]')!;
-    bBtn.disabled = cp < A.barrage.cost || !w.hqOf(me);
+    bBtn.disabled = rockets.length === 0;
     bBtn.classList.toggle("on", mode === "barrage");
-    txt("barrage", `[T] · ${A.barrage.cost} ★`);
+    let rs: string;
+    if (!rockets.length) rs = "[T] · chưa có xe";
+    else if (ready || firing) rs = `[T] · ${ready}/${rockets.length} sẵn sàng${firing ? ` · ${firing} đang bắn` : ""}`;
+    else rs = `[T] · đang nạp ${Math.ceil(Math.min(...rockets.map((u) => u.cooldown)) / TICK_RATE)}s`;
+    txt("barrage", rs);
     const mErr = w.mobilizeError(me);
     const mBtn = box.querySelector<HTMLButtonElement>('[data-act="ability:mobilize"]')!;
     mBtn.disabled = mErr !== null;
     const active = w.sides[me].mobilizeUntil > w.tick;
     txt("mobilize", active ? `[R] · đang hiệu lực ${Math.ceil((w.sides[me].mobilizeUntil - w.tick) / TICK_RATE)}s` : mErr ? `[R] · ${mErr}` : "[R] · sẵn sàng");
+    const ups = w.uplinks.length;
+    txt("uplinks", ups ? `📡 Đài Liên Lạc ${w.uplinks.filter((u) => u.owner === me).length}/${ups}` : "");
   }
 
   /** Cựu binh: cấp và phần thưởng (bỏ trống nếu chưa lên cấp). */
@@ -353,7 +358,7 @@ export class Hud {
       // đỏ khi đang thiếu, hoặc khi công trình đang xây sẽ làm thiếu
       this.topbar.querySelector(".chip-res.power")?.classList.toggle("low", st.eff < 1 || st.powerUse + st.powerPending > st.powerCap + 1e-6);
       this.topbar.querySelector(".chip-res.oil")?.classList.toggle("low", st.oil < 40);
-      this.updateAbilities(st.cp, mode);
+      this.updateAbilities(mode);
     } else {
       const sides = this.topbar.querySelectorAll<HTMLElement>(".spectate-res .side");
       ([0, 1] as Side[]).forEach((s) => {

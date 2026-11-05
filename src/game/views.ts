@@ -7,8 +7,8 @@
 import * as THREE from "three";
 import { BUILDINGS, FACTION_OF, RULES, UNITS, type Side } from "../sim/content";
 import type { GameMap } from "../sim/maps";
-import type { Building, Mine, Shot, Strike, Target, Unit, Uplink, Wreck } from "../sim/types";
-import { AIRBORNE_ALT, DT, sec, type World } from "../sim/world";
+import type { Building, Mine, Target, Unit, Uplink, Wreck } from "../sim/types";
+import { AIRBORNE_ALT, DT, type World } from "../sim/world";
 import { buildModel, buildNode, disposeRig, type NodeRig, type Rig } from "../render/models";
 import { bakeObject, bakeStatic } from "../render/models/bake";
 
@@ -52,15 +52,9 @@ const RING_MAT = {
   neutral: new THREE.MeshBasicMaterial({ color: 0xffd36e, transparent: true, opacity: 0.9, depthWrite: false })
 };
 
-/** Pháo kích: vòng báo trước (đỏ), vòng đếm ngược co dần (cam), quả đạn đang rơi. */
+/** Vùng sắp rải thảm (lệnh của Xe Tên Lửa Loạt phe mình): vòng đỏ bán kính = độ tản của vũ khí. */
 const STRIKE_MAT = new THREE.MeshBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.85, depthWrite: false });
-const COUNT_MAT = new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.9, depthWrite: false });
-const SHELL_MAT = new THREE.MeshBasicMaterial({ color: 0xffb347 });
 const RING_UNIT = new THREE.RingGeometry(0.955, 1, 72).rotateX(-Math.PI / 2);
-/** Quả đạn pháo kích: vệt dài dọc hướng rơi (trục Z của mesh, xoay về điểm chạm bằng lookAt). */
-const SHELL_GEO = new THREE.SphereGeometry(0.32, 8, 6).scale(1, 1, 5);
-/** Đạn pháo kích rơi từ hướng này (xiên một chút cho thấy đường bay, đủ thấp để nằm trong khung camera). */
-const SKY = new THREE.Vector3(-9, 28, -6);
 
 /** Đài Liên Lạc: màu theo phe (trung lập = xám). */
 const UPLINK_COLOR = [0x3ea8ff, 0xff4d4d];
@@ -116,8 +110,7 @@ export class Views {
   private buildings = new Map<number, View>();
   private mines = new Map<number, MineView>();
   private wrecks = new Map<number, { root: THREE.Object3D; seen: number }>();
-  private strikeViews = new Map<Strike, { outer: THREE.Mesh; inner: THREE.Mesh }>();
-  private shellViews = new Map<Shot, THREE.Mesh>();
+  private strikeViews = new Map<number, THREE.Mesh>();
   private uplinkViews = new Map<number, UplinkView>();
   private frame = 0;
 
@@ -183,7 +176,7 @@ export class Views {
       }
       this.updateMine(m, v, dt, time, selected.has(m.id));
     }
-    this.syncStrikes(world, viewer, alpha);
+    this.syncStrikes(world, viewer);
     for (const up of world.uplinks) this.syncUplink(up, time);
     for (const wr of world.wrecks) {
       // xác trong sương mù thì không thấy
@@ -229,61 +222,30 @@ export class Views {
   }
 
   /**
-   * Pháo kích vẽ THEO TRẠNG THÁI của sim (không theo sự kiện): ai vào muộn / tua nhanh vẫn thấy đúng.
-   * Vòng đỏ = vùng đạn rơi; vòng cam co dần = thời gian còn lại trước quả đầu; quả đạn bay từ trời xuống
-   * theo đúng tick chạm đất của nó. Chỉ thấy khi phe đang xem nhìn thấy chỗ đó.
+   * Vòng đỏ ở vùng sắp rải thảm, vẽ THEO TRẠNG THÁI (lệnh "strike" của xe phe mình), không theo sự kiện: tua nhanh hay
+   * vào muộn vẫn đúng. Địch không thấy vòng này, chỉ nghe tiếng rít khi tên lửa đã rời dàn.
    */
-  private syncStrikes(world: World, viewer: Side | null, alpha: number): void {
-    const B = RULES.abilities.barrage;
-    const delay = sec(B.delay);
-    const fall = sec(B.fall);
-    const seen = (side: Side, x: number, z: number): boolean => viewer === null || side === viewer || world.cellVisible(viewer, x, z);
-    const live = new Set<Strike>();
-    for (const st of world.strikes) {
-      if (!seen(st.side, st.x, st.z)) continue;
-      live.add(st);
-      let v = this.strikeViews.get(st);
-      if (!v) {
-        v = { outer: new THREE.Mesh(RING_UNIT, STRIKE_MAT), inner: new THREE.Mesh(RING_UNIT, COUNT_MAT) };
-        const y = this.map.groundY(st.x, st.z) + 0.35;
-        v.outer.position.set(st.x, y, st.z);
-        v.inner.position.set(st.x, y + 0.02, st.z);
-        v.outer.scale.setScalar(B.radius);
-        v.outer.renderOrder = v.inner.renderOrder = 4;
-        this.scene.add(v.outer, v.inner);
-        this.strikeViews.set(st, v);
-      }
-      const started = st.left < B.shells;
-      const left = Math.max(0, st.next - world.tick - alpha);
-      v.inner.visible = !started;
-      if (!started) v.inner.scale.setScalar(Math.max(0.05, B.radius * Math.min(1, left / delay)));
-    }
-    for (const [st, v] of this.strikeViews)
-      if (!live.has(st)) {
-        this.scene.remove(v.outer, v.inner);
-        this.strikeViews.delete(st);
-      }
-    // đạn pháo kích đang rơi: mọi viên của kỹ năng có src = 0
-    const shells = new Set<Shot>();
-    for (const s of world.shots) {
-      if (s.src !== 0 || !seen(s.side, s.tx, s.tz)) continue;
-      shells.add(s);
-      let m = this.shellViews.get(s);
+  private syncStrikes(world: World, viewer: Side | null): void {
+    const live = new Set<number>();
+    for (const u of world.units) {
+      if (u.order !== "strike" || (viewer !== null && u.side !== viewer)) continue;
+      const w = UNITS[u.kind].weapon;
+      if (!w?.scatter) continue;
+      live.add(u.id);
+      let m = this.strikeViews.get(u.id);
       if (!m) {
-        m = new THREE.Mesh(SHELL_GEO, SHELL_MAT);
-        m.renderOrder = 5;
+        m = new THREE.Mesh(RING_UNIT, STRIKE_MAT);
+        m.renderOrder = 4;
         this.scene.add(m);
-        this.shellViews.set(s, m);
+        this.strikeViews.set(u.id, m);
       }
-      const k = Math.min(1, Math.max(0, 1 - (s.impact - world.tick - alpha) / fall));
-      const gy = this.map.groundY(s.tx, s.tz);
-      m.position.set(s.tx + SKY.x * (1 - k), gy + SKY.y * (1 - k), s.tz + SKY.z * (1 - k));
-      m.lookAt(s.tx, gy, s.tz);
+      m.position.set(u.tx, this.map.groundY(u.tx, u.tz) + 0.35, u.tz);
+      m.scale.setScalar(w.scatter);
     }
-    for (const [s, m] of this.shellViews)
-      if (!shells.has(s)) {
+    for (const [id, m] of this.strikeViews)
+      if (!live.has(id)) {
         this.scene.remove(m);
-        this.shellViews.delete(s);
+        this.strikeViews.delete(id);
       }
   }
 
@@ -388,8 +350,18 @@ export class Views {
       } else {
         const tid = u.targetId || u.autoTarget;
         const w = spec.weapon;
-        // xe có tháp pháo xoay chậm (sim giữ hướng nòng): vẽ đúng hướng nòng thật, để thấy độ trễ khi xoay
-        v.rig.setAim?.(w?.traverse ? wrap(Math.atan2(u.aimX, u.aimZ) - v.yaw) : this.aimAt(world, x, z, v.yaw, tid));
+        if (w?.deploy?.required) {
+          // dàn phóng: đứng yên mà đang có việc (lệnh rải thảm / có mục tiêu) thì hạ chân chống, ngóc hộp phóng về điểm bắn;
+          // chạy thì hạ hộp phóng nằm ngang
+          const busy = u.order === "strike" || tid !== 0;
+          const planted = busy && !a.has("move");
+          if (planted) a.add("deploy");
+          const aim = u.order === "strike" ? wrap(Math.atan2(u.tx - x, u.tz - z) - v.yaw) : this.aimAt(world, x, z, v.yaw, tid);
+          v.rig.setAim?.(planted ? (aim ?? 0) : null);
+        } else {
+          // xe có tháp pháo xoay chậm (sim giữ hướng nòng): vẽ đúng hướng nòng thật, để thấy độ trễ khi xoay
+          v.rig.setAim?.(w?.traverse ? wrap(Math.atan2(u.aimX, u.aimZ) - v.yaw) : this.aimAt(world, x, z, v.yaw, tid));
+        }
         if (w && (w.visual === "bullet" || w.visual === "cannon") && (world.tick - u.lastShot) * DT < Math.max(0.45, w.cooldown * 0.9)) a.add("fire");
       }
     }

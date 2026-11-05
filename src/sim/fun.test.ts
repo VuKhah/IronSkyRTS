@@ -6,7 +6,7 @@
  * Hệ số lấy từ RULES (không khóa con số cân bằng).
  */
 import { describe, expect, it } from "vitest";
-import { RULES, valueOf, type Side, type UnitId } from "./content";
+import { RULES, UNITS, valueOf, type Side, type UnitId } from "./content";
 import { arenaPoint } from "./scenarios";
 import type { Unit, Wreck } from "./types";
 import { dirToCenter, sec, World } from "./world";
@@ -184,53 +184,72 @@ describe("Xác quân", () => {
   });
 });
 
-describe("Kỹ năng Tư lệnh", () => {
-  it("điểm chỉ huy tự tích lũy theo thời gian (và không vượt mức tối đa)", () => {
-    const A = RULES.abilities;
-    const w = new World(1);
-    run(w, 10);
-    const cp = w.sides[0].cp;
-    expect(cp).toBeGreaterThanOrEqual(A.cpPerSec * 10 - 1e-6);
-    w.sides[0].cp = A.cpMax - 0.01;
-    run(w, 5);
-    expect(w.sides[0].cp).toBeLessThanOrEqual(A.cpMax);
-  });
+describe("Kỹ năng của binh chủng (không có điểm chỉ huy: kỹ năng nào cũng thuộc về một xe có thật)", () => {
+  /** Chạy tới khi xe rải thảm xả xong loạt (hoặc hết giờ); đếm số quả đã phóng, số loạt, độ đứng yên lúc quả đầu rời dàn. */
+  function strike(w: World, rk: Unit, x: number, z: number, maxSec = 40): { shots: number; salvos: number; stillAtFirst: number } {
+    w.step([{ side: rk.side, order: { t: "barrage", ids: [rk.id], x, z } }]);
+    expect(rk.order).toBe("strike");
+    let shots = 0;
+    let salvos = 0;
+    let stillAtFirst = -1;
+    for (let i = 0; i < sec(maxSec); i++) {
+      w.step([]);
+      for (const e of w.events) {
+        if (e.t === "shot" && e.src === rk.id) {
+          if (shots === 0) stillAtFirst = rk.still;
+          shots++;
+        }
+        if (e.t === "salvo" && e.id === rk.id) salvos++;
+      }
+      if (shots > 0 && rk.order === "idle") break;
+    }
+    return { shots, salvos, stillAtFirst };
+  }
 
-  it("pháo kích cần đủ điểm chỉ huy và phải nhìn thấy điểm bắn; gọi được thì trừ điểm", () => {
-    const B = RULES.abilities.barrage;
-    const w = new World(1);
-    w.step([]);
-    const hq = w.hqOf(0)!;
-    w.sides[0].cp = B.cost - 1;
-    expect(w.barrageError(0, hq.x, hq.z)).not.toBeNull();
-    w.sides[0].cp = B.cost + 5;
-    // căn cứ địch ở góc kia: không nhìn thấy
-    const foe = w.hqOf(1)!;
-    expect(w.barrageError(0, foe.x, foe.z)).toMatch(/nhìn thấy/);
-    expect(w.barrageError(0, hq.x + 5, hq.z)).toBeNull();
-    w.step([{ side: 0, order: { t: "barrage", x: hq.x + 5, z: hq.z } }]);
-    expect(w.sides[0].cp).toBeLessThan(6 + RULES.abilities.cpPerSec);
-    expect(w.strikes.length).toBe(1);
-  });
-
-  it("đạn pháo kích chỉ rơi sau thời gian báo trước, trúng quân địch trong vùng, không trúng quân mình", () => {
-    const B = RULES.abilities.barrage;
+  it("Xe Tên Lửa Loạt rải thảm: tự chạy tới tầm, dựng dàn đủ lâu mới bắn, xả hết loạt rồi nạp lại; trúng cả cụm địch", () => {
+    const W = UNITS.rocket.weapon!;
     const w = new World(1, { sandbox: true });
-    hold(w, 0);
     hold(w, 1);
-    const foes = [spawn(w, "lynx", 1, 0), spawn(w, "lynx", 1, 2), spawn(w, "lynx", 1, -2)];
-    const mine = spawn(w, "lynx", 0, 1);
+    const foes = [spawn(w, "lynx", 1, 0), spawn(w, "lynx", 1, 2.5), spawn(w, "lynx", 1, -2.5)];
+    const rk = spawn(w, "rocket", 0, -34);
     const [x, z] = arenaPoint(0);
-    w.step([{ side: 0, order: { t: "barrage", x, z } }]);
-    expect(w.events.some((e) => e.t === "barrage")).toBe(true);
-    // trong thời gian báo trước: chưa ai mất máu
-    run(w, B.delay - 0.3);
-    for (const f of foes) expect(f.hp).toBe(f.maxHp);
-    run(w, B.duration + B.fall + 1);
-    const hurt = foes.filter((f) => f.hp < f.maxHp).length;
-    expect(hurt).toBeGreaterThanOrEqual(2);
-    expect(mine.hp).toBe(mine.maxHp);
-    expect(w.strikes.length).toBe(0);
+    const r = strike(w, rk, x, z);
+    expect(r.shots).toBe(W.burst!.shots);
+    expect(r.salvos).toBe(1);
+    expect(w.sides[0].stats.salvos).toBe(1);
+    // đã chạy vào tầm, và đứng yên đủ thời gian dựng dàn trước quả đầu tiên
+    expect(Math.sqrt((rk.x - x) ** 2 + (rk.z - z) ** 2)).toBeLessThanOrEqual(W.range + 0.01);
+    expect(r.stillAtFirst).toBeGreaterThanOrEqual(sec(W.deploy!.time));
+    // xả xong loạt: về nghỉ, đang nạp lại
+    expect(rk.order).toBe("idle");
+    expect(rk.burst).toBe(0);
+    expect(rk.cooldown).toBeGreaterThan(sec(W.cooldown) * 0.8);
+    run(w, 3);
+    expect(foes.filter((f) => f.hp < f.maxHp).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("rải thảm bắn được vào chỗ đang khuất sương mù; đứng quá gần thì lùi ra ngoài tầm tối thiểu rồi mới bắn", () => {
+    const W = UNITS.rocket.weapon!;
+    const w = new World(1, { sandbox: true });
+    const rk = spawn(w, "rocket", 0, -34);
+    const far = arenaPoint(-34 + W.range - 1);
+    expect(w.cellVisible(0, far[0], far[1])).toBe(false);
+    expect(w.strikeError(0, [rk.id], far[0], far[1])).toBeNull();
+    expect(strike(w, rk, far[0], far[1]).shots).toBe(W.burst!.shots);
+    // điểm bắn sát bên cạnh xe: phải lùi ra
+    run(w, W.cooldown + 1);
+    const near: [number, number] = [rk.x + 3, rk.z];
+    expect(strike(w, rk, near[0], near[1]).shots).toBeGreaterThan(0);
+    expect(Math.sqrt((rk.x - near[0]) ** 2 + (rk.z - near[1]) ** 2)).toBeGreaterThanOrEqual(W.minRange! - 0.01);
+  });
+
+  it("không có Xe Tên Lửa Loạt thì không rải thảm được (không còn đòn gọi từ trên trời)", () => {
+    const w = new World(1, { sandbox: true });
+    const lynx = spawn(w, "lynx", 0, -10);
+    const [x, z] = arenaPoint(0);
+    expect(w.strikeError(0, [lynx.id], x, z)).toMatch(/Xe Tên Lửa Loạt/);
+    w.step([{ side: 0, order: { t: "barrage", ids: [lynx.id], x, z } }]);
+    expect(lynx.order).not.toBe("strike");
   });
 
   it("Tổng động viên: quân quanh Xe Tư Lệnh chạy nhanh hơn đúng hệ số, rồi phải chờ hồi", () => {
@@ -279,7 +298,7 @@ describe("Đài Liên Lạc (điểm chiếm)", () => {
     expect(up.cap).toBeCloseTo(cap, 6);
   });
 
-  it("phe giữ đài được cộng điểm chỉ huy và nhìn thấy quanh đài (không cần quân ở đó)", () => {
+  it("phe giữ đài nhìn thấy quanh đài (không cần quân ở đó) và được tính giờ giữ đài cho số liệu sau trận", () => {
     const U = RULES.uplink;
     const a = new World(1);
     const b = new World(1);
@@ -287,7 +306,8 @@ describe("Đài Liên Lạc (điểm chiếm)", () => {
     b.uplinks[0].cap = 1;
     run(a, 10);
     run(b, 10);
-    expect(b.sides[0].cp - a.sides[0].cp).toBeCloseTo(U.cpPerSec * 10, 1);
+    expect(b.sides[0].stats.uplinkTime).toBeCloseTo(10, 1);
+    expect(a.sides[0].stats.uplinkTime).toBe(0);
     const up = b.uplinks[0];
     expect(b.cellVisible(0, up.x + U.sight * 0.8, up.z)).toBe(true);
     expect(a.cellVisible(0, up.x + U.sight * 0.8, up.z)).toBe(false);

@@ -29,7 +29,7 @@ for (let seed = 1; seed <= n; seed++) {
     `#${seed}: ${who} (${REASON[w.winReason ?? ""]}) sau ${(w.tick / 600).toFixed(1)} phút | ` +
       `đúc ${s[0].stats.unitsBuilt}/${s[1].stats.unitsBuilt} | hạ ${s[0].stats.kills}/${s[1].stats.kills} | ` +
       `Sắt đào ${Math.round(s[0].stats.ironMined)}/${Math.round(s[1].stats.ironMined)} | Dầu đào ${Math.round(s[0].stats.oilMined)}/${Math.round(s[1].stats.oilMined)} | ` +
-      `trục vớt ${Math.round(s[0].stats.salvaged)}/${Math.round(s[1].stats.salvaged)}`
+      `trục vớt ${Math.round(s[0].stats.salvaged)}/${Math.round(s[1].stats.salvaged)} | loạt tên lửa ${s[0].stats.salvos}/${s[1].stats.salvos}`
   );
   for (const st of s) {
     mined += st.stats.ironMined;

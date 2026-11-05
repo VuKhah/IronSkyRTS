@@ -7,11 +7,11 @@
  *   8. đạn tới đích → trừ máu   9. dọn xác   10. sương mù   11. kiểm tra thắng thua
  * Không có gì phụ thuộc thời gian thật hay số ngẫu nhiên không seed, nên cùng seed + cùng lệnh thì ra cùng trận.
  */
-import { BUILDINGS, RULES, UNITS, valueOf, type BuildingId, type Res, type Side, type UnitId, type UnitSpec, type WeaponSpec, type WeaponVisual } from "./content";
+import { BUILDINGS, canStrike, RULES, UNITS, valueOf, type BuildingId, type Res, type Side, type UnitId, type UnitSpec, type WeaponSpec, type WeaponVisual } from "./content";
 import { clamp, dcos, DEG, dist2, dsin, Rng, turnStep, turnToward, type TurnStep } from "./fmath";
 import { Grid } from "./grid";
 import { CELL, GameMap, getMap, TERRAIN, TERRAIN_KINDS } from "./maps";
-import type { AlertKind, Building, Command, Entity, Mine, Order, Shot, SideState, SimEvent, Strike, Target, Unit, Uplink, WinReason, Wreck } from "./types";
+import type { AlertKind, Building, Command, Entity, Mine, Order, Shot, SideState, SimEvent, Target, Unit, Uplink, WinReason, Wreck } from "./types";
 
 export const TICK_RATE = RULES.tickRate;
 export const DT = 1 / TICK_RATE;
@@ -20,7 +20,7 @@ export const sec = (s: number): number => Math.round(s * TICK_RATE);
 
 /** Cao hơn mức này thì máy bay là mục tiêu "trên không". */
 export const AIRBORNE_ALT = 2;
-const SHOT_SPEED: Record<WeaponVisual, number> = { bullet: 90, cannon: 60, missile: 40, bomb: 25, pulse: 120 };
+const SHOT_SPEED: Record<WeaponVisual, number> = { bullet: 90, cannon: 60, missile: 40, rocket: 30, bomb: 25, pulse: 120 };
 /** Vị trí 4 bãi đậu so với tâm Sân Đáp (khớp với mô hình). */
 export const PAD_OFFSETS: readonly (readonly [number, number])[] = [
   [-2.4, -1.8],
@@ -142,7 +142,6 @@ function newSide(cells: number): SideState {
   return {
     iron: RULES.startIron,
     oil: RULES.startOil,
-    cp: 0,
     mobilizeUntil: -1,
     mobilizeReady: 0,
     vis: new Uint8Array(cells),
@@ -159,7 +158,7 @@ function newSide(cells: number): SideState {
     batteryFlow: 0,
     oilBurn: 0,
     alerts: { commander: -1000, base: -1000, hauler: -1000, lowfuel: -1000, nooil: -1000, mineLost: -1000, powerShort: -1000, powerForecast: -1000, oilLow: -1000, batteryLow: -1000, uplinkLost: -1000 },
-    stats: { unitsBuilt: 0, unitsLost: 0, kills: 0, ironMined: 0, oilMined: 0, buildingsBuilt: 0, damageDealt: 0, salvaged: 0, barrages: 0, promotions: 0, topRank: 0, uplinkTime: 0 }
+    stats: { unitsBuilt: 0, unitsLost: 0, kills: 0, ironMined: 0, oilMined: 0, buildingsBuilt: 0, damageDealt: 0, salvaged: 0, salvos: 0, promotions: 0, topRank: 0, uplinkTime: 0 }
   };
 }
 
@@ -197,8 +196,6 @@ export class World {
   shots: Shot[] = [];
   /** Xác quân còn nằm trên chiến trường. */
   wrecks: Wreck[] = [];
-  /** Các đợt pháo kích đang diễn ra. */
-  strikes: Strike[] = [];
   /** Đài Liên Lạc (điểm chiếm), theo vị trí trong dữ liệu bản đồ. */
   readonly uplinks: Uplink[] = [];
   readonly byId = new Map<number, Entity>();
@@ -364,12 +361,9 @@ export class World {
       for (const st of this.sides) {
         st.iron = SANDBOX_RES;
         st.oil = SANDBOX_RES;
-        st.cp = RULES.abilities.cpMax;
       }
     for (const c of cmds) this.applyOrder(c.side, c.order);
     for (const s of [0, 1] as Side[]) if (this.hqOf(s)?.built) this.sides[s].iron += RULES.hqTrickle * DT;
-    this.updateCommandPoints();
-    this.updateStrikes();
     this.updateBuildings();
     this.updateMines();
     for (const u of this.units) {
@@ -531,7 +525,7 @@ export class World {
         this.orderMove(side, o.ids, o.x, o.z, o.t);
         break;
       case "barrage":
-        this.callBarrage(side, o.x, o.z);
+        this.orderStrike(side, o.ids, o.x, o.z);
         break;
       case "mobilize":
         this.mobilize(side);
@@ -1061,6 +1055,8 @@ export class World {
     }
     for (const up of this.uplinks) {
       const prev = up.owner;
+      // số liệu sau trận: thời gian giữ đài (tính theo chủ đầu tick)
+      if (prev !== -1) this.sides[prev].stats.uplinkTime += DT;
       const now = this.captureStep(up);
       if (now === null) continue;
       if (now === -1) this.alert(prev as Side, "uplinkLost", up.x, up.z);
@@ -1323,7 +1319,9 @@ export class World {
       const r = range + UNITS[e.kind].radius * 0.5;
       const d2 = dist2(x, z, e.x, e.z);
       if (d2 > r * r || (w.minRange && d2 < w.minRange * w.minRange) || !this.visibleTo(side, e)) continue;
-      const score = d2 + (UNITS[e.kind].weapon ? 0 : 60);
+      // vũ khí tản (rải thảm) nhắm vào chỗ quân địch đứng dày nhất, không phải chiếc gần nhất
+      const cluster = w.scatter ? this.clusterValue(side, e.x, e.z, w.scatter + w.splash) * 2 : 0;
+      const score = d2 + (UNITS[e.kind].weapon ? 0 : 60) - cluster;
       if (score < bestScore) {
         bestScore = score;
         best = e;
@@ -1334,7 +1332,7 @@ export class World {
       const r = range + Math.max(BUILDINGS[b.kind].half[0], BUILDINGS[b.kind].half[1]);
       const d2 = dist2(x, z, b.x, b.z);
       if (d2 > r * r || (w.minRange && d2 < w.minRange * w.minRange) || !this.visibleTo(side, b)) continue;
-      const score = d2 + 400;
+      const score = d2 + 400 - (w.scatter ? valueOf(b.kind) : 0);
       if (score < bestScore) {
         bestScore = score;
         best = b;
@@ -1388,6 +1386,25 @@ export class World {
       case "move": {
         if (this.follow(u)) this.setIdle(u);
         if (w) fireAt = this.acquire(u, w, range);
+        break;
+      }
+      case "strike": {
+        if (!w) {
+          this.setIdle(u);
+          break;
+        }
+        const d2 = dist2(u.x, u.z, u.tx, u.tz);
+        const min = w.minRange ?? 0;
+        if (d2 <= range * range && d2 >= min * min) {
+          // trong tầm: dừng lại, dựng dàn (đứng yên đủ lâu), xả hết loạt rồi nghỉ tại chỗ
+          this.halt(u);
+          if (this.tryFireGround(u, w, u.tx, u.tz) && u.burst === 0) this.setIdle(u);
+        } else if (u.pathI * 2 >= u.path.length) {
+          // chưa tới tầm (hoặc đứng quá gần): tìm chỗ đứng bắn, tối đa mỗi giây một lần (tìm đường thất bại rất tốn)
+          if (this.tick < u.repathAt) break;
+          u.repathAt = this.tick + sec(1);
+          if (!this.strikeApproach(u, w, range)) this.setIdle(u);
+        } else this.follow(u);
         break;
       }
       case "idle": {
@@ -1506,6 +1523,7 @@ export class World {
       dmg *= 1 - w.movePenalty.dmg;
       miss = this.rng.next() < w.movePenalty.miss;
     }
+    this.salvoStart(src, w, t.x, t.z);
     let cd = this.nextCooldown(src, w);
     if (src.cat === "unit") cd /= this.auraFactor(src);
     else if (BUILDINGS[src.kind].power < 0) cd /= Math.max(0.1, src.powerFrac);
@@ -2340,12 +2358,7 @@ export class World {
     this.sides[by].stats.damageDealt += real;
     e.hp -= dealt;
     if (e.cat === "unit") e.lastHit = this.tick;
-    if (real > 0 && e.side !== by) {
-      const value = (real / e.maxHp) * valueOf(e.kind);
-      this.gainXp(s.src, value);
-      const st = this.sides[by];
-      st.cp = Math.min(RULES.abilities.cpMax, st.cp + value * RULES.abilities.cpPerValue);
-    }
+    if (real > 0 && e.side !== by) this.gainXp(s.src, (real / e.maxHp) * valueOf(e.kind));
     if (e.cat === "unit") {
       if (e.kind === "commander") this.alert(e.side, "commander", e.x, e.z);
       else if (e.kind === "hauler") this.alert(e.side, "hauler", e.x, e.z);
@@ -2353,75 +2366,84 @@ export class World {
     if (e.hp <= 0) this.sides[by].stats.kills++;
   }
 
-  // ------------------------------------------------------------------ kỹ năng Tư lệnh
+  // ------------------------------------------------------------------ kỹ năng của binh chủng: rải thảm, tổng động viên
 
-  /** Điểm chỉ huy tự tích lũy: theo thời gian + theo điện dư (tối đa cpSurplusCap MW). */
-  private updateCommandPoints(): void {
-    const A = RULES.abilities;
-    for (const s of [0, 1] as Side[]) {
-      const st = this.sides[s];
-      if (!this.hqOf(s)) continue;
-      const surplus = Math.min(A.cpSurplusCap, Math.max(0, st.powerCap - st.powerUse));
-      let uplinks = 0;
-      for (const up of this.uplinks) if (up.owner === s) uplinks++;
-      st.stats.uplinkTime += uplinks * DT;
-      st.cp = Math.min(A.cpMax, st.cp + (A.cpPerSec + surplus * A.cpPerSurplusMw + uplinks * RULES.uplink.cpPerSec) * DT);
-    }
-  }
-
-  /** null = gọi pháo kích được; ngược lại là lý do (tiếng Việt) để hiện cho người chơi. */
-  barrageError(side: Side, x: number, z: number): string | null {
-    const B = RULES.abilities.barrage;
-    if (!this.hqOf(side)) return "Cần Tổng Hành Dinh để liên lạc pháo binh";
-    if (this.sides[side].cp < B.cost) return `Cần ${B.cost} điểm chỉ huy`;
-    if (Math.abs(x) > this.map.halfW || Math.abs(z) > this.map.halfH) return "Ngoài bản đồ";
-    if (!this.sandbox && !this.cellVisible(side, x, z)) return "Phải nhìn thấy điểm bắn (cần trinh sát)";
+  /** null = ra lệnh rải thảm được; ngược lại là lý do (tiếng Việt) để giao diện hiện cho người chơi. */
+  strikeError(side: Side, ids: readonly number[], x: number, z: number): string | null {
+    if (!this.ownUnits(side, ids).some((u) => canStrike(u.kind))) return "Cần Xe Tên Lửa Loạt (đúc ở Xưởng Xe)";
+    if (!this.map.fits(x, z, 0, 0)) return "Ngoài bản đồ";
     return null;
   }
 
-  private callBarrage(side: Side, x: number, z: number): void {
-    if (this.barrageError(side, x, z)) return;
-    const B = RULES.abilities.barrage;
-    this.sides[side].cp -= B.cost;
-    this.sides[side].stats.barrages++;
-    const delay = sec(B.delay);
-    this.strikes.push({ side, x, z, next: this.tick + delay, left: B.shells, interval: (B.duration * TICK_RATE) / B.shells });
-    this.events.push({ t: "barrage", side, x, z, r: B.radius, ticks: delay });
+  /** Lệnh rải thảm: mỗi xe rải thảm được trong `ids` nhận điểm bắn (xe khác trong nhóm bỏ qua lệnh này). */
+  private orderStrike(side: Side, ids: readonly number[], x: number, z: number): void {
+    if (this.strikeError(side, ids, x, z)) return;
+    for (const u of this.ownUnits(side, ids)) {
+      if (!canStrike(u.kind)) continue;
+      u.order = "strike";
+      u.tx = x;
+      u.tz = z;
+      u.targetId = 0;
+      u.autoTarget = 0;
+      u.chasing = false;
+      u.path = [];
+      u.pathI = 0;
+      u.repathAt = 0;
+    }
   }
 
-  /** Đạn pháo kích rơi dần: điểm rơi ngẫu nhiên (RNG có seed) trong bán kính; đạn bay cầu vồng, chặn được. */
-  private updateStrikes(): void {
-    if (this.strikes.length === 0) return;
-    const B = RULES.abilities.barrage;
-    const fall = sec(B.fall);
-    for (const st of this.strikes) {
-      while (st.left > 0 && this.tick >= st.next) {
-        const [ox, oz] = this.randDisc();
-        const tx = st.x + ox * B.radius;
-        const tz = st.z + oz * B.radius;
-        this.shots.push({
-          side: st.side,
-          src: 0,
-          target: 0,
-          tx,
-          tz,
-          dmg: B.dmg,
-          dmgType: "he",
-          sx: tx,
-          sz: tz,
-          talt: 0,
-          interceptable: true,
-          splash: B.splash,
-          hitAir: false,
-          impact: this.tick + fall,
-          visual: "cannon"
-        });
-        this.events.push({ t: "shell", side: st.side, x: tx, z: tz, ticks: fall });
-        st.next += st.interval;
-        st.left--;
-      }
+  /** Chỗ đứng bắn cho lệnh rải thảm: trên đường thẳng từ điểm bắn về phía xe, vừa trong tầm (hoặc lùi ra nếu đứng quá gần). */
+  private strikeApproach(u: Unit, w: WeaponSpec, range: number): boolean {
+    const dx = u.x - u.tx;
+    const dz = u.z - u.tz;
+    const d = Math.sqrt(dx * dx + dz * dz);
+    const min = w.minRange ?? 0;
+    const want = d > range ? Math.max(range - 2, (range + min) / 2) : min + 3;
+    const ux = d > 1e-6 ? dx / d : 1;
+    const uz = d > 1e-6 ? dz / d : 0;
+    const f = this.grid.nearestFree(u.tx + ux * want, u.tz + uz * want, 8);
+    return !!f && this.setPath(u, f[0], f[1]);
+  }
+
+  /**
+   * Rải thảm vào một điểm trên mặt đất: không cần mục tiêu, không cần nhìn thấy điểm bắn; mỗi quả rơi lệch ngẫu nhiên
+   * (RNG có seed) trong vòng `scatter` quanh điểm. Vẫn theo luật chung của vũ khí: dựng dàn xong mới bắn, nhịp loạt, hào quang.
+   * Người gọi đã kiểm tầm và tầm tối thiểu.
+   */
+  private tryFireGround(u: Unit, w: WeaponSpec, x: number, z: number): boolean {
+    if (u.cooldown > 0 || this.sandbox?.hold[u.side]) return false;
+    const deployed = this.deployed(u, w);
+    if (w.deploy?.required && !deployed) return false;
+    const d = Math.sqrt(dist2(u.x, u.z, x, z));
+    this.salvoStart(u, w, x, z);
+    u.cooldown = Math.max(1, Math.round((this.nextCooldown(u, w) / this.auraFactor(u)) * TICK_RATE));
+    u.lastShot = this.tick;
+    const [ox, oz] = this.randDisc();
+    const s = w.scatter ?? 0;
+    const ticks = Math.max(1, Math.ceil((d / SHOT_SPEED[w.visual]) * TICK_RATE));
+    this.pushShot(u, w, 0, x + ox * s, z + oz * s, 0, deployed ? w.dmgGround * (1 + w.deploy!.dmg) : w.dmgGround, false, ticks);
+    if (d > 1e-6) {
+      u.hx = (x - u.x) / d;
+      u.hz = (z - u.z) / d;
     }
-    this.strikes = this.strikes.filter((s) => s.left > 0);
+    return true;
+  }
+
+  /** Vũ khí rải thảm bắt đầu một loạt mới: đếm số liệu, báo cho phần vẽ / âm thanh (tiếng rít ở chỗ đạn sắp rơi). */
+  private salvoStart(src: Unit | Building, w: WeaponSpec, tx: number, tz: number): void {
+    if (!w.scatter || !w.burst || src.burst > 0 || src.cat !== "unit") return;
+    this.sides[src.side].stats.salvos++;
+    this.events.push({ t: "salvo", id: src.id, side: src.side, x: src.x, z: src.z, tx, tz });
+  }
+
+  /** Tổng giá trị quân địch mặt đất (phe `side` đang thấy) trong bán kính r quanh (x, z): vũ khí tản nhắm vào chỗ đông nhất. */
+  private clusterValue(side: Side, x: number, z: number, r: number): number {
+    let v = 0;
+    for (const e of this.units) {
+      if (e.side === side || e.hp <= 0 || e.alt > AIRBORNE_ALT) continue;
+      if (dist2(x, z, e.x, e.z) <= r * r && this.visibleTo(side, e)) v += valueOf(e.kind);
+    }
+    return v;
   }
 
   /** null = Tổng động viên được; ngược lại là lý do. */
@@ -2746,12 +2768,7 @@ export function hashWorld(w: World): number {
     mix(u32[1]);
   };
   num(w.tick);
-  for (const st of w.strikes) {
-    num(st.next);
-    num(st.left);
-  }
   for (const s of w.sides) {
-    num(s.cp);
     num(s.mobilizeUntil);
     num(s.iron);
     num(s.oil);

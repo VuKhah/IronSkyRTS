@@ -68,7 +68,12 @@ function weaponHtml(w: WeaponSpec | undefined): string {
   return `<p class="weapon">${bits.join(" · ")}</p>`;
 }
 
-const dps = (w: WeaponSpec) => Math.round(Math.max(w.dmgGround, w.dmgAir) / w.cooldown);
+/** Sát thương mỗi giây trung bình (chưa nhân giáp): cả loạt (`burst`) và mọi nòng (`barrels`), chia cho trọn một chu kỳ nạp + bắn. */
+const dps = (w: WeaponSpec) => {
+  const shots = w.burst?.shots ?? 1;
+  const cycle = w.cooldown + (shots - 1) * (w.burst?.interval ?? 0);
+  return Math.round((Math.max(w.dmgGround, w.dmgAir) * shots * (w.barrels ?? 1)) / cycle);
+};
 
 function linkList(ids: EntityId[]): string {
   return ids.map((id) => `<button type="button" data-go="${id}">${esc(getSpec(id).name)}</button>`).join("");

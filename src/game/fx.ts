@@ -82,10 +82,11 @@ export class Fx {
     return p;
   }
 
-  private boom(pos: THREE.Vector3, size: number): void {
+  /** Vụ nổ: chớp sáng, quả cầu lửa, vài cụm khói. `maxPuffs` nhỏ cho đạn bắn theo loạt nhiều quả (đỡ dồn hạt). */
+  private boom(pos: THREE.Vector3, size: number, maxPuffs = 6): void {
     this.spawn(this.geo.sphere, this.mat.flash, pos, size * 0.6, 0.18, { grow: size * 6 });
     this.spawn(this.geo.sphere, this.mat.fire, pos, size * 0.5, 0.45, { grow: size * 2.4, vel: new THREE.Vector3(0, 1.5, 0) });
-    const puffs = Math.min(6, 2 + Math.round(size * 2));
+    const puffs = Math.min(maxPuffs, 2 + Math.round(size * 2));
     for (let i = 0; i < puffs; i++) {
       const v = new THREE.Vector3((Math.random() - 0.5) * 2, 1.5 + Math.random() * 2, (Math.random() - 0.5) * 2);
       this.spawn(this.geo.sphere, this.mat.smoke, pos.clone().add(new THREE.Vector3(0, size * 0.3, 0)), size * 0.45, 1.4 + Math.random(), { vel: v, grow: size * 0.9 });
@@ -102,8 +103,9 @@ export class Fx {
           // súng nhiều nòng: mỗi viên giữ độ lệch nòng tới tận mục tiêu, thành các vệt đạn song song
           const off = new THREE.Vector3(e.ox * 0.6, 0, e.oz * 0.6);
           const to = new THREE.Vector3(e.tx, this.map.groundY(e.tx, e.tz) + (e.talt > 0.5 ? e.talt : 1.0), e.tz).add(off);
-          const geo = e.visual === "missile" ? this.geo.missile : e.visual === "cannon" ? this.geo.shell : this.geo.bullet;
-          const mat = e.visual === "missile" ? this.mat.missile : e.visual === "cannon" ? this.mat.shell : this.mat.bullet;
+          const rocketish = e.visual === "missile" || e.visual === "rocket";
+          const geo = rocketish ? this.geo.missile : e.visual === "cannon" ? this.geo.shell : this.geo.bullet;
+          const mat = rocketish ? this.mat.missile : e.visual === "cannon" ? this.mat.shell : this.mat.bullet;
           const mesh = new THREE.Mesh(geo, mat);
           mesh.position.copy(from);
           mesh.renderOrder = 5;
@@ -111,14 +113,23 @@ export class Fx {
           // đạn pháo / súng máy bay thẳng tới điểm ngắm lúc bắn (không bám mục tiêu, không thì vệt đạn bị uốn cong
           // và nằm chéo); chỉ tên lửa và đạn pháo cầu vồng mới bám mục tiêu
           mesh.lookAt(to);
-          this.tracers.push({ mesh, from, to, off, target: e.visual === "bullet" ? 0 : e.target, t: 0, dur: Math.max(0.06, e.ticks * DT), visual: e.visual, arc: e.visual === "missile" ? 2.5 : e.visual === "cannon" ? 1.2 : 0, smokeT: 0 });
+          // tên lửa loạt bay cầu vồng cao theo quãng đường (bắn vòng qua đầu quân mình), tên lửa thường cong nhẹ
+          const arc = e.visual === "rocket" ? Math.max(3, from.distanceTo(to) * 0.32) : e.visual === "missile" ? 2.5 : e.visual === "cannon" ? 1.2 : 0;
+          this.tracers.push({ mesh, from, to, off, target: e.visual === "bullet" ? 0 : e.target, t: 0, dur: Math.max(0.06, e.ticks * DT), visual: e.visual, arc, smokeT: 0 });
           if (e.visual === "missile") this.spawn(this.geo.sphere, this.mat.smoke, from, 0.35, 0.6, { grow: 1.2 });
+          if (e.visual === "rocket") {
+            // khói mù mịt quanh dàn phóng: mỗi quả một cụm khói lớn bay tạt ngang (cả loạt 12 quả thành một đám khói)
+            this.spawn(this.geo.sphere, this.mat.flash, from, 0.5, 0.12, { grow: 6 });
+            const v = new THREE.Vector3((Math.random() - 0.5) * 2.5, 0.4 + Math.random() * 0.8, (Math.random() - 0.5) * 2.5);
+            this.spawn(this.geo.sphere, this.mat.smoke, from.clone().setY(from.y - 0.8), 0.75, 2.2 + Math.random(), { grow: 1.8, vel: v });
+          }
           break;
         }
         case "hit": {
           if (!visible(e.x, e.z)) break;
           const pos = new THREE.Vector3(e.x, this.map.groundY(e.x, e.z) + (e.alt > 0.5 ? e.alt : 0.8), e.z);
-          if (e.splash > 0) this.boom(pos, 0.5 + e.splash * 0.35);
+          // tên lửa loạt: 12 quả mỗi loạt, mỗi quả nổ gọn (ít khói) để cả loạt không vượt trần số hạt và làm máy giật
+          if (e.splash > 0) this.boom(pos, 0.5 + e.splash * 0.35, e.visual === "rocket" ? 2 : 6);
           else this.spawn(this.geo.sphere, this.mat.flash, pos, 0.25, 0.12, { grow: 3 });
           break;
         }
@@ -198,11 +209,12 @@ export class Fx {
       const prev = tr.mesh.position.clone();
       tr.mesh.position.copy(p);
       if (p.distanceToSquared(prev) > 1e-6) tr.mesh.lookAt(p.clone().add(p.clone().sub(prev)));
-      if (tr.visual === "missile") {
+      if (tr.visual === "missile" || tr.visual === "rocket") {
         tr.smokeT -= dt;
         if (tr.smokeT <= 0) {
-          tr.smokeT = 0.035;
-          this.spawn(this.geo.sphere, this.mat.smoke, p, 0.22, 0.7, { grow: 0.9 });
+          // tên lửa loạt: cụm khói thưa nhưng to hơn (một loạt nhiều quả, đừng để số hạt khói làm máy giật)
+          tr.smokeT = tr.visual === "rocket" ? 0.15 : 0.035;
+          this.spawn(this.geo.sphere, this.mat.smoke, p, tr.visual === "rocket" ? 0.36 : 0.22, tr.visual === "rocket" ? 0.9 : 0.7, { grow: 1.1 });
         }
       }
       if (k >= 1) {

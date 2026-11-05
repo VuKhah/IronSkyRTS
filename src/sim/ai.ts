@@ -6,7 +6,7 @@
  * chủ sở hữu các mỏ (thông tin công khai trên HUD) và vị trí 2 Tổng Hành Dinh (bản đồ cố định).
  * AI chạy bên trong vòng tick nên cũng phải tất định: không Math.random, không thời gian thật.
  */
-import { BUILDINGS, RULES, UNITS, valueOf, type BuildingId, type Side, type UnitId } from "./content";
+import { BUILDINGS, UNITS, valueOf, type BuildingId, type Side, type UnitId } from "./content";
 import { dcos, dist2, dsin, Rng, TAU } from "./fmath";
 import type { Building, Mine, Order, Unit, Uplink } from "./types";
 import { dirToCenter, sec, type World } from "./world";
@@ -83,11 +83,12 @@ export class Ai {
     // 3. Đúc quân
     for (const f of myB) {
       if (f.kind !== "factory" || !f.built || f.queue.length >= 2) continue;
-      const k = this.pickGround(mine);
+      const k = this.pickGround(mine, oil);
       const c = UNITS[k].cost!;
-      if (iron - reserve >= c.iron) {
+      if (iron - reserve >= c.iron && oil >= c.oil) {
         out.push({ t: "produce", building: f.id, kind: k });
         iron -= c.iron;
+        oil -= c.oil;
       }
     }
     for (const a of myB) {
@@ -178,7 +179,8 @@ export class Ai {
       out.push({ t: "move", ids: [cmd.id], x: hq.x + dx * 10, z: hq.z + dz * 10 });
     }
 
-    // 6. Kỹ năng Tư lệnh (chỉ dùng thông tin đang thấy, ra lệnh như người chơi)
+    // 6. Kỹ năng của binh chủng (chỉ dùng thông tin phe mình có, ra lệnh như người chơi)
+    this.useRockets(mine, enemyUnits, enemyBuildings, out);
     this.useAbilities(w, mine, enemyUnits, out);
 
     // 5. Falcon: xuất kích khi đủ dầu, ưu tiên săn Xe Vận Tải, rồi quân đang đánh vào nhà, rồi quân địch thấy được
@@ -234,7 +236,7 @@ export class Ai {
     return null;
   }
 
-  private pickGround(mine: Unit[]): UnitId {
+  private pickGround(mine: Unit[], oil: number): UnitId {
     const n = (k: UnitId): number => mine.filter((u) => u.kind === k).length;
     const lynx = n("lynx");
     const titan = n("titan");
@@ -245,6 +247,8 @@ export class Ai {
     const r = this.rng.next();
     if (r < 0.15) return "titan";
     if (r < 0.22) return "skyguard";
+    // Xe Tên Lửa Loạt: khoảng 1 chiếc cho mỗi 4 xe chiến đấu, chỉ khi còn dư Dầu (giữ Dầu cho máy bay, nhà máy điện)
+    if (r < 0.4 && n("rocket") * 4 < lynx + titan && oil >= UNITS.rocket.cost!.oil + 80) return "rocket";
     if (titan <= lynx) return "titan";
     if (sky * 4 < lynx + titan) return "skyguard";
     return "lynx";
@@ -307,28 +311,50 @@ export class Ai {
   }
 
   /**
-   * Pháo kích: khi đủ điểm, bắn vào chỗ quân địch (đang thấy, trên mặt đất) dồn đông nhất, tính theo tổng giá trị
-   * trong vùng nổ; chỉ bắn khi đáng (≥ 500 giá trị, ví dụ một Titan và hai Lynx).
-   * Tổng động viên: khi địch đã ở gần Xe Tư Lệnh (≤ 30 m) và có ít nhất 2 xe chiến đấu mình quanh xe.
+   * Xe Tên Lửa Loạt: xe nào đã nạp xong (không đang nạp, không dở loạt, chưa có lệnh rải thảm) thì tìm chỗ đáng bắn nhất
+   * trong tầm với (tầm + 12 m đường chạy): cụm quân địch mặt đất đang thấy (tổng giá trị trong vùng rơi ≥ 300, ví dụ hai
+   * Lynx), hoặc công trình địch đã phát hiện (bắn được cả khi đang khuất sương mù, như người chơi nhớ chỗ công trình).
    */
-  private useAbilities(w: World, mine: Unit[], enemyUnits: Unit[], out: Order[]): void {
-    const me = this.side;
-    const A = RULES.abilities;
-    const ground = enemyUnits.filter((u) => u.air === "none" && u.hp > 0);
-    if (w.sides[me].cp >= A.barrage.cost && ground.length) {
-      const r2 = (A.barrage.radius * 0.8) ** 2;
-      let best: Unit | null = null;
-      let bestScore = 0;
+  private useRockets(mine: Unit[], enemyUnits: Unit[], enemyBuildings: Building[], out: Order[]): void {
+    const w = UNITS.rocket.weapon!;
+    const reach = w.range + 12;
+    const min = w.minRange ?? 0;
+    const r2 = (w.scatter! + w.splash) ** 2;
+    const ground = enemyUnits.filter((e) => e.air === "none");
+    for (const u of mine) {
+      if (u.kind !== "rocket" || u.order === "strike" || u.cooldown > 0 || u.burst > 0) continue;
+      let best: [number, number] | null = null;
+      let bestScore = 299;
+      const inReach = (x: number, z: number): boolean => {
+        const d2 = dist2(u.x, u.z, x, z);
+        return d2 <= reach * reach && d2 >= min * min;
+      };
       for (const c of ground) {
+        if (!inReach(c.x, c.z)) continue;
         let score = 0;
         for (const e of ground) if (dist2(c.x, c.z, e.x, e.z) <= r2) score += valueOf(e.kind);
         if (score > bestScore) {
           bestScore = score;
-          best = c;
+          best = [c.x, c.z];
         }
       }
-      if (best && bestScore >= 500 && w.barrageError(me, best.x, best.z) === null) out.push({ t: "barrage", x: best.x, z: best.z });
+      for (const b of enemyBuildings) {
+        if (!inReach(b.x, b.z)) continue;
+        let score = valueOf(b.kind);
+        for (const o of enemyBuildings) if (o !== b && dist2(b.x, b.z, o.x, o.z) <= r2 * 2) score += valueOf(o.kind) * 0.5;
+        if (score > bestScore) {
+          bestScore = score;
+          best = [b.x, b.z];
+        }
+      }
+      if (best) out.push({ t: "barrage", ids: [u.id], x: best[0], z: best[1] });
     }
+  }
+
+  /** Tổng động viên: khi địch đã ở gần Xe Tư Lệnh (≤ 30 m) và có ít nhất 2 xe chiến đấu mình quanh xe. */
+  private useAbilities(w: World, mine: Unit[], enemyUnits: Unit[], out: Order[]): void {
+    const me = this.side;
+    const ground = enemyUnits.filter((u) => u.air === "none" && u.hp > 0);
     const cmd = mine.find((u) => u.kind === "commander");
     if (cmd && w.mobilizeError(me) === null) {
       const r2 = UNITS.commander.aura!.radius ** 2;
