@@ -35,6 +35,21 @@ describe("toán tất định", () => {
 });
 
 describe("bản đồ & tìm đường", () => {
+  it("máy bay bay được tới gần mép bản đồ rộng (không kẹp theo kích thước bản đồ cũ)", () => {
+    // Bãi Thử Hình Dáng rộng 224 m: trước đây vị trí máy bay bị kẹp ±78 m viết cứng
+    const w = new World(1, { sandbox: true, map: "proving-ground" });
+    w.step([{ side: 0, order: { t: "sbSpawn", kind: "falcon", side: 0, x: 0, z: 0 } }]);
+    const f = w.units.find((u) => u.kind === "falcon")!;
+    w.step([{ side: 0, order: { t: "move", ids: [f.id], x: 100, z: 0 } }]);
+    let far = 0;
+    for (let i = 0; i < sec(15); i++) {
+      w.step([]);
+      far = Math.max(far, f.x);
+    }
+    expect(far).toBeGreaterThan(90);
+    expect(far).toBeLessThanOrEqual(w.map.halfW - 2);
+  });
+
   it("đổi kích thước / hình dáng bản đồ là game chạy đúng (bản đồ chữ nhật viền lục giác, B1)", () => {
     // "Bãi Thử Hình Dáng": 224 × 144 m, vùng chơi lục giác, sông gấp khúc. Lưới, sương mù, AI phải theo bản đồ.
     let escaped = "";

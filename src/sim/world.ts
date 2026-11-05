@@ -1909,8 +1909,9 @@ export class World {
     }
     this.steerAir(u, dx, dz, fuel.turnRate);
     u.speed = spec.speed;
-    u.x = clamp(u.x + u.hx * u.speed * DT, -78, 78);
-    u.z = clamp(u.z + u.hz * u.speed * DT, -78, 78);
+    // máy bay không bay ra ngoài bản đồ (cách mép 2 m)
+    u.x = clamp(u.x + u.hx * u.speed * DT, -this.map.halfW + 2, this.map.halfW - 2);
+    u.z = clamp(u.z + u.hz * u.speed * DT, -this.map.halfH + 2, this.map.halfH - 2);
     const climb = A.climbRate * DT;
     u.alt += clamp(wantAlt - u.alt, -climb, climb);
     if (w.carpet) {
