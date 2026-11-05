@@ -117,6 +117,15 @@ function makePerson(): THREE.Group {
   return g;
 }
 
+export type ViewName = "three" | "front" | "side" | "top";
+/** Hướng camera nhìn về mô hình cho từng góc chuẩn (mặt trước mô hình là +Z). "top" hơi nghiêng để OrbitControls không khóa trục. */
+const VIEW_DIRS: Record<ViewName, THREE.Vector3> = {
+  three: new THREE.Vector3(1.0, 0.62, 1.25),
+  front: new THREE.Vector3(0, 0.18, 1),
+  side: new THREE.Vector3(1, 0.18, 0),
+  top: new THREE.Vector3(0, 1, 0.02)
+};
+
 export class Stage {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
@@ -160,6 +169,7 @@ export class Stage {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.maxPolarAngle = Math.PI * 0.49;
+    this.controls.minPolarAngle = 0;
     this.controls.minDistance = 3;
     this.controls.maxDistance = 60;
     this.controls.autoRotateSpeed = 1.2;
@@ -235,9 +245,22 @@ export class Stage {
   }
 
   private frameRig(rig: Rig): void {
+    this.view(this.viewName, rig);
+  }
+
+  /** Góc nhìn đang dùng (giữ khi đổi mô hình để so các mô hình cùng một góc). */
+  viewName: ViewName = "three";
+
+  /**
+   * Đặt camera theo góc nhìn chuẩn, để người thiết kế và Claude nói về cùng một góc:
+   * "three" ba phần tư (mặc định) · "front" chính diện trước · "side" chính diện bên phải · "top" từ trên xuống.
+   */
+  view(name: ViewName, rig: Rig | null = this.rig): void {
+    this.viewName = name;
+    if (!rig) return;
     const r = rig.radius;
     const target = new THREE.Vector3(0, r * 0.42, 0);
-    const dir = new THREE.Vector3(1.0, 0.62, 1.25).normalize();
+    const dir = VIEW_DIRS[name].clone().normalize();
     this.camera.position.copy(target).addScaledVector(dir, r * 3.1);
     this.controls.target.copy(target);
     this.controls.update();

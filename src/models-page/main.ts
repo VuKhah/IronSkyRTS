@@ -8,7 +8,10 @@ import {
 } from "../sim/content";
 import { buildModel, disposeRig } from "../render/models";
 import { bakeStatic } from "../render/models/bake";
-import { Stage, Thumbnailer } from "./stage";
+import { Stage, Thumbnailer, type ViewName } from "./stage";
+
+const VIEW_LABEL: Record<ViewName, string> = { three: "3/4", front: "Trước", side: "Cạnh", top: "Trên" };
+let lastActions: { id: string; label: string }[] = [];
 
 type Tab = "units" | "buildings";
 
@@ -39,6 +42,13 @@ try {
   stage.autoRotate = state.autoRotate;
   // ?measure=0: tắt thước đo (chụp ảnh sạch)
   if (new URLSearchParams(location.search).get("measure") === "0") stage.measure = false;
+  // ?view=front|side|top|three: góc nhìn chuẩn (chụp ảnh để bàn thiết kế); đặt góc thì tắt tự xoay
+  const v = new URLSearchParams(location.search).get("view");
+  if (v === "front" || v === "side" || v === "top" || v === "three") {
+    stage.viewName = v;
+    state.autoRotate = false;
+    stage.autoRotate = false;
+  }
 } catch {
   viewer.insertAdjacentHTML("beforeend", `<p class="nogl">Trình duyệt này không bật được WebGL nên không hiển thị được mô hình 3D. Thông số vẫn xem được bên cạnh.</p>`);
 }
@@ -174,6 +184,7 @@ function renderSheet(spec: EntitySpec): void {
 }
 
 function renderControls(actions: { id: string; label: string }[]): void {
+  lastActions = actions;
   if (!stage) {
     controls.innerHTML = "";
     return;
@@ -184,6 +195,9 @@ function renderControls(actions: { id: string; label: string }[]): void {
     <span class="faction" role="group" aria-label="Phe">
       <button type="button" data-f="lam" aria-pressed="${state.faction === "lam"}">Liên Minh Lam</button>
       <button type="button" data-f="do" aria-pressed="${state.faction === "do"}">Tập Đoàn Đỏ</button>
+    </span>
+    <span class="faction" role="group" aria-label="Góc nhìn">
+      ${(["three", "front", "side", "top"] as const).map((v) => `<button type="button" data-view="${v}" aria-pressed="${s.viewName === v}">${VIEW_LABEL[v]}</button>`).join("")}
     </span>
     <button type="button" class="chip" data-measure aria-pressed="${s.measure}" title="Đường đo rộng / dài / cao (mét) và người cao 1,8 m để so tỉ lệ">📏 Thước đo</button>
     <button type="button" class="chip" data-rotate aria-pressed="${state.autoRotate}">Tự xoay</button>`;
@@ -249,6 +263,11 @@ controls.addEventListener("click", (e) => {
     state.faction = b.dataset.f as Faction;
     loadModel(true);
     renderRoster();
+  } else if (b.dataset.view) {
+    state.autoRotate = false;
+    stage.autoRotate = false;
+    stage.view(b.dataset.view as ViewName);
+    renderControls(lastActions);
   } else if (b.hasAttribute("data-measure")) {
     stage.measure = !stage.measure;
     b.setAttribute("aria-pressed", String(stage.measure));
