@@ -154,3 +154,74 @@ describe("B3a: tốc độ theo địa hình", () => {
     for (const spec of Object.values(UNITS)) if (spec.domain === "ground") expect(spec.mobility, `${spec.id} thiếu kiểu di chuyển`).toBeDefined();
   });
 });
+
+/** Bản đồ thử: vũng bùn tròn chắn giữa, và một con đường thẳng chạy ngang phía dưới. */
+const DETOUR: MapDef = {
+  id: "test-detour",
+  name: "Thử: đường vòng",
+  blurb: "",
+  size: { w: 160, h: 160 },
+  bases: [
+    [-70, 70],
+    [70, -70]
+  ],
+  mines: [],
+  hills: [],
+  rocks: [],
+  rivers: [],
+  regions: [
+    { kind: "mud", circle: { x: 0, z: -30, r: 12 } },
+    {
+      kind: "road",
+      poly: [
+        [-66, 27],
+        [66, 27],
+        [66, 33],
+        [-66, 33]
+      ]
+    }
+  ]
+};
+
+/** Các điểm xe thật sự đi qua (lấy mẫu mỗi tick) cho tới khi tới (tx, tz). */
+function drive(w: World, u: Unit, tx: number, tz: number): { ticks: number; trail: [number, number][] } {
+  w.step([{ side: u.side, order: { t: "move", ids: [u.id], x: tx, z: tz } }]);
+  const trail: [number, number][] = [];
+  for (let i = 1; i < sec(60); i++) {
+    w.step([]);
+    trail.push([u.x, u.z]);
+    if ((u.x - tx) * (u.x - tx) + (u.z - tz) * (u.z - tz) < 0.25) return { ticks: i, trail };
+  }
+  return { ticks: Infinity, trail };
+}
+
+describe("B3b: tìm đường nhanh nhất theo địa hình", () => {
+  it("xe bánh tự vòng quanh vũng bùn và tới sớm hơn lội thẳng", () => {
+    const w = world(DETOUR);
+    const u = spawn(w, "lynx", -24, -30);
+    const { ticks, trail } = drive(w, u, 24, -30);
+    // không bánh xe nào lăn vào bùn
+    for (const [x, z] of trail) expect(w.grid.kindAt(x, z), `(${x.toFixed(1)}, ${z.toFixed(1)})`).not.toBe("mud");
+    // lội thẳng: 24 m bùn + 24 m cỏ
+    const straight = ((24 / TERRAIN.mud.speed.wheel + 24) / UNITS.lynx.speed) * 10;
+    expect(ticks).toBeLessThan(straight * 0.9);
+  });
+
+  it("có đường cái song song thì xe bánh tự lên đường, tới sớm hơn đi thẳng trên cỏ", () => {
+    const w = world(DETOUR);
+    const u = spawn(w, "lynx", -54, 22);
+    const { ticks, trail } = drive(w, u, 54, 22);
+    const straight = (108 / UNITS.lynx.speed) * 10;
+    expect(ticks).toBeLessThan(straight * 0.95);
+    // phần lớn thời gian chạy trên đường (còn lại là lúc chạy chéo lên và xuống đường)
+    const onRoad = trail.filter(([x, z]) => w.grid.kindAt(x, z) === "road").length;
+    expect(onRoad / trail.length).toBeGreaterThan(0.5);
+  });
+
+  it("đi thẳng trên cỏ không vướng gì vẫn là một đoạn thẳng (không tốn A*)", () => {
+    const w = world(DETOUR);
+    const f = w.grid.field("track", false);
+    const p = w.grid.findPath(-40, -60, 40, -60, f);
+    expect(p).toEqual([40, -60]);
+  });
+});

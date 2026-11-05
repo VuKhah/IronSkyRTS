@@ -1056,7 +1056,9 @@ export class World {
   }
 
   private setPath(u: Unit, x: number, z: number): boolean {
-    const p = this.grid.findPath(u.x, u.z, x, z);
+    // tìm đường nhanh nhất theo kiểu xe (bánh / xích) và địa hình (B3b)
+    const spec = UNITS[u.kind];
+    const p = this.grid.findPath(u.x, u.z, x, z, this.grid.field(spec.mobility ?? "wheel", !!spec.slowResist));
     u.path = p ?? [];
     u.pathI = 0;
     u.stuck = 0;
@@ -2191,8 +2193,8 @@ export class World {
 
   private stamp(st: SideState, x: number, z: number, sight: number): void {
     const r = Math.round(sight / CELL);
-    const cx = this.grid.cellX(x);
-    const cz = this.grid.cellZ(z);
+    const cx = this.grid.colOf(x, z);
+    const cz = this.grid.rowOf(x, z);
     const d = disc(r);
     const C = this.grid.cols;
     const R = this.grid.rows;
@@ -2214,8 +2216,8 @@ export class World {
    */
   private stampLos(st: SideState, x: number, z: number, sight: number, eye: number): void {
     const r = Math.round(sight / CELL);
-    const cx = this.grid.cellX(x);
-    const cz = this.grid.cellZ(z);
+    const cx = this.grid.colOf(x, z);
+    const cz = this.grid.rowOf(x, z);
     const C = this.grid.cols;
     const R = this.grid.rows;
     const c0 = cz * C + cx;

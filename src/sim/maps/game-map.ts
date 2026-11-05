@@ -287,6 +287,12 @@ export class GameMap {
 
   /** Loại địa hình tại điểm: vùng tô của bản đồ, rồi sông, đá, vách núi. */
   terrainAt(x: number, z: number): TerrainKind {
+    // Bản đồ đối xứng: luôn tính ở nửa phía Lam rồi soi sang, để điểm nằm đúng trên cạnh vùng tô
+    // cũng được xếp loại giống hệt ở hai nửa (công bằng theo cách dựng, không nhờ may mắn).
+    if (this.def.symmetric && (z < 0 || (z === 0 && x > 0))) {
+      x = -x;
+      z = -z;
+    }
     if (this.inset(x, z) < WALL) return "cliff";
     for (const b of this.rocks) {
       const dx = x - b.x;

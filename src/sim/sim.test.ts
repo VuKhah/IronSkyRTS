@@ -3,7 +3,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { Ai } from "./ai";
-import { dcos, dsin } from "./fmath";
+import { dcos, dsin, Rng } from "./fmath";
+import { DEV_MAP_DEFS, MAP_DEFS } from "./maps";
 import type { BuildingId } from "./content";
 import type { Command } from "./types";
 import { runScenario, SCENARIOS } from "./scenarios";
@@ -35,6 +36,34 @@ describe("toán tất định", () => {
 });
 
 describe("bản đồ & tìm đường", () => {
+  it.each([...MAP_DEFS, ...DEV_MAP_DEFS].filter((d) => d.symmetric).map((d) => [d.id]))(
+    "tìm đường công bằng trên %s: A → B và (−A) → (−B) là ảnh soi gương (kể cả điểm nằm đúng ranh giới ô)",
+    (id) => {
+      const w = new World(1, { sandbox: true, map: id });
+      const rng = new Rng(3);
+      let checked = 0;
+      for (const snap of [false, true])
+        for (const mob of ["wheel", "track"] as const) {
+          const f = w.grid.field(mob, false);
+          for (let i = 0; i < 120; i++) {
+            const r = (half: number): number => {
+              const v = (rng.next() * 2 - 1) * (half - 10);
+              return snap ? Math.round(v / 2) * 2 : v; // số chẵn = đúng ranh giới ô
+            };
+            const ax = r(w.map.halfW), az = r(w.map.halfH), bx = r(w.map.halfW), bz = r(w.map.halfH);
+            if (w.grid.blockedAt(ax, az) || w.grid.blockedAt(bx, bz) || (ax === 0 && az === 0) || (bx === 0 && bz === 0)) continue;
+            const p = w.grid.findPath(ax, az, bx, bz, f);
+            const q = w.grid.findPath(-ax, -az, -bx, -bz, f);
+            expect(p === null, `(${ax}, ${az}) → (${bx}, ${bz})`).toBe(q === null);
+            if (!p || !q) continue;
+            expect(q.map((v) => -v + 0), `(${ax}, ${az}) → (${bx}, ${bz})`).toEqual(p.map((v) => v + 0));
+            checked++;
+          }
+        }
+      expect(checked).toBeGreaterThan(300);
+    }
+  );
+
   it("máy bay bay được tới gần mép bản đồ rộng (không kẹp theo kích thước bản đồ cũ)", () => {
     // Bãi Thử Hình Dáng rộng 224 m: trước đây vị trí máy bay bị kẹp ±78 m viết cứng
     const w = new World(1, { sandbox: true, map: "proving-ground" });

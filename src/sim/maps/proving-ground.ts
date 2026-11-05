@@ -3,7 +3,8 @@
  *
  * Cố tình khác "Thung Lũng Sông Sắt" ở mọi chỗ có thể làm lộ giả định viết cứng:
  * hình chữ nhật 224 × 144 m (không vuông), vùng chơi hình lục giác (`bounds`), sông gấp khúc chảy theo hướng Bắc Nam,
- * khai báo một nửa (`symmetric`). Kiểm thử chạy AI đấu AI trên bản đồ này: nếu đổi kích thước / hình dáng mà game
+ * khai báo một nửa (`symmetric`). Có đủ các loại địa hình (B3): đường qua cầu, bùn chắn lối vào bãi cạn, rừng,
+ * cát quanh mỏ Sắt giữa, tuyết trên đỉnh đồi. Kiểm thử chạy AI đấu AI trên bản đồ này: nếu đổi kích thước / hình dáng mà game
  * không chạy đúng thì `npm test` báo (tiêu chí của bước B1, Docs/design/MAPS_PLAN.md).
  */
 import type { MapDef } from "./types";
@@ -53,6 +54,32 @@ export const PROVING_GROUND: MapDef = {
       ]
     }
   ],
-  regions: [{ kind: "mud", circle: { x: -20, z: -50, r: 9 } }],
+  regions: [
+    { kind: "mud", circle: { x: -20, z: -50, r: 9 } },
+    // đường từ căn cứ Lam chạy qua cầu phía Nam sang bờ bên kia
+    {
+      kind: "road",
+      poly: [
+        [-50, 45],
+        [30, 53],
+        [30, 59],
+        [-50, 51]
+      ]
+    },
+    // bùn chắn lối vào bãi cạn từ phía Lam: lội thẳng (bánh chậm một nửa) hay vòng
+    { kind: "mud", circle: { x: -17, z: 3, r: 6 } },
+    // rừng giữa căn cứ và sông: che tầm nhìn, nấp được
+    {
+      kind: "forest",
+      poly: [
+        [-46, 4],
+        [-30, 0],
+        [-26, 16],
+        [-42, 20]
+      ]
+    },
+    { kind: "sand", circle: { x: -36, z: -38, r: 8 } },
+    { kind: "snow", circle: { x: -84, z: -18, r: 5 } }
+  ],
   biome: "temperate"
 };

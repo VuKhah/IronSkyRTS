@@ -9,7 +9,8 @@
     "check": "tsc",
     "test": "vitest run",
     "simulate": "tsx src/tools/simulate.ts",
-    "balance": "tsx src/tools/balance.ts"
+    "balance": "tsx src/tools/balance.ts",
+    "perf": "tsx src/tools/perf.ts"
   },
   "author": "",
   "license": "UNLICENSED",

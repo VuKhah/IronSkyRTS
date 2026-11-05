@@ -8,7 +8,13 @@
  * - `field(kiểu xe)`: hệ số tốc độ từng ô theo kiểu xe (bánh / xích, kháng làm chậm), dùng chung cho đi lẫn tìm đường.
  * - Tìm đường bằng A* (8 hướng, không cắt góc), rồi "kéo thẳng" đường đi bằng kiểm tra tầm nhìn
  *   để xe chạy theo đường chéo tự nhiên thay vì zíc zắc theo ô.
+ * - Chính sách đường đi "nhanh nhất" (B3b): chi phí một ô = quãng đường ÷ hệ số tốc độ của ô theo kiểu xe, nên A* tìm
+ *   đường TỐN ÍT THỜI GIAN nhất (vòng qua đường cái thay vì lội bùn). Bộ phận hậu cần tự chọn, người chơi không phải lo.
+ *   Công tắc chiến thuật đường đi về sau (nấp rừng, đi thẳng…) = một cách tính chi phí ô khác, đặt cạnh `field()`.
  * Tất định: duyệt theo thứ tự cố định, chỉ dùng phép tính cơ bản.
+ * Công bằng (B3b): trên bản đồ đối xứng, đường đi A → B và (−A) → (−B) là ảnh soi gương của nhau. Mọi chỗ phải
+ * "chọn một trong hai thứ bằng nhau" (thứ tự xét 8 hướng, ô trống cách đều, điểm nằm đúng ranh giới hai ô) đều chọn
+ * theo quy tắc đối xứng; nếu không, khi hai đường dài bằng nhau, một phe luôn được chọn đường đẹp hơn.
  */
 import type { Mobility } from "./content";
 import { SQRT2 } from "./fmath";
@@ -32,6 +38,20 @@ const NEIGHBORS: readonly (readonly [number, number, number])[] = [
   [1, -1, SQRT2],
   [-1, -1, SQRT2]
 ];
+
+/** Điểm thuộc "nửa thứ nhất" của bản đồ (dùng để chọn thứ tự duyệt đối xứng): z > 0, hoặc z = 0 và x < 0. */
+function canonPoint(x: number, z: number): boolean {
+  return z > 0 || (z === 0 && x < 0);
+}
+
+/** Bài toán A → B thuộc chiều thứ nhất? Bài toán soi gương (−A → −B) luôn thuộc chiều kia. */
+function canonPair(x0: number, z0: number, x1: number, z1: number): boolean {
+  const mz = z0 + z1;
+  if (mz !== 0) return mz > 0;
+  const mx = x0 + x1;
+  if (mx !== 0) return mx < 0;
+  return canonPoint(x0, z0);
+}
 
 export class Grid {
   /** Số ô theo x (cột) và z (hàng). */
@@ -107,16 +127,38 @@ export class Grid {
     return f;
   }
 
+  // Điểm nằm đúng ranh giới hai ô thì xếp vào ô gần tâm bản đồ hơn (đối xứng hai phía; làm tròn xuống thì không).
   cellX(x: number): number {
-    const c = Math.floor((x + this.halfW) / CELL);
+    const v = (x + this.halfW) / CELL;
+    let c = Math.floor(v);
+    if (c === v && x > 0) c--;
     return c < 0 ? 0 : c >= this.cols ? this.cols - 1 : c;
   }
   cellZ(z: number): number {
-    const c = Math.floor((z + this.halfH) / CELL);
+    const v = (z + this.halfH) / CELL;
+    let c = Math.floor(v);
+    if (c === v && z > 0) c--;
+    return c < 0 ? 0 : c >= this.rows ? this.rows - 1 : c;
+  }
+  /**
+   * Cột / hàng của điểm (x, z), đối xứng hoàn toàn: như cellX / cellZ, và điểm nằm đúng trên đường giữa bản đồ
+   * (x = 0 hoặc z = 0) thì chọn ô theo tọa độ còn lại, để (x, z) và (−x, −z) luôn rơi vào hai ô soi gương.
+   * (Riêng đúng tâm (0, 0) thì không thể đối xứng.)
+   */
+  colOf(x: number, z: number): number {
+    const v = (x + this.halfW) / CELL;
+    let c = Math.floor(v);
+    if (c === v && (x > 0 || (x === 0 && canonPoint(x, z)))) c--;
+    return c < 0 ? 0 : c >= this.cols ? this.cols - 1 : c;
+  }
+  rowOf(x: number, z: number): number {
+    const v = (z + this.halfH) / CELL;
+    let c = Math.floor(v);
+    if (c === v && (z > 0 || (z === 0 && canonPoint(x, z)))) c--;
     return c < 0 ? 0 : c >= this.rows ? this.rows - 1 : c;
   }
   index(x: number, z: number): number {
-    return this.cellZ(z) * this.cols + this.cellX(x);
+    return this.rowOf(x, z) * this.cols + this.colOf(x, z);
   }
   centerX(cx: number): number {
     return -this.halfW + (cx + 0.5) * CELL;
@@ -147,18 +189,24 @@ export class Grid {
     for (const i of cells) this.occ[i] = Math.max(0, this.occ[i] + delta);
   }
 
-  /** Điểm đi được gần (x, z) nhất, tìm theo từng vòng ô; trả về chính (x, z) nếu nó đã đi được. */
+  /**
+   * Điểm đi được gần (x, z) nhất, tìm theo từng vòng ô; trả về chính (x, z) nếu nó đã đi được.
+   * Hai ô cách đều thì ô xét trước thắng; nửa bản đồ bên kia xét theo thứ tự soi gương để công bằng.
+   */
   nearestFree(x: number, z: number, maxRing = 15): [number, number] | null {
-    const cx0 = this.cellX(x);
-    const cz0 = this.cellZ(z);
+    const cx0 = this.colOf(x, z);
+    const cz0 = this.rowOf(x, z);
     const C = this.cols;
     if (!this.blockedIdx(cz0 * C + cx0) && Math.abs(x) < this.halfW && Math.abs(z) < this.halfH) return [x, z];
+    const s = canonPoint(x, z) ? 1 : -1;
     for (let r = 1; r <= maxRing; r++) {
       let best = -1;
       let bestD = Infinity;
-      for (let dz = -r; dz <= r; dz++)
-        for (let dx = -r; dx <= r; dx++) {
-          if (Math.abs(dx) !== r && Math.abs(dz) !== r) continue;
+      for (let a = -r; a <= r; a++)
+        for (let b = -r; b <= r; b++) {
+          if (Math.abs(a) !== r && Math.abs(b) !== r) continue;
+          const dz = a * s;
+          const dx = b * s;
           const cx = cx0 + dx;
           const cz = cz0 + dz;
           if (cx < 0 || cz < 0 || cx >= C || cz >= this.rows) continue;
@@ -175,6 +223,35 @@ export class Grid {
       if (best >= 0) return [this.centerX(best % C), this.centerZ(Math.floor(best / C))];
     }
     return null;
+  }
+
+  /** Hệ số tốc độ nhỏ nhất dọc đoạn thẳng A → B (lấy mẫu như `los`, theo tâm xe). */
+  minSpeedAlong(f: SpeedField, x0: number, z0: number, x1: number, z1: number): number {
+    const dx = x1 - x0;
+    const dz = z1 - z0;
+    const d = Math.sqrt(dx * dx + dz * dz);
+    const steps = Math.max(1, Math.ceil(d / (CELL * 0.35)));
+    let min = Infinity;
+    for (let i = 0; i <= steps; i++) {
+      const k = f.k[this.index(x0 + (dx * i) / steps, z0 + (dz * i) / steps)];
+      if (k < min) min = k;
+    }
+    return min;
+  }
+
+  /** Thời gian (đơn vị A*: cạnh ô ÷ hệ số tốc độ) để đi thẳng A → B, lấy mẫu dọc đoạn thẳng. */
+  timeAlong(f: SpeedField, x0: number, z0: number, x1: number, z1: number): number {
+    const dx = x1 - x0;
+    const dz = z1 - z0;
+    const d = Math.sqrt(dx * dx + dz * dz);
+    const steps = Math.max(1, Math.ceil(d / (CELL * 0.35)));
+    const seg = d / steps / CELL;
+    let t = 0;
+    for (let i = 0; i < steps; i++) {
+      const k = f.k[this.index(x0 + (dx * (i + 0.5)) / steps, z0 + (dz * (i + 0.5)) / steps)];
+      t += k > 0 ? seg / k : Infinity;
+    }
+    return t;
   }
 
   /** Đường thẳng từ A tới B có đi được không (kiểm tra cả hai mép, để xe không cạ vào vách). */
@@ -231,8 +308,11 @@ export class Grid {
   /**
    * Tìm đường từ (x0, z0) tới (x1, z1). Trả về dãy điểm [x, z, x, z, …] (không gồm điểm xuất phát),
    * hoặc null nếu không có đường. Đích bị chặn thì đi tới ô trống gần đích nhất.
+   * `f`: hệ số tốc độ theo ô của kiểu xe (field()): có thì tìm đường nhanh nhất, không có thì đường ngắn nhất.
    */
-  findPath(x0: number, z0: number, x1: number, z1: number): number[] | null {
+  findPath(x0: number, z0: number, x1: number, z1: number, f?: SpeedField): number[] | null {
+    // chiều của bài toán: bài toán soi gương (−A → −B) luôn rơi vào chiều kia và xét 8 hướng theo thứ tự soi gương
+    const flip = canonPair(x0, z0, x1, z1) ? 1 : -1;
     let s = this.index(x0, z0);
     if (this.blockedIdx(s)) {
       const f = this.nearestFree(x0, z0, 4);
@@ -249,7 +329,15 @@ export class Grid {
       gz = f[1];
       t = this.index(gx, gz);
     }
-    if (s === t || this.los(x0, z0, gx, gz)) return [gx, gz];
+    if (s === t) return [gx, gz];
+    // Đi thẳng luôn nếu đường thẳng đi được và không băng qua ô chậm hơn hai đầu (và cỏ). Bản đồ có ô nhanh hơn cỏ
+    // (đường cái) thì vẫn tìm, vì vòng theo đường có thể nhanh hơn; tìm xong sẽ so với đi thẳng (dưới).
+    const straight = this.los(x0, z0, gx, gz);
+    if (straight) {
+      if (!f) return [gx, gz];
+      const need = Math.min(1, f.k[s], f.k[t]);
+      if (f.kMax <= 1 && this.minSpeedAlong(f, x0, z0, gx, gz) >= need) return [gx, gz];
+    }
 
     this.gen++;
     const gen = this.gen;
@@ -258,10 +346,13 @@ export class Grid {
     const R = this.rows;
     const tx = t % C;
     const tz = Math.floor(t / C);
+    // heuristic: khoảng cách 8 hướng ÷ hệ số nhanh nhất trên bản đồ, để không bao giờ ước lượng quá chi phí thật
+    const hk = f ? 1 / f.kMax : 1;
+    const K = f?.k;
     const h = (i: number): number => {
       const dx = Math.abs((i % C) - tx);
       const dz = Math.abs(Math.floor(i / C) - tz);
-      return dx + dz + (SQRT2 - 2) * Math.min(dx, dz);
+      return (dx + dz + (SQRT2 - 2) * Math.min(dx, dz)) * hk;
     };
     this.g[s] = 0;
     this.parent[s] = -1;
@@ -278,7 +369,9 @@ export class Grid {
       }
       const cx = cur % C;
       const cz = Math.floor(cur / C);
-      for (const [dx, dz, cost] of NEIGHBORS) {
+      for (const [ndx, ndz, cost] of NEIGHBORS) {
+        const dx = ndx * flip;
+        const dz = ndz * flip;
         const nx = cx + dx;
         const nz = cz + dz;
         if (nx < 0 || nz < 0 || nx >= C || nz >= R) continue;
@@ -286,7 +379,8 @@ export class Grid {
         if (this.blockedIdx(ni) || this.closedGen[ni] === gen) continue;
         // không cắt góc: đi chéo thì hai ô cạnh phải trống
         if (dx !== 0 && dz !== 0 && (this.blockedIdx(cz * C + nx) || this.blockedIdx(nz * C + cx))) continue;
-        const ng = this.g[cur] + cost;
+        // chính sách "nhanh nhất": thời gian đi vào ô = quãng đường ÷ hệ số tốc độ của ô
+        const ng = this.g[cur] + (K ? cost / K[ni] : cost);
         if (this.openGen[ni] === gen && ng >= this.g[ni]) continue;
         this.openGen[ni] = gen;
         this.g[ni] = ng;
@@ -305,6 +399,8 @@ export class Grid {
     pts[pts.length - 1] = gz;
 
     // Kéo thẳng: từ điểm hiện tại, nhảy tới điểm xa nhất còn nhìn thấy (trong cửa sổ 14 điểm).
+    // Có hệ số tốc độ thì đoạn nối tắt không được băng qua ô chậm hơn mọi ô mà đường gốc đã đi trong khoảng đó
+    // (không thì xe tự cắt ngang vào bùn mà A* vừa tránh, hoặc rời đường cái).
     const out: number[] = [];
     let ax = x0;
     let az = z0;
@@ -313,15 +409,32 @@ export class Grid {
     while (i < n) {
       let j = i;
       for (let k = Math.min(n - 1, i + 14); k > i; k--) {
-        if (this.los(ax, az, pts[k * 2], pts[k * 2 + 1])) {
-          j = k;
-          break;
+        if (!this.los(ax, az, pts[k * 2], pts[k * 2 + 1])) continue;
+        if (K) {
+          let spanMin = K[this.index(ax, az)];
+          for (let q = i; q <= k; q++) spanMin = Math.min(spanMin, K[cells[q + 1]]);
+          if (this.minSpeedAlong(f!, ax, az, pts[k * 2], pts[k * 2 + 1]) < spanMin) continue;
         }
+        j = k;
+        break;
       }
       ax = pts[j * 2];
       az = pts[j * 2 + 1];
       out.push(ax, az);
       i = j + 1;
+    }
+    // A* chỉ đi theo 8 hướng nên đường của nó thường dài hơn đường chim bay: đo thời gian thật của cả hai
+    // (cùng một cách lấy mẫu, tính từ chính điểm xuất phát) và đi thẳng nếu thẳng cũng nhanh bằng.
+    if (straight && f) {
+      let tPath = 0;
+      let px = x0;
+      let pz = z0;
+      for (let q = 0; q < out.length; q += 2) {
+        tPath += this.timeAlong(f, px, pz, out[q], out[q + 1]);
+        px = out[q];
+        pz = out[q + 1];
+      }
+      if (this.timeAlong(f, x0, z0, gx, gz) <= tPath + 1e-9) return [gx, gz];
     }
     return out;
   }

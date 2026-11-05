@@ -17,7 +17,7 @@ describe.each([...MAP_DEFS, ...DEV_MAP_DEFS].map((d) => [d.id]))("bản đồ %s
     expect(m.rows * CELL).toBeCloseTo(m.h, 9);
   });
 
-  it("đối xứng xoay 180°: căn cứ, mỏ, độ cao, chỗ đi được", () => {
+  it("đối xứng xoay 180°: căn cứ, mỏ, độ cao, chỗ đi được, loại địa hình", () => {
     const [a, b] = m.bases;
     expect(b[0]).toBeCloseTo(-a[0], 6);
     expect(b[1]).toBeCloseTo(-a[1], 6);
@@ -34,6 +34,7 @@ describe.each([...MAP_DEFS, ...DEV_MAP_DEFS].map((d) => [d.id]))("bản đồ %s
         const z = cz(r);
         expect(Math.abs(m.terrainHeight(x, z) - m.terrainHeight(-x, -z)), `độ cao (${x}, ${z})`).toBeLessThan(1e-9);
         expect(m.staticBlocked(x, z), `chỗ đi được (${x}, ${z})`).toBe(m.staticBlocked(-x, -z));
+        expect(m.terrainAt(x, z), `loại địa hình (${x}, ${z})`).toBe(m.terrainAt(-x, -z));
       }
   });
 
