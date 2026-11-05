@@ -4,6 +4,7 @@
  * được cập nhật tại chỗ — dựng lại nút liên tục sẽ làm hỏng cú chạm đang bấm dở trên điện thoại.
  */
 import { BUILDINGS, MVP_BUILDABLE, RES_NAME, RULES, SIDE_NAME, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
+import { TERRAIN } from "../sim/maps";
 import type { Building, Mine, Unit } from "../sim/types";
 import { sec, TICK_RATE } from "../sim/world";
 import type { Match } from "./match";
@@ -183,6 +184,19 @@ export class Hud {
     this.rows.innerHTML = html;
   }
 
+  /** Địa hình dưới xe mặt đất: tên loại + ảnh hưởng tốc độ (và nấp nếu là rừng). Đứng trên cỏ thì bỏ trống. */
+  private terrainNote(u: Unit): string {
+    if (u.air !== "none") return "";
+    const w = this.match.world;
+    const kind = w.grid.kindAt(u.x, u.z);
+    if (kind === "grass") return "";
+    const t = TERRAIN[kind];
+    const pct = Math.round((w.terrainFactor(u) - 1) * 100);
+    const speed = pct === 0 ? "không bị chậm" : `${pct > 0 ? "+" : "−"}${Math.abs(pct)}% tốc độ`;
+    const cover = t.cover > 0 ? ` · nấp −${Math.round(t.cover * 100)}% sát thương` : "";
+    return ` · ${t.name}: ${speed}${cover}`;
+  }
+
   private hpBar(hp: number, max: number): string {
     const k = Math.max(0, Math.min(1, hp / max));
     const col = k > 0.6 ? "var(--good)" : k > 0.3 ? "var(--accent)" : "var(--bad)";
@@ -216,8 +230,8 @@ export class Hud {
             extra = `<small>Dầu ${Math.round(single.fuel)}/${sp.fuel.tank}L · ${state}</small>`;
           } else if (single.kind === "hauler") {
             const st = { idle: single.manual ? "Chờ lệnh" : "Tìm mỏ", toMine: "Ra mỏ", mining: "Đang đào", toDock: "Chở về", unloading: "Dỡ hàng" }[single.hState];
-            extra = `<small>${st}${single.cargo > 0 ? ` · ${Math.round(single.cargo)} ${RES_NAME[single.cargoRes]}` : ""}</small>`;
-          } else extra = `<small>${Math.ceil(single.hp)}/${single.maxHp}</small>`;
+            extra = `<small>${st}${single.cargo > 0 ? ` · ${Math.round(single.cargo)} ${RES_NAME[single.cargoRes]}` : ""}${this.terrainNote(single)}</small>`;
+          } else extra = `<small>${Math.ceil(single.hp)}/${single.maxHp}${this.terrainNote(single)}</small>`;
         }
         return `<b>${esc(single ? UNITS[single.kind].name : names)}</b>${this.hpBar(hp, max)}${extra}`;
       }

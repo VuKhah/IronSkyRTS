@@ -36,6 +36,7 @@ const HELP = `
   <table>
     <tr><td>Mục tiêu</td><td>Thắng khi: <b>diệt Xe Tư Lệnh địch</b>, hoặc <b>phá hết công trình địch</b>, hoặc <b>giữ trọn một loại mỏ</b> (4/4 Sắt hoặc 5/5 Dầu) liên tục 30 giây.</td></tr>
     <tr><td>Kinh tế</td><td>Đưa quân đứng cạnh mỏ để chiếm. Xe Vận Tải tự đào và chở Sắt / Dầu về Tổng Hành Dinh. Sắt để xây và đúc quân, Dầu để nạp cho máy bay.</td></tr>
+    <tr><td>Địa hình</td><td>Xe <b>bánh</b> (Tư Lệnh, Lynx, Vận Tải) nhanh trên <b>đường</b>, sa lầy trong <b>bùn</b>; xe <b>xích</b> (Titan, SkyGuard) đều hơn trên mọi loại đất. Lên dốc chậm. Xe tự chọn đường nhanh nhất. <b>Rừng</b> che tầm nhìn: đứng trong nhìn ra được, đứng ngoài không nhìn vào được; nấp trong rừng giảm 20% sát thương đạn thẳng (đạn Nổ thì không). Đứng trên cao nhìn xa, bắn xa hơn.</td></tr>
     <tr><td>Không quân</td><td>Falcon rất mạnh nhưng chỉ bay ~33 giây. Hết dầu tự về Sân Đáp nạp (trừ vào kho Dầu). Kho Dầu cạn thì máy bay nằm sân.</td></tr>
     <tr><td>Chạm</td><td>Chạm quân để chọn · chạm đất / địch / mỏ để ra lệnh · <b>giữ rồi kéo</b> để chọn nhiều · chạm đúp để chọn cả loại · một ngón kéo để cuộn · hai ngón để thu phóng và xoay.</td></tr>
     <tr><td>Chuột</td><td>Trái: chọn (kéo để quét) · Phải: ra lệnh (kéo để xoay camera) · Giữa kéo / mũi tên / sát mép: cuộn · Lăn: thu phóng · Q/E: xoay.</td></tr>

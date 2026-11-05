@@ -4,7 +4,10 @@
  * Chạm / nhấp để đưa camera tới đó; chuột phải để ra lệnh di chuyển cho quân đang chọn.
  */
 import { BUILDINGS, type Side } from "../sim/content";
-import type { GameMap } from "../sim/maps";
+import { TERRAIN, type GameMap, type TerrainKind } from "../sim/maps";
+
+/** Loại địa hình do bản đồ tô được hiện màu riêng trên minimap (độ đậm). */
+const TINT: Partial<Record<TerrainKind, number>> = { road: 0.85, sand: 0.8, mud: 0.85, snow: 0.9, forest: 0.8 };
 import type { World } from "../sim/world";
 
 const SIDE_COLOR = ["#3ea8ff", "#ff4d4d"];
@@ -46,6 +49,12 @@ export class Minimap {
         if (h > 1.5) c = [104, 120, 70];
         const river = map.nearRiver(x, z);
         if (river && river.dist < river.river.half + 1 && h < 0) c = h < -1 ? [44, 98, 140] : [140, 128, 100];
+        const kind = map.terrainAt(x, z);
+        const k = TINT[kind];
+        if (k) {
+          const t = TERRAIN[kind].color;
+          c = [c[0] * (1 - k) + ((t >> 16) & 255) * k, c[1] * (1 - k) + ((t >> 8) & 255) * k, c[2] * (1 - k) + (t & 255) * k];
+        }
         if (map.inset(x, z) < 5 || h > 3.8) c = [70, 66, 60];
         const i = (pz * W + px) * 4;
         img.data[i] = c[0];

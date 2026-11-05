@@ -6,7 +6,7 @@
 import * as THREE from "three";
 import type { Side } from "../sim/content";
 import { Rng } from "../sim/fmath";
-import type { GameMap } from "../sim/maps";
+import { TERRAIN, type GameMap, type TerrainKind } from "../sim/maps";
 import type { World } from "../sim/world";
 
 /** Địa hình vẽ rộng hơn vùng chơi chừng này (m) mỗi bên, để mép bản đồ không lộ khoảng trống. */
@@ -14,6 +14,8 @@ const SKIRT = 20;
 /** Số mắt lưới địa hình trên mỗi mét. */
 const SEG_PER_M = 1;
 const WATER_Y = -0.55;
+/** Các loại địa hình do bản đồ tô (vùng `regions`) được phủ màu riêng lên mặt đất, minimap; độ đậm của lớp phủ. */
+const TINT: Partial<Record<TerrainKind, number>> = { road: 0.9, sand: 0.85, mud: 0.9, snow: 0.95, forest: 0.75 };
 
 export class BattleScene {
   readonly renderer: THREE.WebGLRenderer;
@@ -116,6 +118,7 @@ export class BattleScene {
     const bed = new THREE.Color(0x4e5a4a);
     const rock = new THREE.Color(0x7b756c);
     const cliff = new THREE.Color(0x6a6158);
+    const tint = this.regionTint(geo);
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const z = pos.getZ(i);
@@ -130,6 +133,13 @@ export class BattleScene {
       if (h > 1.8) col.lerp(dry, Math.min(1, (h - 1.8) / 3));
       if (river && river.dist < river.river.bank + 1.5 && h < 0.4) col.copy(river.crossing?.kind === "ford" ? gravel : sand);
       if (h < WATER_Y - 0.2) col.copy(bed);
+      // lớp màu loại địa hình (đường, bùn, rừng…), mép đã làm mờ
+      const tw = tint.w[i];
+      if (tw > 0) {
+        col.r = col.r * (1 - tw) + tint.rgb[i * 3];
+        col.g = col.g * (1 - tw) + tint.rgb[i * 3 + 1];
+        col.b = col.b * (1 - tw) + tint.rgb[i * 3 + 2];
+      }
       for (const r of map.rocks) {
         const d = Math.hypot(x - r.x, z - r.z);
         if (d < r.r + 1.2) col.copy(rock).lerp(cliff, noise);
@@ -142,6 +152,65 @@ export class BattleScene {
     geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     geo.computeVertexNormals();
     return geo;
+  }
+
+  /**
+   * Lớp màu của các loại địa hình do bản đồ tô, theo từng đỉnh của lưới mặt đất: độ đậm `w` và màu đã nhân độ đậm `rgb`.
+   * Làm mờ 3×3 để mép vùng mềm, không thành bậc thang theo ô.
+   */
+  private regionTint(geo: THREE.PlaneGeometry): { w: Float32Array; rgb: Float32Array } {
+    const map = this.map;
+    const pos = geo.getAttribute("position");
+    const nx = geo.parameters.widthSegments + 1;
+    const nz = geo.parameters.heightSegments + 1;
+    const w0 = new Float32Array(pos.count);
+    const c0 = new Float32Array(pos.count * 3);
+    const col = new THREE.Color();
+    let any = false;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const z = pos.getZ(i);
+      const kind = map.terrainAt(x, z);
+      const k = TINT[kind];
+      if (!k) continue;
+      any = true;
+      // màu loại địa hình, gợn sáng tối nhẹ cho đỡ phẳng
+      const n = (Math.sin(x * 0.53 + z * 0.19) * Math.sin(z * 0.41 - x * 0.23) + 1) * 0.5;
+      col.setHex(TERRAIN[kind].color).multiplyScalar(0.88 + n * 0.22);
+      w0[i] = k;
+      c0[i * 3] = col.r * k;
+      c0[i * 3 + 1] = col.g * k;
+      c0[i * 3 + 2] = col.b * k;
+    }
+    if (!any) return { w: w0, rgb: c0 };
+    const w = new Float32Array(pos.count);
+    const rgb = new Float32Array(pos.count * 3);
+    for (let iz = 0; iz < nz; iz++)
+      for (let ix = 0; ix < nx; ix++) {
+        let sw = 0;
+        let sr = 0;
+        let sg = 0;
+        let sb = 0;
+        let n = 0;
+        for (let dz = -1; dz <= 1; dz++)
+          for (let dx = -1; dx <= 1; dx++) {
+            const jx = ix + dx;
+            const jz = iz + dz;
+            if (jx < 0 || jz < 0 || jx >= nx || jz >= nz) continue;
+            const j = jz * nx + jx;
+            sw += w0[j];
+            sr += c0[j * 3];
+            sg += c0[j * 3 + 1];
+            sb += c0[j * 3 + 2];
+            n++;
+          }
+        const i = iz * nx + ix;
+        w[i] = sw / n;
+        rgb[i * 3] = sr / n;
+        rgb[i * 3 + 1] = sg / n;
+        rgb[i * 3 + 2] = sb / n;
+      }
+    return { w, rgb };
   }
 
   private addBridges(): void {
@@ -223,6 +292,15 @@ export class BattleScene {
       if (!ok || !clear(x, z)) continue;
       spots.push({ x, z, s: 0.8 + rng.next() * 0.7 });
     }
+    // rừng do bản đồ tô: cây dày theo lưới có xô lệch, cây thấp hơn cây viền để còn thấy quân bên dưới
+    const forestStep = 3.6;
+    for (let z = -map.halfH; z < map.halfH; z += forestStep)
+      for (let x = -map.halfW; x < map.halfW; x += forestStep) {
+        const px = x + rng.next() * forestStep;
+        const pz = z + rng.next() * forestStep;
+        if (map.terrainAt(px, pz) !== "forest") continue;
+        spots.push({ x: px, z: pz, s: 0.55 + rng.next() * 0.3 });
+      }
     const foliage = new THREE.InstancedMesh(new THREE.ConeGeometry(1.5, 4.2, 7), new THREE.MeshStandardMaterial({ color: 0x3b5e2b, roughness: 0.9, flatShading: true }), spots.length);
     const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.2, 0.28, 1.4, 5), new THREE.MeshStandardMaterial({ color: 0x5a4330, roughness: 0.9 }), spots.length);
     const m = new THREE.Matrix4();

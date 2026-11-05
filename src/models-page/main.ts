@@ -3,7 +3,7 @@
  * Mọi con số đọc từ src/sim/content.ts, cùng nguồn với trận đấu.
  */
 import {
-  ARMOR_NAME, BUILDINGS, DMG_NAME, PLANNED_BUILDINGS, PLANNED_UNITS, UNITS, getSpec, targetsOf,
+  ARMOR_NAME, BUILDINGS, DMG_NAME, MOBILITY_NAME, PLANNED_BUILDINGS, PLANNED_UNITS, UNITS, getSpec, targetsOf,
   type BuildingSpec, type Cost, type EntityId, type EntitySpec, type Faction, type UnitSpec, type WeaponSpec
 } from "../sim/content";
 import { buildModel, disposeRig } from "../render/models";
@@ -109,6 +109,8 @@ function unitSheet(s: UnitSpec): string {
     `<span class="tag key">${s.code}</span>`,
     `<span class="tag key">Phím [${s.hotkey}]</span>`,
     `<span class="tag">${s.domain === "air" ? "Trên không" : "Mặt đất"}</span>`,
+    s.mobility ? `<span class="tag">Xe ${MOBILITY_NAME[s.mobility].toLowerCase()}</span>` : "",
+    s.slowResist ? `<span class="tag">Kháng làm chậm</span>` : "",
     `<span class="tag">${TARGET_TEXT[targetsOf(w)]}</span>`,
     s.id === "commander" ? `<span class="tag warn">Mất xe là thua</span>` : ""
   ].join("");
