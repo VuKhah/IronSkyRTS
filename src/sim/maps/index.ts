@@ -5,10 +5,11 @@
 import { GameMap } from "./game-map";
 import { IRON_VALLEY } from "./iron-valley";
 import { PROVING_GROUND } from "./proving-ground";
+import { TWO_CROSSINGS } from "./two-crossings";
 import type { MapDef } from "./types";
 
 /** Bản đồ chơi được (hiện ở menu chọn bản đồ). */
-export const MAP_DEFS: readonly MapDef[] = [IRON_VALLEY];
+export const MAP_DEFS: readonly MapDef[] = [IRON_VALLEY, TWO_CROSSINGS];
 /** Bản đồ kiểm thử: không hiện ở menu, mở bằng `?map=<mã>`, vẫn được maps.test.ts kiểm như mọi bản đồ. */
 export const DEV_MAP_DEFS: readonly MapDef[] = [PROVING_GROUND];
 export const DEFAULT_MAP_ID = IRON_VALLEY.id;
@@ -29,4 +30,4 @@ export function getMap(id: string = DEFAULT_MAP_ID): GameMap {
 
 export { CELL, GameMap } from "./game-map";
 export { DEFAULT_TERRAIN, TERRAIN, TERRAIN_KINDS, terrainSpeed, type TerrainKind, type TerrainSpec } from "./terrain";
-export type { Blob, CrossingDef, MapDef, MineDef, RegionDef, RiverDef, Vec2 } from "./types";
+export type { Blob, CrossingDef, MapDef, MineDef, PlateauDef, RegionDef, RiverDef, Vec2 } from "./types";

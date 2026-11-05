@@ -6,7 +6,7 @@
  * Đừng thêm Math.sin/cos/atan2/hypot vào đây.
  */
 import { DEFAULT_TERRAIN, type TerrainKind } from "./terrain";
-import type { Blob, CrossingDef, MapDef, MineDef, RegionDef, RiverDef, Vec2 } from "./types";
+import type { Blob, CrossingDef, MapDef, MineDef, PlateauDef, RegionDef, RiverDef, Vec2 } from "./types";
 
 /** Cạnh ô lưới (m): tìm đường, sương mù, độ cao trong sim đều theo lưới này. */
 export const CELL = 2;
@@ -69,6 +69,7 @@ export class GameMap {
   readonly bases: readonly Vec2[];
   readonly mines: readonly MineDef[];
   readonly hills: readonly Blob[];
+  readonly plateaus: readonly PlateauDef[];
   readonly rocks: readonly Blob[];
   readonly regions: readonly RegionDef[];
   private readonly rivers: River[];
@@ -90,6 +91,7 @@ export class GameMap {
     this.bases = full.bases;
     this.mines = full.mines;
     this.hills = full.hills;
+    this.plateaus = full.plateaus ?? [];
     this.rocks = full.rocks;
     this.regions = full.regions ?? [];
     this.rivers = full.rivers.map((r) => {
@@ -114,24 +116,7 @@ export class GameMap {
   inset(x: number, z: number): number {
     const b = this.def.bounds;
     if (!b) return Math.min(this.halfW - Math.abs(x), this.halfH - Math.abs(z));
-    let inside = false;
-    let best = Infinity;
-    for (let i = 0, j = b.length - 1; i < b.length; j = i++) {
-      const [xi, zi] = b[i];
-      const [xj, zj] = b[j];
-      if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
-      const ex = xj - xi;
-      const ez = zj - zi;
-      const l2 = ex * ex + ez * ez;
-      let t = l2 > 0 ? ((x - xi) * ex + (z - zi) * ez) / l2 : 0;
-      t = t < 0 ? 0 : t > 1 ? 1 : t;
-      const px = xi + ex * t - x;
-      const pz = zi + ez * t - z;
-      const d2 = px * px + pz * pz;
-      if (d2 < best) best = d2;
-    }
-    const d = Math.sqrt(best);
-    return inside ? d : -d;
+    return polyInset(b, x, z);
   }
 
   /** Hình chữ nhật (x ± hw, z ± hd) có nằm gọn trong vùng chơi, cách vách núi ít nhất `margin` m không. */
@@ -195,6 +180,20 @@ export class GameMap {
     return best;
   }
 
+  /** Mép nước gần nhất trên mọi dòng sông: khoảng cách có dấu tới mép nước (âm = dưới nước) và bề rộng bờ dốc của dòng đó. */
+  waterEdge(x: number, z: number): { d: number; bank: number } {
+    let d = Infinity;
+    let bank = 0;
+    for (const r of this.rivers) {
+      const e = this.riverHit(r, x, z).dist - r.def.half;
+      if (e < d) {
+        d = e;
+        bank = r.def.bank - r.def.half;
+      }
+    }
+    return { d, bank };
+  }
+
   /** Tất cả lối qua sông (cho phần vẽ cầu). */
   crossings(): { def: CrossingDef; river: RiverDef; dirX: number; dirZ: number }[] {
     const out: { def: CrossingDef; river: RiverDef; dirX: number; dirZ: number }[] = [];
@@ -227,9 +226,13 @@ export class GameMap {
     return false;
   }
 
-  /** Độ cao địa hình (m): đồi, đá, lòng sông, vách núi quanh rìa. */
+  /** Độ cao địa hình (m): đồi, cao nguyên, đá, lòng sông, vách núi quanh rìa. */
   terrainHeight(x: number, z: number): number {
     let h = 0;
+    for (const p of this.plateaus) {
+      const d = polyInset(p.poly, x, z);
+      if (d > -p.edge / 2) h += p.h * smooth01(d / p.edge + 0.5);
+    }
     for (const b of this.hills) {
       const dx = x - b.x;
       const dz = z - b.z;
@@ -366,10 +369,33 @@ function mirrorDef(def: MapDef): MapDef {
     bases: def.bases.flatMap((b) => [b, flip(b)]),
     mines: withTwins(def.mines, (m) => ({ ...m, x: -m.x, z: -m.z, owner: swap(m.owner) })),
     hills: withTwins(def.hills, blob),
+    plateaus: (def.plateaus ?? []).flatMap((p) => [p, { ...p, poly: p.poly.map(flip) }]),
     rocks: withTwins(def.rocks, blob),
     rivers,
     regions
   };
+}
+
+/** Khoảng cách có dấu (m) từ điểm tới viền đa giác: dương ở trong, âm ở ngoài. */
+function polyInset(b: readonly Vec2[], x: number, z: number): number {
+  let inside = false;
+  let best = Infinity;
+  for (let i = 0, j = b.length - 1; i < b.length; j = i++) {
+    const [xi, zi] = b[i];
+    const [xj, zj] = b[j];
+    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+    const ex = xj - xi;
+    const ez = zj - zi;
+    const l2 = ex * ex + ez * ez;
+    let t = l2 > 0 ? ((x - xi) * ex + (z - zi) * ez) / l2 : 0;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const px = xi + ex * t - x;
+    const pz = zi + ez * t - z;
+    const d2 = px * px + pz * pz;
+    if (d2 < best) best = d2;
+  }
+  const d = Math.sqrt(best);
+  return inside ? d : -d;
 }
 
 function pointInPoly(p: readonly Vec2[], x: number, z: number): boolean {

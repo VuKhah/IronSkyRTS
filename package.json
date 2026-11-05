@@ -10,7 +10,8 @@
     "test": "vitest run",
     "simulate": "tsx src/tools/simulate.ts",
     "balance": "tsx src/tools/balance.ts",
-    "perf": "tsx src/tools/perf.ts"
+    "perf": "tsx src/tools/perf.ts",
+    "paint-map": "tsx src/tools/paint-map.ts"
   },
   "author": "",
   "license": "UNLICENSED",

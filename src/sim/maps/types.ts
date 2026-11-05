@@ -18,6 +18,16 @@ export interface Blob {
   h: number;
 }
 
+/**
+ * Cao nguyên / đồi cao hình bất kỳ: đa giác cao `h` mét, sườn thoải rộng `edge` mét nằm vắt qua đường viền
+ * (viền là giữa sườn). Chồng nhiều cao nguyên lên nhau để làm đồi nhiều bậc.
+ */
+export interface PlateauDef {
+  poly: readonly Vec2[];
+  h: number;
+  edge: number;
+}
+
 /** Lối qua sông, đặt bằng một điểm nằm trên dòng sông. `half`: nửa bề rộng lối qua đo dọc theo sông (m). */
 export interface CrossingDef {
   x: number;
@@ -66,7 +76,7 @@ export interface MapDef {
   bounds?: readonly Vec2[];
   /**
    * Bộ vẽ tự đối xứng: chỉ khai báo MỘT NỬA (phía Lam), GameMap tự thêm bản xoay 180° quanh tâm, (x, z) → (-x, -z),
-   * cho căn cứ, mỏ (đổi chủ Lam ↔ Đỏ), đồi, đá, vùng địa hình và lối qua sông. Thứ nằm đúng tâm không bị nhân đôi.
+   * cho căn cứ, mỏ (đổi chủ Lam ↔ Đỏ), đồi, cao nguyên, đá, vùng địa hình và lối qua sông. Thứ nằm đúng tâm không bị nhân đôi.
    * Sông: khai báo đủ dòng chảy; sông chảy qua tâm và tự đối xứng thì chỉ lối qua được nhân đôi, sông khác được nhân đôi cả dòng.
    * Bản đồ 1 đấu 1 nên bật cờ này: công bằng có sẵn (maps.test.ts vẫn kiểm).
    */
@@ -75,6 +85,8 @@ export interface MapDef {
   bases: readonly Vec2[];
   mines: readonly MineDef[];
   hills: readonly Blob[];
+  /** Cao nguyên / đồi cao nhiều bậc (đa giác). */
+  plateaus?: readonly PlateauDef[];
   /** Mỏm đá: chặn đường, che tầm nhìn. */
   rocks: readonly Blob[];
   rivers: readonly RiverDef[];
