@@ -104,6 +104,10 @@ button { font: inherit; color: inherit; }
 .btn.danger { border-color: rgba(255, 107, 94, 0.5); }
 .btn.wide { min-width: 84px; }
 
+/* ------------------------------------------------------------ huy chương sau trận */
+.medals { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 4px 0 2px; }
+.medal { background: rgba(255, 211, 77, 0.14); border: 1px solid rgba(255, 211, 77, 0.55); color: #ffe2b3; border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 700; cursor: help; }
+
 /* ------------------------------------------------------------ kỹ năng Tư lệnh (cột bên phải) */
 .abilities { position: absolute; right: 8px; top: 56px; width: 138px; display: flex; flex-direction: column; gap: 6px; pointer-events: auto; }
 .abilities .cp { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 5px 8px; font-size: 12px; font-weight: 700; color: #ffe2b3; }
@@ -141,7 +145,7 @@ a.menu-btn { color: inherit; text-decoration: none; }
 .card .menu-btn small { color: var(--dim); font-weight: 500; font-size: 13px; }
 .card .menu-btn.primary { border-color: var(--accent); background: rgba(255, 181, 71, 0.14); }
 .card .menu-btn:hover { border-color: var(--accent); }
-.card .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.card .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
 .card .stats div { background: rgba(255, 255, 255, 0.04); border-radius: 8px; padding: 8px; }
 .card .stats b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
 .card .stats span { font-size: 11px; color: var(--dim); }
@@ -152,6 +156,7 @@ a.menu-btn { color: inherit; text-decoration: none; }
 .lose { color: var(--bad); }
 
 @media (max-width: 760px) {
+  .card .stats { grid-template-columns: repeat(3, 1fr); }
   .abilities { top: 50px; width: 116px; }
   .abilities button { font-size: 12px; padding: 5px 7px; }
   body { font-size: 13px; }

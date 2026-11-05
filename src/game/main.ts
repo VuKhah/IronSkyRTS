@@ -5,7 +5,7 @@
  */
 import * as THREE from "three";
 import { BUILDINGS, FACTION_OF, RES_NAME, RULES, SIDE_NAME, UNITS, type EntityId, type Side, type UnitId } from "../sim/content";
-import type { SimEvent } from "../sim/types";
+import type { SideStats, SimEvent } from "../sim/types";
 import { TICK_RATE } from "../sim/world";
 import { buildModel, disposeRig } from "../render/models";
 import { Thumbnailer } from "../models-page/stage";
@@ -83,6 +83,21 @@ function makeThumbs(ids: readonly EntityId[], side: Side): Map<string, string> {
     // không có WebGL thứ hai: nút sẽ không có ảnh, vẫn chơi được
   }
   return out;
+}
+
+/** Huy chương sau trận: thành tích đáng nhớ (cho người chơi lý do chơi lại theo cách khác). */
+const MEDALS: { icon: string; name: string; why: string; got: (s: SideStats, won: boolean, secs: number) => boolean }[] = [
+  { icon: "🎖️", name: "Lão tướng", why: "Có quân lên cựu binh cấp 3", got: (s) => s.topRank >= 3 },
+  { icon: "💥", name: "Vua pháo binh", why: "Gọi pháo kích từ 3 lần", got: (s) => s.barrages >= 3 },
+  { icon: "🔧", name: "Thợ trục vớt", why: "Nhặt từ 300 Sắt trong xác quân", got: (s) => s.salvaged >= 300 },
+  { icon: "📡", name: "Người giữ cầu", why: "Giữ Đài Liên Lạc tổng cộng từ 3 phút", got: (s) => s.uplinkTime >= 180 },
+  { icon: "⚡", name: "Thần tốc", why: "Thắng trong vòng 8 phút", got: (_s, won, secs) => won && secs < 480 },
+  { icon: "🛡️", name: "Thép", why: "Thắng mà chỉ mất tối đa 3 quân", got: (s, won) => won && s.unitsLost <= 3 }
+];
+function medalsHtml(s: SideStats, won: boolean, secs: number): string {
+  const got = MEDALS.filter((m) => m.got(s, won, secs));
+  if (!got.length) return "";
+  return `<div class="medals">${got.map((m) => `<span class="medal" title="${m.why}">${m.icon} ${m.name}</span>`).join("")}</div>`;
 }
 
 const REASON: Record<string, string> = {
@@ -257,6 +272,14 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
   let lastReady = 0;
   let ended = false;
 
+  let endScheduled = false;
+  /** Hẹn hiện màn kết thúc (một lần): nhạc nhỏ dần, 1,2 giây sau hiện bảng kết quả. */
+  const scheduleEnd = (): void => {
+    if (endScheduled) return;
+    endScheduled = true;
+    music.stop();
+    window.setTimeout(showEnd, 1200);
+  };
   const showEnd = (): void => {
     if (ended) return;
     ended = true;
@@ -268,7 +291,8 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
     sfx.ui(draw || me === null ? "win" : won ? "win" : "lose");
     const s = world.sides;
     const secs = Math.floor(world.tick / TICK_RATE);
-    const p = me ?? 0;
+    // người xem AI đấu AI: số liệu của phe thắng (hòa thì phe Lam)
+    const p: Side = me ?? (w === 0 || w === 1 ? w : 0);
     screenEl = document.createElement("div");
     screenEl.className = "screen";
     screenEl.innerHTML = `<div class="card">
@@ -281,7 +305,12 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
         <div><b>${s[p].stats.unitsLost}</b><span>Quân mất</span></div>
         <div><b>${Math.round(s[p].stats.ironMined)}</b><span>Sắt đã đào</span></div>
         <div><b>${Math.round(s[p].stats.oilMined)}</b><span>Dầu đã đào</span></div>
+        <div><b>${Math.round(s[p].stats.salvaged)}</b><span>Sắt trục vớt</span></div>
+        <div><b>${s[p].stats.promotions}</b><span>Lần lên cựu binh</span></div>
+        <div><b>${s[p].stats.barrages}</b><span>Lần pháo kích</span></div>
+        <div><b>${Math.floor(s[p].stats.uplinkTime / 60)}:${String(Math.floor(s[p].stats.uplinkTime % 60)).padStart(2, "0")}</b><span>Giữ Đài Liên Lạc</span></div>
       </div>
+      ${medalsHtml(s[p].stats, me !== null && won, secs)}
       <button class="menu-btn primary" data-a="again">${me === null ? "Xem trận khác" : "Chơi lại"}</button>
       <button class="menu-btn" data-a="watch">${me === null ? "Tự chơi với AI" : "Xem AI đấu AI"}</button>
       <button class="menu-btn" data-a="close">Xem lại chiến trường</button>
@@ -394,8 +423,7 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
           }
           break;
         case "end":
-          music.stop();
-          window.setTimeout(showEnd, 1200);
+          scheduleEnd();
           break;
         default:
           break;
@@ -468,6 +496,8 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
     time += dt;
     tension *= Math.exp(-dt / 7);
     music.update(dt, tension);
+    // hết trận mà sự kiện "end" đã lỡ (ví dụ rơi vào lúc tua ?skip): vẫn hiện màn kết thúc theo trạng thái
+    if (world.winner !== -1) scheduleEnd();
     me = match.player;
     viewer = sandbox ? sandbox.viewer() : me;
     ctrl.alpha = match.advance(dt);

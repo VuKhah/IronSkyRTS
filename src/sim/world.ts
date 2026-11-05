@@ -155,7 +155,7 @@ function newSide(cells: number): SideState {
     batteryFlow: 0,
     oilBurn: 0,
     alerts: { commander: -1000, base: -1000, hauler: -1000, lowfuel: -1000, nooil: -1000, mineLost: -1000, powerShort: -1000, powerForecast: -1000, oilLow: -1000, batteryLow: -1000, uplinkLost: -1000 },
-    stats: { unitsBuilt: 0, unitsLost: 0, kills: 0, ironMined: 0, oilMined: 0, buildingsBuilt: 0, damageDealt: 0, salvaged: 0 }
+    stats: { unitsBuilt: 0, unitsLost: 0, kills: 0, ironMined: 0, oilMined: 0, buildingsBuilt: 0, damageDealt: 0, salvaged: 0, barrages: 0, promotions: 0, topRank: 0, uplinkTime: 0 }
   };
 }
 
@@ -2197,6 +2197,7 @@ export class World {
       const surplus = Math.min(A.cpSurplusCap, Math.max(0, st.powerCap - st.powerUse));
       let uplinks = 0;
       for (const up of this.uplinks) if (up.owner === s) uplinks++;
+      st.stats.uplinkTime += uplinks * DT;
       st.cp = Math.min(A.cpMax, st.cp + (A.cpPerSec + surplus * A.cpPerSurplusMw + uplinks * RULES.uplink.cpPerSec) * DT);
     }
   }
@@ -2215,6 +2216,7 @@ export class World {
     if (this.barrageError(side, x, z)) return;
     const B = RULES.abilities.barrage;
     this.sides[side].cp -= B.cost;
+    this.sides[side].stats.barrages++;
     const delay = sec(B.delay);
     this.strikes.push({ side, x, z, next: this.tick + delay, left: B.shells, interval: (B.duration * TICK_RATE) / B.shells });
     this.events.push({ t: "barrage", side, x, z, r: B.radius, ticks: delay });
@@ -2285,6 +2287,9 @@ export class World {
     // sai số nhỏ: kinh nghiệm cộng từ nhiều phần lẻ (hạ trọn một xe có thể ra 149,99999999 thay vì 150)
     while (rank < V.ranks.length && u.xp >= V.ranks[rank] * own - 1e-6) rank++;
     if (rank > u.rank) {
+      const st = this.sides[u.side].stats;
+      st.promotions += rank - u.rank;
+      st.topRank = Math.max(st.topRank, rank);
       u.rank = rank;
       this.events.push({ t: "rank", id: u.id, kind: u.kind, side: u.side, rank, x: u.x, z: u.z });
     }

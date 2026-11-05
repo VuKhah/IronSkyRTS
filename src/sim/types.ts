@@ -263,6 +263,11 @@ export interface SideStats {
   damageDealt: number;
   /** Sắt nhặt được từ xác quân. */
   salvaged: number;
+  /** Số lần gọi pháo kích; số lần quân lên cấp cựu binh, cấp cao nhất đạt được; số giây giữ Đài Liên Lạc (cộng mọi đài). */
+  barrages: number;
+  promotions: number;
+  topRank: number;
+  uplinkTime: number;
 }
 
 /** Một đợt pháo kích đang diễn ra. */
