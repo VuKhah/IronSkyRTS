@@ -225,3 +225,88 @@ describe("B3b: tìm đường nhanh nhất theo địa hình", () => {
     expect(p).toEqual([40, -60]);
   });
 });
+
+/** Bản đồ thử có một khối rừng giữa (x −10…10, z −20…20) và một gốc rừng nhỏ đúng một ô ở (41, 41). */
+const WOODS: MapDef = {
+  id: "test-woods",
+  name: "Thử: rừng",
+  blurb: "",
+  size: { w: 160, h: 160 },
+  bases: [
+    [-70, 70],
+    [70, -70]
+  ],
+  mines: [],
+  hills: [],
+  rocks: [],
+  rivers: [],
+  regions: [
+    {
+      kind: "forest",
+      poly: [
+        [-10, -20],
+        [10, -20],
+        [10, 20],
+        [-10, 20]
+      ]
+    },
+    { kind: "forest", circle: { x: 41, z: 41, r: 1.5 } }
+  ]
+};
+
+describe("B3c: rừng che tầm nhìn, nấp được", () => {
+  it("đứng ngoài nhìn được bìa rừng nhưng không nhìn sâu vào trong, cũng không nhìn xuyên qua rừng", () => {
+    const w = world(WOODS);
+    spawn(w, "lynx", -21, 0); // tầm nhìn 28 m
+    w.step([]);
+    expect(w.grid.kindAt(-9, 0)).toBe("forest");
+    expect(w.cellVisible(0, -9, 0), "bìa rừng").toBe(true);
+    expect(w.cellVisible(0, -5, 0), "sâu trong rừng").toBe(false);
+    expect(w.cellVisible(0, -27, 0), "đồng trống phía sau lưng").toBe(true);
+  });
+
+  it("đứng trong rừng nhìn ra được (và thấy cả khu rừng mình đang đứng trong tầm)", () => {
+    const w = world(WOODS);
+    spawn(w, "lynx", -5, 0);
+    w.step([]);
+    expect(w.cellVisible(0, -19, 0), "đồng trống bên ngoài").toBe(true);
+    expect(w.cellVisible(0, 5, 0), "trong cùng khu rừng").toBe(true);
+  });
+
+  it("đứng trong rừng nhìn gần hơn (×0,8)", () => {
+    const sight = UNITS.lynx.sight;
+    const far = Math.round(sight * 0.9);
+    const a = world(WOODS);
+    spawn(a, "lynx", -41, -41); // đồng trống
+    a.step([]);
+    expect(a.cellVisible(0, -41 + far, -41)).toBe(true);
+    const b = world(WOODS);
+    spawn(b, "lynx", 41, 41); // gốc rừng nhỏ
+    b.step([]);
+    expect(b.grid.kindAt(41, 41)).toBe("forest");
+    expect(TERRAIN.forest.sight * sight).toBeLessThan(far);
+    expect(b.cellVisible(0, 41 - far, 41)).toBe(false);
+  });
+
+  /** Sát thương phát bắn đầu tiên của `shooter` vào một Xe Vận Tải đứng tại (x, z). */
+  function firstHit(shooter: UnitId, x: number, z: number): number {
+    const w = world(WOODS);
+    w.step([{ side: 1, order: { t: "sbHold", side: 1, on: true } }]);
+    const target = spawn(w, "hauler", x, z, 1);
+    spawn(w, shooter, x - 10, z);
+    for (let i = 0; i < sec(10); i++) {
+      w.step([]);
+      if (target.hp < target.maxHp) return target.maxHp - target.hp;
+    }
+    return 0;
+  }
+
+  it("nấp trong rừng giảm sát thương đạn bắn thẳng; đạn Nổ thì không", () => {
+    const open = firstHit("lynx", -41, -41);
+    const woods = firstHit("lynx", 41, 41);
+    expect(open).toBeGreaterThan(0);
+    expect(woods / open).toBeCloseTo(1 - TERRAIN.forest.cover * RULES.terrain.coverBy.normal, 6);
+    expect(UNITS.titan.weapon!.dmgType).toBe("he");
+    expect(firstHit("titan", 41, 41)).toBeCloseTo(firstHit("titan", -41, -41), 6);
+  });
+});

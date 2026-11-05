@@ -10,7 +10,7 @@
 import { BUILDINGS, RULES, UNITS, type BuildingId, type Res, type Side, type UnitId, type UnitSpec, type WeaponSpec, type WeaponVisual } from "./content";
 import { clamp, dcos, DEG, dist2, dsin, Rng, turnStep, turnToward, type TurnStep } from "./fmath";
 import { Grid } from "./grid";
-import { CELL, GameMap, getMap } from "./maps";
+import { CELL, GameMap, getMap, TERRAIN, TERRAIN_KINDS } from "./maps";
 import type { AlertKind, Building, Command, Entity, Mine, Order, Shot, SideState, SimEvent, Target, Unit, WinReason } from "./types";
 
 export const TICK_RATE = RULES.tickRate;
@@ -182,6 +182,8 @@ export class World {
   readonly grid: Grid;
   /** Độ cao mặt đất ở tâm từng ô lưới (m), tính một lần lúc tạo trận (địa hình không đổi). */
   readonly cellH: Float64Array;
+  /** Vật che tầm nhìn đứng trên mặt đất từng ô (m): rừng cao 4 m, còn lại 0 (TERRAIN.losHeight). */
+  readonly cellLos: Float64Array;
   units: Unit[] = [];
   buildings: Building[] = [];
   readonly mines: Mine[] = [];
@@ -210,6 +212,8 @@ export class World {
     this.sides = [newSide(grid.size), newSide(grid.size)];
     this.cellH = new Float64Array(grid.size);
     for (let cz = 0; cz < grid.rows; cz++) for (let cx = 0; cx < grid.cols; cx++) this.cellH[cz * grid.cols + cx] = map.groundY(grid.centerX(cx), grid.centerZ(cz));
+    this.cellLos = new Float64Array(grid.size);
+    for (let i = 0; i < grid.size; i++) this.cellLos[i] = TERRAIN[TERRAIN_KINDS[grid.kind[i]]].losHeight;
     for (const m of map.mines) {
       const mine: Mine = {
         id: this.nextId++,
@@ -1220,11 +1224,11 @@ export class World {
     return this.cellH[this.grid.index(x, z)];
   }
 
-  /** Tầm nhìn thực tế: đứng cao nhìn xa hơn (không áp cho máy bay). */
+  /** Tầm nhìn thực tế: đứng cao nhìn xa hơn, đứng trong rừng / tuyết nhìn gần hơn (không áp cho máy bay). */
   private sightOf(base: number, x: number, z: number, air: boolean): number {
     if (air) return base;
     const T = RULES.terrain;
-    return base * (1 + clamp(this.heightAt(x, z) * T.sightPerM, 0, T.sightMax));
+    return base * (1 + clamp(this.heightAt(x, z) * T.sightPerM, 0, T.sightMax)) * TERRAIN[this.grid.kindAt(x, z)].sight;
   }
 
   /** Chọn mục tiêu: giữ mục tiêu cũ nếu còn hợp lệ, nếu không thì chọn gần nhất (ưu tiên quân có vũ khí, rồi mới tới công trình). */
@@ -2098,6 +2102,11 @@ export class World {
         const l = Math.sqrt(dx * dx + dz * dz);
         if (l > 1e-6 && (e.hx * dx + e.hz * dz) / l >= cosDeg(fa.arc)) amount *= 1 - fa.reduce;
       }
+      // Che chắn của địa hình (rừng) cho quân mặt đất; đạn Nổ không bị che (RULES.terrain.coverBy)
+      if (e.air === "none") {
+        const cover = TERRAIN[this.grid.kindAt(e.x, e.z)].cover * RULES.terrain.coverBy[s.dmgType];
+        if (cover > 0) amount *= 1 - cover;
+      }
     }
     const armor = e.cat === "unit" ? UNITS[e.kind].armorClass : BUILDINGS[e.kind].armorClass;
     const dealt = amount * RULES.damageMatrix[armor][s.dmgType];
@@ -2213,6 +2222,10 @@ export class World {
    * giữ "góc ngẩng" lớn nhất của mặt đất đã gặp. Ô nào mà điểm nhìn thấy được của nó (mặt đất + targetHeight)
    * thấp hơn góc đó thì bị đồi / đá che. Tốn ~8r × r phép tính mỗi quân thay vì r³ (mỗi ô một tia).
    * Chỉ dùng + − × ÷ và Math.round / sqrt nên tất định.
+   *
+   * Rừng (cellLos) che tầm nhìn như vật cao 4 m đứng trên mặt đất: ô rừng đầu tiên vẫn thấy (bìa rừng), các ô sau nó
+   * bị che. Đứng TRONG rừng thì tia nhìn bỏ qua các ô rừng liền với chỗ mình đứng cho tới khi ra khỏi rừng:
+   * người trong rừng nhìn ra được, người ngoài không nhìn sâu vào được (như bụi rậm). Máy bay, Radar không bị che.
    */
   private stampLos(st: SideState, x: number, z: number, sight: number, eye: number): void {
     const r = Math.round(sight / CELL);
@@ -2226,8 +2239,11 @@ export class World {
     const th = RULES.terrain.targetHeight;
     const { off, inv, start } = rays(r);
     const H = this.cellH;
+    const L = this.cellLos;
+    const inForest = L[c0] > 0;
     for (let k = 0; k + 1 < start.length; k++) {
       let maxSlope = -Infinity;
+      let inside = inForest;
       for (let j = start[k]; j < start[k + 1]; j++) {
         const nx = cx + off[j * 2];
         const nz = cz + off[j * 2 + 1];
@@ -2238,7 +2254,10 @@ export class World {
           st.vis[idx] = 1;
           st.explored[idx] = 1;
         }
-        const g = h * inv[j];
+        // ô này che các ô phía sau bằng mặt đất + vật che (rừng), trừ rừng liền với chỗ đứng
+        const add = L[idx];
+        if (inside && add === 0) inside = false;
+        const g = (inside ? h : h + add) * inv[j];
         if (g > maxSlope) maxSlope = g;
       }
     }

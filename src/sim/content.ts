@@ -245,7 +245,12 @@ export const RULES = {
     slopeSlow: 0.7,
     slopeMin: 0.4,
     /** Đo độ dốc giữa chỗ xe đứng và điểm phía trước cách chừng này (m). */
-    slopeProbe: 2
+    slopeProbe: 2,
+    /**
+     * Che chắn (rừng: TERRAIN.cover) có tác dụng với loại đạn nào: 1 = giảm đủ, 0 = không che được.
+     * Đạn Nổ (pháo, bom) không bị che: pháo là khắc tinh của quân nấp rừng.
+     */
+    coverBy: { normal: 1, ap: 1, he: 0 }
   },
   sellRefund: 0.5,
   queueMax: 5,
