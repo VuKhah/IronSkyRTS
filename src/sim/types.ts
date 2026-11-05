@@ -8,7 +8,8 @@
 import type { BuildingId, DmgType, Res, Side, UnitId, WeaponVisual } from "./content";
 
 export type UnitOrder = "idle" | "move" | "amove" | "attack";
-export type HaulState = "idle" | "toMine" | "mining" | "toDock" | "unloading";
+/** Xe Vận Tải: khai thác mỏ (toMine → mining → toDock → unloading) hoặc trục vớt xác (toWreck → salvaging → toDock → unloading). */
+export type HaulState = "idle" | "toMine" | "mining" | "toDock" | "unloading" | "toWreck" | "salvaging";
 export type AirState = "none" | "parked" | "takeoff" | "flying" | "returning" | "landing";
 export type AirMission = "none" | "move" | "attack";
 
@@ -64,6 +65,9 @@ export interface Unit {
   cargo: number;
   cargoRes: Res;
   hTimer: number;
+  /** Trục vớt: xác đang được giao kéo (0 = không), Sắt từ xác đang chở trên xe (tính riêng với quặng). */
+  wreckId: number;
+  scrap: number;
   // Máy bay
   air: AirState;
   fuel: number;
@@ -102,7 +106,10 @@ export interface Uplink {
   capSide: Side | -1;
 }
 
-/** Xác quân trên chiến trường: chứa Sắt, xe mặt đất chạm vào trước thì nhặt được. */
+/**
+ * Xác quân trên chiến trường: chứa Sắt. Chỉ Xe Vận Tải lấy được: tới nơi, cẩu lên xe, chở về Tổng Hành Dinh,
+ * dỡ hàng xong mới cộng Sắt. Xe chiến đấu chạy qua thì không có gì.
+ */
 export interface Wreck {
   id: number;
   /** Loại quân đã bị hạ (để vẽ đúng hình xác) và phe của nó. */
@@ -115,8 +122,13 @@ export interface Wreck {
   hz: number;
   /** Lượng Sắt nhặt được. */
   value: number;
-  /** Tick xác biến mất. */
+  /** Tick xác biến mất (xác đang có xe tới kéo thì không biến mất). */
   until: number;
+  /**
+   * Id Xe Vận Tải mỗi phe đang được giao kéo xác này (0 = chưa ai): hậu cần không điều hai xe cùng phe tới một xác.
+   * Hai phe giữ chỗ riêng: xe hai bên vẫn tranh nhau được, xe nào cẩu xong trước thì được.
+   */
+  claim: [number, number];
 }
 
 export interface Building {
@@ -200,6 +212,8 @@ export type Order =
   | { t: "attack"; ids: number[]; target: number }
   | { t: "stop"; ids: number[] }
   | { t: "harvest"; ids: number[]; mine: number }
+  /** Xe Vận Tải đi kéo xác quân về (mỗi xe một xác: xác được chạm trước, rồi các xác gần đó). */
+  | { t: "salvage"; ids: number[]; wreck: number }
   | { t: "rtb"; ids: number[] }
   | { t: "build"; kind: BuildingId; x: number; z: number }
   | { t: "produce"; building: number; kind: UnitId }
@@ -242,7 +256,8 @@ export type SimEvent =
   | { t: "alert"; side: Side; what: AlertKind; x: number; z: number; n?: number }
   | { t: "monopoly"; side: Side; res: Res }
   | { t: "rank"; id: number; kind: UnitId; side: Side; rank: number; x: number; z: number }
-  | { t: "salvage"; wreck: number; side: Side; value: number; x: number; z: number }
+  /** Xe Vận Tải dỡ Sắt trục vớt ở Tổng Hành Dinh (x, z = chỗ dỡ hàng). */
+  | { t: "salvage"; side: Side; value: number; x: number; z: number }
   /** Đài Liên Lạc đổi chủ (side = -1: vừa bị giành mất, thành trung lập). */
   | { t: "uplink"; id: number; side: Side | -1; prev: Side | -1; x: number; z: number }
   /** Pháo kích được gọi: vòng báo trước ở (x, z), bán kính r, đạn bắt đầu rơi sau `ticks` tick. */

@@ -614,12 +614,13 @@ function buildValkyrie(p: Palette): Rig {
   return rig;
 }
 
-let cargoMats: { ore: THREE.MeshStandardMaterial; barrel: THREE.MeshStandardMaterial } | null = null;
+let cargoMats: { ore: THREE.MeshStandardMaterial; barrel: THREE.MeshStandardMaterial; scrap: THREE.MeshStandardMaterial } | null = null;
 
 function buildHauler(p: Palette): Rig {
   cargoMats ??= {
     ore: new THREE.MeshStandardMaterial({ color: 0x8796ad, roughness: 0.45, metalness: 0.65, flatShading: true }),
-    barrel: new THREE.MeshStandardMaterial({ color: 0x3d2d52, roughness: 0.5, metalness: 0.3, flatShading: true })
+    barrel: new THREE.MeshStandardMaterial({ color: 0x3d2d52, roughness: 0.5, metalness: 0.3, flatShading: true }),
+    scrap: new THREE.MeshStandardMaterial({ color: 0x3b3733, roughness: 0.95, metalness: 0.2, flatShading: true })
   };
   const body = group();
   const wheels: { g: THREE.Object3D; r: number }[] = [];
@@ -659,8 +660,29 @@ function buildHauler(p: Palette): Rig {
   for (const [x, z] of [[-0.45, -0.2], [0.45, -0.2], [-0.45, -1.3], [0.45, -1.3]] as const) {
     barrels.add(cyl(0.36, 0.36, 0.7, cargoMats.barrel, 10, x, 1.4, z), cyl(0.37, 0.37, 0.08, p.warning, 10, x, 1.5, z));
   }
-  ore.visible = barrels.visible = false;
-  body.add(ore, barrels);
+  // xác xe đang kéo về: tấm thép cháy đen, bánh xe gãy chất lệch trên thùng
+  const scrap = group();
+  for (const [x, y, z, w, h, d, rx, rz] of [
+    [0, 1.3, -0.9, 1.5, 0.45, 1.7, 0.18, -0.12],
+    [-0.35, 1.7, -1.3, 0.9, 0.35, 0.8, -0.3, 0.4],
+    [0.4, 1.62, -0.35, 0.6, 0.5, 0.6, 0.5, 0.2]
+  ] as const) {
+    const m = box(w, h, d, cargoMats.scrap, x, y, z);
+    m.rotation.set(rx, rx * 2, rz);
+    scrap.add(m);
+  }
+  const brokenWheel = wheel(0.4, 0.3, cargoMats.scrap, cargoMats.scrap);
+  brokenWheel.position.set(-0.45, 1.55, -0.2);
+  brokenWheel.rotation.z = 1.1;
+  scrap.add(brokenWheel);
+  // cần cẩu nhỏ phía sau thùng: gập nằm dọc thành thùng khi không dùng, vươn ra sau và nhấp nhô khi đang cẩu xác
+  const CRANE_REST = 2.95;
+  const crane = group(box(0.12, 0.12, 1.7, p.warning, 0, 0, -0.85), box(0.08, 0.35, 0.08, p.metal, 0, -0.2, -1.7));
+  crane.position.set(0.72, 1.85, -1.95);
+  crane.rotation.x = CRANE_REST;
+  body.add(cyl(0.14, 0.18, 0.5, p.hullDark, 8, 0.72, 1.6, -1.95));
+  ore.visible = barrels.visible = scrap.visible = false;
+  body.add(ore, barrels, scrap, crane);
   return vehicleRig(
     "hauler",
     p,
@@ -668,11 +690,16 @@ function buildHauler(p: Palette): Rig {
     2.8,
     [
       { id: "load", label: "Chở Sắt" },
-      { id: "loadOil", label: "Chở Dầu" }
+      { id: "loadOil", label: "Chở Dầu" },
+      { id: "scrap", label: "Chở xác" },
+      { id: "crane", label: "Cẩu xác" }
     ],
-    (_dt, _t, a) => {
-      ore.visible = a.has("load");
-      barrels.visible = a.has("loadOil") && !a.has("load");
+    (dt, t, a) => {
+      // xác chất trên thùng thì không còn chỗ cho quặng hiện ra (quặng vẫn được chở, chỉ là không thấy)
+      scrap.visible = a.has("scrap");
+      ore.visible = a.has("load") && !scrap.visible;
+      barrels.visible = a.has("loadOil") && !a.has("load") && !scrap.visible;
+      crane.rotation.x = approach(crane.rotation.x, a.has("crane") ? 0.45 + Math.sin(t * 2.2) * 0.18 : CRANE_REST, 4, dt);
     },
     [{ id: "move", label: "Di chuyển" }]
   );

@@ -16,7 +16,7 @@ export type PanelCtx =
   | { t: "enemy"; u: Unit }
   | { t: "mine"; m: Mine };
 
-export type Mode = "normal" | "place" | "amove" | "rally" | "harvest" | "barrage";
+export type Mode = "normal" | "place" | "amove" | "rally" | "harvest" | "salvage" | "barrage";
 
 const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 const fmt = (n: number): string => Math.floor(n).toLocaleString("vi-VN");
@@ -160,6 +160,7 @@ export class Hud {
           <button class="btn" data-act="stop"><span class="key">S</span><span>■</span><span>Dừng</span></button>
           ${hasAir ? `<button class="btn" data-act="rtb"><span class="key">B</span><span>⤓</span><span>Về sân</span><span class="cost">nạp dầu</span></button>` : ""}
           ${hasHauler ? `<button class="btn" data-act="harvest" data-mode="harvest"><span>⛏</span><span>Khai thác</span><span class="cost">chọn mỏ</span></button>` : ""}
+          ${hasHauler ? `<button class="btn" data-act="salvage" data-mode="salvage" title="Chọn một xác quân để Xe Vận Tải kéo về Tổng Hành Dinh (mỗi xe một xác)"><span>🔧</span><span>Trục vớt</span><span class="cost">chọn xác</span></button>` : ""}
           <button class="btn" data-act="deselect"><span class="key">Esc</span><span>✕</span><span>Bỏ chọn</span></button>
         </div>${this.buildRow()}`;
         break;
@@ -275,8 +276,17 @@ export class Hud {
             const state = { parked: f >= RULES.air.takeoffMin ? "Sẵn sàng" : "Đang nạp dầu", takeoff: "Cất cánh", flying: "Đang bay", returning: "Về sân", landing: "Hạ cánh", none: "" }[single.air];
             extra = `<small>Dầu ${Math.round(single.fuel)}/${sp.fuel.tank}L · ${state}</small>`;
           } else if (single.kind === "hauler") {
-            const st = { idle: single.manual ? "Chờ lệnh" : "Tìm mỏ", toMine: "Ra mỏ", mining: "Đang đào", toDock: "Chở về", unloading: "Dỡ hàng" }[single.hState];
-            extra = `<small>${st}${single.cargo > 0 ? ` · ${Math.round(single.cargo)} ${RES_NAME[single.cargoRes]}` : ""}${this.terrainNote(single)}</small>`;
+            const st = {
+              idle: single.manual ? "Chờ lệnh" : "Tìm mỏ",
+              toMine: "Ra mỏ",
+              mining: "Đang đào",
+              toDock: "Chở về",
+              unloading: "Dỡ hàng",
+              toWreck: "Đi kéo xác",
+              salvaging: "Đang cẩu xác lên xe"
+            }[single.hState];
+            const load = [single.cargo > 0 ? `${Math.round(single.cargo)} ${RES_NAME[single.cargoRes]}` : "", single.scrap > 0 ? `xác ${Math.round(single.scrap)} Sắt` : ""].filter(Boolean).join(" + ");
+            extra = `<small>${st}${load ? ` · ${load}` : ""}${this.terrainNote(single)}</small>`;
           } else extra = `<small>${Math.ceil(single.hp)}/${single.maxHp}${this.rankNote(single)}${this.terrainNote(single)}</small>`;
         }
         return `<b>${esc(single ? UNITS[single.kind].name : names)}</b>${this.hpBar(hp, max)}${extra}`;

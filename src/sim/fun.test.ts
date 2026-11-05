@@ -8,8 +8,8 @@
 import { describe, expect, it } from "vitest";
 import { RULES, valueOf, type Side, type UnitId } from "./content";
 import { arenaPoint } from "./scenarios";
-import type { Unit } from "./types";
-import { sec, World } from "./world";
+import type { Unit, Wreck } from "./types";
+import { dirToCenter, sec, World } from "./world";
 
 function spawn(w: World, kind: UnitId, side: Side, v: number): Unit {
   const [x, z] = arenaPoint(v);
@@ -105,14 +105,66 @@ describe("Xác quân", () => {
     expect(wr.value).toBe(Math.round(valueOf("lynx") * RULES.salvage.share));
   });
 
-  it("xe mặt đất phe nào chạm vào trước thì nhặt được (kể cả xác của địch)", () => {
+  it("xe chiến đấu chạy qua xác thì không được gì: trục vớt là việc của Xe Vận Tải", () => {
     const { w, me } = killed();
     const wr = w.wrecks[0];
-    const before = w.sides[0].stats.salvaged;
     w.step([{ side: 0, order: { t: "move", ids: [me.id], x: wr.x, z: wr.z } }]);
-    run(w, 20, () => w.wrecks.length === 0);
+    run(w, 10);
+    expect(w.wrecks.length).toBe(1);
+    expect(w.sides[0].stats.salvaged).toBe(0);
+  });
+
+  it("Xe Vận Tải được giao: tới xác, cẩu lên xe, chở về Tổng Hành Dinh; dỡ hàng xong mới cộng Sắt (kể cả xác của địch)", () => {
+    const { w } = killed();
+    const wr = w.wrecks[0];
+    const h = spawn(w, "hauler", 0, -16);
+    w.step([{ side: 0, order: { t: "salvage", ids: [h.id], wreck: wr.id } }]);
+    expect(h.hState).toBe("toWreck");
+    run(w, 30, () => h.scrap > 0);
+    // xác đã lên xe, biến khỏi chiến trường, nhưng chưa về tới nhà thì chưa có Sắt
+    expect(h.scrap).toBe(wr.value);
     expect(w.wrecks.length).toBe(0);
-    expect(w.sides[0].stats.salvaged - before).toBe(wr.value);
+    expect(w.sides[0].stats.salvaged).toBe(0);
+    run(w, 120, () => w.sides[0].stats.salvaged > 0);
+    expect(w.sides[0].stats.salvaged).toBe(wr.value);
+    expect(h.scrap).toBe(0);
+  });
+
+  it("hậu cần tự điều xe rảnh kéo xác trong vùng căn cứ; xác giữa chiến trường thì để Tư lệnh quyết", () => {
+    const w = new World(1);
+    w.step([]);
+    const hq = w.hqOf(0)!;
+    const [dx, dz] = dirToCenter(hq.x, hq.z);
+    const at = (x: number, z: number): Wreck => {
+      const [fx, fz] = w.grid.nearestFree(x, z, 6)!;
+      return { id: 900000 + w.wrecks.length, kind: "lynx", side: 1, x: fx, z: fz, hx: 1, hz: 0, value: 45, until: w.tick + sec(RULES.salvage.seconds), claim: [0, 0] };
+    };
+    const near = at(hq.x + dx * 12 - dz * 6, hq.z + dz * 12 + dx * 6);
+    const far = at(0, 0);
+    w.wrecks.push(near, far);
+    run(w, 90, () => w.sides[0].stats.salvaged > 0);
+    expect(w.sides[0].stats.salvaged).toBe(near.value);
+    expect(w.wrecks.includes(far)).toBe(true);
+    expect(far.claim[0]).toBe(0);
+  });
+
+  it("có quân địch đứng gần xác thì hậu cần không đẩy xe vào; địch đi rồi mới kéo", () => {
+    const w = new World(1, { sandbox: true });
+    hold(w, 0);
+    hold(w, 1);
+    const hq = w.hqOf(0)!;
+    const [dx, dz] = dirToCenter(hq.x, hq.z);
+    const [x, z] = w.grid.nearestFree(hq.x + dx * 12, hq.z + dz * 12, 6)!;
+    const wr: Wreck = { id: 900000, kind: "titan", side: 1, x, z, hx: 1, hz: 0, value: 105, until: w.tick + sec(600), claim: [0, 0] };
+    w.wrecks.push(wr);
+    w.step([{ side: 1, order: { t: "sbSpawn", kind: "titan", side: 1, x: x + dz * 6, z: z - dx * 6 } }]);
+    const foe = w.units.find((u) => u.side === 1)!;
+    w.step([{ side: 0, order: { t: "sbSpawn", kind: "hauler", side: 0, x: hq.x - dz * 8, z: hq.z + dx * 8 } }]);
+    run(w, 8);
+    expect(wr.claim[0]).toBe(0);
+    w.step([{ side: 1, order: { t: "sbRemove", ids: [foe.id] } }]);
+    run(w, 60, () => w.sides[0].stats.salvaged > 0);
+    expect(w.sides[0].stats.salvaged).toBe(wr.value);
   });
 
   it("xác biến mất sau một thời gian nếu không ai nhặt", () => {

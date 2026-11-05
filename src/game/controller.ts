@@ -8,7 +8,7 @@
  */
 import * as THREE from "three";
 import { BUILDINGS, FACTION_OF, RES_NAME, RULES, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
-import type { Building, Entity, Mine, Order, Unit } from "../sim/types";
+import type { Building, Entity, Mine, Order, Unit, Wreck } from "../sim/types";
 import { buildModel, disposeRig, type Rig } from "../render/models";
 import type { Sfx } from "./audio";
 import type { RtsCamera } from "./camera";
@@ -166,6 +166,22 @@ export class Controller implements GestureHandlers {
     return null;
   }
 
+  /** Xác quân gần điểm (x, z) trên mặt đất mà phe đang xem nhìn thấy (trong bán kính 3 m). */
+  private wreckAt(x: number, z: number): Wreck | null {
+    const viewer = this.viewer;
+    let best: Wreck | null = null;
+    let bestD = 3 * 3;
+    for (const wr of this.world.wrecks) {
+      if (viewer !== null && !this.world.cellVisible(viewer, wr.x, wr.z)) continue;
+      const d = (wr.x - x) ** 2 + (wr.z - z) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = wr;
+      }
+    }
+    return best;
+  }
+
   private selectSameKindOnScreen(kind: UnitId): void {
     const { w, h } = this.size();
     const ids: number[] = [];
@@ -200,6 +216,19 @@ export class Controller implements GestureHandlers {
     }
     if (!units.length) return;
     const ids = units.map((u) => u.id);
+    // xác quân dưới điểm chạm: Xe Vận Tải đi kéo về
+    const wreck = g && units.some((u) => u.kind === "hauler") && (mode === "salvage" || mode === "auto") && (!hit || hit.cat === "mine") ? this.wreckAt(g.x, g.z) : null;
+    if (mode === "salvage" || wreck) {
+      if (wreck) {
+        this.issue({ t: "salvage", ids, wreck: wreck.id });
+        this.fx.marker(wreck.x, wreck.z, 0xffd36e);
+        this.sfx.ui("ack");
+      } else {
+        this.sfx.ui("error");
+        this.hud?.alert("Hãy chạm vào một xác quân", "bad");
+      }
+      return;
+    }
     if (mode === "harvest") {
       if (hit && hit.cat === "mine") {
         this.issue({ t: "harvest", ids, mine: hit.id });
@@ -385,6 +414,8 @@ export class Controller implements GestureHandlers {
         return "Chọn điểm tập kết cho quân mới đúc";
       case "harvest":
         return "Chạm vào một mỏ để Xe Vận Tải khai thác";
+      case "salvage":
+        return "Chạm vào một xác quân: Xe Vận Tải kéo về Tổng Hành Dinh (mỗi xe một xác)";
       default:
         return null;
     }
@@ -434,6 +465,7 @@ export class Controller implements GestureHandlers {
       case "rally":
       case "amove":
       case "harvest":
+      case "salvage":
         this.mode = this.mode === action ? "normal" : (action as Mode);
         break;
       case "stop": {
@@ -509,7 +541,7 @@ export class Controller implements GestureHandlers {
     }
     if (this.mode === "normal" && this.toolTap?.(x, y)) return;
     const hit = this.pick(x, y, !info.mouse);
-    if (this.mode === "amove" || this.mode === "rally" || this.mode === "harvest") {
+    if (this.mode === "amove" || this.mode === "rally" || this.mode === "harvest" || this.mode === "salvage") {
       this.commandAt(x, y, hit, this.mode);
       this.mode = "normal";
       return;

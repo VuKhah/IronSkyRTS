@@ -383,6 +383,8 @@ export class Views {
       if (u.moved || u.px !== u.x || u.pz !== u.z) a.add("move");
       if (u.kind === "hauler") {
         if (u.cargo > 0) a.add(u.cargoRes === "oil" ? "loadOil" : "load");
+        if (u.scrap > 0) a.add("scrap");
+        if (u.hState === "salvaging") a.add("crane");
       } else {
         const tid = u.targetId || u.autoTarget;
         const w = spec.weapon;

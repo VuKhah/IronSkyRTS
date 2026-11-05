@@ -36,6 +36,10 @@ const SLOT_OFFSETS: readonly (readonly [number, number])[] = [
 ];
 const IDLE_ACQUIRE_BONUS = 4;
 const LEASH = 12;
+/** Lệnh trục vớt: các xác trong bán kính này (m) quanh xác được chạm được chia cho những xe còn lại. */
+const SALVAGE_POOL = 14;
+/** Đường tới xác bị chặn quá chừng này lần thì bỏ, không tìm đường lại mãi. */
+const SALVAGE_RETRIES = 5;
 
 /** Đội hình khi ra lệnh cho cả nhóm: các điểm lưới 3.6 m quanh đích, gần nhất trước. */
 const FORMATION: readonly (readonly [number, number])[] = (() => {
@@ -436,6 +440,8 @@ export class World {
       cargo: 0,
       cargoRes: "iron",
       hTimer: 0,
+      wreckId: 0,
+      scrap: 0,
       air: spec.domain === "air" ? "parked" : "none",
       fuel: spec.fuel?.tank ?? 0,
       padB: 0,
@@ -550,6 +556,7 @@ export class World {
           }
           u.manual = false;
           u.order = "idle";
+          this.releaseWreck(u);
           if (!this.assignMine(u, m.id)) {
             // mỏ chưa thuộc phe mình: chạy tới đó chờ (quân khác sẽ chiếm)
             u.manual = true;
@@ -558,6 +565,30 @@ export class World {
           }
         }
         if (others.length) this.orderMove(side, others, m.x, m.z, "amove");
+        break;
+      }
+      case "salvage": {
+        const first = this.wrecks.find((wr) => wr.id === o.wreck);
+        if (!first) break;
+        // mỗi xe một xác: xác được chạm trước, rồi các xác khác ở gần đó
+        const pool = [first, ...this.wrecks.filter((wr) => wr !== first && dist2(wr.x, wr.z, first.x, first.z) <= SALVAGE_POOL * SALVAGE_POOL)];
+        const taken = new Set<Wreck>();
+        const others: number[] = [];
+        for (const u of this.ownUnits(side, o.ids)) {
+          if (u.kind !== "hauler") {
+            others.push(u.id);
+            continue;
+          }
+          // ưu tiên xác chưa có xe phe mình nhận; hết thì nhận thay xe hậu cần tự điều (xe đó quay về việc cũ)
+          const free = pool.find((wr) => !taken.has(wr) && (wr.claim[side] <= 0 || wr.claim[side] === u.id));
+          const wr = free ?? pool.find((p) => !taken.has(p));
+          if (!wr) continue;
+          taken.add(wr);
+          u.manual = false;
+          u.order = "idle";
+          this.startSalvage(u, wr);
+        }
+        if (others.length) this.orderMove(side, others, first.x, first.z, "amove");
         break;
       }
       case "rtb":
@@ -738,6 +769,7 @@ export class World {
       const off = groundCount > 1 ? FORMATION[Math.min(k++, FORMATION.length - 1)] : ([0, 0] as const);
       if (u.kind === "hauler") {
         this.releaseMine(u);
+        this.releaseWreck(u);
         u.manual = true;
         u.hState = "idle";
       }
@@ -788,6 +820,7 @@ export class World {
     if (u.air === "none") {
       if (u.kind === "hauler") {
         this.releaseMine(u);
+        this.releaseWreck(u);
         u.manual = true;
         u.hState = "idle";
       }
@@ -1662,6 +1695,101 @@ export class World {
     return Math.abs(u.x - hq.x) <= h && Math.abs(u.z - hq.z) <= h;
   }
 
+  // ------------------------------------------------------------------ Xe Vận Tải: trục vớt xác
+
+  /** Xác mà xe đang được giao kéo (còn nằm đó và vẫn do xe này giữ chỗ). */
+  private wreckOf(u: Unit): Wreck | null {
+    if (!u.wreckId) return null;
+    for (const wr of this.wrecks) if (wr.id === u.wreckId) return wr.claim[u.side] === u.id ? wr : null;
+    return null;
+  }
+
+  /** Bỏ việc kéo xác (xe nhận lệnh khác): trả chỗ để hậu cần điều xe khác. */
+  private releaseWreck(u: Unit): void {
+    if (!u.wreckId) return;
+    for (const wr of this.wrecks) if (wr.id === u.wreckId && wr.claim[u.side] === u.id) wr.claim[u.side] = 0;
+    u.wreckId = 0;
+  }
+
+  /** Giao xe đi kéo một xác (giữ chỗ của phe mình trên xác). Không tìm được đường tới xác thì thôi. */
+  private startSalvage(u: Unit, wr: Wreck): void {
+    this.releaseWreck(u);
+    wr.claim[u.side] = u.id;
+    u.wreckId = wr.id;
+    u.hState = "toWreck";
+    u.hTimer = 0;
+    if (!this.setPath(u, wr.x, wr.z)) this.giveUpWreck(u);
+  }
+
+  /**
+   * Không tới được xác (tìm đường thất bại / bị chắn mãi): đánh dấu xác "không tới được" với phe này (claim = −1) để
+   * hậu cần không giao lại. Tìm đường thất bại rất tốn (A* quét gần cả bản đồ), thử lại mãi là trận chậm hẳn.
+   */
+  private giveUpWreck(u: Unit): void {
+    const wr = this.wreckOf(u);
+    if (wr) wr.claim[u.side] = -1;
+    u.wreckId = 0;
+    this.endSalvage(u);
+  }
+
+  /** Xong (hoặc bỏ) việc kéo xác: có hàng thì chở về, không thì quay lại mỏ cũ, hết việc thì chờ hậu cần giao việc. */
+  private endSalvage(u: Unit): void {
+    this.releaseWreck(u);
+    if (u.cargo > 0 || u.scrap > 0) {
+      this.toDock(u);
+      return;
+    }
+    const m = this.mineOf(u);
+    if (m) this.goMine(u, m);
+    else u.hState = "idle";
+  }
+
+  /** Vùng hậu cần của phe: vùng xây dựng quanh công trình phe mình, hoặc quanh mỏ phe mình đang giữ. */
+  private inLogistics(side: Side, x: number, z: number): boolean {
+    for (const b of this.buildings) {
+      if (b.side !== side || !b.built || b.hp <= 0) continue;
+      const zone = BUILDINGS[b.kind].zone;
+      if (zone && dist2(b.x, b.z, x, z) <= zone * zone) return true;
+    }
+    const r = RULES.salvage.mineArea;
+    for (const m of this.mines) if (m.owner === side && dist2(m.x, m.z, x, z) <= r * r) return true;
+    return false;
+  }
+
+  /** Phe `side` có đang thấy quân địch có vũ khí trong bán kính r quanh (x, z) không. */
+  private threatened(side: Side, x: number, z: number, r: number): boolean {
+    for (const e of this.units) {
+      if (e.side === side || e.hp <= 0 || !UNITS[e.kind].weapon) continue;
+      if (dist2(e.x, e.z, x, z) <= r * r && this.visibleTo(side, e)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Bộ phận hậu cần tự điều xe trục vớt (Tư lệnh không phải ra lệnh từng xe): xe đang trống thùng, không theo lệnh tay,
+   * được giao xác gần nhất mà phe mình đang thấy, nằm trong vùng hậu cần, không có địch quanh đó và chưa có xe phe mình nhận.
+   * Mỗi phe tối đa `autoMax` xe đi kéo xác cùng lúc để việc khai thác mỏ không bị bỏ bê.
+   */
+  private autoSalvage(u: Unit): boolean {
+    if (u.manual || u.cargo > 0 || u.scrap > 0 || this.wrecks.length === 0) return false;
+    const S = RULES.salvage;
+    let busy = 0;
+    for (const h of this.units) if (h !== u && h.side === u.side && h.wreckId) busy++;
+    if (busy >= S.autoMax) return false;
+    let best: Wreck | null = null;
+    let bestD = Infinity;
+    for (const wr of this.wrecks) {
+      if (wr.claim[u.side]) continue;
+      const d = dist2(u.x, u.z, wr.x, wr.z);
+      if (d >= bestD || !this.cellVisible(u.side, wr.x, wr.z) || !this.inLogistics(u.side, wr.x, wr.z) || this.threatened(u.side, wr.x, wr.z, S.threat)) continue;
+      bestD = d;
+      best = wr;
+    }
+    if (!best) return false;
+    this.startSalvage(u, best);
+    return u.wreckId !== 0;
+  }
+
   private updateHauler(u: Unit): void {
     switch (u.hState) {
       case "idle": {
@@ -1670,9 +1798,40 @@ export class World {
           return;
         }
         if (!u.manual && (this.tick + u.id) % 10 === 0) {
-          if (u.cargo > 0 && this.hqOf(u.side)) this.toDock(u);
-          else this.assignMine(u, 0);
+          if ((u.cargo > 0 || u.scrap > 0) && this.hqOf(u.side)) this.toDock(u);
+          else if (!this.autoSalvage(u)) this.assignMine(u, 0);
         }
+        return;
+      }
+      case "toWreck": {
+        const wr = this.wreckOf(u);
+        if (!wr) {
+          this.endSalvage(u);
+          return;
+        }
+        const R = RULES.salvage.reach;
+        if (dist2(u.x, u.z, wr.x, wr.z) <= R * R) {
+          u.hState = "salvaging";
+          u.hTimer = sec(RULES.salvage.load);
+          this.halt(u);
+          return;
+        }
+        // hết đường mà chưa tới (bị xe khác chắn): tìm đường lại vài lần rồi bỏ, đừng tìm lại mãi mỗi tick
+        if (this.follow(u) && (++u.hTimer > SALVAGE_RETRIES || !this.setPath(u, wr.x, wr.z))) this.giveUpWreck(u);
+        return;
+      }
+      case "salvaging": {
+        const wr = this.wreckOf(u);
+        if (!wr) {
+          this.endSalvage(u);
+          return;
+        }
+        if (--u.hTimer > 0) return;
+        // cẩu xong: xác lên xe, biến khỏi chiến trường; chở về mới thành Sắt
+        u.scrap += wr.value;
+        this.wrecks.splice(this.wrecks.indexOf(wr), 1);
+        u.wreckId = 0;
+        this.toDock(u);
         return;
       }
       case "toMine": {
@@ -1738,6 +1897,14 @@ export class World {
         if (u.cargoRes === "iron") st.stats.ironMined += u.cargo;
         else st.stats.oilMined += u.cargo;
         u.cargo = 0;
+        if (u.scrap > 0) {
+          st.iron += u.scrap;
+          st.stats.salvaged += u.scrap;
+          this.events.push({ t: "salvage", side: u.side, value: u.scrap, x: u.x, z: u.z });
+          u.scrap = 0;
+        }
+        // thùng trống: hậu cần xem có xác nào trong vùng an toàn cần kéo không, không thì về mỏ
+        if (this.autoSalvage(u)) return;
         const m = this.mineOf(u);
         if (m) this.goMine(u, m);
         else {
@@ -2342,36 +2509,29 @@ export class World {
   private leaveWreck(u: Unit): void {
     if (this.sold.delete(u.id) || this.grid.blockedAt(u.x, u.z)) return;
     const S = RULES.salvage;
-    const value = Math.round(valueOf(u.kind) * S.share);
+    // Xe Vận Tải bị hạ khi đang chở xác: phần xác đang chở rơi lại cùng xác xe, ai tới kéo trước thì được
+    const value = Math.round(valueOf(u.kind) * S.share) + u.scrap;
     if (value <= 0) return;
-    this.wrecks.push({ id: this.nextId++, kind: u.kind, side: u.side, x: u.x, z: u.z, hx: u.hx, hz: u.hz, value, until: this.tick + sec(S.seconds) });
+    this.wrecks.push({ id: this.nextId++, kind: u.kind, side: u.side, x: u.x, z: u.z, hx: u.hx, hz: u.hz, value, until: this.tick + sec(S.seconds), claim: [0, 0] });
   }
 
-  /** Xác quân hết hạn thì biến mất; xe mặt đất gần nhất trong bán kính nhặt (tự động, bất kể phe). */
+  /**
+   * Xác quân hết hạn thì biến mất, trừ khi đang có Xe Vận Tải tới kéo. Chỗ giữ của xe đã bị hạ / đổi việc thì trả lại.
+   * Xác KHÔNG tự cộng tài nguyên: chỉ Xe Vận Tải cẩu lên và chở về mới thành Sắt (updateHauler).
+   */
   private updateWrecks(): void {
     if (this.wrecks.length === 0) return;
-    const r2 = RULES.salvage.radius * RULES.salvage.radius;
     const keep: Wreck[] = [];
     for (const wr of this.wrecks) {
-      if (this.tick >= wr.until) continue;
-      let best: Unit | null = null;
-      let bestD = r2;
-      for (const u of this.units) {
-        if (u.air !== "none" || u.hp <= 0) continue;
-        const d = dist2(u.x, u.z, wr.x, wr.z);
-        if (d <= bestD) {
-          bestD = d;
-          best = u;
-        }
+      let towing = false;
+      for (const s of [0, 1] as Side[]) {
+        const id = wr.claim[s];
+        if (id <= 0) continue;
+        const h = this.byId.get(id);
+        if (h && h.cat === "unit" && h.hp > 0 && h.wreckId === wr.id) towing = true;
+        else wr.claim[s] = 0;
       }
-      if (!best) {
-        keep.push(wr);
-        continue;
-      }
-      const st = this.sides[best.side];
-      st.iron += wr.value;
-      st.stats.salvaged += wr.value;
-      this.events.push({ t: "salvage", wreck: wr.id, side: best.side, value: wr.value, x: wr.x, z: wr.z });
+      if (towing || this.tick < wr.until) keep.push(wr);
     }
     this.wrecks = keep;
   }
@@ -2618,6 +2778,8 @@ export function hashWorld(w: World): number {
     num(u.cd2);
     num(u.xp);
     num(u.rank);
+    num(u.wreckId);
+    num(u.scrap);
   }
   for (const b of w.buildings) {
     num(b.id);
@@ -2629,6 +2791,8 @@ export function hashWorld(w: World): number {
   for (const wr of w.wrecks) {
     num(wr.id);
     num(wr.until);
+    num(wr.claim[0]);
+    num(wr.claim[1]);
   }
   for (const up of w.uplinks) {
     num(up.owner);

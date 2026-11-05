@@ -269,10 +269,13 @@ export const RULES = {
     noCostValue: 500
   },
   /**
-   * Xác quân (Bản cập nhật vui): xe / máy bay bị hạ để lại xác chứa Sắt = `share` × giá trị, tồn tại `seconds` giây.
-   * Xe mặt đất nào (của bất kỳ phe nào) tới trong `radius` mét trước thì nhặt được, tự động, không cần ra lệnh.
+   * Xác quân (Bản cập nhật vui): xe / máy bay bị hạ để lại xác chứa Sắt = `share` × giá trị, nằm lại `seconds` giây.
+   * Chỉ XE VẬN TẢI trục vớt được (việc của hậu cần, không phải "chạm là có"): tới cách xác `reach` m, cẩu lên xe
+   * mất `load` giây, mỗi chuyến kéo một xác, chở về Tổng Hành Dinh, dỡ hàng xong mới cộng Sắt. Xác của phe nào cũng kéo được.
+   * Hậu cần TỰ điều tối đa `autoMax` xe rảnh mỗi phe tới kéo xác nằm trong vùng hậu cần (vùng xây dựng + quanh mỏ
+   * phe mình `mineArea` m) khi không thấy quân địch có vũ khí trong `threat` m quanh xác. Xác ở xa: Tư lệnh chỉ định.
    */
-  salvage: { share: 0.3, seconds: 60, radius: 2.6 },
+  salvage: { share: 0.3, seconds: 90, load: 3, reach: 3.2, autoMax: 2, mineArea: 18, threat: 22 },
   /**
    * Kỹ năng Tư lệnh (Bản cập nhật vui). Điểm chỉ huy tự tích lũy theo thời gian, nhanh hơn khi lưới điện dư công suất
    * (điện thừa không bỏ phí: hậu cần dồn vào liên lạc / chỉ huy), và theo giá trị sát thương gây cho địch.
@@ -378,6 +381,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     features: [
       "Tự động chạy ra mỏ phe mình gần nhất, đào đầy 100 rồi chở về Tổng Hành Dinh.",
       "Đang chọn xe mà chạm vào một mỏ thì xe sẽ khai thác đúng mỏ đó.",
+      "Trục vớt: kéo xác quân (của cả hai phe) về Tổng Hành Dinh để lấy Sắt, mỗi chuyến một xác. Xác trong vùng căn cứ và quanh mỏ thì hậu cần tự điều xe rảnh đi kéo; xác ở xa thì chọn xe rồi chạm vào xác.",
       "Không vũ khí và chậm: Lynx và Falcon địch luôn săn nó."
     ],
     beats: [],

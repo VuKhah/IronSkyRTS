@@ -11,6 +11,8 @@ import { sec, World } from "../sim/world";
 const REASON: Record<string, string> = { commander: "diệt Tư Lệnh", buildings: "phá hết công trình", monopoly: "độc quyền tài nguyên", timeout: "hết giờ" };
 const n = Number(process.argv[2] ?? 6);
 const wins = [0, 0, 0];
+let mined = 0;
+let salvaged = 0;
 const t0 = Date.now();
 for (let seed = 1; seed <= n; seed++) {
   const w = new World(seed, { maxTicks: sec(30 * 60) });
@@ -26,7 +28,13 @@ for (let seed = 1; seed <= n; seed++) {
   console.log(
     `#${seed}: ${who} (${REASON[w.winReason ?? ""]}) sau ${(w.tick / 600).toFixed(1)} phút | ` +
       `đúc ${s[0].stats.unitsBuilt}/${s[1].stats.unitsBuilt} | hạ ${s[0].stats.kills}/${s[1].stats.kills} | ` +
-      `Sắt đào ${Math.round(s[0].stats.ironMined)}/${Math.round(s[1].stats.ironMined)} | Dầu đào ${Math.round(s[0].stats.oilMined)}/${Math.round(s[1].stats.oilMined)}`
+      `Sắt đào ${Math.round(s[0].stats.ironMined)}/${Math.round(s[1].stats.ironMined)} | Dầu đào ${Math.round(s[0].stats.oilMined)}/${Math.round(s[1].stats.oilMined)} | ` +
+      `trục vớt ${Math.round(s[0].stats.salvaged)}/${Math.round(s[1].stats.salvaged)}`
   );
+  for (const st of s) {
+    mined += st.stats.ironMined;
+    salvaged += st.stats.salvaged;
+  }
 }
 console.log(`\nLam ${wins[0]} – Đỏ ${wins[1]} – Hòa ${wins[2]}  (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+console.log(`Sắt trục vớt = ${((salvaged / Math.max(1, mined)) * 100).toFixed(1)}% so với Sắt đào ở mỏ`);
