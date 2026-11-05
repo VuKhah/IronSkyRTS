@@ -50,7 +50,7 @@ function showMenu(): void {
         <button class="menu-btn" data-go="aivai">Xem AI đấu AI<small>Hai AI đánh nhau, có nút tăng tốc ×1 ×2 ×4</small></button>
         <button class="menu-btn" data-go="sandbox">Phòng Thử Nghiệm<small>Thả quân và công trình tùy ý để thử từng binh chủng</small></button>
         <button class="menu-btn" data-help>Cách chơi<small>Luật thắng, kinh tế, điều khiển chạm và chuột</small></button>
-        <a class="menu-btn" href="./models.html" style="text-decoration:none">Xưởng Mô Hình<small>Xem mô hình 3D và chỉ số từng binh chủng</small></a>
+        <a class="menu-btn" href="./models.html">Xưởng Mô Hình<small>Xem mô hình 3D và chỉ số từng binh chủng</small></a>
         <div data-helpbox hidden>${HELP}</div>
       </div>
     </div>`;
