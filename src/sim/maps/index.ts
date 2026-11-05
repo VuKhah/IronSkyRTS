@@ -28,5 +28,5 @@ export function getMap(id: string = DEFAULT_MAP_ID): GameMap {
 }
 
 export { CELL, GameMap } from "./game-map";
-export { DEFAULT_TERRAIN, TERRAIN, type TerrainKind, type TerrainSpec } from "./terrain";
+export { DEFAULT_TERRAIN, TERRAIN, TERRAIN_KINDS, terrainSpeed, type TerrainKind, type TerrainSpec } from "./terrain";
 export type { Blob, CrossingDef, MapDef, MineDef, RegionDef, RiverDef, Vec2 } from "./types";

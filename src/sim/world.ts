@@ -1080,11 +1080,53 @@ export class World {
     return false;
   }
 
+  /** Độ cao mặt đất nội suy song tuyến giữa tâm các ô (mượt hơn heightAt). Chỉ + − × ÷ nên tất định. */
+  heightSmooth(x: number, z: number): number {
+    const g = this.grid;
+    const fx = clamp((x + this.map.halfW) / CELL - 0.5, 0, g.cols - 1);
+    const fz = clamp((z + this.map.halfH) / CELL - 0.5, 0, g.rows - 1);
+    const ix = Math.min(Math.floor(fx), g.cols - 2);
+    const iz = Math.min(Math.floor(fz), g.rows - 2);
+    const tx = fx - ix;
+    const tz = fz - iz;
+    const H = this.cellH;
+    const i = iz * g.cols + ix;
+    const a = H[i] + (H[i + 1] - H[i]) * tx;
+    const b = H[i + g.cols] + (H[i + g.cols + 1] - H[i + g.cols]) * tx;
+    return a + (b - a) * tz;
+  }
+
+  /** Hệ số tốc độ do địa hình của xe mặt đất đang đứng tại (x, z): loại địa hình × kiểu xe (chưa tính độ dốc). */
+  terrainFactor(u: Unit): number {
+    const spec = UNITS[u.kind];
+    return this.grid.field(spec.mobility ?? "wheel", !!spec.slowResist).k[this.grid.index(u.x, u.z)];
+  }
+
+  /**
+   * Hệ số tốc độ lúc này của xe mặt đất đi theo hướng (dx, dz) (vector đơn vị): loại địa hình dưới xe × độ dốc.
+   * Lên dốc chậm dần (RULES.terrain.slopeSlow), xuống dốc không nhanh hơn.
+   */
+  private moveFactor(u: Unit, dx: number, dz: number): number {
+    let k = this.terrainFactor(u);
+    // phòng hờ: xe lỡ đứng trên ô không đi được thì vẫn bò ra được
+    if (!(k > 0)) k = 0.3;
+    const T = RULES.terrain;
+    const L = T.slopeProbe;
+    const grade = (this.heightSmooth(u.x + dx * L, u.z + dz * L) - this.heightSmooth(u.x, u.z)) / L;
+    if (grade > 0) k *= Math.max(T.slopeMin, 1 - T.slopeSlow * grade);
+    return k;
+  }
+
   /** Đi theo đường; trả về true khi đã tới nơi (hoặc bỏ cuộc vì kẹt quá lâu). */
   private follow(u: Unit): boolean {
     if (u.pathI * 2 >= u.path.length) return true;
     const spec = UNITS[u.kind];
-    let step = spec.speed * DT;
+    // tốc độ theo địa hình và độ dốc, đo theo hướng tới điểm kế tiếp trên đường
+    const fdx = u.path[u.pathI * 2] - u.x;
+    const fdz = u.path[u.pathI * 2 + 1] - u.z;
+    const fd = Math.sqrt(fdx * fdx + fdz * fdz);
+    const full = spec.speed * DT * (fd > 1e-6 ? this.moveFactor(u, fdx / fd, fdz / fd) : this.moveFactor(u, 0, 0));
+    let step = full;
     const ox = u.x;
     const oz = u.z;
     while (step > 1e-9 && u.pathI * 2 < u.path.length) {
@@ -1108,7 +1150,8 @@ export class World {
     }
     const moved2 = dist2(ox, oz, u.x, u.z);
     u.moved = moved2 > 1e-6;
-    const expect = spec.speed * DT * 0.2;
+    // "kẹt" so với tốc độ thực tế lúc này (lội bùn, leo dốc chậm không phải là kẹt)
+    const expect = full * 0.2;
     if (moved2 < expect * expect) u.stuck++;
     else if (u.stuck > 0) u.stuck--;
     if (u.stuck >= 12 && u.path.length >= 2) {

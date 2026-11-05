@@ -55,6 +55,9 @@ export const ARMOR_NAME: Record<ArmorClass, string> = { light: "Nhẹ", heavy: "
 
 /** Loại đạn: Thường (súng máy, pháo nhỏ), Xuyên giáp, Nổ (tên lửa, bom, đạn nổ). */
 export type DmgType = "normal" | "ap" | "he";
+/** Kiểu di chuyển của xe mặt đất: quyết định hệ số tốc độ trên từng loại địa hình (src/sim/maps/terrain.ts). */
+export type Mobility = "wheel" | "track";
+export const MOBILITY_NAME: Record<Mobility, string> = { wheel: "Bánh", track: "Xích" };
 export const DMG_NAME: Record<DmgType, string> = { normal: "Thường", ap: "Xuyên giáp", he: "Nổ" };
 
 /** Kiểu đạn để vẽ hiệu ứng và tính tốc độ bay của đạn. */
@@ -123,8 +126,12 @@ export interface UnitSpec {
   builtAt?: BuildingId;
   hp: number;
   armorClass: ArmorClass;
-  /** m/s; máy bay có thêm tốc độ tối thiểu. */
+  /** m/s trên cỏ, đất bằng; máy bay có thêm tốc độ tối thiểu. */
   speed: number;
+  /** Xe mặt đất: bánh hay xích (hệ số tốc độ theo loại địa hình, terrain.ts). Máy bay bỏ trống. */
+  mobility?: Mobility;
+  /** Kháng làm chậm: bỏ qua phần làm chậm của bùn, cát, tuyết, rừng, bãi cạn (Xe Tư Lệnh). Độ dốc vẫn làm chậm. */
+  slowResist?: boolean;
   minSpeed?: number;
   /** Tầm nhìn (m) cho sương mù chiến tranh. */
   sight: number;
@@ -233,7 +240,12 @@ export const RULES = {
     sightPerM: 0.06,
     sightMax: 0.3,
     rangePerM: 0.05,
-    rangeMax: 0.2
+    rangeMax: 0.2,
+    /** Lên dốc chậm dần: hệ số = max(slopeMin, 1 − slopeSlow × độ dốc), độ dốc đo dọc hướng đi. Xuống dốc không nhanh hơn. */
+    slopeSlow: 0.7,
+    slopeMin: 0.4,
+    /** Đo độ dốc giữa chỗ xe đứng và điểm phía trước cách chừng này (m). */
+    slopeProbe: 2
   },
   sellRefund: 0.5,
   queueMax: 5,
@@ -276,6 +288,8 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     hp: 2025,
     armorClass: "heavy",
     speed: 5,
+    mobility: "wheel",
+    slowResist: true,
     sight: 26,
     radius: 1.9,
     captureWeight: 2.2,
@@ -308,6 +322,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     hp: 450,
     armorClass: "light",
     speed: 4.6,
+    mobility: "wheel",
     sight: 16,
     radius: 1.7,
     captureWeight: 0,
@@ -336,6 +351,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     hp: 510,
     armorClass: "light",
     speed: 7.2,
+    mobility: "wheel",
     sight: 28,
     radius: 1.4,
     captureWeight: 1,
@@ -365,6 +381,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     hp: 960,
     armorClass: "heavy",
     speed: 4.4,
+    mobility: "track",
     sight: 22,
     radius: 1.9,
     captureWeight: 1,
@@ -396,6 +413,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     hp: 645,
     armorClass: "light",
     speed: 5.2,
+    mobility: "track",
     sight: 28,
     radius: 1.6,
     captureWeight: 1,

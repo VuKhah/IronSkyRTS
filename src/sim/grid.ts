@@ -4,12 +4,23 @@
  *
  * - `terrain`: ô bị chặn vĩnh viễn (sông không có cầu, mỏm đá, vách bản đồ).
  * - `occ`: số công trình / mỏ đang chiếm ô (thay đổi khi xây hoặc phá công trình).
+ * - `kind`: loại địa hình từng ô (chỉ số trong TERRAIN_KINDS), tính một lần lúc vào trận.
+ * - `field(kiểu xe)`: hệ số tốc độ từng ô theo kiểu xe (bánh / xích, kháng làm chậm), dùng chung cho đi lẫn tìm đường.
  * - Tìm đường bằng A* (8 hướng, không cắt góc), rồi "kéo thẳng" đường đi bằng kiểm tra tầm nhìn
  *   để xe chạy theo đường chéo tự nhiên thay vì zíc zắc theo ô.
  * Tất định: duyệt theo thứ tự cố định, chỉ dùng phép tính cơ bản.
  */
+import type { Mobility } from "./content";
 import { SQRT2 } from "./fmath";
-import { CELL, type GameMap } from "./maps";
+import { CELL, TERRAIN, TERRAIN_KINDS, terrainSpeed, type GameMap, type TerrainKind } from "./maps";
+
+/** Hệ số tốc độ theo ô của một kiểu xe (tính một lần mỗi trận). */
+export interface SpeedField {
+  /** Hệ số tốc độ từng ô (cỏ = 1; ô bị chặn = 0). */
+  k: Float64Array;
+  /** Hệ số lớn nhất trên bản đồ (≥ mọi ô đi được): chia heuristic A* cho số này để A* vẫn đúng. */
+  kMax: number;
+}
 
 const NEIGHBORS: readonly (readonly [number, number, number])[] = [
   [1, 0, 1],
@@ -30,6 +41,9 @@ export class Grid {
   readonly size: number;
   readonly terrain: Uint8Array;
   readonly occ: Uint8Array;
+  /** Loại địa hình từng ô: chỉ số trong TERRAIN_KINDS. */
+  readonly kind: Uint8Array;
+  private fields = new Map<string, SpeedField>();
   private readonly halfW: number;
   private readonly halfH: number;
   private g: Float64Array;
@@ -49,14 +63,48 @@ export class Grid {
     const n = (this.size = this.cols * this.rows);
     this.terrain = new Uint8Array(n);
     this.occ = new Uint8Array(n);
+    this.kind = new Uint8Array(n);
     this.g = new Float64Array(n);
     this.parent = new Int32Array(n);
     this.openGen = new Uint32Array(n);
     this.closedGen = new Uint32Array(n);
     this.heapNode = new Int32Array(n * 8);
     this.heapF = new Float64Array(n * 8);
+    const index = new Map<TerrainKind, number>(TERRAIN_KINDS.map((k, i) => [k, i]));
     for (let cz = 0; cz < this.rows; cz++)
-      for (let cx = 0; cx < this.cols; cx++) this.terrain[cz * this.cols + cx] = map.staticBlocked(this.centerX(cx), this.centerZ(cz)) ? 1 : 0;
+      for (let cx = 0; cx < this.cols; cx++) {
+        const i = cz * this.cols + cx;
+        const x = this.centerX(cx);
+        const z = this.centerZ(cz);
+        const kind = map.terrainAt(x, z);
+        this.kind[i] = index.get(kind)!;
+        // loại địa hình không đi được (nước sâu, vách núi) cũng chặn, phòng khi bản đồ tô vùng như vậy
+        this.terrain[i] = map.staticBlocked(x, z) || TERRAIN[kind].speed.wheel === 0 ? 1 : 0;
+      }
+  }
+
+  /** Loại địa hình của ô chứa điểm (x, z). */
+  kindAt(x: number, z: number): TerrainKind {
+    return TERRAIN_KINDS[this.kind[this.index(x, z)]];
+  }
+
+  /** Hệ số tốc độ theo ô cho một kiểu xe; tính lần đầu cần tới rồi giữ lại cả trận. */
+  field(mob: Mobility, slowResist: boolean): SpeedField {
+    const key = slowResist ? `${mob}+` : mob;
+    let f = this.fields.get(key);
+    if (!f) {
+      const byKind = TERRAIN_KINDS.map((k) => terrainSpeed(k, mob, slowResist));
+      const k = new Float64Array(this.size);
+      let kMax = 0;
+      for (let i = 0; i < this.size; i++) {
+        const v = this.terrain[i] ? 0 : byKind[this.kind[i]];
+        k[i] = v;
+        if (v > kMax) kMax = v;
+      }
+      f = { k, kMax: kMax > 0 ? kMax : 1 };
+      this.fields.set(key, f);
+    }
+    return f;
   }
 
   cellX(x: number): number {
