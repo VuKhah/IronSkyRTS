@@ -4,7 +4,7 @@
  */
 import * as THREE from "three";
 import { BUILDINGS, type BuildingId, type Faction } from "../../sim/content";
-import { approach, approachAngle, box, cyl, FireClock, group, muzzleFlash, palette, sphere, tubeZ, type Palette, type Rig, type RigAction } from "./kit";
+import { approach, approachAngle, box, cyl, FireClock, group, muzzleFlash, palette, part, sphere, tubeZ, type Palette, type Rig, type RigAction } from "./kit";
 import { buildUnit } from "./units";
 
 const WORK: RigAction = { id: "work", label: "Vận hành" };
@@ -35,7 +35,7 @@ function rig(root: THREE.Group, actions: RigAction[], radius: number, updates: U
 
 /** Nền móng bê tông có viền màu phe. */
 function foundation(p: Palette, w: number, d: number, h = 0.25): THREE.Group {
-  return group(box(w, h, d, p.concrete, 0, h / 2, 0), box(w + 0.08, 0.08, 0.3, p.team, 0, h, d / 2 - 0.15), box(w + 0.08, 0.08, 0.3, p.team, 0, h, -d / 2 + 0.15));
+  return part("Nền móng", group(box(w, h, d, p.concrete, 0, h / 2, 0), box(w + 0.08, 0.08, 0.3, p.team, 0, h, d / 2 - 0.15), box(w + 0.08, 0.08, 0.3, p.team, 0, h, -d / 2 + 0.15)));
 }
 
 /** Vòng tròn nhấp nháy trên mặt đất (vùng phủ điện, vùng chiếm đóng). */

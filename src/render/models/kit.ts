@@ -8,6 +8,22 @@
 import * as THREE from "three";
 import type { Faction } from "../../sim/content";
 
+/**
+ * Đặt tên bộ phận (tiếng Việt) cho một khối hoặc một nhóm khối: Xưởng Mô Hình hiện tên này khi rê chuột vào,
+ * để người thiết kế gọi đúng tên khi góp ý ("kéo dài Nòng pháo", "Cabin thấp xuống"). Khối không có tên thì lấy tên
+ * của nhóm gần nhất bên ngoài nó. Không ảnh hưởng chiến trường.
+ */
+export function part<T extends THREE.Object3D>(name: string, o: T): T {
+  o.userData.part = name;
+  return o;
+}
+
+/** Đặt tên nếu bộ phận chưa có tên riêng (dùng cho tên chung như "Thân xe", "Tháp pháo"). */
+export function partIfUnnamed<T extends THREE.Object3D>(name: string, o: T): T {
+  if (!o.userData.part) o.userData.part = name;
+  return o;
+}
+
 export interface RigAction {
   id: string;
   label: string;

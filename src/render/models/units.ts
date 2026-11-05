@@ -8,7 +8,7 @@
 import * as THREE from "three";
 import { UNITS, type Faction, type UnitId } from "../../sim/content";
 import {
-  approach, approachAngle, box, cyl, FireClock, group, muzzleFlash, palette, sphere, tubeZ, wheel,
+  approach, approachAngle, box, cyl, FireClock, group, muzzleFlash, palette, part, partIfUnnamed, sphere, tubeZ, wheel,
   type Palette, type Rig, type RigAction
 } from "./kit";
 
@@ -114,6 +114,12 @@ function vehicleRig(
   extraUpdate?: (dt: number, t: number, a: ReadonlySet<string>) => void,
   baseActions: RigAction[] = GROUND_ACTIONS
 ): Rig {
+  // tên bộ phận chung cho Xưởng Mô Hình (bộ phận đã có tên riêng thì giữ tên riêng)
+  partIfUnnamed("Thân xe", parts.body);
+  partIfUnnamed("Tháp pháo", parts.turret);
+  partIfUnnamed("Cụm nòng", parts.gun);
+  for (const b of parts.barrels) partIfUnnamed(parts.missiles ? "Ống phóng tên lửa" : "Nòng pháo", b);
+  for (const w of parts.wheels) partIfUnnamed("Bánh xe", w.g);
   const root = group(parts.body);
   const spec = UNITS[id];
   const clock = new FireClock(parts.fireEvery ?? Math.max(0.35, spec.weapon?.cooldown ?? 1));
@@ -185,13 +191,13 @@ function tracks(p: Palette, halfWidth: number, length: number, wheelR: number, c
     g.add(box(0.5, wheelR * 2.3, length, p.rubber, side * halfWidth, wheelR * 1.15, 0));
     g.add(box(0.62, 0.12, length * 1.02, p.teamDark, side * halfWidth, wheelR * 2.35, 0));
     for (let i = 0; i < count; i++) {
-      const w = wheel(wheelR, 0.56, p.hullDark, p.metal);
+      const w = part("Bánh tì xích", wheel(wheelR, 0.56, p.hullDark, p.metal));
       w.position.set(side * halfWidth, wheelR + 0.02, -length / 2 + wheelR + (i * (length - wheelR * 2)) / (count - 1));
       g.add(w);
       wheels.push({ g: w, r: wheelR });
     }
   }
-  return { g, wheels };
+  return { g: part("Dải xích", g), wheels };
 }
 
 function buildCommander(p: Palette): Rig {
@@ -206,19 +212,19 @@ function buildCommander(p: Palette): Rig {
     }
   body.add(
     box(2.0, 0.85, 4.1, p.hull, 0, 1.0, 0),
-    box(1.9, 0.5, 0.9, p.hullDark, 0, 0.95, 2.3),
-    box(1.7, 0.65, 2.2, p.hull, 0, 1.75, -0.45),
-    box(1.72, 0.12, 2.22, p.team, 0, 2.12, -0.45),
-    box(2.04, 0.18, 3.4, p.team, 0, 1.15, -0.1),
-    box(1.3, 0.28, 0.08, p.glass, 0, 1.85, 0.66)
+    part("Mũi xe", box(1.9, 0.5, 0.9, p.hullDark, 0, 0.95, 2.3)),
+    part("Khoang chỉ huy", box(1.7, 0.65, 2.2, p.hull, 0, 1.75, -0.45)),
+    part("Nóc khoang (màu phe)", box(1.72, 0.12, 2.22, p.team, 0, 2.12, -0.45)),
+    part("Sọc màu phe", box(2.04, 0.18, 3.4, p.team, 0, 1.15, -0.1)),
+    part("Kính khoang chỉ huy", box(1.3, 0.28, 0.08, p.glass, 0, 1.85, 0.66))
   );
   // cột radar chỉ huy
-  const mast = cyl(0.06, 0.08, 1.3, p.metal, 6, 0.55, 2.75, -1.25);
-  const dish = group(box(0.9, 0.06, 0.5, p.hullDark), cyl(0.08, 0.08, 0.25, p.teamGlow, 6, 0, 0.12, 0));
+  const mast = part("Cột radar chỉ huy", cyl(0.06, 0.08, 1.3, p.metal, 6, 0.55, 2.75, -1.25));
+  const dish = part("Chảo radar chỉ huy", group(box(0.9, 0.06, 0.5, p.hullDark), cyl(0.08, 0.08, 0.25, p.teamGlow, 6, 0, 0.12, 0)));
   dish.position.set(0.55, 3.45, -1.25);
-  body.add(mast, dish, cyl(0.02, 0.02, 1.6, p.metal, 4, -0.7, 2.9, -1.4), sphere(0.06, p.teamGlow, -0.7, 3.7, -1.4));
+  body.add(mast, dish, part("Ăng-ten", group(cyl(0.02, 0.02, 1.6, p.metal, 4, -0.7, 2.9, -1.4), sphere(0.06, p.teamGlow, -0.7, 3.7, -1.4))));
   // tháp pháo kép
-  const turret = group(cyl(0.5, 0.58, 0.32, p.hullDark, 10), box(0.75, 0.3, 0.8, p.hull, 0, 0.22, 0.05));
+  const turret = part("Tháp pháo kép 40mm", group(cyl(0.5, 0.58, 0.32, p.hullDark, 10), box(0.75, 0.3, 0.8, p.hull, 0, 0.22, 0.05)));
   turret.position.set(0, 2.32, 0.75);
   const gun = group();
   gun.position.set(0, 0.25, 0.35);
@@ -241,6 +247,7 @@ function buildCommander(p: Palette): Rig {
   aura.rotation.x = -Math.PI / 2;
   aura.position.y = 0.03;
   aura.visible = false;
+  part("Vòng hào quang chỉ huy", aura);
 
   const rig = vehicleRig("commander", p, { body, wheels, turret, gun, barrels, muzzles: barrels, flashes, spinners: [dish], aimPitch: 0.12, recoil: 0.18 }, 3.4,
     [{ id: "aura", label: "Hào quang" }],
@@ -267,16 +274,15 @@ function buildLynx(p: Palette): Rig {
       body.add(w);
       wheels.push({ g: w, r: 0.42 });
     }
-  const nose = box(1.6, 0.4, 0.9, p.hull, 0, 0.78, 1.55);
+  const nose = part("Mũi vát", box(1.6, 0.4, 0.9, p.hull, 0, 0.78, 1.55));
   nose.rotation.x = 0.35;
   body.add(
     box(1.7, 0.6, 2.8, p.hull, 0, 0.8, -0.1),
     nose,
-    box(1.74, 0.1, 1.6, p.team, 0, 1.12, -0.5),
-    box(0.25, 0.12, 0.05, p.glass, -0.55, 0.85, 1.95),
-    box(0.25, 0.12, 0.05, p.glass, 0.55, 0.85, 1.95)
+    part("Sọc màu phe", box(1.74, 0.1, 1.6, p.team, 0, 1.12, -0.5)),
+    part("Đèn pha", group(box(0.25, 0.12, 0.05, p.glass, -0.55, 0.85, 1.95), box(0.25, 0.12, 0.05, p.glass, 0.55, 0.85, 1.95)))
   );
-  const turret = group(box(0.85, 0.34, 1.0, p.hullDark, 0, 0.17, 0), box(0.5, 0.1, 0.5, p.team, 0, 0.38, -0.15));
+  const turret = part("Tháp súng máy 20mm", group(box(0.85, 0.34, 1.0, p.hullDark, 0, 0.17, 0), box(0.5, 0.1, 0.5, p.team, 0, 0.38, -0.15)));
   turret.position.set(0, 1.12, -0.2);
   const gun = group();
   gun.position.set(0, 0.2, 0.45);
@@ -285,7 +291,7 @@ function buildLynx(p: Palette): Rig {
   f.position.z = 1.2;
   b.add(f);
   gun.add(b);
-  turret.add(gun, cyl(0.015, 0.015, 1.0, p.metal, 4, -0.32, 0.65, -0.4));
+  turret.add(gun, part("Ăng-ten", cyl(0.015, 0.015, 1.0, p.metal, 4, -0.32, 0.65, -0.4)));
   body.add(turret);
   return vehicleRig("lynx", p, { body, wheels, turret, gun, barrels: [b], muzzles: [b], flashes: [f], spinners: [], aimPitch: 0.08, recoil: 0.08 }, 2.6);
 }
@@ -294,18 +300,18 @@ function buildTitan(p: Palette): Rig {
   const body = group();
   const tr = tracks(p, 1.05, 4.4, 0.32, 5);
   body.add(tr.g);
-  const glacis = box(1.7, 0.45, 0.9, p.hull, 0, 0.95, 2.05);
+  const glacis = part("Giáp nghiêng mặt trước", box(1.7, 0.45, 0.9, p.hull, 0, 0.95, 2.05));
   glacis.rotation.x = 0.45;
-  body.add(box(1.7, 0.55, 3.9, p.hull, 0, 1.0, -0.1), glacis, box(1.4, 0.3, 0.6, p.hullDark, 0, 1.3, -1.8));
-  const turret = group(box(1.55, 0.55, 1.9, p.hull, 0, 0.27, 0), box(1.57, 0.12, 1.2, p.team, 0, 0.5, -0.25), box(0.4, 0.2, 0.4, p.hullDark, 0.45, 0.63, -0.4));
-  const front = box(1.2, 0.42, 0.5, p.hullDark, 0, 0.22, 1.05);
+  body.add(box(1.7, 0.55, 3.9, p.hull, 0, 1.0, -0.1), glacis, part("Khoang động cơ", box(1.4, 0.3, 0.6, p.hullDark, 0, 1.3, -1.8)));
+  const turret = part("Tháp pháo", group(box(1.55, 0.55, 1.9, p.hull, 0, 0.27, 0), part("Nóc tháp (màu phe)", box(1.57, 0.12, 1.2, p.team, 0, 0.5, -0.25)), part("Nắp xe trưởng", box(0.4, 0.2, 0.4, p.hullDark, 0.45, 0.63, -0.4))));
+  const front = part("Giáp mặt tháp", box(1.2, 0.42, 0.5, p.hullDark, 0, 0.22, 1.05));
   front.rotation.x = -0.3;
   turret.add(front);
   turret.position.set(0, 1.28, -0.25);
   const gun = group();
   gun.position.set(0, 0.28, 1.1);
-  const b = barrel(2.5, 0.1, p.metal);
-  b.add(cyl(0.15, 0.15, 0.3, p.hullDark, 8, 0, 0, 2.45).rotateX(Math.PI / 2));
+  const b = part("Pháo chính 120mm", barrel(2.5, 0.1, p.metal));
+  b.add(part("Đầu hãm nòng", cyl(0.15, 0.15, 0.3, p.hullDark, 8, 0, 0, 2.45).rotateX(Math.PI / 2)));
   const f = muzzleFlash(0.9, p.flash);
   f.position.z = 2.95;
   b.add(f);
@@ -318,15 +324,15 @@ function buildTitan(p: Palette): Rig {
 function buildSkyguard(p: Palette): Rig {
   const body = group();
   const tr = tracks(p, 0.95, 3.8, 0.28, 4);
-  body.add(tr.g, box(1.5, 0.55, 3.5, p.hull, 0, 0.9, 0), box(1.52, 0.1, 2.0, p.team, 0, 1.2, -0.5));
-  const turret = group(cyl(0.55, 0.65, 0.4, p.hullDark, 10, 0, 0.2, 0));
+  body.add(tr.g, box(1.5, 0.55, 3.5, p.hull, 0, 0.9, 0), part("Sọc màu phe", box(1.52, 0.1, 2.0, p.team, 0, 1.2, -0.5)));
+  const turret = part("Mâm xoay", group(cyl(0.55, 0.65, 0.4, p.hullDark, 10, 0, 0.2, 0)));
   turret.position.set(0, 1.18, -0.2);
   const gun = group();
   gun.position.set(0, 0.6, 0);
   const muzzles: THREE.Object3D[] = [];
   const barrels: THREE.Object3D[] = [];
   for (const side of [-1, 1]) {
-    const pod = group(box(0.5, 0.5, 1.2, p.hull), box(0.52, 0.08, 1.22, p.team, 0, 0.27, 0));
+    const pod = part(side < 0 ? "Hộp tên lửa trái (4 ống)" : "Hộp tên lửa phải (4 ống)", group(box(0.5, 0.5, 1.2, p.hull), box(0.52, 0.08, 1.22, p.team, 0, 0.27, 0)));
     pod.position.set(side * 0.62, 0, 0.1);
     for (const [dx, dy] of [[-0.12, -0.12], [0.12, -0.12], [-0.12, 0.12], [0.12, 0.12]] as const) {
       const hole = cyl(0.08, 0.08, 0.05, p.metal, 8, dx, dy, 0.6);
@@ -342,9 +348,9 @@ function buildSkyguard(p: Palette): Rig {
     gun.add(pod);
   }
   // radar dò tìm phía sau tháp
-  const radar = group(box(0.9, 0.5, 0.06, p.hullDark), box(0.7, 0.35, 0.07, p.teamGlow, 0, 0, 0.01));
+  const radar = part("Radar dò tìm", group(box(0.9, 0.5, 0.06, p.hullDark), box(0.7, 0.35, 0.07, p.teamGlow, 0, 0, 0.01)));
   radar.position.set(0, 0.95, -0.45);
-  turret.add(gun, cyl(0.05, 0.05, 0.5, p.metal, 6, 0, 0.65, -0.45), radar);
+  turret.add(gun, part("Cột radar", cyl(0.05, 0.05, 0.5, p.metal, 6, 0, 0.65, -0.45)), radar);
   body.add(turret);
   return vehicleRig("skyguard", p, { body, wheels: tr.wheels, turret, gun, barrels, muzzles, flashes: [], spinners: [radar], aimPitch: 0.6, recoil: 0.05, missiles: true }, 3.2);
 }
@@ -365,14 +371,14 @@ function buildRocket(p: Palette): Rig {
     }
   body.add(
     // khung sàn + cabin
-    box(1.86, 0.32, 4.5, p.hullDark, 0, 0.78, 0.05),
-    box(1.9, 1.0, 1.2, p.hull, 0, 1.42, 1.72),
-    box(1.92, 0.12, 1.22, p.team, 0, 1.98, 1.72),
-    box(1.55, 0.4, 0.06, p.glass, 0, 1.62, 2.33),
-    box(1.94, 0.16, 0.14, p.warning, 0, 0.82, 2.33),
+    part("Khung sàn", box(1.86, 0.32, 4.5, p.hullDark, 0, 0.78, 0.05)),
+    part("Cabin", box(1.9, 1.0, 1.2, p.hull, 0, 1.42, 1.72)),
+    part("Nóc cabin (màu phe)", box(1.92, 0.12, 1.22, p.team, 0, 1.98, 1.72)),
+    part("Kính cabin", box(1.55, 0.4, 0.06, p.glass, 0, 1.62, 2.33)),
+    part("Cản trước", box(1.94, 0.16, 0.14, p.warning, 0, 0.82, 2.33)),
     // thùng thiết bị hai bên sàn sau
-    box(0.36, 0.4, 2.4, p.hull, -0.78, 1.12, -0.6),
-    box(0.36, 0.4, 2.4, p.hull, 0.78, 1.12, -0.6)
+    part("Thùng thiết bị", box(0.36, 0.4, 2.4, p.hull, -0.78, 1.12, -0.6)),
+    part("Thùng thiết bị", box(0.36, 0.4, 2.4, p.hull, 0.78, 1.12, -0.6))
   );
   // 4 chân chống (hạ xuống khi dựng dàn)
   const jacks = group();
@@ -381,20 +387,20 @@ function buildRocket(p: Palette): Rig {
       jacks.add(box(0.14, 0.75, 0.14, p.metal, sx * 1.12, 0, z), box(0.36, 0.06, 0.36, p.hullDark, sx * 1.12, -0.38, z));
     }
   jacks.position.y = 1.05;
-  body.add(jacks);
+  body.add(part("Chân chống (hạ khi dựng dàn)", jacks));
   // mâm xoay + hộp phóng (gốc xoay ở đuôi hộp để ngóc lên như dàn phóng thật)
-  const turret = group(cyl(0.72, 0.82, 0.24, p.hullDark, 12, 0, 0.12, 0), box(0.5, 0.45, 0.5, p.hull, 0, 0.45, -0.55));
+  const turret = part("Mâm xoay", group(cyl(0.72, 0.82, 0.24, p.hullDark, 12, 0, 0.12, 0), part("Bộ nâng hộp phóng", box(0.5, 0.45, 0.5, p.hull, 0, 0.45, -0.55))));
   turret.position.set(0, 0.95, -0.7);
   const gun = group();
   gun.position.set(0, 0.62, -1.1);
-  const pod = group(box(1.62, 0.86, 2.6, p.hull, 0, 0, 1.3), box(1.64, 0.1, 2.0, p.team, 0, 0.46, 1.2), box(0.06, 0.6, 2.2, p.team, -0.83, 0, 1.3), box(0.06, 0.6, 2.2, p.team, 0.83, 0, 1.3));
+  const pod = part("Hộp phóng 12 ống", group(box(1.62, 0.86, 2.6, p.hull, 0, 0, 1.3), box(1.64, 0.1, 2.0, p.team, 0, 0.46, 1.2), box(0.06, 0.6, 2.2, p.team, -0.83, 0, 1.3), box(0.06, 0.6, 2.2, p.team, 0.83, 0, 1.3)));
   pod.userData.z0 = 0;
   const muzzles: THREE.Object3D[] = [];
   for (let row = 0; row < 3; row++)
     for (let col = 0; col < 4; col++) {
       const x = -0.54 + col * 0.36;
       const y = -0.26 + row * 0.26;
-      const hole = cyl(0.11, 0.11, 0.05, p.metal, 8, x, y, 2.61);
+      const hole = part("Miệng ống phóng", cyl(0.11, 0.11, 0.05, p.metal, 8, x, y, 2.61));
       hole.rotation.x = Math.PI / 2;
       pod.add(hole);
       const m = group();
@@ -430,7 +436,7 @@ function wingShape(points: [number, number][], thickness: number, mat: THREE.Mat
   m.castShadow = true;
   m.receiveShadow = true;
   if (mirror) m.scale.x = -1;
-  return m;
+  return part("Cánh", m);
 }
 
 interface AirParts {
@@ -449,6 +455,9 @@ const AIR_ACTIONS: RigAction[] = [
 ];
 
 function aircraftRig(parts: AirParts, radius: number): Rig {
+  partIfUnnamed("Thân máy bay", parts.frame);
+  partIfUnnamed("Càng đáp", parts.gear);
+  for (const e of parts.engines) partIfUnnamed("Lửa động cơ", e);
   const root = group(parts.frame);
   let alt = parts.parkY;
   let gearT = 1;
@@ -519,28 +528,28 @@ function buildFalcon(p: Palette): Rig {
   const frame = group();
   frame.add(
     tubeZ(0.26, 0.32, 3.0, p.hull, 10),
-    box(0.34, 0.3, 1.1, p.hullDark, -0.3, -0.05, 0.1),
-    box(0.34, 0.3, 1.1, p.hullDark, 0.3, -0.05, 0.1)
+    part("Cửa hút gió", box(0.34, 0.3, 1.1, p.hullDark, -0.3, -0.05, 0.1)),
+    part("Cửa hút gió", box(0.34, 0.3, 1.1, p.hullDark, 0.3, -0.05, 0.1))
   );
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.26, 1.1, 10), p.hull);
+  const nose = part("Mũi máy bay", new THREE.Mesh(new THREE.ConeGeometry(0.26, 1.1, 10), p.hull));
   nose.rotation.x = Math.PI / 2;
   nose.position.z = 2.05;
   nose.castShadow = true;
-  const canopy = sphere(0.22, p.glass, 0, 0.22, 0.95);
+  const canopy = part("Buồng lái", sphere(0.22, p.glass, 0, 0.22, 0.95));
   canopy.scale.set(1, 0.8, 2.4);
   frame.add(nose, canopy);
   for (const mirror of [false, true]) {
     const sx = mirror ? -1 : 1;
-    frame.add(wingShape([[0.25, 0.7], [2.0, -0.8], [2.0, -1.15], [0.25, -1.2]], 0.07, p.hull, mirror));
-    frame.add(wingShape([[1.55, -0.45], [2.02, -0.82], [2.02, -1.16], [1.55, -1.18]], 0.08, p.team, mirror));
+    frame.add(part("Cánh chính", wingShape([[0.25, 0.7], [2.0, -0.8], [2.0, -1.15], [0.25, -1.2]], 0.07, p.hull, mirror)));
+    frame.add(part("Đầu cánh (màu phe)", wingShape([[1.55, -0.45], [2.02, -0.82], [2.02, -1.16], [1.55, -1.18]], 0.08, p.team, mirror)));
     const canard = wingShape([[0.25, 1.25], [0.75, 0.95], [0.75, 0.82], [0.25, 0.85]], 0.05, p.hullDark, mirror);
-    frame.add(canard);
-    const fin = wingShape([[0, -0.6], [0.0, -1.5], [0.75, -1.55], [0.75, -1.3]], 0.06, p.team, false);
+    frame.add(part("Cánh mũi", canard));
+    const fin = part("Cánh đuôi đứng", wingShape([[0, -0.6], [0.0, -1.5], [0.75, -1.55], [0.75, -1.3]], 0.06, p.team, false));
     fin.rotation.z = Math.PI / 2 - sx * 0.3;
     fin.position.set(sx * 0.28, 0.12, 0);
     frame.add(fin);
   }
-  frame.add(cyl(0.24, 0.2, 0.3, p.metal, 10, 0, 0, -1.62).rotateX(Math.PI / 2));
+  frame.add(part("Ống xả động cơ", cyl(0.24, 0.2, 0.3, p.metal, 10, 0, 0, -1.62).rotateX(Math.PI / 2)));
   const glow = engineGlow(p, 0.18, 1.0);
   glow.position.z = -1.75;
   frame.add(glow);
@@ -548,7 +557,7 @@ function buildFalcon(p: Palette): Rig {
   // 2 tên lửa nổ treo dưới cánh (vũ khí phụ): bắn quả nào thì quả đó biến mất, hạ cánh nạp lại
   const pylons: THREE.Object3D[] = [];
   for (const x of [-1.35, 1.35]) {
-    const m = missileMesh(p, 0.6, 0.05);
+    const m = part("Tên lửa nổ dưới cánh", missileMesh(p, 0.6, 0.05));
     (m.children[2] as THREE.Object3D).visible = false;
     m.position.set(x, -0.12, -0.25);
     frame.add(m);
@@ -557,7 +566,7 @@ function buildFalcon(p: Palette): Rig {
   // pháo đôi 30mm ở hai gốc cánh (cách nhau ~1,6 m như trong sim), mỗi nòng có chớp lửa đầu nòng
   const guns: THREE.Mesh[] = [];
   for (const x of [-0.8, 0.8]) {
-    frame.add(cyl(0.045, 0.045, 0.7, p.metal, 6, x, -0.08, 0.75).rotateX(Math.PI / 2));
+    frame.add(part("Nòng pháo 30mm", cyl(0.045, 0.045, 0.7, p.metal, 6, x, -0.08, 0.75).rotateX(Math.PI / 2)));
     const f = muzzleFlash(0.55, p.flash);
     f.position.set(x, -0.08, 1.35);
     frame.add(f);
@@ -596,22 +605,22 @@ function buildFalcon(p: Palette): Rig {
 
 function buildValkyrie(p: Palette): Rig {
   const frame = group();
-  frame.add(tubeZ(0.42, 0.5, 4.4, p.hull, 12), box(0.7, 0.35, 2.2, p.hullDark, 0, -0.32, 0.2));
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.42, 1.2, 12), p.hull);
+  frame.add(tubeZ(0.42, 0.5, 4.4, p.hull, 12), part("Bụng khoang bom", box(0.7, 0.35, 2.2, p.hullDark, 0, -0.32, 0.2)));
+  const nose = part("Mũi máy bay", new THREE.Mesh(new THREE.ConeGeometry(0.42, 1.2, 12), p.hull));
   nose.rotation.x = Math.PI / 2;
   nose.position.z = 2.8;
   nose.castShadow = true;
-  const canopy = sphere(0.3, p.glass, 0, 0.3, 2.0);
+  const canopy = part("Buồng lái", sphere(0.3, p.glass, 0, 0.3, 2.0));
   canopy.scale.set(1.1, 0.7, 1.8);
   frame.add(nose, canopy);
   const engines: THREE.Mesh[] = [];
   for (const mirror of [false, true]) {
     const sx = mirror ? -1 : 1;
-    frame.add(wingShape([[0.35, 0.9], [3.1, 0.05], [3.1, -0.45], [0.35, -0.6]], 0.1, p.hull, mirror));
-    frame.add(wingShape([[2.6, 0.2], [3.12, 0.04], [3.12, -0.46], [2.6, -0.5]], 0.11, p.team, mirror));
-    frame.add(wingShape([[0.3, -1.6], [1.3, -2.0], [1.3, -2.25], [0.3, -2.3]], 0.07, p.hullDark, mirror));
+    frame.add(part("Cánh chính", wingShape([[0.35, 0.9], [3.1, 0.05], [3.1, -0.45], [0.35, -0.6]], 0.1, p.hull, mirror)));
+    frame.add(part("Đầu cánh (màu phe)", wingShape([[2.6, 0.2], [3.12, 0.04], [3.12, -0.46], [2.6, -0.5]], 0.11, p.team, mirror)));
+    frame.add(part("Cánh đuôi ngang", wingShape([[0.3, -1.6], [1.3, -2.0], [1.3, -2.25], [0.3, -2.3]], 0.07, p.hullDark, mirror)));
     for (const x of [1.15, 2.05]) {
-      const pod = tubeZ(0.18, 0.2, 1.1, p.hullDark, 10);
+      const pod = part("Động cơ treo cánh", tubeZ(0.18, 0.2, 1.1, p.hullDark, 10));
       pod.position.set(sx * x, -0.22, 0.35);
       frame.add(pod);
       const g = engineGlow(p, 0.14, 0.8);
@@ -620,7 +629,7 @@ function buildValkyrie(p: Palette): Rig {
       engines.push(g);
     }
   }
-  const fin = wingShape([[0, -1.1], [0, -2.35], [1.2, -2.4], [1.2, -2.0]], 0.08, p.team, false);
+  const fin = part("Cánh đuôi đứng", wingShape([[0, -1.1], [0, -2.35], [1.2, -2.4], [1.2, -2.0]], 0.08, p.team, false));
   fin.rotation.z = Math.PI / 2;
   fin.position.y = 0.3;
   frame.add(fin);
@@ -628,7 +637,7 @@ function buildValkyrie(p: Palette): Rig {
   // khoang bom: 2 cửa mở sang hai bên
   const doors: THREE.Group[] = [];
   for (const side of [-1, 1]) {
-    const hinge = group(box(0.34, 0.04, 1.6, p.hullDark, side * 0.17, 0, 0));
+    const hinge = part("Cửa khoang bom", group(box(0.34, 0.04, 1.6, p.hullDark, side * 0.17, 0, 0)));
     hinge.position.set(side * 0.0, -0.5, 0.25);
     doors.push(hinge);
     frame.add(hinge);
@@ -703,18 +712,20 @@ function buildHauler(p: Palette): Rig {
     }
   body.add(
     box(1.8, 0.35, 4.3, p.hullDark, 0, 0.72, 0),
-    box(1.8, 1.05, 1.25, p.hull, 0, 1.4, 1.45),
-    box(1.82, 0.12, 1.27, p.team, 0, 1.97, 1.45),
-    box(1.5, 0.42, 0.06, p.glass, 0, 1.6, 2.09),
-    box(1.9, 0.18, 0.15, p.warning, 0, 0.78, 2.2),
-    cyl(0.06, 0.06, 0.8, p.metal, 6, 0.75, 2.2, 0.85),
-    sphere(0.09, p.warning, -0.6, 2.08, 1.45, 6),
+    part("Cabin", box(1.8, 1.05, 1.25, p.hull, 0, 1.4, 1.45)),
+    part("Nóc cabin (màu phe)", box(1.82, 0.12, 1.27, p.team, 0, 1.97, 1.45)),
+    part("Kính cabin", box(1.5, 0.42, 0.06, p.glass, 0, 1.6, 2.09)),
+    part("Cản trước", box(1.9, 0.18, 0.15, p.warning, 0, 0.78, 2.2)),
+    part("Ống xả", cyl(0.06, 0.06, 0.8, p.metal, 6, 0.75, 2.2, 0.85)),
+    part("Đèn báo", sphere(0.09, p.warning, -0.6, 2.08, 1.45, 6)),
     // thùng hàng
-    box(1.9, 0.12, 2.6, p.hullDark, 0, 0.98, -0.75),
-    box(0.1, 0.75, 2.6, p.team, -0.95, 1.4, -0.75),
-    box(0.1, 0.75, 2.6, p.team, 0.95, 1.4, -0.75),
-    box(1.9, 0.75, 0.1, p.team, 0, 1.4, -2.05),
-    box(1.9, 0.75, 0.1, p.hull, 0, 1.4, 0.55)
+    part("Thùng hàng", group(
+      box(1.9, 0.12, 2.6, p.hullDark, 0, 0.98, -0.75),
+      box(0.1, 0.75, 2.6, p.team, -0.95, 1.4, -0.75),
+      box(0.1, 0.75, 2.6, p.team, 0.95, 1.4, -0.75),
+      box(1.9, 0.75, 0.1, p.team, 0, 1.4, -2.05),
+      box(1.9, 0.75, 0.1, p.hull, 0, 1.4, 0.55)
+    ))
   );
   // quặng Sắt
   const ore = group();
@@ -750,7 +761,11 @@ function buildHauler(p: Palette): Rig {
   const crane = group(box(0.12, 0.12, 1.7, p.warning, 0, 0, -0.85), box(0.08, 0.35, 0.08, p.metal, 0, -0.2, -1.7));
   crane.position.set(0.72, 1.85, -1.95);
   crane.rotation.x = CRANE_REST;
-  body.add(cyl(0.14, 0.18, 0.5, p.hullDark, 8, 0.72, 1.6, -1.95));
+  body.add(part("Chân cần cẩu", cyl(0.14, 0.18, 0.5, p.hullDark, 8, 0.72, 1.6, -1.95)));
+  part("Quặng Sắt", ore);
+  part("Thùng Dầu", barrels);
+  part("Xác đang kéo về", scrap);
+  part("Cần cẩu trục vớt", crane);
   ore.visible = barrels.visible = scrap.visible = false;
   body.add(ore, barrels, scrap, crane);
   return vehicleRig(

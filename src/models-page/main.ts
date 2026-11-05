@@ -37,6 +37,8 @@ let stage: Stage | null = null;
 try {
   stage = new Stage(viewer);
   stage.autoRotate = state.autoRotate;
+  // ?measure=0: tắt thước đo (chụp ảnh sạch)
+  if (new URLSearchParams(location.search).get("measure") === "0") stage.measure = false;
 } catch {
   viewer.insertAdjacentHTML("beforeend", `<p class="nogl">Trình duyệt này không bật được WebGL nên không hiển thị được mô hình 3D. Thông số vẫn xem được bên cạnh.</p>`);
 }
@@ -183,6 +185,7 @@ function renderControls(actions: { id: string; label: string }[]): void {
       <button type="button" data-f="lam" aria-pressed="${state.faction === "lam"}">Liên Minh Lam</button>
       <button type="button" data-f="do" aria-pressed="${state.faction === "do"}">Tập Đoàn Đỏ</button>
     </span>
+    <button type="button" class="chip" data-measure aria-pressed="${s.measure}" title="Đường đo rộng / dài / cao (mét) và người cao 1,8 m để so tỉ lệ">📏 Thước đo</button>
     <button type="button" class="chip" data-rotate aria-pressed="${state.autoRotate}">Tự xoay</button>`;
 }
 
@@ -246,6 +249,9 @@ controls.addEventListener("click", (e) => {
     state.faction = b.dataset.f as Faction;
     loadModel(true);
     renderRoster();
+  } else if (b.hasAttribute("data-measure")) {
+    stage.measure = !stage.measure;
+    b.setAttribute("aria-pressed", String(stage.measure));
   } else if (b.hasAttribute("data-rotate")) {
     state.autoRotate = !state.autoRotate;
     stage.autoRotate = state.autoRotate;

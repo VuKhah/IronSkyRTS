@@ -82,7 +82,7 @@ button { font: inherit; color: inherit; }
 }
 .viewer canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
 .viewer canvas:active { cursor: grabbing; }
-.hint { position: absolute; top: 10px; left: 12px; font-size: 12px; color: var(--dim); pointer-events: none; text-shadow: 0 1px 2px #000; }
+.hint { position: absolute; top: 10px; left: 12px; right: 96px; font-size: 12px; color: var(--dim); pointer-events: none; text-shadow: 0 1px 2px #000; }
 .draft {
   position: absolute; top: 10px; right: 12px; font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
   color: var(--accent); border: 1px solid rgba(255, 181, 71, 0.45); border-radius: 4px; padding: 1px 7px; background: rgba(11, 15, 22, 0.6);
@@ -139,4 +139,19 @@ ul.features { padding-left: 18px; display: flex; flex-direction: column; gap: 4p
   .stage { position: static; }
   .viewer { height: 340px; }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* rê chuột vào bộ phận: bảng tên + kích thước */
+.part-tip {
+  position: absolute; left: 0; top: 0; pointer-events: none; z-index: 3; max-width: 260px;
+  background: rgba(11, 15, 22, 0.88); border: 1px solid #6fe3ff; border-radius: 8px; padding: 5px 9px;
+  font-size: 13px; color: #e8f6ff; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+.part-tip b { display: block; font-weight: 700; }
+.part-tip small { display: block; font-size: 11px; color: var(--dim); margin-top: 1px; }
+/* thước đo: nhãn số mét của 3 đường đo và người 1,8 m */
+.dim-label {
+  position: absolute; left: 0; top: 0; pointer-events: none; z-index: 2; white-space: nowrap;
+  font-size: 11px; font-weight: 700; color: #ffd28a; background: rgba(11, 15, 22, 0.72);
+  border: 1px solid rgba(255, 181, 71, 0.5); border-radius: 4px; padding: 0 5px;
 }
