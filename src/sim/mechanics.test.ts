@@ -8,12 +8,11 @@
  */
 import { describe, expect, it } from "vitest";
 import { RULES, UNITS, type BuildingId, type Side, type UnitId, type WeaponSpec } from "./content";
-import { fromUV } from "./map";
-import { ARENA_U } from "./scenarios";
+import { arenaPoint } from "./scenarios";
 import type { Building, SimEvent, Unit } from "./types";
 import { sec, World } from "./world";
 
-const P = (v: number): [number, number] => fromUV(ARENA_U, v);
+const P = (v: number): [number, number] => arenaPoint(v);
 
 /** Tạm sửa vũ khí của một binh chủng; gọi hàm trả về để khôi phục. */
 function patchWeapon(kind: UnitId, p: Partial<WeaponSpec>): () => void {

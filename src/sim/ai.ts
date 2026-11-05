@@ -8,7 +8,6 @@
  */
 import { BUILDINGS, UNITS, type BuildingId, type Side, type UnitId } from "./content";
 import { dcos, dist2, dsin, Rng, TAU } from "./fmath";
-import { HQ_POS } from "./map";
 import type { Building, Mine, Order, Unit } from "./types";
 import { dirToCenter, sec, type World } from "./world";
 
@@ -290,7 +289,7 @@ export class Ai {
       base.z
     );
     if (m) return [m.x, m.z];
-    const [x, z] = HQ_POS[1 - this.side];
+    const [x, z] = w.map.bases[1 - this.side];
     return [x, z];
   }
 

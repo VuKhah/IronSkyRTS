@@ -8,7 +8,6 @@
  */
 import * as THREE from "three";
 import { BUILDINGS, FACTION_OF, RES_NAME, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
-import { groundY } from "../sim/map";
 import type { Building, Entity, Mine, Order, Unit } from "../sim/types";
 import { buildModel, disposeRig, type Rig } from "../render/models";
 import type { Sfx } from "./audio";
@@ -139,7 +138,7 @@ export class Controller implements GestureHandlers {
     let bestD = Infinity;
     const tanHalf = Math.tan(((this.cam.cam.fov / 2) * Math.PI) / 180);
     for (const u of this.views.visibleUnits(this.world, viewer)) {
-      const [x, y, z] = Views.displayPos(u, this.alpha);
+      const [x, y, z] = Views.displayPos(this.match.world.map, u, this.alpha);
       const p = this.cam.project(x, y + 1, z, w, h);
       if (!p.visible) continue;
       const camD = this.cam.cam.position.distanceTo(new THREE.Vector3(x, y, z));
@@ -167,7 +166,7 @@ export class Controller implements GestureHandlers {
     const ids: number[] = [];
     for (const u of this.world.units) {
       if (u.side !== this.me || u.kind !== kind) continue;
-      const [x, y, z] = Views.displayPos(u, this.alpha);
+      const [x, y, z] = Views.displayPos(this.match.world.map, u, this.alpha);
       const p = this.cam.project(x, y, z, w, h);
       if (p.visible && p.x >= 0 && p.y >= 0 && p.x <= w && p.y <= h) ids.push(u.id);
     }
@@ -301,7 +300,7 @@ export class Controller implements GestureHandlers {
   confirmAnchor(): { x: number; y: number } | null {
     if (this.mode !== "place" || !this.placePos || this.mouse.used) return null;
     const { w, h } = this.size();
-    const p = this.cam.project(this.placePos.x, groundY(this.placePos.x, this.placePos.z), this.placePos.z, w, h);
+    const p = this.cam.project(this.placePos.x, this.match.world.map.groundY(this.placePos.x, this.placePos.z), this.placePos.z, w, h);
     return p.visible ? { x: p.x, y: Math.min(h - 220, p.y + 50) } : null;
   }
 
@@ -496,7 +495,7 @@ export class Controller implements GestureHandlers {
     const inside: Unit[] = [];
     for (const u of this.world.units) {
       if (u.side !== this.me) continue;
-      const [ux, uy, uz] = Views.displayPos(u, this.alpha);
+      const [ux, uy, uz] = Views.displayPos(this.match.world.map, u, this.alpha);
       const p = this.cam.project(ux, uy + 0.8, uz, w, h);
       if (p.visible && p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1) inside.push(u);
     }
@@ -652,7 +651,7 @@ export class Controller implements GestureHandlers {
     // bóng mờ công trình đang đặt: xanh = đặt được, đỏ = không
     if (this.mode === "place" && this.ghost && this.placePos && this.placeKind && this.me !== null) {
       const { x, z } = this.placePos;
-      this.ghost.root.position.set(x, groundY(x, z) + 0.05, z);
+      this.ghost.root.position.set(x, this.match.world.map.groundY(x, z) + 0.05, z);
       this.ghost.root.visible = true;
       this.placeReason = this.world.canPlace(this.me, this.placeKind, x, z);
       const valid = this.placeReason === null;

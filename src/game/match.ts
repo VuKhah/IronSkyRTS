@@ -31,9 +31,11 @@ export class Match {
 
   constructor(
     readonly mode: Mode,
-    readonly seed: number
+    readonly seed: number,
+    /** Mã bản đồ (mặc định "Thung Lũng Sông Sắt"). */
+    mapId?: string
   ) {
-    this.world = new World(seed, { sandbox: mode === "sandbox" });
+    this.world = new World(seed, { sandbox: mode === "sandbox", map: mapId });
     this.player = mode === "aivai" ? null : 0;
     this.ais = mode === "vsai" ? [new Ai(1, seed)] : mode === "aivai" ? [new Ai(0, seed), new Ai(1, seed)] : [];
   }

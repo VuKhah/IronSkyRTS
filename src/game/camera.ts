@@ -3,7 +3,7 @@
  * xoay quanh trục đứng (`yaw`) và nghiêng (`pitch`, giới hạn 30°–75° để trận luôn dễ đọc).
  */
 import * as THREE from "three";
-import { EDGE, groundY } from "../sim/map";
+import type { GameMap } from "../sim/maps";
 
 const clamp = (v: number, a: number, b: number): number => (v < a ? a : v > b ? b : v);
 
@@ -18,8 +18,10 @@ export class RtsCamera {
   private ndc = new THREE.Vector2();
   private tmp = new THREE.Vector3();
 
+  constructor(private map: GameMap) {}
+
   apply(): void {
-    const ty = Math.max(0, groundY(this.tx, this.tz));
+    const ty = Math.max(0, this.map.groundY(this.tx, this.tz));
     const cp = Math.cos(this.pitch);
     const sp = Math.sin(this.pitch);
     this.cam.position.set(this.tx + Math.sin(this.yaw) * cp * this.dist, ty + sp * this.dist, this.tz + Math.cos(this.yaw) * cp * this.dist);
@@ -33,8 +35,8 @@ export class RtsCamera {
   }
 
   focus(x: number, z: number): void {
-    this.tx = clamp(x, -EDGE, EDGE);
-    this.tz = clamp(z, -EDGE, EDGE);
+    this.tx = clamp(x, -this.map.edgeX, this.map.edgeX);
+    this.tz = clamp(z, -this.map.edgeZ, this.map.edgeZ);
   }
 
   panWorld(dx: number, dz: number): void {
@@ -75,7 +77,7 @@ export class RtsCamera {
     for (let i = 0; i < 6; i++) {
       const t = (y - o.y) / d.y;
       p.set(o.x + d.x * t, y, o.z + d.z * t);
-      y = groundY(clamp(p.x, -95, 95), clamp(p.z, -95, 95));
+      y = this.map.groundY(clamp(p.x, -this.map.halfW - 15, this.map.halfW + 15), clamp(p.z, -this.map.halfH - 15, this.map.halfH + 15));
     }
     p.y = y;
     return p;

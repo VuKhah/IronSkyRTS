@@ -1,5 +1,6 @@
 /**
- * Lưới ô 2 m × 2 m phủ bản đồ (80 × 80 = 6.400 ô) cho xe mặt đất.
+ * Lưới ô 2 m × 2 m phủ bản đồ cho xe mặt đất (cols × rows ô, lấy từ GameMap; "Thung Lũng Sông Sắt" là 80 × 80).
+ * Chỉ số ô: i = cz * cols + cx.
  *
  * - `terrain`: ô bị chặn vĩnh viễn (sông không có cầu, mỏm đá, vách bản đồ).
  * - `occ`: số công trình / mỏ đang chiếm ô (thay đổi khi xây hoặc phá công trình).
@@ -7,10 +8,9 @@
  *   để xe chạy theo đường chéo tự nhiên thay vì zíc zắc theo ô.
  * Tất định: duyệt theo thứ tự cố định, chỉ dùng phép tính cơ bản.
  */
-import { CELL, GRID, MAP_HALF, staticBlocked } from "./map";
 import { SQRT2 } from "./fmath";
+import { CELL, type GameMap } from "./maps";
 
-const N = GRID * GRID;
 const NEIGHBORS: readonly (readonly [number, number, number])[] = [
   [1, 0, 1],
   [-1, 0, 1],
@@ -23,44 +23,64 @@ const NEIGHBORS: readonly (readonly [number, number, number])[] = [
 ];
 
 export class Grid {
-  readonly terrain = new Uint8Array(N);
-  readonly occ = new Uint8Array(N);
-  private g = new Float64Array(N);
-  private parent = new Int32Array(N);
-  private openGen = new Uint32Array(N);
-  private closedGen = new Uint32Array(N);
+  /** Số ô theo x (cột) và z (hàng). */
+  readonly cols: number;
+  readonly rows: number;
+  /** Tổng số ô. */
+  readonly size: number;
+  readonly terrain: Uint8Array;
+  readonly occ: Uint8Array;
+  private readonly halfW: number;
+  private readonly halfH: number;
+  private g: Float64Array;
+  private parent: Int32Array;
+  private openGen: Uint32Array;
+  private closedGen: Uint32Array;
   private gen = 0;
-  private heapNode = new Int32Array(N * 8);
-  private heapF = new Float64Array(N * 8);
+  private heapNode: Int32Array;
+  private heapF: Float64Array;
   private heapSize = 0;
 
-  constructor() {
-    for (let cz = 0; cz < GRID; cz++)
-      for (let cx = 0; cx < GRID; cx++) this.terrain[cz * GRID + cx] = staticBlocked(this.centerX(cx), this.centerZ(cz)) ? 1 : 0;
+  constructor(map: GameMap) {
+    this.cols = map.cols;
+    this.rows = map.rows;
+    this.halfW = map.halfW;
+    this.halfH = map.halfH;
+    const n = (this.size = this.cols * this.rows);
+    this.terrain = new Uint8Array(n);
+    this.occ = new Uint8Array(n);
+    this.g = new Float64Array(n);
+    this.parent = new Int32Array(n);
+    this.openGen = new Uint32Array(n);
+    this.closedGen = new Uint32Array(n);
+    this.heapNode = new Int32Array(n * 8);
+    this.heapF = new Float64Array(n * 8);
+    for (let cz = 0; cz < this.rows; cz++)
+      for (let cx = 0; cx < this.cols; cx++) this.terrain[cz * this.cols + cx] = map.staticBlocked(this.centerX(cx), this.centerZ(cz)) ? 1 : 0;
   }
 
   cellX(x: number): number {
-    const c = Math.floor((x + MAP_HALF) / CELL);
-    return c < 0 ? 0 : c >= GRID ? GRID - 1 : c;
+    const c = Math.floor((x + this.halfW) / CELL);
+    return c < 0 ? 0 : c >= this.cols ? this.cols - 1 : c;
   }
   cellZ(z: number): number {
-    const c = Math.floor((z + MAP_HALF) / CELL);
-    return c < 0 ? 0 : c >= GRID ? GRID - 1 : c;
+    const c = Math.floor((z + this.halfH) / CELL);
+    return c < 0 ? 0 : c >= this.rows ? this.rows - 1 : c;
   }
   index(x: number, z: number): number {
-    return this.cellZ(z) * GRID + this.cellX(x);
+    return this.cellZ(z) * this.cols + this.cellX(x);
   }
   centerX(cx: number): number {
-    return -MAP_HALF + (cx + 0.5) * CELL;
+    return -this.halfW + (cx + 0.5) * CELL;
   }
   centerZ(cz: number): number {
-    return -MAP_HALF + (cz + 0.5) * CELL;
+    return -this.halfH + (cz + 0.5) * CELL;
   }
   blockedIdx(i: number): boolean {
     return this.terrain[i] !== 0 || this.occ[i] !== 0;
   }
   blockedAt(x: number, z: number): boolean {
-    if (x <= -MAP_HALF || x >= MAP_HALF || z <= -MAP_HALF || z >= MAP_HALF) return true;
+    if (x <= -this.halfW || x >= this.halfW || z <= -this.halfH || z >= this.halfH) return true;
     return this.blockedIdx(this.index(x, z));
   }
 
@@ -71,7 +91,7 @@ export class Grid {
     const x1 = this.cellX(x + hw - 0.01);
     const z0 = this.cellZ(z - hd + 0.01);
     const z1 = this.cellZ(z + hd - 0.01);
-    for (let cz = z0; cz <= z1; cz++) for (let cx = x0; cx <= x1; cx++) out.push(cz * GRID + cx);
+    for (let cz = z0; cz <= z1; cz++) for (let cx = x0; cx <= x1; cx++) out.push(cz * this.cols + cx);
     return out;
   }
 
@@ -83,7 +103,8 @@ export class Grid {
   nearestFree(x: number, z: number, maxRing = 15): [number, number] | null {
     const cx0 = this.cellX(x);
     const cz0 = this.cellZ(z);
-    if (!this.blockedIdx(cz0 * GRID + cx0) && Math.abs(x) < MAP_HALF && Math.abs(z) < MAP_HALF) return [x, z];
+    const C = this.cols;
+    if (!this.blockedIdx(cz0 * C + cx0) && Math.abs(x) < this.halfW && Math.abs(z) < this.halfH) return [x, z];
     for (let r = 1; r <= maxRing; r++) {
       let best = -1;
       let bestD = Infinity;
@@ -92,8 +113,8 @@ export class Grid {
           if (Math.abs(dx) !== r && Math.abs(dz) !== r) continue;
           const cx = cx0 + dx;
           const cz = cz0 + dz;
-          if (cx < 0 || cz < 0 || cx >= GRID || cz >= GRID) continue;
-          const i = cz * GRID + cx;
+          if (cx < 0 || cz < 0 || cx >= C || cz >= this.rows) continue;
+          const i = cz * C + cx;
           if (this.blockedIdx(i)) continue;
           const ddx = this.centerX(cx) - x;
           const ddz = this.centerZ(cz) - z;
@@ -103,7 +124,7 @@ export class Grid {
             best = i;
           }
         }
-      if (best >= 0) return [this.centerX(best % GRID), this.centerZ(Math.floor(best / GRID))];
+      if (best >= 0) return [this.centerX(best % C), this.centerZ(Math.floor(best / C))];
     }
     return null;
   }
@@ -185,11 +206,13 @@ export class Grid {
     this.gen++;
     const gen = this.gen;
     this.heapSize = 0;
-    const tx = t % GRID;
-    const tz = Math.floor(t / GRID);
+    const C = this.cols;
+    const R = this.rows;
+    const tx = t % C;
+    const tz = Math.floor(t / C);
     const h = (i: number): number => {
-      const dx = Math.abs((i % GRID) - tx);
-      const dz = Math.abs(Math.floor(i / GRID) - tz);
+      const dx = Math.abs((i % C) - tx);
+      const dz = Math.abs(Math.floor(i / C) - tz);
       return dx + dz + (SQRT2 - 2) * Math.min(dx, dz);
     };
     this.g[s] = 0;
@@ -205,16 +228,16 @@ export class Grid {
         found = true;
         break;
       }
-      const cx = cur % GRID;
-      const cz = Math.floor(cur / GRID);
+      const cx = cur % C;
+      const cz = Math.floor(cur / C);
       for (const [dx, dz, cost] of NEIGHBORS) {
         const nx = cx + dx;
         const nz = cz + dz;
-        if (nx < 0 || nz < 0 || nx >= GRID || nz >= GRID) continue;
-        const ni = nz * GRID + nx;
+        if (nx < 0 || nz < 0 || nx >= C || nz >= R) continue;
+        const ni = nz * C + nx;
         if (this.blockedIdx(ni) || this.closedGen[ni] === gen) continue;
         // không cắt góc: đi chéo thì hai ô cạnh phải trống
-        if (dx !== 0 && dz !== 0 && (this.blockedIdx(cz * GRID + nx) || this.blockedIdx(nz * GRID + cx))) continue;
+        if (dx !== 0 && dz !== 0 && (this.blockedIdx(cz * C + nx) || this.blockedIdx(nz * C + cx))) continue;
         const ng = this.g[cur] + cost;
         if (this.openGen[ni] === gen && ng >= this.g[ni]) continue;
         this.openGen[ni] = gen;
@@ -229,7 +252,7 @@ export class Grid {
     for (let c = t; c !== -1; c = this.parent[c]) cells.push(c);
     cells.reverse();
     const pts: number[] = [];
-    for (let i = 1; i < cells.length; i++) pts.push(this.centerX(cells[i] % GRID), this.centerZ(Math.floor(cells[i] / GRID)));
+    for (let i = 1; i < cells.length; i++) pts.push(this.centerX(cells[i] % C), this.centerZ(Math.floor(cells[i] / C)));
     pts[pts.length - 2] = gx;
     pts[pts.length - 1] = gz;
 

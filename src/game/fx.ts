@@ -4,7 +4,7 @@
  */
 import * as THREE from "three";
 import type { WeaponVisual } from "../sim/content";
-import { groundY } from "../sim/map";
+import type { GameMap } from "../sim/maps";
 import type { SimEvent } from "../sim/types";
 import { DT, type World } from "../sim/world";
 
@@ -60,7 +60,10 @@ export class Fx {
     scorch: new THREE.MeshBasicMaterial({ color: 0x15120f, transparent: true, opacity: 0.55, depthWrite: false })
   };
 
-  constructor(private scene: THREE.Scene) {}
+  constructor(
+    private scene: THREE.Scene,
+    private map: GameMap
+  ) {}
 
   private spawn(geo: THREE.BufferGeometry, mat: THREE.Material, pos: THREE.Vector3, scale: number, life: number, opts: Partial<Omit<Particle, "mesh" | "life" | "max">> = {}): Particle {
     // giới hạn số hạt: trận đông thì bỏ hạt cũ nhất thay vì để máy chậm đi
@@ -95,10 +98,10 @@ export class Fx {
       switch (e.t) {
         case "shot": {
           if (!visible(e.x, e.z) && !visible(e.tx, e.tz)) break;
-          const from = new THREE.Vector3(e.x, groundY(e.x, e.z) + (e.alt > 0.5 ? e.alt : 1.6), e.z);
+          const from = new THREE.Vector3(e.x, this.map.groundY(e.x, e.z) + (e.alt > 0.5 ? e.alt : 1.6), e.z);
           // súng nhiều nòng: mỗi viên giữ độ lệch nòng tới tận mục tiêu, thành các vệt đạn song song
           const off = new THREE.Vector3(e.ox * 0.6, 0, e.oz * 0.6);
-          const to = new THREE.Vector3(e.tx, groundY(e.tx, e.tz) + (e.talt > 0.5 ? e.talt : 1.0), e.tz).add(off);
+          const to = new THREE.Vector3(e.tx, this.map.groundY(e.tx, e.tz) + (e.talt > 0.5 ? e.talt : 1.0), e.tz).add(off);
           const geo = e.visual === "missile" ? this.geo.missile : e.visual === "cannon" ? this.geo.shell : this.geo.bullet;
           const mat = e.visual === "missile" ? this.mat.missile : e.visual === "cannon" ? this.mat.shell : this.mat.bullet;
           const mesh = new THREE.Mesh(geo, mat);
@@ -114,14 +117,14 @@ export class Fx {
         }
         case "hit": {
           if (!visible(e.x, e.z)) break;
-          const pos = new THREE.Vector3(e.x, groundY(e.x, e.z) + (e.alt > 0.5 ? e.alt : 0.8), e.z);
+          const pos = new THREE.Vector3(e.x, this.map.groundY(e.x, e.z) + (e.alt > 0.5 ? e.alt : 0.8), e.z);
           if (e.splash > 0) this.boom(pos, 0.5 + e.splash * 0.35);
           else this.spawn(this.geo.sphere, this.mat.flash, pos, 0.25, 0.12, { grow: 3 });
           break;
         }
         case "death": {
           if (e.sold || !visible(e.x, e.z)) break;
-          const y = groundY(e.x, e.z);
+          const y = this.map.groundY(e.x, e.z);
           const pos = new THREE.Vector3(e.x, y + (e.alt > 0.5 ? e.alt : 1), e.z);
           const size = e.building ? 3.2 : e.crash ? 1.8 : 1.5;
           this.boom(pos, size);
@@ -143,7 +146,7 @@ export class Fx {
           const m = world.byId.get(e.mine);
           if (!m) break;
           const color = e.side === 0 ? 0x2e9eff : e.side === 1 ? 0xf23d3d : 0xdddddd;
-          this.spawn(this.geo.ring, add(color, 0.9), new THREE.Vector3(m.x, groundY(m.x, m.z) + 0.3, m.z), 3, 0.9, { grow: 14, fade: true });
+          this.spawn(this.geo.ring, add(color, 0.9), new THREE.Vector3(m.x, this.map.groundY(m.x, m.z) + 0.3, m.z), 3, 0.9, { grow: 14, fade: true });
           break;
         }
         default:
@@ -154,7 +157,7 @@ export class Fx {
 
   /** Dấu lệnh trên mặt đất (xanh = đi, đỏ = tấn công, vàng = khai thác). */
   marker(x: number, z: number, color: number): void {
-    this.spawn(this.geo.ring, add(color, 0.95), new THREE.Vector3(x, groundY(x, z) + 0.25, z), 2.2, 0.5, { grow: -3 });
+    this.spawn(this.geo.ring, add(color, 0.95), new THREE.Vector3(x, this.map.groundY(x, z) + 0.25, z), 2.2, 0.5, { grow: -3 });
   }
 
   update(dt: number, world: World, targetPos: (id: number) => THREE.Vector3 | null): void {
@@ -193,7 +196,7 @@ export class Fx {
       p.vel.y -= p.gravity * dt;
       p.mesh.position.addScaledVector(p.vel, dt);
       if (p.gravity > 0) {
-        const gy = groundY(p.mesh.position.x, p.mesh.position.z) + 0.15;
+        const gy = this.map.groundY(p.mesh.position.x, p.mesh.position.z) + 0.15;
         if (p.mesh.position.y < gy) {
           p.mesh.position.y = gy;
           p.vel.set(0, 0, 0);

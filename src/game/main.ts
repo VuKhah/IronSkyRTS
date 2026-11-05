@@ -5,7 +5,6 @@
  */
 import * as THREE from "three";
 import { BUILDINGS, RES_NAME, SIDE_NAME, UNITS, type EntityId, type Side, type UnitId } from "../sim/content";
-import { groundY, HQ_POS } from "../sim/map";
 import type { SimEvent } from "../sim/types";
 import { TICK_RATE } from "../sim/world";
 import { buildModel, disposeRig } from "../render/models";
@@ -26,7 +25,9 @@ import { Views } from "./views";
 const app = document.getElementById("app")!;
 const randomSeed = (): number => Math.floor(Math.random() * 1e9) + 1;
 const go = (mode: Mode | null, seed = randomSeed()): void => {
-  location.search = mode ? `?play=${mode}&seed=${seed}` : "";
+  // giữ nguyên bản đồ đang chơi khi mở trận mới (menu chọn bản đồ: bước B6)
+  const map = new URLSearchParams(location.search).get("map");
+  location.search = mode ? `?play=${mode}&seed=${seed}${map ? `&map=${encodeURIComponent(map)}` : ""}` : "";
 };
 
 const HELP = `
@@ -98,7 +99,7 @@ const ALERT_TEXT: Record<string, (n: number) => string> = {
   batteryLow: (n) => `Hậu cần: pin dự trữ chỉ còn khoảng ${n} giây!`
 };
 
-function startGame(mode: Mode, seed: number, skip = 0): void {
+function startGame(mode: Mode, seed: number, skip = 0, mapId?: string): void {
   app.innerHTML = "";
   const canvas = document.createElement("canvas");
   canvas.className = "view";
@@ -107,15 +108,16 @@ function startGame(mode: Mode, seed: number, skip = 0): void {
   app.append(canvas, overlayCanvas);
   if (new URLSearchParams(location.search).has("nooverlay")) overlayCanvas.style.display = "none";
 
+  const match = new Match(mode, seed, mapId);
+  const map = match.world.map;
   let scene: BattleScene;
   try {
-    scene = new BattleScene(canvas);
+    scene = new BattleScene(canvas, map);
   } catch {
     app.innerHTML = `<div class="screen"><div class="card"><h2>Không bật được WebGL</h2><p>Trình duyệt này không hỗ trợ đồ họa 3D (WebGL), nên chưa chơi được Iron Sky. Hãy thử Chrome, Edge hoặc Safari bản mới.</p></div></div>`;
     return;
   }
   if (new URLSearchParams(location.search).has("noshadow")) scene.renderer.shadowMap.enabled = false;
-  const match = new Match(mode, seed);
   // ?skip=N: chạy nhanh N giây đầu trận (để thử nghiệm / chụp ảnh giữa trận)
   // (Phòng Thử Nghiệm tua sau khi đã thả quân, xem sandbox.ts)
   if (mode !== "sandbox") for (let i = 0; i < skip * 10 && match.world.winner === -1; i++) match.advance(0.1);
@@ -126,20 +128,20 @@ function startGame(mode: Mode, seed: number, skip = 0): void {
   let me = match.player;
   /** Phe mà sương mù / phần vẽ nhìn theo: null = thấy toàn bản đồ. */
   let viewer = me;
-  const cam = new RtsCamera();
+  const cam = new RtsCamera(map);
   if (sandboxMode) {
     cam.focus(DUEL_CENTER[0], DUEL_CENTER[1]);
-    cam.yaw = Math.atan2(HQ_POS[0][0], HQ_POS[0][1]);
+    cam.yaw = Math.atan2(map.bases[0][0], map.bases[0][1]);
     cam.dist = 70;
   } else if (me !== null) {
-    const [hx, hz] = HQ_POS[me];
+    const [hx, hz] = map.bases[me];
     const l = Math.hypot(hx, hz);
     cam.focus(hx - (hx / l) * 7, hz - (hz / l) * 7);
     cam.yaw = Math.atan2(hx, hz);
     cam.dist = 66;
   } else {
     cam.focus(0, 0);
-    cam.yaw = Math.atan2(HQ_POS[0][0], HQ_POS[0][1]);
+    cam.yaw = Math.atan2(map.bases[0][0], map.bases[0][1]);
     cam.dist = 128;
     cam.pitch = 1.05;
   }
@@ -150,8 +152,8 @@ function startGame(mode: Mode, seed: number, skip = 0): void {
     cam.focus(cx, cz);
     if (cd) cam.dist = cd;
   }
-  const views = new Views(scene.scene);
-  const fx = new Fx(scene.scene);
+  const views = new Views(scene.scene, map);
+  const fx = new Fx(scene.scene, map);
   const sfx = new Sfx();
   const thumbs = makeThumbs(sandboxMode ? ([...Object.keys(UNITS), ...Object.keys(BUILDINGS)] as EntityId[]) : HUD_THUMBS);
   const overlay = new Overlay(overlayCanvas);
@@ -194,6 +196,7 @@ function startGame(mode: Mode, seed: number, skip = 0): void {
   attachGestures(canvas, ctrl);
   const minimap = new Minimap(
     hud.minimapCanvas,
+    map,
     (x, z) => cam.focus(x, z),
     (x, z) => {
       const ids = ctrl.ownUnits().map((u) => u.id);
@@ -340,21 +343,24 @@ function startGame(mode: Mode, seed: number, skip = 0): void {
     const e = world.byId.get(id);
     if (!e || e.cat === "mine") return null;
     if (e.cat === "unit") {
-      const [x, y, z] = Views.displayPos(e, ctrl.alpha);
+      const [x, y, z] = Views.displayPos(map, e, ctrl.alpha);
       return new THREE.Vector3(x, y + 1, z);
     }
-    return new THREE.Vector3(e.x, groundY(e.x, e.z) + 1.5, e.z);
+    return new THREE.Vector3(e.x, map.groundY(e.x, e.z) + 1.5, e.z);
   };
 
   // ?script=1: kịch bản tự chơi thử, gọi đúng các hàm mà nút bấm / cú chạm gọi (để kiểm tra không cần tay)
   if (new URLSearchParams(location.search).has("script") && match.player !== null) {
     const me = match.player;
     const lynx = world.units.find((u) => u.side === me && u.kind === "lynx")!;
-    const fwd = world.mines.find((m) => m.res === "iron" && m.owner === -1 && Math.hypot(m.x - HQ_POS[me][0], m.z - HQ_POS[me][1]) < 70)!;
+    // mỏ Sắt trung lập gần nhà nhất (đúng với mọi bản đồ)
+    const [bx, bz] = map.bases[me];
+    const dHome = (m: { x: number; z: number }): number => Math.hypot(m.x - bx, m.z - bz);
+    const fwd = world.mines.filter((m) => m.res === "iron" && m.owner === -1).sort((a, b) => dHome(a) - dHome(b))[0];
     ctrl.select([lynx.id]);
     match.issue({ t: "harvest", ids: [lynx.id], mine: fwd.id });
     ctrl.act("build", "factory");
-    const [hx, hz] = HQ_POS[me];
+    const [hx, hz] = map.bases[me];
     ctrl.placePos = { x: hx + 8, z: hz - 12 };
     ctrl.update(0);
     console.log(`[script] đặt Xưởng Xe: ${ctrl.placeReason ?? "hợp lệ"}`);
@@ -478,5 +484,5 @@ function startGame(mode: Mode, seed: number, skip = 0): void {
 
 const params = new URLSearchParams(location.search);
 const play = params.get("play");
-if (play === "vsai" || play === "aivai" || play === "sandbox") startGame(play, Number(params.get("seed")) || randomSeed(), Number(params.get("skip")) || 0);
+if (play === "vsai" || play === "aivai" || play === "sandbox") startGame(play, Number(params.get("seed")) || randomSeed(), Number(params.get("skip")) || 0, params.get("map") ?? undefined);
 else showMenu();

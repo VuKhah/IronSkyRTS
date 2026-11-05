@@ -6,8 +6,7 @@
  * thì ra cùng kết quả, và lõi sim không cần biết có giao diện nào đang điều khiển nó.
  */
 import { BUILDINGS, SIDE_NAME, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
-import { ARENA_CENTER, ARENA_U, formation, SCENARIOS, ScenarioRun } from "../sim/scenarios";
-import { fromUV } from "../sim/map";
+import { ARENA_CENTER, arenaPoint, formation, SCENARIOS, ScenarioRun } from "../sim/scenarios";
 import type { Order } from "../sim/types";
 import { TICK_RATE } from "../sim/world";
 import type { RtsCamera } from "./camera";
@@ -276,7 +275,7 @@ export class Sandbox {
     const ns = [0, 1].map((s) => Math.max(1, Math.min(30, Math.round(Number(q<HTMLInputElement>(`n${s}`).value) || 1))));
     const d = Math.max(10, Math.min(90, Number(q<HTMLInputElement>("d").value) || 44));
     // hai nhóm đứng đối diện dọc theo trục v (song song dòng sông), cùng một bờ
-    const pos = [fromUV(ARENA_U, -d / 2), fromUV(ARENA_U, d / 2)];
+    const pos = [arenaPoint(-d / 2), arenaPoint(d / 2)];
     this.match.director = null;
     this.send({ t: "sbClear" });
     for (const s of [0, 1] as Side[]) {

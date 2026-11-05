@@ -4,21 +4,21 @@
 import { describe, expect, it } from "vitest";
 import { Ai } from "./ai";
 import { dcos, dsin } from "./fmath";
-import { HQ_POS, MINES } from "./map";
 import type { BuildingId } from "./content";
 import type { Command } from "./types";
 import { runScenario, SCENARIOS } from "./scenarios";
 import { hashWorld, sec, World } from "./world";
 
 /** Chạy một trận AI đấu AI, trả về chuỗi mã băm lấy mẫu và trận đã chạy. */
-function runMatch(seed: number, ticks: number, sampleEvery = 200): { hashes: number[]; world: World } {
-  const w = new World(seed, { maxTicks: ticks });
+function runMatch(seed: number, ticks: number, sampleEvery = 200, map?: string, onTick?: (w: World) => void): { hashes: number[]; world: World } {
+  const w = new World(seed, { maxTicks: ticks, map });
   const ais = [new Ai(0, seed), new Ai(1, seed)];
   const hashes: number[] = [];
   while (w.winner === -1 && w.tick < ticks) {
     const cmds: Command[] = [];
     for (const ai of ais) for (const order of ai.think(w)) cmds.push({ side: ai.side, order });
     w.step(cmds);
+    onTick?.(w);
     if (w.tick % sampleEvery === 0) hashes.push(hashWorld(w));
   }
   hashes.push(hashWorld(w));
@@ -35,10 +35,35 @@ describe("toán tất định", () => {
 });
 
 describe("bản đồ & tìm đường", () => {
+  it("đổi kích thước / hình dáng bản đồ là game chạy đúng (bản đồ chữ nhật viền lục giác, B1)", () => {
+    // "Bãi Thử Hình Dáng": 224 × 144 m, vùng chơi lục giác, sông gấp khúc. Lưới, sương mù, AI phải theo bản đồ.
+    let escaped = "";
+    const run = (): ReturnType<typeof runMatch> =>
+      runMatch(7, sec(300), 200, "proving-ground", (w) => {
+        for (const u of w.units) {
+          // xe mặt đất không được ra ngoài vùng chơi; máy bay không được bay quá khung
+          if (u.air === "none" && w.map.inset(u.x, u.z) < 0) escaped ||= `${u.kind} ở (${u.x.toFixed(1)}, ${u.z.toFixed(1)})`;
+          if (Math.abs(u.x) > w.map.halfW || Math.abs(u.z) > w.map.halfH) escaped ||= `${u.kind} ra khỏi bản đồ`;
+        }
+      });
+    const a = run();
+    const w = a.world;
+    expect(w.grid.cols).toBe(112);
+    expect(w.grid.rows).toBe(72);
+    expect(w.sides[0].vis.length).toBe(112 * 72);
+    expect(escaped, "quân ra ngoài vùng chơi").toBe("");
+    // hai AI đều phát triển được: xây công trình, đúc quân, có giao tranh
+    for (const s of [0, 1] as const) expect(w.sides[s].stats.buildingsBuilt, `phe ${s} xây công trình`).toBeGreaterThan(1);
+    expect(w.sides[0].stats.unitsBuilt + w.sides[1].stats.unitsBuilt).toBeGreaterThan(10);
+    expect(w.sides[0].stats.kills + w.sides[1].stats.kills, "có giao tranh").toBeGreaterThan(0);
+    // vẫn tất định trên bản đồ khác
+    expect(run().hashes).toEqual(a.hashes);
+  });
+
   it("xe từ căn cứ Lam tìm được đường sang căn cứ Đỏ (phải qua cầu)", () => {
     const w = new World(1);
-    const [ax, az] = HQ_POS[0];
-    const [bx, bz] = HQ_POS[1];
+    const [ax, az] = w.map.bases[0];
+    const [bx, bz] = w.map.bases[1];
     const p = w.grid.findPath(ax + 8, az - 8, bx - 8, bz + 8);
     expect(p).not.toBeNull();
     // mọi điểm trên đường đều đi được
@@ -47,8 +72,8 @@ describe("bản đồ & tìm đường", () => {
 
   it("mọi mỏ đều có chỗ đứng đào xe tới được", () => {
     const w = new World(1);
-    const [ax, az] = HQ_POS[0];
-    for (const m of MINES) {
+    const [ax, az] = w.map.bases[0];
+    for (const m of w.map.mines) {
       const p = w.grid.findPath(ax + 8, az - 8, m.x + 4, m.z);
       expect(p, `mỏ ở (${m.x}, ${m.z})`).not.toBeNull();
     }

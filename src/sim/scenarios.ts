@@ -8,13 +8,21 @@
  * Chỉ dùng trong World { sandbox: true }.
  */
 import type { Side, UnitId } from "./content";
-import { fromUV } from "./map";
 import type { Command } from "./types";
 import { TICK_RATE, type World } from "./world";
 
-/** Bãi thử: vùng đất bằng bên bờ Liên Minh Lam, trục đấu chạy song song dòng sông (trục v). */
+/**
+ * Bãi thử trên "Thung Lũng Sông Sắt": vùng đất bằng bên bờ Liên Minh Lam, cách tâm bản đồ ARENA_U mét về phía
+ * căn cứ Lam; trục đấu (tọa độ v) chạy song song dòng sông. Kịch bản luôn chạy trên bản đồ này để kết quả so được với nhau.
+ */
+export const SCENARIO_MAP = "iron-valley";
 export const ARENA_U = -38;
-export const ARENA_CENTER = fromUV(ARENA_U, 0);
+const S = 0.7071067811865476;
+/** Điểm v mét dọc trục bãi thử, cách trục u mét (u < 0 là phía Lam). Sông của bản đồ này chạy theo đường x = z. */
+export function arenaPoint(v: number, u = ARENA_U): [number, number] {
+  return [(u + v) * S, (v - u) * S];
+}
+export const ARENA_CENTER = arenaPoint(0);
 const SPACING = 3.6;
 
 /**
@@ -33,10 +41,10 @@ export function formation(i: number, n: number, cx: number, cz: number, bx: numb
 
 /** Lệnh thả một khối quân ở điểm v trên trục bãi thử, các hàng lùi xa phía `toward`. */
 function group(side: Side, kind: UnitId, n: number, v: number, toward: number, go?: { v: number; mode: "move" | "amove" }): Command[] {
-  const [cx, cz] = fromUV(ARENA_U, v);
-  const [ex, ez] = fromUV(ARENA_U, toward);
+  const [cx, cz] = arenaPoint(v);
+  const [ex, ez] = arenaPoint(toward);
   const l = Math.sqrt((cx - ex) * (cx - ex) + (cz - ez) * (cz - ez)) || 1;
-  const [gx, gz] = go ? fromUV(ARENA_U, go.v) : [undefined, undefined];
+  const [gx, gz] = go ? arenaPoint(go.v) : [undefined, undefined];
   const out: Command[] = [];
   for (let i = 0; i < n; i++) {
     const [x, z] = formation(i, n, cx, cz, (cx - ex) / l, (cz - ez) / l);
@@ -154,7 +162,7 @@ export const SCENARIOS: Record<string, () => Scenario> = {
   },
   "falcon-flyover-skyguard": () => {
     const N = 10;
-    const [dx, dz] = fromUV(ARENA_U, 55);
+    const [dx, dz] = arenaPoint(55);
     return {
       id: "falcon-flyover-skyguard",
       name: "10 Falcon bay ngang qua 4 SkyGuard",

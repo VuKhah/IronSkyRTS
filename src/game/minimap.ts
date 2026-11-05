@@ -3,8 +3,7 @@
  * Chạm / nhấp để đưa camera tới đó; chuột phải để ra lệnh di chuyển cho quân đang chọn.
  */
 import { BUILDINGS, type Side } from "../sim/content";
-import { GRID, MAP_HALF, terrainHeight, toU } from "../sim/map";
-import { RIVER_HALF } from "../sim/map";
+import type { GameMap } from "../sim/maps";
 import type { World } from "../sim/world";
 
 const SIDE_COLOR = ["#3ea8ff", "#ff4d4d"];
@@ -20,24 +19,30 @@ export class Minimap {
 
   constructor(
     readonly canvas: HTMLCanvasElement,
+    private map: GameMap,
     private onJump: (x: number, z: number) => void,
     private onCommand: (x: number, z: number) => void
   ) {
     this.ctx = canvas.getContext("2d")!;
+    // ảnh nền: 1 điểm ảnh = 1 m
+    const W = Math.round(map.w);
+    const H = Math.round(map.h);
     this.bg = document.createElement("canvas");
-    this.bg.width = this.bg.height = 160;
+    this.bg.width = W;
+    this.bg.height = H;
     const b = this.bg.getContext("2d")!;
-    const img = b.createImageData(160, 160);
-    for (let pz = 0; pz < 160; pz++)
-      for (let px = 0; px < 160; px++) {
-        const x = px - 80 + 0.5;
-        const z = pz - 80 + 0.5;
-        const h = terrainHeight(x, z);
+    const img = b.createImageData(W, H);
+    for (let pz = 0; pz < H; pz++)
+      for (let px = 0; px < W; px++) {
+        const x = px - map.halfW + 0.5;
+        const z = pz - map.halfH + 0.5;
+        const h = map.terrainHeight(x, z);
         let c = [78, 104, 52];
         if (h > 1.5) c = [104, 120, 70];
-        if (Math.abs(toU(x, z)) < RIVER_HALF + 1 && h < 0) c = h < -1 ? [44, 98, 140] : [140, 128, 100];
-        if (Math.max(Math.abs(x), Math.abs(z)) > 75 || h > 3.8) c = [70, 66, 60];
-        const i = (pz * 160 + px) * 4;
+        const river = map.nearRiver(x, z);
+        if (river && river.dist < river.river.half + 1 && h < 0) c = h < -1 ? [44, 98, 140] : [140, 128, 100];
+        if (map.inset(x, z) < 5 || h > 3.8) c = [70, 66, 60];
+        const i = (pz * W + px) * 4;
         img.data[i] = c[0];
         img.data[i + 1] = c[1];
         img.data[i + 2] = c[2];
@@ -45,8 +50,9 @@ export class Minimap {
       }
     b.putImageData(img, 0, 0);
     this.fog = document.createElement("canvas");
-    this.fog.width = this.fog.height = GRID;
-    this.fogImg = this.fog.getContext("2d")!.createImageData(GRID, GRID);
+    this.fog.width = map.cols;
+    this.fog.height = map.rows;
+    this.fogImg = this.fog.getContext("2d")!.createImageData(map.cols, map.rows);
 
     canvas.addEventListener("pointerdown", (e) => {
       e.stopPropagation();
@@ -68,7 +74,8 @@ export class Minimap {
   }
 
   private scale(): number {
-    return this.canvas.width / (MAP_HALF * 2 * 1.42);
+    // minimap xoay theo camera: đường chéo bản đồ phải lọt khung
+    return this.canvas.width / (Math.hypot(this.map.w, this.map.h) * 1.004);
   }
 
   private toWorld(e: PointerEvent): [number, number] {
@@ -97,15 +104,16 @@ export class Minimap {
     g.translate(W / 2, W / 2);
     g.rotate(yaw);
     g.imageSmoothingEnabled = true;
-    g.drawImage(this.bg, -MAP_HALF * s, -MAP_HALF * s, MAP_HALF * 2 * s, MAP_HALF * 2 * s);
+    const m = this.map;
+    g.drawImage(this.bg, -m.halfW * s, -m.halfH * s, m.w * s, m.h * s);
     if (viewer !== null) {
       const st = world.sides[viewer];
       const d = this.fogImg.data;
-      for (let i = 0; i < GRID * GRID; i++) {
+      for (let i = 0; i < st.vis.length; i++) {
         d[i * 4 + 3] = st.vis[i] ? 0 : st.explored[i] ? 110 : 215;
       }
       this.fog.getContext("2d")!.putImageData(this.fogImg, 0, 0);
-      g.drawImage(this.fog, -MAP_HALF * s, -MAP_HALF * s, MAP_HALF * 2 * s, MAP_HALF * 2 * s);
+      g.drawImage(this.fog, -m.halfW * s, -m.halfH * s, m.w * s, m.h * s);
     }
     for (const m of world.mines) {
       g.fillStyle = RES_COLOR[m.res];

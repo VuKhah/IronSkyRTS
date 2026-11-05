@@ -10,7 +10,7 @@
 import { BUILDINGS, RULES, UNITS, type BuildingId, type Res, type Side, type UnitId, type UnitSpec, type WeaponSpec, type WeaponVisual } from "./content";
 import { clamp, dcos, DEG, dist2, dsin, Rng, turnStep, turnToward, type TurnStep } from "./fmath";
 import { Grid } from "./grid";
-import { CELL, EDGE, GRID, groundY, HQ_POS, MINES } from "./map";
+import { CELL, GameMap, getMap } from "./maps";
 import type { AlertKind, Building, Command, Entity, Mine, Order, Shot, SideState, SimEvent, Target, Unit, WinReason } from "./types";
 
 export const TICK_RATE = RULES.tickRate;
@@ -36,7 +36,6 @@ const SLOT_OFFSETS: readonly (readonly [number, number])[] = [
 ];
 const IDLE_ACQUIRE_BONUS = 4;
 const LEASH = 12;
-const AIR_LIMIT = 70;
 
 /** Đội hình khi ra lệnh cho cả nhóm: các điểm lưới 3.6 m quanh đích, gần nhất trước. */
 const FORMATION: readonly (readonly [number, number])[] = (() => {
@@ -135,12 +134,12 @@ export function dirToCenter(x: number, z: number): [number, number] {
   return l < 1e-6 ? [1, 0] : [-x / l, -z / l];
 }
 
-function newSide(): SideState {
+function newSide(cells: number): SideState {
   return {
     iron: RULES.startIron,
     oil: RULES.startOil,
-    vis: new Uint8Array(GRID * GRID),
-    explored: new Uint8Array(GRID * GRID),
+    vis: new Uint8Array(cells),
+    explored: new Uint8Array(cells),
     known: new Set(),
     mono: 0,
     monoRes: null,
@@ -162,6 +161,8 @@ export interface WorldOptions {
   maxTicks?: number;
   /** Phòng Thử Nghiệm: chỉ có 2 Tổng Hành Dinh, tài nguyên vô hạn, không xử thắng thua, nhận lệnh sb*. */
   sandbox?: boolean;
+  /** Bản đồ: mã trong MAP_DEFS (mặc định "Thung Lũng Sông Sắt") hoặc một GameMap dựng sẵn (dùng cho kiểm thử). */
+  map?: string | GameMap;
 }
 
 export interface SandboxState {
@@ -176,15 +177,17 @@ const SANDBOX_RES = 99999;
 export class World {
   tick = 0;
   readonly rng: Rng;
-  readonly grid = new Grid();
+  /** Bản đồ của trận (không đổi trong trận). Trận được xác định bởi bản đồ + seed + danh sách lệnh. */
+  readonly map: GameMap;
+  readonly grid: Grid;
   /** Độ cao mặt đất ở tâm từng ô lưới (m), tính một lần lúc tạo trận (địa hình không đổi). */
-  readonly cellH = new Float64Array(GRID * GRID);
+  readonly cellH: Float64Array;
   units: Unit[] = [];
   buildings: Building[] = [];
   readonly mines: Mine[] = [];
   shots: Shot[] = [];
   readonly byId = new Map<number, Entity>();
-  readonly sides: [SideState, SideState] = [newSide(), newSide()];
+  readonly sides: [SideState, SideState];
   events: SimEvent[] = [];
   winner: Side | 2 | -1 = -1;
   winReason: WinReason | null = null;
@@ -202,8 +205,12 @@ export class World {
     this.rng = new Rng(seed ^ 0x2545f491);
     this.maxTicks = opts.maxTicks ?? 0;
     this.sandbox = opts.sandbox ? { hold: [false, false], infiniteFuel: true } : null;
-    for (let cz = 0; cz < GRID; cz++) for (let cx = 0; cx < GRID; cx++) this.cellH[cz * GRID + cx] = groundY(this.grid.centerX(cx), this.grid.centerZ(cz));
-    for (const m of MINES) {
+    const map = (this.map = opts.map instanceof GameMap ? opts.map : getMap(opts.map));
+    const grid = (this.grid = new Grid(map));
+    this.sides = [newSide(grid.size), newSide(grid.size)];
+    this.cellH = new Float64Array(grid.size);
+    for (let cz = 0; cz < grid.rows; cz++) for (let cx = 0; cx < grid.cols; cx++) this.cellH[cz * grid.cols + cx] = map.groundY(grid.centerX(cx), grid.centerZ(cz));
+    for (const m of map.mines) {
       const mine: Mine = {
         id: this.nextId++,
         cat: "mine",
@@ -223,7 +230,7 @@ export class World {
       this.byId.set(mine.id, mine);
     }
     for (const s of [0, 1] as Side[]) {
-      const [hx, hz] = HQ_POS[s];
+      const [hx, hz] = map.bases[s];
       this.addBuilding("hq", s, hx, hz, true);
       if (this.sandbox) continue;
       const [dx, dz] = dirToCenter(hx, hz);
@@ -303,7 +310,7 @@ export class World {
   canPlace(side: Side, kind: BuildingId, x: number, z: number): string | null {
     const spec = BUILDINGS[kind];
     const [hw, hd] = spec.half;
-    if (Math.abs(x) + hw > EDGE - 1 || Math.abs(z) + hd > EDGE - 1) return "Ngoài bản đồ";
+    if (!this.map.fits(x, z, hw, hd)) return "Ngoài bản đồ";
     for (const i of this.grid.cellsInRect(x, z, hw, hd)) if (this.grid.blockedIdx(i)) return "Vướng sông, đá hoặc công trình";
     const big = Math.max(hw, hd);
     for (const m of this.mines) if (dist2(m.x, m.z, x, z) < (5 + big) * (5 + big)) return "Quá gần mỏ";
@@ -560,8 +567,8 @@ export class World {
       case "rally": {
         const b = this.ownBuilding(side, o.building);
         if (!b) break;
-        b.rallyX = clamp(o.x, -EDGE, EDGE);
-        b.rallyZ = clamp(o.z, -EDGE, EDGE);
+        b.rallyX = clamp(o.x, -this.map.edgeX, this.map.edgeX);
+        b.rallyZ = clamp(o.z, -this.map.edgeZ, this.map.edgeZ);
         b.rallySet = true;
         break;
       }
@@ -595,7 +602,7 @@ export class World {
   /** null = thả được công trình ở đây (Phòng Thử Nghiệm bỏ qua luật vùng xây và giá tiền). */
   sandboxPlaceError(kind: BuildingId, x: number, z: number): string | null {
     const [hw, hd] = BUILDINGS[kind].half;
-    if (Math.abs(x) + hw > EDGE - 1 || Math.abs(z) + hd > EDGE - 1) return "Ngoài bản đồ";
+    if (!this.map.fits(x, z, hw, hd)) return "Ngoài bản đồ";
     for (const i of this.grid.cellsInRect(x, z, hw, hd)) if (this.grid.blockedIdx(i)) return "Vướng sông, đá, mỏ hoặc công trình";
     return null;
   }
@@ -612,8 +619,8 @@ export class World {
         }
         const kind = o.kind as UnitId;
         if (!(kind in UNITS)) break;
-        const x = clamp(o.x, -EDGE + 2, EDGE - 2);
-        const z = clamp(o.z, -EDGE + 2, EDGE - 2);
+        const x = clamp(o.x, -this.map.edgeX + 2, this.map.edgeX - 2);
+        const z = clamp(o.z, -this.map.edgeZ + 2, this.map.edgeZ - 2);
         const u = this.spawnUnit(kind, o.side, x, z);
         const spec = UNITS[kind];
         if (spec.domain === "air") {
@@ -622,8 +629,8 @@ export class World {
           u.alt = u.palt = RULES.air.cruiseAlt;
           u.speed = spec.speed;
           u.mission = "move";
-          u.mx = clamp(x, -AIR_LIMIT, AIR_LIMIT);
-          u.mz = clamp(z, -AIR_LIMIT, AIR_LIMIT);
+          u.mx = clamp(x, -this.map.airX, this.map.airX);
+          u.mz = clamp(z, -this.map.airZ, this.map.airZ);
         }
         if (o.gx !== undefined && o.gz !== undefined) {
           if (spec.domain === "air") {
@@ -688,8 +695,8 @@ export class World {
     for (const u of units) {
       if (u.air !== "none") {
         u.mission = "move";
-        u.mx = clamp(x, -AIR_LIMIT, AIR_LIMIT);
-        u.mz = clamp(z, -AIR_LIMIT, AIR_LIMIT);
+        u.mx = clamp(x, -this.map.airX, this.map.airX);
+        u.mz = clamp(z, -this.map.airZ, this.map.airZ);
         u.targetId = 0;
         u.autoTarget = 0;
         this.cancelRtbIfFuel(u);
@@ -1864,8 +1871,8 @@ export class World {
         if (t && t.side !== u.side && this.canHit(w, t) && this.visibleTo(u.side, t)) tgt = t;
         else {
           u.mission = "move";
-          u.mx = clamp(u.x, -AIR_LIMIT, AIR_LIMIT);
-          u.mz = clamp(u.z, -AIR_LIMIT, AIR_LIMIT);
+          u.mx = clamp(u.x, -this.map.airX, this.map.airX);
+          u.mz = clamp(u.z, -this.map.airZ, this.map.airZ);
           u.targetId = 0;
         }
       }
@@ -1896,7 +1903,7 @@ export class World {
         [dx, dz] = this.loiter(u, u.mx, u.mz);
       }
     }
-    if (Math.abs(u.x) > AIR_LIMIT || Math.abs(u.z) > AIR_LIMIT) {
+    if (Math.abs(u.x) > this.map.airX || Math.abs(u.z) > this.map.airZ) {
       dx = -u.x;
       dz = -u.z;
     }
@@ -2143,11 +2150,13 @@ export class World {
     const cx = this.grid.cellX(x);
     const cz = this.grid.cellZ(z);
     const d = disc(r);
+    const C = this.grid.cols;
+    const R = this.grid.rows;
     for (let k = 0; k < d.length; k += 2) {
       const nx = cx + d[k];
       const nz = cz + d[k + 1];
-      if (nx < 0 || nz < 0 || nx >= GRID || nz >= GRID) continue;
-      const i = nz * GRID + nx;
+      if (nx < 0 || nz < 0 || nx >= C || nz >= R) continue;
+      const i = nz * C + nx;
       st.vis[i] = 1;
       st.explored[i] = 1;
     }
@@ -2163,7 +2172,9 @@ export class World {
     const r = Math.round(sight / CELL);
     const cx = this.grid.cellX(x);
     const cz = this.grid.cellZ(z);
-    const c0 = cz * GRID + cx;
+    const C = this.grid.cols;
+    const R = this.grid.rows;
+    const c0 = cz * C + cx;
     st.vis[c0] = 1;
     st.explored[c0] = 1;
     const th = RULES.terrain.targetHeight;
@@ -2174,8 +2185,8 @@ export class World {
       for (let j = start[k]; j < start[k + 1]; j++) {
         const nx = cx + off[j * 2];
         const nz = cz + off[j * 2 + 1];
-        if (nx < 0 || nz < 0 || nx >= GRID || nz >= GRID) break;
-        const idx = nz * GRID + nx;
+        if (nx < 0 || nz < 0 || nx >= C || nz >= R) break;
+        const idx = nz * C + nx;
         const h = H[idx] - eye;
         if ((h + th) * inv[j] >= maxSlope) {
           st.vis[idx] = 1;

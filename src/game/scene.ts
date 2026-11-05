@@ -1,16 +1,18 @@
 /**
- * Chiến trường 3D: renderer, ánh sáng, địa hình "Thung Lũng Sông Sắt", nước, cầu, đá, cây,
- * và lớp sương mù chiến tranh phủ lên địa hình.
+ * Chiến trường 3D: renderer, ánh sáng, địa hình của bản đồ (GameMap), nước, cầu, đá, cây,
+ * và lớp sương mù chiến tranh phủ lên địa hình. Mọi kích thước / vị trí lấy từ GameMap, không viết cứng.
  * Phần này chỉ để VẼ — được phép dùng Math.sin/Math.random vì không ảnh hưởng tới trận đấu.
  */
 import * as THREE from "three";
 import type { Side } from "../sim/content";
 import { Rng } from "../sim/fmath";
-import { BANK_HALF, CROSSINGS, crossingAt, fromUV, GRID, HILLS, HQ_POS, MAP_HALF, MINES, RIVER_HALF, ROCKS, terrainHeight, toU, toV } from "../sim/map";
+import type { GameMap } from "../sim/maps";
 import type { World } from "../sim/world";
 
-const SIZE = 200;
-const SEGS = 200;
+/** Địa hình vẽ rộng hơn vùng chơi chừng này (m) mỗi bên, để mép bản đồ không lộ khoảng trống. */
+const SKIRT = 20;
+/** Số mắt lưới địa hình trên mỗi mét. */
+const SEG_PER_M = 1;
 const WATER_Y = -0.55;
 
 export class BattleScene {
@@ -25,7 +27,16 @@ export class BattleScene {
   /** Mức chất lượng tự hạ khi máy chậm: 0 = đầy đủ, 1 = giảm độ phân giải, 2 = tắt bóng đổ, 3 = độ phân giải thấp. */
   quality = 0;
 
-  constructor(canvas: HTMLCanvasElement) {
+  /** Kích thước tấm địa hình vẽ (m): vùng chơi cộng viền. */
+  private readonly sizeW: number;
+  private readonly sizeH: number;
+
+  constructor(
+    canvas: HTMLCanvasElement,
+    private map: GameMap
+  ) {
+    this.sizeW = map.w + SKIRT * 2;
+    this.sizeH = map.h + SKIRT * 2;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
     // điện thoại / màn cảm ứng: khởi đầu ở mức nhẹ hơn
     this.mobile = window.matchMedia?.("(pointer: coarse)").matches ?? false;
@@ -58,7 +69,7 @@ export class BattleScene {
     this.scene.add(terrain);
 
     this.water = new THREE.Mesh(
-      new THREE.PlaneGeometry(SIZE, SIZE),
+      new THREE.PlaneGeometry(this.sizeW, this.sizeH),
       new THREE.MeshStandardMaterial({ color: 0x2f6f96, roughness: 0.15, metalness: 0.2, transparent: true, opacity: 0.86 })
     );
     this.water.rotation.x = -Math.PI / 2;
@@ -71,9 +82,9 @@ export class BattleScene {
     this.addTrees();
     this.addBaseMarks();
 
-    // Sương mù: một bản sao hình học địa hình, phủ màu tối với độ trong suốt lấy từ texture 80×80 ô.
-    this.fogData = new Uint8Array(GRID * GRID * 4);
-    this.fogTex = new THREE.DataTexture(this.fogData, GRID, GRID, THREE.RGBAFormat);
+    // Sương mù: một bản sao hình học địa hình, phủ màu tối với độ trong suốt lấy từ texture, mỗi điểm ảnh một ô lưới.
+    this.fogData = new Uint8Array(map.cols * map.rows * 4);
+    this.fogTex = new THREE.DataTexture(this.fogData, map.cols, map.rows, THREE.RGBAFormat);
     this.fogTex.magFilter = THREE.LinearFilter;
     this.fogTex.minFilter = THREE.LinearFilter;
     this.fogTex.needsUpdate = true;
@@ -81,7 +92,7 @@ export class BattleScene {
     const pos = fogGeo.getAttribute("position");
     const uv = fogGeo.getAttribute("uv");
     for (let i = 0; i < pos.count; i++) {
-      uv.setXY(i, (pos.getX(i) + MAP_HALF) / (MAP_HALF * 2), (pos.getZ(i) + MAP_HALF) / (MAP_HALF * 2));
+      uv.setXY(i, (pos.getX(i) + map.halfW) / map.w, (pos.getZ(i) + map.halfH) / map.h);
       pos.setY(i, pos.getY(i) + 0.25);
     }
     const fogMat = new THREE.MeshBasicMaterial({ color: 0x04070c, transparent: true, alphaMap: this.fogTex, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
@@ -91,7 +102,8 @@ export class BattleScene {
   }
 
   private buildTerrainGeometry(): THREE.BufferGeometry {
-    const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEGS, SEGS);
+    const map = this.map;
+    const geo = new THREE.PlaneGeometry(this.sizeW, this.sizeH, Math.round(this.sizeW * SEG_PER_M), Math.round(this.sizeH * SEG_PER_M));
     geo.rotateX(-Math.PI / 2);
     const pos = geo.getAttribute("position");
     const colors = new Float32Array(pos.count * 3);
@@ -107,23 +119,22 @@ export class BattleScene {
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const z = pos.getZ(i);
-      let h = terrainHeight(x, z);
+      let h = map.terrainHeight(x, z);
       // gợn nhỏ cho đất bớt phẳng lì (chỉ để nhìn)
       h += Math.sin(x * 0.37 + z * 0.11) * 0.08 + Math.sin(z * 0.29 - x * 0.17) * 0.07;
       pos.setY(i, h);
-      const u = Math.abs(toU(x, z));
-      const cr = crossingAt(toV(x, z));
+      const river = map.nearRiver(x, z);
       const noise = (Math.sin(x * 0.21) * Math.sin(z * 0.17) + 1) * 0.5;
       col.copy(grassA).lerp(grassB, noise);
-      const e = Math.max(Math.abs(x), Math.abs(z));
+      const inset = map.inset(x, z);
       if (h > 1.8) col.lerp(dry, Math.min(1, (h - 1.8) / 3));
-      if (u < BANK_HALF + 1.5 && h < 0.4) col.copy(cr && cr.kind === "ford" ? gravel : sand);
+      if (river && river.dist < river.river.bank + 1.5 && h < 0.4) col.copy(river.crossing?.kind === "ford" ? gravel : sand);
       if (h < WATER_Y - 0.2) col.copy(bed);
-      for (const r of ROCKS) {
+      for (const r of map.rocks) {
         const d = Math.hypot(x - r.x, z - r.z);
         if (d < r.r + 1.2) col.copy(rock).lerp(cliff, noise);
       }
-      if (e > 74) col.lerp(cliff, Math.min(1, (e - 74) / 6));
+      if (inset < 6) col.lerp(cliff, Math.min(1, (6 - inset) / 6));
       colors[i * 3] = col.r;
       colors[i * 3 + 1] = col.g;
       colors[i * 3 + 2] = col.b;
@@ -137,11 +148,11 @@ export class BattleScene {
     const deck = new THREE.MeshStandardMaterial({ color: 0x8e8a82, roughness: 0.85 });
     const steel = new THREE.MeshStandardMaterial({ color: 0x3d434c, roughness: 0.5, metalness: 0.6 });
     const stripe = new THREE.MeshStandardMaterial({ color: 0xffb547, roughness: 0.6 });
-    for (const c of CROSSINGS) {
+    for (const { def: c, river, dirX, dirZ } of this.map.crossings()) {
       if (c.kind !== "bridge") continue;
-      const [x, z] = fromUV(0, c.v);
       const g = new THREE.Group();
-      const len = (BANK_HALF + 1.5) * 2;
+      // trục dài của cầu (trục x của nhóm) nằm ngang dòng sông
+      const len = (river.bank + 1.5) * 2;
       const w = c.half * 2;
       const slab = new THREE.Mesh(new THREE.BoxGeometry(len, 0.5, w), deck);
       slab.position.y = 0.2;
@@ -155,15 +166,16 @@ export class BattleScene {
         line.position.set(0, 0.46, s * (w / 2 - 0.6));
         g.add(rail, line);
       }
-      for (const px of [-RIVER_HALF + 1, 0, RIVER_HALF - 1])
+      for (const px of [-river.half + 1, 0, river.half - 1])
         for (const s of [-1, 1]) {
           const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.6, 3.2, 8), steel);
           pillar.position.set(px, -1.4, s * (w / 2 - 1));
           pillar.castShadow = true;
           g.add(pillar);
         }
-      g.position.set(x, 0, z);
-      g.rotation.y = Math.PI / 4;
+      g.position.set(c.x, 0, c.z);
+      // xoay trục x của nhóm về hướng (dirZ, -dirX), vuông góc với dòng chảy
+      g.rotation.y = Math.atan2(dirX, dirZ);
       this.scene.add(g);
     }
   }
@@ -171,7 +183,7 @@ export class BattleScene {
   private addRocks(): void {
     const mat = new THREE.MeshStandardMaterial({ color: 0x7a736a, roughness: 0.95, flatShading: true });
     const rng = new Rng(99);
-    for (const r of ROCKS) {
+    for (const r of this.map.rocks) {
       for (let i = 0; i < 7; i++) {
         const s = r.r * (0.35 + rng.next() * 0.35);
         const m = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), mat);
@@ -179,7 +191,7 @@ export class BattleScene {
         const d = rng.next() * r.r * 0.55;
         const x = r.x + Math.cos(a) * d;
         const z = r.z + Math.sin(a) * d;
-        m.position.set(x, terrainHeight(x, z) + s * 0.2, z);
+        m.position.set(x, this.map.terrainHeight(x, z) + s * 0.2, z);
         m.rotation.set(rng.next() * 3, rng.next() * 3, rng.next() * 3);
         m.scale.y = 0.8 + rng.next() * 0.6;
         m.castShadow = m.receiveShadow = true;
@@ -190,20 +202,24 @@ export class BattleScene {
 
   /** Rừng cây trang trí ở viền bản đồ và trên đồi (InstancedMesh: 1 lần vẽ cho hàng trăm cây). */
   private addTrees(): void {
+    const map = this.map;
     const rng = new Rng(7);
     const spots: { x: number; z: number; s: number }[] = [];
     const clear = (x: number, z: number): boolean => {
-      for (const [hx, hz] of HQ_POS) if (Math.hypot(x - hx, z - hz) < 30) return false;
-      for (const m of MINES) if (Math.hypot(x - m.x, z - m.z) < 12) return false;
-      if (Math.abs(toU(x, z)) < BANK_HALF + 3) return false;
+      for (const [hx, hz] of map.bases) if (Math.hypot(x - hx, z - hz) < 30) return false;
+      for (const m of map.mines) if (Math.hypot(x - m.x, z - m.z) < 12) return false;
+      const river = map.nearRiver(x, z);
+      if (river && river.dist < river.river.bank + 3) return false;
       return true;
     };
-    for (let i = 0; i < 1600 && spots.length < 340; i++) {
-      const x = (rng.next() * 2 - 1) * 96;
-      const z = (rng.next() * 2 - 1) * 96;
-      const e = Math.max(Math.abs(x), Math.abs(z));
-      let ok = e > 70;
-      for (const hl of HILLS) if (Math.hypot(x - hl.x, z - hl.z) < hl.r * 0.8) ok = ok || rng.next() < 0.5;
+    // số cây theo diện tích (bản 160 m: 340 cây); rải tới cả phần viền ngoài vùng chơi
+    const area = (map.w * map.h) / (160 * 160);
+    const maxTrees = Math.round(340 * area);
+    for (let i = 0; i < 1600 * area && spots.length < maxTrees; i++) {
+      const x = (rng.next() * 2 - 1) * (map.halfW + SKIRT - 4);
+      const z = (rng.next() * 2 - 1) * (map.halfH + SKIRT - 4);
+      let ok = map.inset(x, z) < 10;
+      for (const hl of map.hills) if (Math.hypot(x - hl.x, z - hl.z) < hl.r * 0.8) ok = ok || rng.next() < 0.5;
       if (!ok || !clear(x, z)) continue;
       spots.push({ x, z, s: 0.8 + rng.next() * 0.7 });
     }
@@ -213,7 +229,7 @@ export class BattleScene {
     const q = new THREE.Quaternion();
     const sc = new THREE.Vector3();
     spots.forEach((p, i) => {
-      const y = terrainHeight(p.x, p.z);
+      const y = map.terrainHeight(p.x, p.z);
       sc.setScalar(p.s);
       m.compose(new THREE.Vector3(p.x, y + 2.6 * p.s, p.z), q, sc);
       foliage.setMatrixAt(i, m);
@@ -227,13 +243,13 @@ export class BattleScene {
 
   /** Đường viền căn cứ hai phe (vẽ nhẹ trên mặt đất cho dễ nhận ra đâu là nhà). */
   private addBaseMarks(): void {
-    HQ_POS.forEach(([x, z], s) => {
+    this.map.bases.forEach(([x, z], s) => {
       const ring = new THREE.Mesh(
         new THREE.RingGeometry(20, 20.6, 64),
         new THREE.MeshBasicMaterial({ color: s === 0 ? 0x2e9eff : 0xf23d3d, transparent: true, opacity: 0.25, depthWrite: false })
       );
       ring.rotation.x = -Math.PI / 2;
-      ring.position.set(x, terrainHeight(x, z) + 0.12, z);
+      ring.position.set(x, this.map.terrainHeight(x, z) + 0.12, z);
       this.scene.add(ring);
     });
   }
@@ -244,7 +260,7 @@ export class BattleScene {
     if (viewer === null) return;
     const st = world.sides[viewer];
     const d = this.fogData;
-    for (let i = 0; i < GRID * GRID; i++) {
+    for (let i = 0; i < st.vis.length; i++) {
       const a = st.vis[i] ? 0 : st.explored[i] ? 120 : 215;
       const k = i * 4;
       d[k] = d[k + 1] = d[k + 2] = a;

@@ -2,7 +2,7 @@
 
 Cập nhật 05/11/2026 · ✅ xong · 🔄 đang làm · ⏳ chưa làm · ⏸ sau MVP. Chi tiết từng mục ở `Docs/design/`.
 
-**Tiến độ: 25 xong · 37 chưa làm · 6 sau MVP**
+**Tiến độ: 26 xong · 36 chưa làm · 6 sau MVP**
 
 ## 1. Nền móng MVP (`MVP_DESIGN.md`)
 - ✅ Lõi sim tất định 10 Hz, hàng đợi lệnh, hàm băm
@@ -47,7 +47,7 @@ Cập nhật 05/11/2026 · ✅ xong · 🔄 đang làm · ⏳ chưa làm · ⏸ 
 - ✅ B0: tách bản đồ thành thành phần riêng (`src/sim/maps/`)
 - ✅ Bản thử vẽ mặt đất bằng code; chốt dùng ảnh mặt đất
 - ✅ Sắp xếp thư mục `Docs/`, danh sách đầu việc này
-- ⏳ B1: mọi nơi đọc `GameMap`, bộ vẽ tự đối xứng
+- ✅ B1: mọi nơi đọc `GameMap`, bộ vẽ tự đối xứng
 - ⏳ B2: góc nhìn hình vuông, phe Đỏ xoay 180°
 - ⏳ B3: loại địa hình (`terrain.ts`), độ dốc làm chậm
 - ⏳ B4: đo hiệu năng theo kích cỡ bản đồ

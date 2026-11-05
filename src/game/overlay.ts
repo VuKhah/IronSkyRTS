@@ -3,7 +3,6 @@
  * khung quét chọn và đường tới điểm tập kết. Vẽ bằng canvas 2D cho nét và rẻ.
  */
 import { BUILDINGS, RULES, UNITS, type Side } from "../sim/content";
-import { groundY } from "../sim/map";
 import type { World } from "../sim/world";
 import type { RtsCamera } from "./camera";
 import { Views } from "./views";
@@ -52,7 +51,7 @@ export class Overlay {
       const isAir = u.air !== "none";
       const showFuel = isAir && spec.fuel && (viewer === null || u.side === viewer) && (sel || u.air !== "parked" || u.fuel < spec.fuel.tank * RULES.air.takeoffMin);
       if (!sel && u.hp >= u.maxHp && !showFuel && !(u.kind === "hauler" && u.cargo > 0 && sel)) continue;
-      const [x, y, z] = Views.displayPos(u, alpha);
+      const [x, y, z] = Views.displayPos(world.map, u, alpha);
       const p = cam.project(x, y + (isAir ? 2.2 : 3.4), z, w, h);
       if (!p.visible || p.x < -40 || p.y < -40 || p.x > w + 40 || p.y > h + 40) continue;
       const bw = Math.max(18, spec.radius * 14);
@@ -77,7 +76,7 @@ export class Overlay {
       // công trình của ta đang thiếu điện / nhà máy không phát: nhấp nháy tia sét
       const unpowered = b.side === viewer && b.built && spec.power < 0 && b.powerFrac < 1;
       if (unpowered && Math.floor(performance.now() / 500) % 2 === 0) {
-        const q = cam.project(b.x, groundY(b.x, b.z) + 4, b.z, w, h);
+        const q = cam.project(b.x, world.map.groundY(b.x, b.z) + 4, b.z, w, h);
         if (q.visible) {
           g.font = "bold 18px 'Be Vietnam Pro', sans-serif";
           g.textAlign = "center";
@@ -89,15 +88,15 @@ export class Overlay {
         }
       }
       if (!sel && b.hp >= b.maxHp && b.built) continue;
-      const p = cam.project(b.x, groundY(b.x, b.z) + (b.kind === "airfield" ? 5 : 6), b.z, w, h);
+      const p = cam.project(b.x, world.map.groundY(b.x, b.z) + (b.kind === "airfield" ? 5 : 6), b.z, w, h);
       if (!p.visible) continue;
       const bw = Math.max(30, Math.max(spec.half[0], spec.half[1]) * 10);
       const k = b.hp / b.maxHp;
       this.bar(p.x, p.y, bw, k, hpColor(k));
       if (!b.built) this.bar(p.x, p.y + 5, bw, b.progress, "#ffb547");
       if (sel && b.side === viewer && spec.produces && b.rallySet) {
-        const r = cam.project(b.rallyX, groundY(b.rallyX, b.rallyZ) + 0.3, b.rallyZ, w, h);
-        const o = cam.project(b.x, groundY(b.x, b.z) + 0.5, b.z, w, h);
+        const r = cam.project(b.rallyX, world.map.groundY(b.rallyX, b.rallyZ) + 0.3, b.rallyZ, w, h);
+        const o = cam.project(b.x, world.map.groundY(b.x, b.z) + 0.5, b.z, w, h);
         if (r.visible && o.visible) {
           g.strokeStyle = "rgba(255, 211, 110, 0.8)";
           g.setLineDash([5, 5]);
@@ -118,7 +117,7 @@ export class Overlay {
     for (const m of world.mines) {
       const contested = m.cap > 0 && m.cap < 1;
       if (!contested && !selected.has(m.id)) continue;
-      const p = cam.project(m.x, groundY(m.x, m.z) + 5, m.z, w, h);
+      const p = cam.project(m.x, world.map.groundY(m.x, m.z) + 5, m.z, w, h);
       if (!p.visible) continue;
       const side = m.owner !== -1 ? m.owner : m.capSide;
       g.lineWidth = 4;

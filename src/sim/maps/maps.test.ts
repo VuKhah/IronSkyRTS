@@ -4,9 +4,9 @@
  * - Chơi được: căn cứ không bị chặn, mọi mỏ đi tới được từ cả hai nhà.
  */
 import { describe, expect, it } from "vitest";
-import { CELL, getMap, MAP_DEFS } from "./index";
+import { CELL, DEV_MAP_DEFS, getMap, MAP_DEFS } from "./index";
 
-describe.each(MAP_DEFS.map((d) => [d.id]))("bản đồ %s", (id) => {
+describe.each([...MAP_DEFS, ...DEV_MAP_DEFS].map((d) => [d.id]))("bản đồ %s", (id) => {
   const m = getMap(id);
   const cx = (c: number): number => -m.halfW + (c + 0.5) * CELL;
   const cz = (r: number): number => -m.halfH + (r + 0.5) * CELL;

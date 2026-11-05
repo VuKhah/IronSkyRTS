@@ -1,6 +1,6 @@
 # Kế Hoạch Bản Đồ — Iron Sky
 
-> Lập ngày 05/11/2026. Bản 2 (cùng ngày): đã có quyết định của người dùng (mục 2), đã duyệt. **B0 xong (05/11/2026).**
+> Lập ngày 05/11/2026. Bản 2 (cùng ngày): đã có quyết định của người dùng (mục 2), đã duyệt. **B0 xong (05/11/2026). B1 xong (05/11/2026).**
 > Yêu cầu gốc: có **vài bản đồ**, mỗi bản đồ có **đặc tính riêng**; căn cứ ở **góc dưới trái và góc trên phải**; bản đồ **to hơn** hiện tại.
 
 ---
@@ -12,7 +12,7 @@
 | Số bản đồ | 1: "Thung Lũng Sông Sắt", 160 × 160 m, lưới 2 m (80 × 80 ô) |
 | Căn cứ | Lam ở (-58, 58), Đỏ ở (58, -58): trong tọa độ thế giới đã là góc Tây Nam và Đông Bắc |
 | Trên màn hình | Camera mặc định nhìn từ nhà mình về tâm (xoay 45°), minimap xoay theo camera, nên bản đồ hiện thành **hình thoi** |
-| Cách khai báo | Hằng số và hàm viết cứng trong `src/sim/map.ts` (sông chéo theo hệ trục u/v, 3 lối qua, 4 khối đá, 6 đồi, 9 mỏ). 15 file đọc thẳng các hằng số này |
+| Cách khai báo | ~~Hằng số viết cứng trong `src/sim/map.ts`, 15 file đọc thẳng~~ → **từ B1:** dữ liệu `MapDef` trong `src/sim/maps/` (khai báo một nửa, tự đối xứng), mọi nơi đọc `GameMap` của trận |
 | Địa hình trong luật chơi | Đồi và đá che tầm nhìn, đứng cao cộng tầm nhìn / tầm bắn (05/11). Chưa có: loại địa hình, độ dốc làm chậm |
 | Vấn đề đã thấy | AI đấu AI lệch phe (20 trận gần nhất: Đỏ 12, Lam 3), chưa rõ do bản đồ hay AI |
 
@@ -86,7 +86,7 @@ Mỗi bản đồ một cỡ. Gợi ý khởi điểm: nhỏ 192 m, vừa 256 m,
 | Bước | Việc | Tiêu chí xong |
 |---|---|---|
 | **B0. Tách bản đồ thành thành phần riêng** ✅ | Tạo `src/sim/maps/` với `MapDef` và `GameMap`; bản đồ hiện tại thành `iron-valley.ts`; **chưa đổi gì về luật** | ✅ So 190.900 điểm: độ cao lệch tối đa 3·10⁻¹⁴ m, chặn đường và mặt cầu giống hệt; 10 trận AI đấu AI giống hệt từng con số; thêm `maps.test.ts` (đối xứng, mỏ đi tới được) |
-| **B1. Mọi nơi đọc `GameMap`** | `World` nhận bản đồ qua tham số; lưới, AI, `scene.ts`, minimap, camera, Phòng Thử Nghiệm bỏ hằng số `MAP_HALF` / `GRID`; kích thước và hình dáng thay đổi được | Đổi kích thước / hình dáng trong dữ liệu là game chạy đúng |
+| **B1. Mọi nơi đọc `GameMap`** ✅ | `World` nhận bản đồ qua tham số; lưới, AI, `scene.ts`, minimap, camera, Phòng Thử Nghiệm bỏ hằng số `MAP_HALF` / `GRID`; kích thước và hình dáng thay đổi được; bộ vẽ tự đối xứng | ✅ Đã xóa `map.ts`. Bản đồ kiểm thử "Bãi Thử Hình Dáng" (224 × 144 m, viền lục giác, sông gấp khúc): AI đấu AI 5 phút trong `npm test` (quân không ra ngoài vùng chơi, có giao tranh, tất định); chạy trọn 20 phút bình thường; chụp màn hình đúng. "Thung Lũng Sông Sắt" khai báo một nửa: so 190.900 điểm giống hệt, 10 trận AI đấu AI và 4 kịch bản giống hệt từng con số |
 | **B2. Góc nhìn hình vuông** | Camera nhìn Bắc, minimap hình vuông, Lam ở góc dưới trái (Đỏ theo mục 3.4) | Chụp màn hình cả hai phe |
 | **B3. Loại địa hình** | Bảng `TERRAIN`, vùng tô `regions`, hiệu ứng tốc độ / tầm nhìn / che chắn, độ dốc làm chậm; phần vẽ tô màu theo loại | Kiểm thử: xe đi vào bùn chậm đúng hệ số, Xe Tư Lệnh không bị chậm |
 | **B4. Hiệu năng theo cỡ** | Đo tìm đường, sương mù, lưới địa hình ở 192 / 256 / 320 m; tối ưu nếu vượt ngân sách | Số đo nằm trong ngân sách |
@@ -101,7 +101,7 @@ Mỗi bản đồ một cỡ. Gợi ý khởi điểm: nhỏ 192 m, vừa 256 m,
 
 | Họ làm | Áp dụng cho Iron Sky | Trạng thái |
 |---|---|---|
-| Bộ vẽ tự đối xứng: người thiết kế chỉ vẽ một nửa | `MapDef` có cờ đối xứng; `GameMap` tự sinh nửa còn lại cho đồi, đá, sông, mỏ, vùng địa hình. Công bằng có sẵn, `maps.test.ts` vẫn kiểm | Đề xuất, thêm vào B1 |
+| Bộ vẽ tự đối xứng: người thiết kế chỉ vẽ một nửa | `MapDef.symmetric`; `GameMap` tự sinh nửa còn lại cho căn cứ, đồi, đá, sông / lối qua, mỏ, vùng địa hình. Công bằng có sẵn, `maps.test.ts` vẫn kiểm | ✅ Làm ở B1 |
 | Nét vẽ cơ bản có mép lượn theo nhiễu (vệt tròn, đường gấp khúc có bề rộng, rải ngẫu nhiên theo seed) | Thêm vào `RegionDef`: `blob` có mép lượn, `stroke` (đường, sống núi, dải bùn), `scatter` (rừng thưa, đá vụn). Nhiễu tự viết, tất định | Đề xuất, làm ở B3 |
 | Ảnh mặt đất vẽ sẵn bằng Python + ảnh AI, phủ lên địa hình 3D | **Chờ người dùng chọn** (mục 7) | |
 | Shader nước, cây hàng loạt, bóng mây, "váy" ngoài mép bản đồ | Bước đồ họa mới **B8. Mặt đất đẹp** sau B5 | Đề xuất |

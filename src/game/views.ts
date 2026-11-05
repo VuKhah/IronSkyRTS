@@ -6,7 +6,7 @@
  */
 import * as THREE from "three";
 import { BUILDINGS, FACTION_OF, UNITS, type Side } from "../sim/content";
-import { groundY } from "../sim/map";
+import type { GameMap } from "../sim/maps";
 import type { Building, Mine, Target, Unit } from "../sim/types";
 import { AIRBORNE_ALT, DT, type World } from "../sim/world";
 import { buildModel, buildNode, disposeRig, type NodeRig, type Rig } from "../render/models";
@@ -58,7 +58,10 @@ export class Views {
   private mines = new Map<number, MineView>();
   private frame = 0;
 
-  constructor(private scene: THREE.Scene) {}
+  constructor(
+    private scene: THREE.Scene,
+    private map: GameMap
+  ) {}
 
   /** Toàn bộ thực thể đang hiển thị (để chọn bằng chạm/chuột và vẽ thanh máu). */
   visibleUnits(world: World, viewer: Side | null): Unit[] {
@@ -89,7 +92,7 @@ export class Views {
       if (!v) {
         const rig = buildModel(b.kind, FACTION_OF[b.side], false);
         bakeStatic(rig);
-        rig.root.position.set(b.x, groundY(b.x, b.z), b.z);
+        rig.root.position.set(b.x, this.map.groundY(b.x, b.z), b.z);
         v = { rig, yaw: 0, prevYaw: 0, roll: 0, pitch: 0, ring: null, active: new Set(), seen: f };
         this.scene.add(rig.root);
         this.buildings.set(b.id, v);
@@ -110,7 +113,7 @@ export class Views {
           }
           node.setAmount(1);
         });
-        node.root.position.set(m.x, groundY(m.x, m.z), m.z);
+        node.root.position.set(m.x, this.map.groundY(m.x, m.z), m.z);
         this.scene.add(node.root);
         v = { node, ring: null };
         this.mines.set(m.id, v);
@@ -169,7 +172,7 @@ export class Views {
       const rollTarget = Math.max(-0.95, Math.min(0.95, (-turn / Math.max(dt, 1e-3)) * 0.35));
       v.roll += (rollTarget - v.roll) * Math.min(1, dt * 6);
       const parked = u.air === "parked";
-      const y = groundY(x, z) + (parked || alt < 0.05 ? 0.22 : alt);
+      const y = this.map.groundY(x, z) + (parked || alt < 0.05 ? 0.22 : alt);
       root.position.set(x, y, z);
       // chúc mũi khi bổ nhào, ngóc mũi khi kéo lên: theo tốc độ đổi độ cao của sim
       const flying = u.air === "flying" || u.air === "returning";
@@ -182,13 +185,13 @@ export class Views {
       if (spec.weapon && (world.tick - u.lastShot) * DT < 0.25) a.add("fire");
     } else {
       v.yaw += wrap(target - v.yaw) * Math.min(1, dt * 10);
-      const y = groundY(x, z);
+      const y = this.map.groundY(x, z);
       // nghiêng thân theo dốc: lấy độ cao trước/sau và trái/phải
       const fx = Math.sin(v.yaw);
       const fz = Math.cos(v.yaw);
       const L = spec.radius;
-      const pitch = Math.atan2(groundY(x - fx * L, z - fz * L) - groundY(x + fx * L, z + fz * L), L * 2);
-      const roll = Math.atan2(groundY(x + fz * L, z - fx * L) - groundY(x - fz * L, z + fx * L), L * 2);
+      const pitch = Math.atan2(this.map.groundY(x - fx * L, z - fz * L) - this.map.groundY(x + fx * L, z + fz * L), L * 2);
+      const roll = Math.atan2(this.map.groundY(x + fz * L, z - fx * L) - this.map.groundY(x - fz * L, z + fx * L), L * 2);
       root.position.set(x, y, z);
       root.rotation.set(pitch, v.yaw, roll, "YXZ");
       if (u.moved || u.px !== u.x || u.pz !== u.z) a.add("move");
@@ -205,7 +208,7 @@ export class Views {
     v.rig.update(dt, time, a);
     const mat = viewer === null ? (u.side === 0 ? RING_MAT.own : RING_MAT.enemy) : u.side === viewer ? RING_MAT.own : RING_MAT.enemy;
     this.setRing(v, root, selected, spec.radius, mat, u.alt > AIRBORNE_ALT ? -alt + 0.12 : 0.12);
-    if (v.ring && u.alt > AIRBORNE_ALT) v.ring.position.y = groundY(x, z) - root.position.y + 0.12;
+    if (v.ring && u.alt > AIRBORNE_ALT) v.ring.position.y = this.map.groundY(x, z) - root.position.y + 0.12;
   }
 
   private updateBuilding(world: World, b: Building, v: View, dt: number, time: number, selected: boolean, viewer: Side | null): void {
@@ -270,11 +273,11 @@ export class Views {
     return [x, z, dx / dl, dz / dl];
   }
 
-  static displayPos(u: Unit, alpha: number): [number, number, number] {
+  static displayPos(map: GameMap, u: Unit, alpha: number): [number, number, number] {
     let x = u.px + (u.x - u.px) * alpha;
     let z = u.pz + (u.z - u.pz) * alpha;
     if (Views.curved(u)) [x, z] = Views.hermite(u, alpha);
     const alt = u.palt + (u.alt - u.palt) * alpha;
-    return [x, groundY(x, z) + (alt < 0.05 ? 0.22 * (u.air === "parked" ? 1 : 0) : alt), z];
+    return [x, map.groundY(x, z) + (alt < 0.05 ? 0.22 * (u.air === "parked" ? 1 : 0) : alt), z];
   }
 }
