@@ -165,6 +165,83 @@ export function facets(points: [number, number, number][], mat: THREE.Material, 
   return shadowed(new THREE.Mesh(geo, mat));
 }
 
+/** Mặt thân để dán chi tiết: nhìn từ phía nào vào. */
+export type Face = "top" | "bottom" | "right" | "left" | "front" | "back";
+/** axis: trục tia dò đi dọc; sign: phía nhìn vào (+ = từ phía dương của trục); u, v: hai trục của tọa độ khai báo. */
+const FACE_AXES: Record<Face, { axis: 0 | 1 | 2; sign: 1 | -1; u: 0 | 1 | 2; v: 0 | 1 | 2 }> = {
+  top: { axis: 1, sign: 1, u: 0, v: 2 }, // (x, z)
+  bottom: { axis: 1, sign: -1, u: 0, v: 2 },
+  right: { axis: 0, sign: 1, u: 2, v: 1 }, // (z, y), bên phải là +x
+  left: { axis: 0, sign: -1, u: 2, v: 1 },
+  front: { axis: 2, sign: 1, u: 0, v: 1 }, // (x, y), mặt trước là +z
+  back: { axis: 2, sign: -1, u: 0, v: 1 }
+};
+export interface SkinOpts {
+  face?: Face;
+  /** Lật sang nửa trái (đổi dấu x). */
+  mirror?: boolean;
+  /** Nhô khỏi bề mặt bao nhiêu (m). */
+  lift?: number;
+  /** Độ dày tấm (m). */
+  thick?: number;
+}
+
+/**
+ * Bộ công cụ dán chi tiết sát bề mặt các khối vát (tấm giáp, đường ghép, vạch sơn, ô kính).
+ * Tia dò (raycast) đo vị trí bề mặt tại tọa độ khai báo, nên chỉ cần ghi chi tiết nằm ở đâu nhìn từ phía đó,
+ * không phải tự tính độ cao của mặt nghiêng; sửa hình thân thì chi tiết tự bám theo.
+ * `symmetric`: thân đối xứng trái phải, chỉ đo trên nửa phải (khối có scale âm không dò được tia).
+ * Gọi sau khi đã dựng xong các khối `surfaces`, trước khi dịch chuyển gốc `root`.
+ */
+export function surfaceTools(root: THREE.Object3D, surfaces: THREE.Object3D[], symmetric = true) {
+  const ray = new THREE.Raycaster();
+  const from = new THREE.Vector3();
+  const dir = new THREE.Vector3();
+  root.updateMatrixWorld(true);
+  /** Tọa độ bề mặt dọc trục nhìn của mặt `face` tại (u, v). Không trúng thì trả 0. */
+  const surf = (u: number, v: number, face: Face = "top"): number => {
+    if (symmetric && face === "left") return -surf(u, v, "right");
+    const f = FACE_AXES[face];
+    from.set(0, 0, 0);
+    from.setComponent(f.axis, f.sign * 50);
+    from.setComponent(f.u, symmetric && f.u === 0 ? Math.abs(u) : u);
+    from.setComponent(f.v, v);
+    dir.set(0, 0, 0).setComponent(f.axis, -f.sign);
+    ray.set(from, dir);
+    const hit = ray.intersectObjects(surfaces, true)[0];
+    return hit ? hit.point.getComponent(f.axis) : 0;
+  };
+  /** Điểm 3D trên mặt `face` tại (u, v), nhô thêm `lift`. */
+  const at = (u: number, v: number, face: Face = "top", lift = 0, mirror = false): [number, number, number] => {
+    const f = FACE_AXES[face];
+    const p = new THREE.Vector3();
+    p.setComponent(f.axis, surf(u, v, face) + f.sign * lift);
+    p.setComponent(f.u, u);
+    p.setComponent(f.v, v);
+    return [mirror ? -p.x : p.x, p.y, p.z];
+  };
+  /** Tấm mỏng dán lên mặt theo đa giác lồi khai báo bằng tọa độ (u, v) của mặt đó. */
+  const skin = (name: string, pts: [number, number][], mat: THREE.Material, o: SkinOpts = {}) => {
+    const { face = "top", mirror = false, lift = 0.022, thick = 0.03 } = o;
+    return part(name, facets(pts.flatMap(([u, v]) => [at(u, v, face, lift, mirror), at(u, v, face, lift - thick, mirror)]), mat));
+  };
+  /** Đường mảnh dán lên mặt (đường ghép tấm, vạch sơn) theo đường gấp khúc. */
+  const line = (name: string, pts: [number, number][], mat: THREE.Material, o: SkinOpts & { w?: number } = {}) => {
+    const { w = 0.028, ...rest } = o;
+    const g = group();
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const [au, av] = pts[i]!;
+      const [bu, bv] = pts[i + 1]!;
+      const len = Math.sqrt((bu - au) ** 2 + (bv - av) ** 2);
+      const nu = (-(bv - av) / len) * (w / 2);
+      const nv = ((bu - au) / len) * (w / 2);
+      g.add(skin(name, [[au + nu, av + nv], [bu + nu, bv + nv], [bu - nu, bv - nv], [au - nu, av - nv]], mat, { lift: 0.026, thick: 0.02, ...rest }));
+    }
+    return part(name, g);
+  };
+  return { surf, at, skin, line };
+}
+
 /** Chớp lửa đầu nòng: hình nón sáng, ẩn mặc định. */
 export function muzzleFlash(size: number, mat: THREE.Material): THREE.Mesh {
   const m = new THREE.Mesh(new THREE.ConeGeometry(size * 0.45, size, 7), mat);

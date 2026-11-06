@@ -16,6 +16,11 @@ export interface VehicleParts {
   spinners: THREE.Object3D[];
   /** Góc nâng nòng khi ngắm (rad, dương = ngóc lên). */
   aimPitch: number;
+  /**
+   * Góc ngóc nòng khi mục tiêu là máy bay (rad). Có trường này thì xe có hai tư thế: nằm ngang bắn đất, ngóc cao bắn máy bay.
+   * Chiến trường bật hoạt ảnh "aimAir" khi mục tiêu đang bay; Xưởng Mô Hình có nút "Ngắm máy bay".
+   */
+  airPitch?: number;
   recoil: number;
   /** Tên lửa thay cho đạn pháo (SkyGuard). */
   missiles?: boolean;
@@ -69,10 +74,11 @@ export function vehicleRig(
       parts.body.rotation.x = moving ? Math.sin(t * 7) * 0.008 : 0;
 
       // Chiến trường đặt góc ngắm thật (setAim); Xưởng Mô Hình thì cho tháp pháo quét qua lại.
-      const aiming = aimOverride !== null || a.has("aim") || a.has("fire");
+      const air = parts.airPitch !== undefined && a.has("aimAir");
+      const aiming = aimOverride !== null || a.has("aim") || a.has("fire") || air;
       const yawTarget = aimOverride !== null ? aimOverride : a.has("aim") ? Math.sin(t * 0.7) * 1.1 : 0;
       yaw = approachAngle(yaw, yawTarget, aimOverride !== null ? 7 : 3, dt);
-      pitch = approach(pitch, aiming ? parts.aimPitch + (aimOverride === null ? Math.sin(t * 1.3) * 0.06 : 0) : 0, 3, dt);
+      pitch = approach(pitch, aiming ? (air ? parts.airPitch! : parts.aimPitch) + (aimOverride === null ? Math.sin(t * 1.3) * 0.06 : 0) : 0, air ? 2.2 : 3, dt);
       parts.turret.rotation.y = yaw;
       parts.gun.rotation.x = -pitch;
 

@@ -15,11 +15,11 @@
  * - Mảng tối hấp thụ radar quanh buồng lái, tấm giáp nổi, ăng-ten dẹt, cửa tiếp dầu, đèn mút cánh.
  * - Gầm: lòng khoang bom tối (thấy khi mở cửa), kính ngắm bom, cửa càng mở theo càng.
  *
- * Chi tiết dán lên bề mặt dùng `skin()`: tia dò (raycast) đo độ cao mặt thân tại (x, z) rồi đặt tấm mỏng
+ * Chi tiết dán lên bề mặt dùng `surfaceTools` (kit.ts): tia dò đo độ cao mặt thân tại (x, z) rồi đặt tấm mỏng
  * lên đúng mặt đó, nên chỉ cần khai báo tọa độ nhìn từ trên.
  */
 import * as THREE from "three";
-import { approach, facets, FireClock, group, part, sphere, type Palette, type Rig } from "../kit";
+import { approach, facets, FireClock, group, part, sphere, surfaceTools, type Palette, type Rig } from "../kit";
 import { V, blast } from "./common";
 import { wingShape, aircraftRig, gearLeg, engineGlow } from "./air";
 
@@ -35,10 +35,6 @@ const TRAIL: P2[] = [[2.5, -0.42], [1.58, -1.85], [0.8, -0.8], [0, -2.05]];
 /** z của mép trước tại x (mép trước là đường thẳng từ mũi tới mút cánh). */
 const leZ = (x: number) => NOSE_Z + ((TIP_FRONT[1] - NOSE_Z) * x) / TIP_FRONT[0];
 
-const ray = new THREE.Raycaster();
-const DOWN = new THREE.Vector3(0, -1, 0);
-const UP = new THREE.Vector3(0, 1, 0);
-const FROM = new THREE.Vector3();
 
 export function buildValkyrie(p: Palette): Rig {
   const frame = group();
@@ -93,39 +89,7 @@ export function buildValkyrie(p: Palette): Rig {
   add(root, hump);
 
   // Gờ hút gió + miệng hút gió (đo bề mặt bằng tia dò chỉ trên nửa phải, nên gờ dựng sau khi có hàm đo)
-  frame.updateMatrixWorld(true);
-  const surfaces = [hump, root, wingR];
-  /** Độ cao mặt trên (top) hoặc mặt dưới của thân tại (x, z). Thân đối xứng nên đo ở |x|. */
-  const surf = (x: number, z: number, top = true): number => {
-    ray.set(FROM.set(Math.abs(x), top ? 5 : -5, z), top ? DOWN : UP);
-    const hit = ray.intersectObjects(surfaces, false)[0];
-    return hit ? hit.point.y : 0;
-  };
-  /** Tấm mỏng dán lên mặt thân theo đa giác lồi nhìn từ trên. sx = −1 lật sang nửa trái. */
-  const skin = (name: string, pts: P2[], mat: THREE.Material, sx = 1, lift = 0.022, thick = 0.03, top = true) =>
-    part(
-      name,
-      facets(
-        pts.flatMap(([x, z]): P3[] => {
-          const y = surf(x, z, top) + (top ? lift : -lift);
-          return [[sx * x, y, z], [sx * x, top ? y - thick : y + thick, z]];
-        }),
-        mat
-      )
-    );
-  /** Đường mảnh dán lên mặt thân (đường ghép tấm, vạch sơn) theo đường gấp khúc. */
-  const line = (name: string, pts: P2[], mat: THREE.Material, sx = 1, w = 0.028) => {
-    const g = group();
-    for (let i = 0; i + 1 < pts.length; i++) {
-      const [ax, az] = pts[i]!;
-      const [bx, bz] = pts[i + 1]!;
-      const len = Math.sqrt((bx - ax) ** 2 + (bz - az) ** 2);
-      const nx = (-(bz - az) / len) * (w / 2);
-      const nz = ((bx - ax) / len) * (w / 2);
-      g.add(skin(name, [[ax + nx, az + nz], [bx + nx, bz + nz], [bx - nx, bz - nz], [ax - nx, az - nz]], mat, sx, 0.026, 0.02));
-    }
-    return part(name, g);
-  };
+  const { surf, skin, line } = surfaceTools(frame, [hump, root, wingR]);
 
   // ================================================================ 2. ĐỘNG CƠ CHÌM
   both((sx) => {
@@ -146,10 +110,10 @@ export function buildValkyrie(p: Palette): Rig {
         "Miệng hút gió",
         facets([[sx * 0.44, 0.34, 0.57], [sx * 0.9, 0.29, 0.52], [sx * 0.66, 0.45, 0.1], [sx * 0.46, 0.4, 0.42], [sx * 0.86, 0.34, 0.38]], p.metal)
       ),
-      line("Viền hút gió (màu phe)", [[0.38, 0.66], [0.66, 0.66], [0.96, 0.58]], p.team, sx, 0.05),
+      line("Viền hút gió (màu phe)", [[0.38, 0.66], [0.66, 0.66], [0.96, 0.58]], p.team, { mirror: sx < 0, w: 0.05 }),
       // Rãnh xả dẹt trên mặt cánh, chạy ra mép sau của răng cưa; tấm chịu nhiệt tối phía trước rãnh
       part("Rãnh xả động cơ", facets([[sx * 0.95, 0.12, -0.72], [sx * 1.55, 0.11, -0.85], [sx * 1.12, 0.1, -1.18], [sx * 1.58, 0.09, -1.38], [sx * 1.35, 0.06, -1.4]], p.metal)),
-      skin("Tấm chịu nhiệt", [[0.9, -0.45], [1.5, -0.55], [1.55, -0.82], [0.95, -0.72]], p.hullDark, sx)
+      skin("Tấm chịu nhiệt", [[0.9, -0.45], [1.5, -0.55], [1.55, -0.82], [0.95, -0.72]], p.hullDark, { mirror: sx < 0 })
     );
     // Lửa động cơ dẹt (khe xả ngang): ép dẹt hình nón theo chiều cao, không đụng tới scale của mesh
     // vì aircraftRig dùng scale.y làm độ dài luồng lửa khi tăng giảm ga.
@@ -172,14 +136,14 @@ export function buildValkyrie(p: Palette): Rig {
     pts.push([sx * 0.16, surf(0.16, 1.45) + 0.11, 1.45]);
     add(part("Buồng lái", facets(pts, p.glass)));
   });
-  add(line("Khung kính", [[0, 1.95], [0, 1.0]], p.metal, 1, 0.07));
-  add(line("Chữ V mũi (màu phe)", [[-0.34, 2.38], [0, 2.75], [0.34, 2.38]], p.team, 1, 0.07));
+  add(line("Khung kính", [[0, 1.95], [0, 1.0]], p.metal, { w: 0.07 }));
+  add(line("Chữ V mũi (màu phe)", [[-0.34, 2.38], [0, 2.75], [0.34, 2.38]], p.team, { w: 0.07 }));
 
   // ================================================================ 4. MẶT LƯNG: màu phe, tấm giáp, đường ghép, ăng-ten
   add(skin("Ô nhận diện (màu phe)", [[0, 0.55], [0.22, 0.2], [0, -0.15], [-0.22, 0.2]], p.team));
   // Cửa tiếp dầu trên không: ô tối + 2 vạch trắng dẫn hướng cho máy bay tiếp dầu
   add(skin("Cửa tiếp dầu", [[0, -0.32], [0.09, -0.45], [0, -0.58], [-0.09, -0.45]], p.metal));
-  both((sx) => add(line("Vạch dẫn tiếp dầu", [[0.05, -0.62], [0.05, -0.95]], p.white, sx, 0.025)));
+  both((sx) => add(line("Vạch dẫn tiếp dầu", [[0.05, -0.62], [0.05, -0.95]], p.white, { mirror: sx < 0, w: 0.025 })));
   // Đường ghép răng cưa ngang lưng, sau cửa tiếp dầu
   add(line("Đường ghép răng cưa", [[-0.36, -1.05], [-0.24, -0.95], [-0.12, -1.05], [0, -0.95], [0.12, -1.05], [0.24, -0.95], [0.36, -1.05]], p.hullDark));
   // Ăng-ten dẹt trên lưng (vây mỏng vát về sau)
@@ -192,12 +156,12 @@ export function buildValkyrie(p: Palette): Rig {
   both((sx) => {
     // Vạch đứt màu phe dọc mép trước: nhịp đều như viền vai xe của Titan
     for (const [a, b] of [[1.25, 1.85], [2.05, 2.6]] as P2[]) {
-      add(skin("Vạch mép cánh (màu phe)", [[a, leZ(a) - 0.24], [b, leZ(b) - 0.24], [b, leZ(b) - 0.33], [a, leZ(a) - 0.33]], p.team, sx));
+      add(skin("Vạch mép cánh (màu phe)", [[a, leZ(a) - 0.24], [b, leZ(b) - 0.24], [b, leZ(b) - 0.33], [a, leZ(a) - 0.33]], p.team, { mirror: sx < 0 }));
     }
     // Tấm giáp nổi hình thoi trên cánh, tối màu, viền ghép răng cưa ở cạnh trong
-    add(skin("Tấm giáp cánh", [[1.6, 0.4], [2.15, 0.02], [2.05, -0.28], [1.52, 0.08]], p.hullDark, sx));
-    add(skin("Tấm giáp cánh", [[2.35, -0.05], [2.8, -0.42], [2.68, -0.6], [2.24, -0.24]], p.hullDark, sx));
-    add(line("Đường ghép răng cưa", [[1.3, 0.95], [1.45, 0.7], [1.3, 0.45], [1.45, 0.2], [1.3, -0.05], [1.45, -0.3]], p.hullDark, sx));
+    add(skin("Tấm giáp cánh", [[1.6, 0.4], [2.15, 0.02], [2.05, -0.28], [1.52, 0.08]], p.hullDark, { mirror: sx < 0 }));
+    add(skin("Tấm giáp cánh", [[2.35, -0.05], [2.8, -0.42], [2.68, -0.6], [2.24, -0.24]], p.hullDark, { mirror: sx < 0 }));
+    add(line("Đường ghép răng cưa", [[1.3, 0.95], [1.45, 0.7], [1.3, 0.45], [1.45, 0.2], [1.3, -0.05], [1.45, -0.3]], p.hullDark, { mirror: sx < 0 }));
     // Ăng-ten dẹt trên gốc cánh, đèn định vị mút cánh (phát sáng màu phe)
     add(blade(sx * 1.05, 0.95, 0.09, "Ăng-ten dẹt"));
     const lampPts: P3[] = [[3.5, 0.02, -0.98], [3.64, 0.02, -1.02], [3.56, 0.02, -1.14], [3.56, 0.1, -1.04]];
@@ -224,10 +188,10 @@ export function buildValkyrie(p: Palette): Rig {
   });
 
   // ================================================================ 6. GẦM: khoang bom, kính ngắm, càng + cửa càng
-  add(skin("Lòng khoang bom", [[-0.4, 0.62], [0.4, 0.62], [0.4, -0.82], [-0.4, -0.82]], p.metal, 1, 0.004, 0.01, false));
-  add(skin("Kính ngắm bom", [[0, 2.62], [0.14, 2.42], [0, 2.22], [-0.14, 2.42]], p.glass, 1, 0.012, 0.03, false));
+  add(skin("Lòng khoang bom", [[-0.4, 0.62], [0.4, 0.62], [0.4, -0.82], [-0.4, -0.82]], p.metal, { face: "bottom", lift: 0.004, thick: 0.01 }));
+  add(skin("Kính ngắm bom", [[0, 2.62], [0.14, 2.42], [0, 2.22], [-0.14, 2.42]], p.glass, { face: "bottom", lift: 0.012 }));
   {
-    const y = surf(0, 1.25, false);
+    const y = surf(0, 1.25, "bottom");
     add(part("Ăng-ten bụng", facets([[-0.012, y, 1.35], [0.012, y, 1.35], [-0.012, y, 1.15], [0.012, y, 1.15], [0, y - 0.1, 1.1]], p.metal)));
   }
 
@@ -258,7 +222,7 @@ export function buildValkyrie(p: Palette): Rig {
   const gearDoors: { g: THREE.Group; ext: number }[] = [];
   const gearDoor = (x: number, z: number, w: number, l: number, ext: number) => {
     const d = sawDoor("Cửa càng", w, l, ext, p.hullDark);
-    d.position.set(x, surf(x + ext * w * 0.5, z, false) - 0.025, z);
+    d.position.set(x, surf(x + ext * w * 0.5, z, "bottom") - 0.025, z);
     add(d);
     gearDoors.push({ g: d, ext });
   };

@@ -362,6 +362,9 @@ export class Views {
           // xe có tháp pháo xoay chậm (sim giữ hướng nòng): vẽ đúng hướng nòng thật, để thấy độ trễ khi xoay
           v.rig.setAim?.(w?.traverse ? wrap(Math.atan2(u.aimX, u.aimZ) - v.yaw) : this.aimAt(world, x, z, v.yaw, tid));
         }
+        // mục tiêu đang bay: xe có tư thế phòng không (Lynx) ngóc nòng lên; chỉ là phần vẽ, sim không đổi
+        const tgt = tid ? world.target(tid) : null;
+        if (tgt && "alt" in tgt && tgt.alt > AIRBORNE_ALT) a.add("aimAir");
         if (w && (w.visual === "bullet" || w.visual === "cannon") && (world.tick - u.lastShot) * DT < Math.max(0.45, w.cooldown * 0.9)) a.add("fire");
       }
     }
