@@ -10,7 +10,8 @@
  * - Thân xe = 4 CÀNG (càng sau rộng và cao hơn: tay cầm cái kéo) + MŨI CHỮ T: đế thấp rộng 1,6 m nằm dưới hai càng trước,
  *   chìa ra trước; sống mũi (ghế lái) ở khe giữa, nóc ngang nóc càng. BẢN LỀ Ở MÉP NGOÀI ngang giữa xe: xoè ra thì phía trong mở, không càng nào cắt qua càng nào.
  *   Càng trước xoè 20° (góc trước 40°), càng sau 34° (góc sau 68°). Góc trong mỗi càng vát xiên chừa chỗ cột bệ tháp.
- * - Tâm xe: đế giữa chạm đất (lộ ra khi xoè), cột bệ tháp thon + vai đỡ.
+ * - Tâm xe: KHỐI GIỮA NỐI CÀNG (bát giác, ôm nửa dưới cột bệ tháp, nóc thấp hơn giáp càng; lúc chạy khuất trong các càng,
+ *   xoè ra thì nối các càng thành một thân chung) + cột bệ tháp thon + vai đỡ.
  * - THÁP DAO ĐỘNG: tầng dưới (vành, bệ quay, 2 tai đỡ trục) chỉ xoay ngang; tầng trên là CẢ THÂN THÁP + nòng, ngóc quanh trục
  *   giữa 2 tai (trục cao để đuôi tháp không đập vào càng sau khi ngóc 36°).
  * - Hạ bệ (khớp luật `deploy.time` = 2 giây, `required`): 5–60% 4 càng xoè · 50–80% 4 lưỡi neo cắm đất ·
@@ -111,12 +112,21 @@ export function buildArtillery(p: Palette): Rig {
 
   // ================================================================ 2. TÂM XE: đế giữa, bệ tháp, mũi giữa (đứng yên)
   add(
-    part("Đế giữa", cyl(1.15, 1.3, 0.42, p.hullDark, 8, 0, 0.21, 0)),
     part("Cột bệ tháp", cyl(0.52, 0.62, PEDESTAL_TOP - 0.4, p.hull, 10, 0, (PEDESTAL_TOP + 0.4) / 2, 0)),
     part("Đai cột (màu phe)", cyl(0.56, 0.56, 0.08, p.team, 10, 0, 1.36, 0)),
     part("Vai đỡ tháp", cyl(0.85, 0.55, 0.3, p.hullDark, 10, 0, PEDESTAL_TOP - 0.15, 0)),
     part("Thang", group(...[0.8, 1.0, 1.2, 1.4].map((y) => box(0.32, 0.04, 0.06, p.metal, 0, y, -0.6))))
   );
+  // Khối giữa nối càng: ôm nửa dưới cột bệ tháp, nóc thấp hơn mặt trên giáp càng; rộng tới sát 4 bản lề ở hai bên hông.
+  // Lúc chạy nằm khuất trong các càng; xoè ra thì lấp khoảng trống giữa, các càng trông như mọc ra từ một thân chung.
+  const HUB_TOP = 0.98;
+  const hubPts: P3[] = [];
+  for (const [x, z] of [[1.3, 0.38], [0.85, 1.15], [0.35, 1.3]] as const)
+    for (const sz of [1, -1]) hubPts.push([x, 0.14, sz * z], [x - 0.06, HUB_TOP, sz * (z - 0.06)]);
+  add(part("Khối giữa nối càng", facets(hubPts, p.hull, true)));
+  add(part("Đai khối giữa (màu phe)", box(0.04, 0.1, 0.5, p.team, 1.27, 0.75, 0)), part("Đai khối giữa (màu phe)", box(0.04, 0.1, 0.5, p.team, -1.27, 0.75, 0)));
+  add(part("Váy khối giữa", facets(hubPts.filter(([, y]) => y < 0.5).flatMap(([x, , z]): P3[] => [[x + 0.02, 0.1, z], [x + 0.02, 0.36, z]]), p.hullDark, true)));
+
   // Thân trước hình chữ T: ĐẾ THẤP RỘNG 1,6 m nằm DƯỚI hai càng trước (thấp hơn đáy càng nên xoè ra không chạm), chìa ra
   // trước thành mũi; SỐNG MŨI (ghế lái) ở khe giữa hai càng, nóc ngang nóc càng. Lúc chạy nhìn từ trước thấy mũi rộng gần bằng
   // xe, nhìn từ trên liền một khối; xoè càng trước thì cả chữ T lộ ra.
