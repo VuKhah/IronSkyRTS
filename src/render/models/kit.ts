@@ -6,6 +6,7 @@
  * nên mô hình bản nhẹ hôm nay có thể được thay bằng bản chi tiết mà không phải sửa chỗ khác.
  */
 import * as THREE from "three";
+import { ConvexGeometry } from "three/addons/geometries/ConvexGeometry.js";
 import type { Faction } from "../../sim/content";
 
 /**
@@ -152,6 +153,16 @@ export function sphere(r: number, mat: THREE.Material, x = 0, y = 0, z = 0, seg 
   const m = shadowed(new THREE.Mesh(new THREE.SphereGeometry(r, seg, Math.max(6, seg - 2)), mat));
   m.position.set(x, y, z);
   return m;
+}
+
+/**
+ * Khối nhiều mặt vát: bao lồi của các điểm [x, y, z] (mặt phẳng, cạnh sắc — hợp máy bay tàng hình, giáp vát).
+ * `mirror = true` thì tự thêm bản đối xứng qua mặt x = 0, chỉ cần khai báo nửa bên phải.
+ */
+export function facets(points: [number, number, number][], mat: THREE.Material, mirror = false): THREE.Mesh {
+  const all = mirror ? [...points, ...points.filter(([x]) => x !== 0).map(([x, y, z]) => [-x, y, z] as [number, number, number])] : points;
+  const geo = new ConvexGeometry(all.map(([x, y, z]) => new THREE.Vector3(x, y, z)));
+  return shadowed(new THREE.Mesh(geo, mat));
 }
 
 /** Chớp lửa đầu nòng: hình nón sáng, ẩn mặc định. */
