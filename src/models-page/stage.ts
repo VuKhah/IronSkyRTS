@@ -117,13 +117,15 @@ function makePerson(): THREE.Group {
   return g;
 }
 
-export type ViewName = "three" | "front" | "side" | "top";
+export type ViewName = "three" | "front" | "side" | "top" | "back";
 /** Hướng camera nhìn về mô hình cho từng góc chuẩn (mặt trước mô hình là +Z). "top" hơi nghiêng để OrbitControls không khóa trục. */
 const VIEW_DIRS: Record<ViewName, THREE.Vector3> = {
   three: new THREE.Vector3(1.0, 0.62, 1.25),
   front: new THREE.Vector3(0, 0.18, 1),
   side: new THREE.Vector3(1, 0.18, 0),
-  top: new THREE.Vector3(0, 1, 0.02)
+  top: new THREE.Vector3(0, 1, 0.02),
+  // sau-thấp: thấy đuôi, ống xả; khi bật "bay" thì thấy cả gầm máy bay
+  back: new THREE.Vector3(-1.0, 0.16, -1.25)
 };
 
 export class Stage {

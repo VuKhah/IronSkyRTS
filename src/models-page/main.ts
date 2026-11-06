@@ -10,7 +10,7 @@ import { buildModel, disposeRig } from "../render/models";
 import { bakeStatic } from "../render/models/bake";
 import { Stage, Thumbnailer, type ViewName } from "./stage";
 
-const VIEW_LABEL: Record<ViewName, string> = { three: "3/4", front: "Trước", side: "Cạnh", top: "Trên" };
+const VIEW_LABEL: Record<ViewName, string> = { three: "3/4", front: "Trước", side: "Cạnh", top: "Trên", back: "Sau" };
 let lastActions: { id: string; label: string }[] = [];
 
 type Tab = "units" | "buildings";
@@ -44,7 +44,7 @@ try {
   if (new URLSearchParams(location.search).get("measure") === "0") stage.measure = false;
   // ?view=front|side|top|three: góc nhìn chuẩn (chụp ảnh để bàn thiết kế); đặt góc thì tắt tự xoay
   const v = new URLSearchParams(location.search).get("view");
-  if (v === "front" || v === "side" || v === "top" || v === "three") {
+  if (v === "front" || v === "side" || v === "top" || v === "three" || v === "back") {
     stage.viewName = v;
     state.autoRotate = false;
     stage.autoRotate = false;
@@ -197,7 +197,7 @@ function renderControls(actions: { id: string; label: string }[]): void {
       <button type="button" data-f="do" aria-pressed="${state.faction === "do"}">Tập Đoàn Đỏ</button>
     </span>
     <span class="faction" role="group" aria-label="Góc nhìn">
-      ${(["three", "front", "side", "top"] as const).map((v) => `<button type="button" data-view="${v}" aria-pressed="${s.viewName === v}">${VIEW_LABEL[v]}</button>`).join("")}
+      ${(["three", "front", "side", "top", "back"] as const).map((v) => `<button type="button" data-view="${v}" aria-pressed="${s.viewName === v}">${VIEW_LABEL[v]}</button>`).join("")}
     </span>
     <button type="button" class="chip" data-measure aria-pressed="${s.measure}" title="Đường đo rộng / dài / cao (mét) và người cao 1,8 m để so tỉ lệ">📏 Thước đo</button>
     <button type="button" class="chip" data-rotate aria-pressed="${state.autoRotate}">Tự xoay</button>`;
