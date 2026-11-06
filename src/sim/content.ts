@@ -609,7 +609,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     speed: 3.4,
     mobility: "track",
     sight: 18,
-    radius: 1.8,
+    radius: 2.7, // mô hình phóng to ×1,5 (06/11/2026)
     captureWeight: 1,
     weapon: {
       name: "Pháo 155mm nòng dài",

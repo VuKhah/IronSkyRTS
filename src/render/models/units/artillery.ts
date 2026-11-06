@@ -37,6 +37,8 @@ const ARM_LEN = 2.6;
 /** Lưỡi neo: bản lề cao 0,6 m, lưỡi dài 0,75 m, hạ quá phương ngang 0,9 rad thì mũi chạm đất. */
 const SPADE_DIG = 0.9;
 const PEDESTAL_TOP = 1.75;
+/** Tỉ lệ phóng to cả xe (06/11/2026: to hơn ~50%). Kích thước trong file là trước khi nhân. Sim: UNITS.artillery.radius. */
+const SCALE = 1.5;
 /** Mép trong của càng bắt đầu từ z này: góc trong vát xiên, chừa chỗ cho cột bệ tháp (bán kính ≤ 0,65 m). */
 const CUT_Z = 0.8;
 
@@ -92,7 +94,7 @@ export function buildArtillery(p: Palette): Rig {
         const wl = part("Bánh tì", wheel(0.3, 0.56, p.hullDark, p.hullDark));
         wl.position.set(sx * tx, 0.3, sz * z);
         arm.add(wl);
-        wheels.push({ g: wl, r: 0.3 });
+        wheels.push({ g: wl, r: 0.3 * SCALE }); // bán kính thật sau khi phóng to: bánh lăn khớp tốc độ xe
       }
       arm.add(part("Sọc càng (màu phe)", box(0.03, 0.08, z1 - 1.0, p.team, sx * 0.005, 0.85, sz * (z1 / 2))));
       if (rear) arm.add(part("Giáp đuôi dày (màu phe)", box(w - 0.4, 0.06, 1.0, p.team, sx * (-w / 2), h + 0.02, sz * 1.3)));
@@ -221,12 +223,14 @@ export function buildArtillery(p: Palette): Rig {
   add(turret);
 
   // ================================================================ 4. HOẠT ẢNH HẠ BỆ (tuyến tính, đúng DEPLOY_TIME giây)
+  // Phóng to cả xe (người dùng: to hơn khoảng 50%): mọi kích thước ở trên là trước khi nhân tỉ lệ
+  body.scale.setScalar(SCALE);
   let dep = 0;
   return vehicleRig(
     "artillery",
     p,
     { body, wheels, turret, gun, barrels: [outer], muzzles: [inner], flashes: [flash], spinners: [], aimPitch: 0.62, recoil: 0.6 },
-    4.3,
+    4.3 * SCALE,
     [{ id: "deploy", label: "Hạ bệ chữ X" }],
     (dt, _t, a) => {
       const target = a.has("deploy") ? 1 : 0;
