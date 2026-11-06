@@ -53,6 +53,9 @@ function canonPair(x0: number, z0: number, x1: number, z1: number): boolean {
   return canonPoint(x0, z0);
 }
 
+/** Hệ số "hành lang" theo khoảng cách (ô) tới vật cản cố định: sát vật cản coi như chậm hơn, từ 4 ô (8 m) trở ra như thường. */
+const CORRIDOR = [0, 0.35, 0.55, 0.8, 1];
+
 export class Grid {
   /** Số ô theo x (cột) và z (hàng). */
   readonly cols: number;
@@ -122,6 +125,50 @@ export class Grid {
         if (v > kMax) kMax = v;
       }
       f = { k, kMax: kMax > 0 ? kMax : 1 };
+      this.fields.set(key, f);
+    }
+    return f;
+  }
+
+  /**
+   * Hệ số tốc độ "hành lang" cho người dẫn đầu đội hình: như `field` nhưng ô càng sát vật cản cố định (sông, đá, vách, mép
+   * bản đồ) càng bị coi là chậm, nên đường A* đi giữa khoảng trống thay vì men sát vật cản (đội hình khỏi phải co / dạt vô
+   * cớ). Hệ số chỉ giảm, không tăng, nên heuristic A* vẫn đúng. Tính một lần rồi giữ lại cả trận.
+   */
+  corridor(mob: Mobility): SpeedField {
+    const key = `${mob}#corridor`;
+    let f = this.fields.get(key);
+    if (!f) {
+      const base = this.field(mob, false);
+      // khoảng cách (số ô, kiểu bàn cờ vua) tới ô bị chặn gần nhất: loang từ mọi ô chặn và mép lưới
+      const d = new Int32Array(this.size).fill(-1);
+      const q: number[] = [];
+      for (let i = 0; i < this.size; i++) {
+        const cx = i % this.cols;
+        const cz = (i - cx) / this.cols;
+        if (this.terrain[i] || cx === 0 || cz === 0 || cx === this.cols - 1 || cz === this.rows - 1) {
+          d[i] = 0;
+          q.push(i);
+        }
+      }
+      for (let h = 0; h < q.length; h++) {
+        const i = q[h];
+        const cx = i % this.cols;
+        const cz = (i - cx) / this.cols;
+        for (let dz = -1; dz <= 1; dz++)
+          for (let dx = -1; dx <= 1; dx++) {
+            const x = cx + dx;
+            const z = cz + dz;
+            if (x < 0 || z < 0 || x >= this.cols || z >= this.rows) continue;
+            const j = z * this.cols + x;
+            if (d[j] >= 0) continue;
+            d[j] = d[i] + 1;
+            q.push(j);
+          }
+      }
+      const k = new Float64Array(this.size);
+      for (let i = 0; i < this.size; i++) k[i] = base.k[i] * CORRIDOR[Math.min(d[i], CORRIDOR.length - 1)];
+      f = { k, kMax: base.kMax };
       this.fields.set(key, f);
     }
     return f;

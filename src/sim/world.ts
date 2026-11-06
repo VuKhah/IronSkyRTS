@@ -8,7 +8,8 @@
  * Không có gì phụ thuộc thời gian thật hay số ngẫu nhiên không seed, nên cùng seed + cùng lệnh thì ra cùng trận.
  */
 import { BUILDINGS, canStrike, doorSign, PAD_OFFSETS, RULES, UNITS, valueOf, type BuildingId, type Mobility, type Res, type Side, type UnitId, type UnitSpec, type WeaponSpec, type WeaponVisual } from "./content";
-import { clamp, dcos, DEG, dist2, dsin, Rng, turnStep, turnToward, type TurnStep } from "./fmath";
+import { assignMin } from "./assign";
+import { clamp, dcos, DEG, dist2, dsin, Rng, TAU, turnStep, turnToward, type TurnStep } from "./fmath";
 import { Grid } from "./grid";
 import { CELL, GameMap, getMap, TERRAIN, TERRAIN_KINDS } from "./maps";
 import type {
@@ -58,11 +59,22 @@ const SQUAD_LOOK = 10;
 const SQUAD_FAR = 9;
 /** Tập hợp vào hàng / ổn định chỗ khi tới nơi tối đa bao lâu (giây), rồi cứ đi tiếp / giải tán. */
 const SQUAD_FORM_MAX = 15;
+/**
+ * Quãng ngắn (tâm nhóm → đích không quá chừng này mét, đường thẳng không vướng): mỗi xe đi thẳng tới ô của nó ở đích
+ * (xoay một lần, chạy thẳng, xoay lại), không hành quân thành khối. Quãng dài hay phải vòng (cầu, khe) mới hành quân.
+ */
+const SQUAD_DIRECT = 40;
 const SQUAD_SETTLE_MAX = 6;
 /** Cả đội xoay tại chỗ tối đa bao lâu (giây): quá thì cứ đi tiếp (an toàn). */
 const SQUAD_PIVOT_MAX = 20;
 /** Giãn thêm hàng khi đã đủ rộng liên tục bấy nhiêu lần đo (mỗi lần cách 3 tick: 7 lần ≈ 2 giây). */
 const SQUAD_WIDEN_CHECKS = 7;
+/** Dời cả khối đội hình cho vừa chỗ: các vòng 2, 4, … 12 m quanh điểm bấm, 16 hướng, gần trước. */
+const SHIFT_OFFSETS: readonly (readonly [number, number])[] = (() => {
+  const out: [number, number][] = [];
+  for (let r = 2; r <= 12; r += 2) for (let k = 0; k < 16; k++) out.push([r * dcos((k * TAU) / 16), r * dsin((k * TAU) / 16)]);
+  return out;
+})();
 /** Ô dự phòng quanh một vị trí đội hình bị chặn / trùng: tính theo bước 1 ô lưới, gần trước. */
 const SLOT_NUDGE: readonly (readonly [number, number])[] = (() => {
   const pts: [number, number][] = [];
@@ -906,11 +918,13 @@ export class World {
   }
 
   /** Ô trống gần (x, z) nhất chưa có xe nào trong đội hình nhận (dò theo khung đội hình, bước 1 ô lưới). */
-  private freeSlot(x: number, z: number, rx: number, rz: number, fx: number, fz: number, used: Set<number>): [number, number] {
+  private freeSlot(x: number, z: number, rx: number, rz: number, fx: number, fz: number, used: Set<number>, from?: readonly [number, number]): [number, number] {
     for (const [i, j] of SLOT_NUDGE) {
       const px = x + (rx * i + fx * j) * CELL;
       const pz = z + (rz * i + fz * j) * CELL;
       if (!this.map.fits(px, pz, 1, 1) || this.grid.blockedAt(px, pz)) continue;
+      // phải cùng một khoảng trống với tâm đội hình (không nhảy sang bờ sông bên kia hay sau vách đá)
+      if (from && !this.grid.los(from[0], from[1], px, pz)) continue;
       const c = this.grid.index(px, pz);
       if (used.has(c)) continue;
       used.add(c);
@@ -1008,26 +1022,37 @@ export class World {
       phaseT: 0,
       byRank: true,
       hold: false,
+      holding: false,
       shift: 0,
       shiftWant: 0,
       wideFor: 0,
       settleMax: 0
     };
-    // Nhóm đã đứng thành hàng sẵn (cùng quay một hướng, ai cũng sát ô của mình)? Thì giữ nguyên hàng, chỉ xoay / đi.
-    // (thử mọi số xe mỗi hàng: đội vừa qua chỗ hẹp có thể đang đứng thành hàng hẹp hơn bình thường)
-    let formed = false;
+    // Đội vừa cùng nhau tới nơi (cùng nhận một hướng đội hình, ai cũng còn đứng gần ô cuối của mình) là ĐÃ VÀO HÀNG:
+    // giữ nguyên hình dạng đang đứng (người dùng chốt 06/11/2026: không ai đổi chỗ), dù nó có giống lưới chuẩn hay không.
+    const sameFace = (f0.faceX !== 0 || f0.faceZ !== 0) && units.every((u) => u.faceX * f0.faceX + u.faceZ * f0.faceZ > 0.999);
+    const formed = sameFace && units.every((u) => u.order === "idle" && dist2(u.x, u.z, u.tx, u.tz) < 9);
     const colsFull = Math.min(n, Math.ceil(Math.sqrt(n * FORMATION_WIDE)));
-    if (al / n > 0.95)
-      for (let c = colsFull; c >= 1 && !formed; c--) {
-        this.squadArrange(sq, units, ax / al, az / al, cx, cz, c);
-        formed = sq.ids.every((id, i) => {
-          const u = this.byId.get(id) as Unit;
-          const [sx, sz] = this.squadSlot(sq, i);
-          return dist2(u.x, u.z, sx, sz) < 9;
-        });
+    sq.byRank = !formed;
+    sq.ids = units.map((u) => u.id);
+    if (formed) {
+      // hình dạng hiện tại, đo theo hướng đội hình đang quay
+      this.squadAdopt(sq, f0.faceX, f0.faceZ);
+      sq.colsMax = Math.max(colsFull, sq.cols);
+    }
+    let direct = false;
+    if (wl <= SQUAD_DIRECT) direct = this.squadDirect(sq, units, wx, wz, cx, cz, colsFull, formed);
+    if (!direct) {
+      if (formed) {
+        this.squadAdopt(sq, f0.faceX, f0.faceZ);
+        sq.colsMax = Math.max(colsFull, sq.cols);
+      } else {
+        // quân lộn xộn: dựng đội hình theo vai trò ngay tại chỗ, quay theo hướng đi, chia ô tối ưu rồi tập hợp
+        this.squadArrange(sq, units, wx, wz, cx, cz, colsFull);
+        this.squadAssign(sq);
+        sq.colsMax = colsFull;
       }
-    if (!formed) this.squadArrange(sq, units, wx, wz, cx, cz, colsFull);
-    sq.colsMax = colsFull;
+    }
     // ô cuối cùng của từng xe khi tới nơi (tâm khối ở đích, quay theo hướng đi): AI và "về lại chỗ" dùng
     const fx = x + wx * (sq.depth / 2);
     const fz = z + wz * (sq.depth / 2);
@@ -1040,16 +1065,196 @@ export class World {
       u.chasing = false;
       u.path = [];
       u.pathI = 0;
-      u.tx = fx + wz * sq.offLat[i] - wx * sq.offBack[i];
-      u.tz = fz - wx * sq.offLat[i] - wz * sq.offBack[i];
+      if (direct) [u.tx, u.tz] = this.squadSlot(sq, i);
+      else {
+        u.tx = fx + wz * sq.offLat[i] - wx * sq.offBack[i];
+        u.tz = fz - wx * sq.offLat[i] - wz * sq.offBack[i];
+      }
       u.faceX = wx;
       u.faceZ = wz;
     });
-    if (formed && sq.hx * wx + sq.hz * wz < SQUAD_PIVOT_COS) {
+    if (direct) {
+      // đã đặt ở squadDirect
+    } else if (formed && sq.hx * wx + sq.hz * wz < SQUAD_PIVOT_COS) {
       sq.phase = "pivot";
       sq.phaseT = 0;
     } else if (formed) this.squadMarch(sq);
+    else {
+      sq.phase = "form";
+      sq.phaseT = 0;
+    }
     this.squads.push(sq);
+  }
+
+  /**
+   * Thử chế độ "đi thẳng tới ô" cho quãng ngắn: đội hình dựng sẵn ở đích (tâm khối ở đích, quay theo hướng đi), chia ô bằng
+   * phân công tối ưu (không đường nào cắt nhau). Đội đã vào hàng thì đội hình ở đích là chính hình dạng đang đứng, xoay
+   * theo hướng đi; quân lộn xộn thì dựng lưới chuẩn theo vai trò. Được khi mọi ô đứng được và đường thẳng tới ô không vướng.
+   */
+  private squadDirect(sq: Squad, units: readonly Unit[], wx: number, wz: number, cx: number, cz: number, cols: number, formed: boolean): boolean {
+    if (formed) {
+      // đội đã vào hàng: DỊCH NGUYÊN KHỐI, mọi xe đi cùng một vector (đường song song, không ai đổi chỗ), tới nơi quay mặt
+      // về hướng vừa đi. Lùi lại thì hàng sau thành hàng đầu (người dùng chốt giữ nguyên chỗ đứng).
+      sq.x += sq.goalX - cx;
+      sq.z += sq.goalZ - cz;
+    } else {
+      this.squadArrange(sq, units, wx, wz, cx, cz, cols);
+      sq.colsMax = cols;
+      sq.hx = wx;
+      sq.hz = wz;
+      sq.x = sq.goalX + wx * (sq.depth / 2);
+      sq.z = sq.goalZ + wz * (sq.depth / 2);
+    }
+    sq.phase = "direct";
+    // phải đi vòng xa thật sự (qua cầu, vòng khe núi) thì không đi thẳng được: hành quân thành khối
+    const mob = this.slowestMobility(sq);
+    const route = this.grid.findPath(cx, cz, sq.goalX, sq.goalZ, this.grid.field(mob, false));
+    if (!route) {
+      sq.phase = "form";
+      return false;
+    }
+    let len = 0;
+    let px = cx;
+    let pz = cz;
+    for (let k = 0; k < route.length; k += 2) {
+      len += Math.sqrt(dist2(px, pz, route[k], route[k + 1]));
+      px = route[k];
+      pz = route[k + 1];
+    }
+    if (len > Math.sqrt(dist2(cx, cz, sq.goalX, sq.goalZ)) * 1.35 + 4) {
+      sq.phase = "form";
+      return false;
+    }
+    // Bấm sát vật cản (bờ sông, vách đá): tìm chỗ gần nhất mà CẢ KHỐI đứng vừa, giữ nguyên hình dạng
+    if (!this.squadFits(sq)) {
+      const bx = sq.x;
+      const bz = sq.z;
+      let found = false;
+      for (const [ox, oz] of SHIFT_OFFSETS) {
+        sq.x = bx + ox;
+        sq.z = bz + oz;
+        if (this.squadFits(sq)) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        sq.x = bx;
+        sq.z = bz;
+      }
+    }
+    // vẫn có ô vướng thì dời riêng ô đó sang ô trống gần nhất (cùng khoảng trống với tâm khối) chưa ai nhận
+    const used = new Set<number>();
+    const rx = sq.hz;
+    const rz = -sq.hx;
+    for (let i = 0; i < sq.ids.length; i++) {
+      const [sx, sz] = this.squadSlot(sq, i);
+      const ccx = sq.x - sq.hx * (sq.depth / 2);
+      const ccz = sq.z - sq.hz * (sq.depth / 2);
+      const [fx, fz] = this.freeSlot(sx, sz, rx, rz, sq.hx, sq.hz, used, [ccx, ccz]);
+      if (this.grid.blockedAt(fx, fz) || !this.grid.los(ccx, ccz, fx, fz)) {
+        sq.phase = "form";
+        return false;
+      }
+      sq.offLat[i] = (fx - sq.x) * rx + (fz - sq.z) * rz;
+      sq.offBack[i] = (sq.x - fx) * sq.hx + (sq.z - fz) * sq.hz;
+    }
+    // dịch nguyên khối thì ai ở ô nấy; dựng mới thì chia ô tối ưu
+    if (!formed) this.squadAssign(sq);
+    sq.phaseT = 0;
+    return true;
+  }
+
+  /** Mọi ô của đội hình (đặt theo người dẫn đầu hiện tại) đều đứng được và cùng một khoảng trống với tâm khối. */
+  private squadFits(sq: Squad): boolean {
+    const cx = sq.x - sq.hx * (sq.depth / 2);
+    const cz = sq.z - sq.hz * (sq.depth / 2);
+    if (this.grid.blockedAt(cx, cz)) return false;
+    for (let i = 0; i < sq.ids.length; i++) {
+      const [sx, sz] = this.squadSlot(sq, i);
+      if (this.grid.blockedAt(sx, sz) || this.map.inset(sx, sz) < 1 || !this.grid.los(cx, cz, sx, sz)) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Chia ô cho các xe hiện có bằng phân công tối ưu (tổng quãng đường thẳng nhỏ nhất, `assignMin`): không hai đường đi nào
+   * cắt nhau. Ô giữ nguyên chỗ (offLat / offBack theo chỉ số), chỉ đổi xe nào vào ô nào. Đang xếp theo vai trò thì mỗi xe
+   * chỉ nhận ô của hàng đúng vai trò của nó.
+   */
+  private squadAssign(sq: Squad): void {
+    const n = sq.ids.length;
+    if (n < 2) return;
+    const units = sq.ids.map((id) => this.byId.get(id) as Unit);
+    const rank = (u: Unit): number => FORMATION_RANK[UNITS[u.kind].formation ?? "mid"];
+    const cost: number[][] = [];
+    for (let i = 0; i < n; i++) {
+      const [sx, sz] = this.squadSlot(sq, i);
+      const want = rank(units[i]); // vai trò của hàng chứa ô này (theo bố cục vừa dựng)
+      const row: number[] = [];
+      for (let j = 0; j < n; j++) {
+        const u = units[j];
+        row.push(sq.byRank && rank(u) !== want ? 1e9 : Math.sqrt(dist2(u.x, u.z, sx, sz)));
+      }
+      cost.push(row);
+    }
+    const a = assignMin(cost);
+    sq.ids = a.map((j) => units[j].id);
+  }
+
+  /**
+   * Lấy đúng hình dạng các xe đang đứng làm đội hình, đo theo hướng (hx, hz): gom hàng theo chiều sâu (lệch ≤ 1,5 m là cùng
+   * hàng), thứ tự "gấp dây", người dẫn đầu ở giữa hàng đầu. Không ai phải nhích. Tắt xếp theo vai trò.
+   */
+  private squadAdopt(sq: Squad, hx: number, hz: number): void {
+    const units = sq.ids.map((id) => this.byId.get(id) as Unit);
+    const n = units.length;
+    let cx = 0;
+    let cz = 0;
+    for (const u of units) {
+      cx += u.x / n;
+      cz += u.z / n;
+    }
+    const fwd = (u: Unit): number => (u.x - cx) * hx + (u.z - cz) * hz;
+    const lat = (u: Unit): number => (u.x - cx) * hz - (u.z - cz) * hx;
+    let front = -Infinity;
+    for (const u of units) front = Math.max(front, fwd(u));
+    const sorted = [...units].sort((a, b) => fwd(b) - fwd(a) || a.id - b.id);
+    const rows: Unit[][] = [];
+    for (const u of sorted) {
+      const row = rows[rows.length - 1];
+      if (row && fwd(row[0]) - fwd(u) <= 1.5) row.push(u);
+      else rows.push([u]);
+    }
+    sq.byRank = false;
+    sq.ids = [];
+    sq.offLat = [];
+    sq.offBack = [];
+    let minL = Infinity;
+    let maxL = -Infinity;
+    let cols = 1;
+    let rMax = 0;
+    rows.forEach((row, ri) => {
+      row.sort((a, b) => lat(a) - lat(b) || a.id - b.id);
+      if (ri % 2 === 1) row.reverse();
+      cols = Math.max(cols, row.length);
+      for (const u of row) {
+        sq.ids.push(u.id);
+        sq.offLat.push(lat(u));
+        sq.offBack.push(front - fwd(u));
+        minL = Math.min(minL, lat(u));
+        maxL = Math.max(maxL, lat(u));
+        rMax = Math.max(rMax, UNITS[u.kind].radius);
+      }
+    });
+    sq.cols = cols;
+    sq.rMax = rMax;
+    sq.width = maxL - minL + 2 * rMax;
+    sq.depth = Math.max(...sq.offBack);
+    sq.hx = hx;
+    sq.hz = hz;
+    sq.x = cx + hx * front;
+    sq.z = cz + hz * front;
   }
 
   /**
@@ -1170,54 +1375,8 @@ export class World {
    * không ai phải nhích. Thứ tự vẫn kiểu "gấp dây" (theo hàng từ trước ra sau) để sau này co / giãn hàng vẫn gọn.
    */
   private squadAfterPivot(sq: Squad): void {
-    const units = sq.ids.map((id) => this.byId.get(id) as Unit);
-    const n = units.length;
-    let cx = 0;
-    let cz = 0;
-    for (const u of units) {
-      cx += u.x / n;
-      cz += u.z / n;
-    }
-    const hx = sq.wantX;
-    const hz = sq.wantZ;
-    const fwd = (u: Unit): number => (u.x - cx) * hx + (u.z - cz) * hz;
-    const lat = (u: Unit): number => (u.x - cx) * hz - (u.z - cz) * hx;
-    let front = -Infinity;
-    for (const u of units) front = Math.max(front, fwd(u));
-    // gom hàng: các xe lệch nhau theo chiều sâu không quá 1,5 m là cùng một hàng
-    const sorted = [...units].sort((a, b) => fwd(b) - fwd(a) || a.id - b.id);
-    const rows: Unit[][] = [];
-    for (const u of sorted) {
-      const row = rows[rows.length - 1];
-      if (row && fwd(row[0]) - fwd(u) <= 1.5) row.push(u);
-      else rows.push([u]);
-    }
-    sq.byRank = false;
-    sq.ids = [];
-    sq.offLat = [];
-    sq.offBack = [];
-    let minL = Infinity;
-    let maxL = -Infinity;
-    let cols = 1;
-    rows.forEach((row, ri) => {
-      row.sort((a, b) => lat(a) - lat(b) || a.id - b.id);
-      if (ri % 2 === 1) row.reverse();
-      cols = Math.max(cols, row.length);
-      for (const u of row) {
-        sq.ids.push(u.id);
-        sq.offLat.push(lat(u));
-        sq.offBack.push(front - fwd(u));
-        minL = Math.min(minL, lat(u));
-        maxL = Math.max(maxL, lat(u));
-      }
-    });
-    sq.cols = Math.min(cols, sq.colsMax);
-    sq.width = maxL - minL + 2 * sq.rMax;
-    sq.depth = Math.max(...sq.offBack);
-    sq.hx = hx;
-    sq.hz = hz;
-    sq.x = cx + hx * front;
-    sq.z = cz + hz * front;
+    this.squadAdopt(sq, sq.wantX, sq.wantZ);
+    sq.cols = Math.min(sq.cols, sq.colsMax);
     this.squadMarch(sq);
   }
 
@@ -1234,13 +1393,28 @@ export class World {
         mob = spec.mobility ?? "wheel";
       }
     }
-    sq.path = this.grid.findPath(hx0, hz0, gx, gz, this.grid.field(mob, false)) ?? [gx, gz];
+    // người dẫn đầu đi giữa hành lang (tránh men sát vật cản): đội hình khỏi co / dạt vô cớ
+    sq.path = this.grid.findPath(hx0, hz0, gx, gz, this.grid.corridor(mob)) ?? this.grid.findPath(hx0, hz0, gx, gz, this.grid.field(mob, false)) ?? [gx, gz];
     sq.pathI = 0;
     sq.trail = [];
     const L = sq.depth + 12;
     for (let b = L; b >= 0; b -= 1) sq.trail.push(sq.x - sq.hx * b, sq.z - sq.hz * b, sq.hx, sq.hz, sq.s - b, 0);
     sq.phase = "march";
     sq.phaseT = 0;
+  }
+
+  /** Kiểu di chuyển của xe chậm nhất trong đội (dùng để tìm đường cho cả đội). */
+  private slowestMobility(sq: Squad): Mobility {
+    let mob: Mobility = "wheel";
+    let slowest = Infinity;
+    for (const id of sq.ids) {
+      const spec = UNITS[(this.byId.get(id) as Unit).kind];
+      if (spec.speed < slowest) {
+        slowest = spec.speed;
+        mob = spec.mobility ?? "wheel";
+      }
+    }
+    return mob;
   }
 
   private squadById(id: number): Squad | undefined {
@@ -1271,8 +1445,8 @@ export class World {
       if (!u || u.cat !== "unit") continue;
       u.squad = 0;
       this.setIdle(u);
-      u.faceX = sq.hx;
-      u.faceZ = sq.hz;
+      u.faceX = sq.phase === "direct" ? sq.wantX : sq.hx;
+      u.faceZ = sq.phase === "direct" ? sq.wantZ : sq.hz;
     }
     sq.ids = [];
   }
@@ -1296,6 +1470,7 @@ export class World {
     sq.phaseT++;
     const hold = sq.hold;
     sq.hold = false;
+    sq.holding = hold;
     let speed = Infinity;
     let lag = 0;
     for (let i = 0; i < sq.ids.length; i++) {
@@ -1328,6 +1503,10 @@ export class World {
       }
       case "settle":
         if (lag < 0.8 || sq.phaseT > sq.settleMax) this.disbandSquad(sq);
+        return;
+      case "direct":
+        // mỗi xe tự đi thẳng tới ô; xong khi ai cũng tới ô (hoặc quá lâu)
+        if (lag < 0.8 || sq.phaseT > sec(SQUAD_FORM_MAX + SQUAD_DIRECT / speed)) this.disbandSquad(sq);
         return;
       case "march":
         break;
@@ -1435,6 +1614,8 @@ export class World {
     sq.cols = c;
     this.squadLayout(sq);
     place();
+    // vừa giãn lại hàng (cột qua chỗ hẹp xong): chia ô ở đích theo phân công tối ưu, không ai chạy chéo
+    if (c !== was) this.squadAssign(sq);
   }
 
   /**
@@ -1543,6 +1724,8 @@ export class World {
       this.turnHull(u, sq.hx, sq.hz);
       return fireAt;
     }
+    // đi-và-đánh: cả đội đang dừng bắn thì xe đang tự đi tới ô cũng đứng lại
+    if (sq.phase === "direct" && sq.kind === "amove" && sq.holding) return fireAt;
     const [, shx, shz, sx, sz] = this.squadLag(sq, i, u);
     const d = Math.sqrt(dist2(u.x, u.z, sx, sz));
     if (d > SQUAD_FAR || (d > 2 && !this.grid.los(u.x, u.z, sx, sz))) {
@@ -1551,14 +1734,19 @@ export class World {
         this.setPath(u, sx, sz);
         u.repathAt = this.tick + sec(1);
       }
-      this.follow(u);
+      // không tìm được đường (ô bị bao kín…): vẫn nhích thẳng về phía ô, đừng đứng im
+      if (u.path.length) this.follow(u);
+      else this.stepToward(u, sx, sz, d);
     } else {
       u.path = [];
       u.pathI = 0;
       this.stepToward(u, sx, sz, d);
     }
-    // đứng sát ô: thân quay dần theo hướng đội hình (đi đều, không lắc theo từng chỉnh nhỏ)
-    if (d < 1.5) this.turnHull(u, shx, shz);
+    // đứng sát ô: thân quay dần theo hướng đội hình (đi thẳng tới ô: hướng vừa đi), đi đều, không lắc theo từng chỉnh nhỏ
+    if (d < 1.5) {
+      if (sq.phase === "direct") this.turnHull(u, sq.wantX, sq.wantZ);
+      else this.turnHull(u, shx, shz);
+    }
     return fireAt;
   }
 

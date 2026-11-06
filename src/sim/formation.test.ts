@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { UNITS, type UnitId } from "./content";
+import { assignMin } from "./assign";
 import { Rng } from "./fmath";
 import { arenaPoint } from "./scenarios";
 import type { Unit } from "./types";
@@ -93,15 +94,38 @@ describe("đội hình khi ra lệnh cho cả nhóm", () => {
     expect(us.every((u) => u.order === "idle")).toBe(true);
   });
 
-  it("quay đầu 180°: cả đội xoay tại chỗ, đồng bộ, không ai đổi chỗ (hàng sau thành hàng đầu)", () => {
+  it("lệnh quãng ngắn: đội đã vào hàng dịch nguyên khối (mọi xe cùng một vector), tới nơi quay mặt về hướng vừa đi", () => {
     const { w, us, tx, tz } = march(Array<UnitId>(6).fill("titan"));
     const fx = us[0].faceX;
     const fz = us[0].faceZ;
     const back = new Set(us.filter((u) => (u.x - tx) * fx + (u.z - tz) * fz < 0).map((u) => u.id));
-    const [bx, bz] = arenaPoint(-6);
+    const start = new Map(us.map((u) => [u.id, [u.x, u.z]]));
+    const [bx, bz] = arenaPoint(2); // lùi lại khoảng 20 m
+    w.step([{ side: 0, order: { t: "move", ids: us.map((u) => u.id), x: bx, z: bz } }]);
+    expect(w.squads[0].phase, "quãng ngắn: đi thẳng tới ô").toBe("direct");
+    for (let i = 0; i < sec(40) && w.squads.length; i++) w.step([]);
+    for (let i = 0; i < sec(5); i++) w.step([]); // thân xe xoay nốt về hướng mới
+    const d = us.map((u) => [u.x - start.get(u.id)![0], u.z - start.get(u.id)![1]]);
+    for (const v of d) expect(Math.sqrt((v[0] - d[0][0]) ** 2 + (v[1] - d[0][1]) ** 2), "mọi xe cùng một vector dịch chuyển").toBeLessThan(0.8);
+    const gx = us[0].faceX;
+    const gz = us[0].faceZ;
+    expect(gx * fx + gz * fz, "quay mặt về hướng vừa đi (ngược lại)").toBeLessThan(-0.7);
+    for (const u of us) expect(u.hx * gx + u.hz * gz, "thân xe đã quay theo hướng mới").toBeGreaterThan(0.99);
+    // không ai đổi chỗ: hàng sau cũ thành hàng đầu theo hướng mới
+    const cx = us.reduce((a, u) => a + u.x, 0) / us.length;
+    const cz = us.reduce((a, u) => a + u.z, 0) / us.length;
+    const front = new Set(us.filter((u) => (u.x - cx) * gx + (u.z - cz) * gz > 0).map((u) => u.id));
+    expect([...front].sort()).toEqual([...back].sort());
+  });
+
+  it("quay đầu quãng dài: cả đội xoay tại chỗ, đồng bộ, không ai đổi chỗ, rồi mới hành quân", () => {
+    const { w, us } = march(Array<UnitId>(6).fill("titan"));
+    const fx = us[0].faceX;
+    const fz = us[0].faceZ;
+    const [bx, bz] = arenaPoint(-34); // lùi xa hơn quãng "đi thẳng tới ô"
     w.step([{ side: 0, order: { t: "move", ids: us.map((u) => u.id), x: bx, z: bz } }]);
     const sq = w.squads[0];
-    expect(sq.phase, "đội đã vào hàng: xoay tại chỗ chứ không tập hợp lại").toBe("pivot");
+    expect(sq.phase, "đội đã vào hàng, quãng dài: xoay tại chỗ").toBe("pivot");
     const start = new Map(us.map((u) => [u.id, [u.x, u.z]]));
     let pivotTicks = 0;
     for (let i = 0; i < sec(90) && w.squads.includes(sq); i++) {
@@ -113,13 +137,25 @@ describe("đội hình khi ra lệnh cho cả nhóm", () => {
         expect(Math.sqrt((u.x - x0) ** 2 + (u.z - z0) ** 2), "xoay tại chỗ: không xe nào di chuyển").toBeLessThan(0.3);
       }
     }
-    // quay gần 180° theo tốc độ quay thân của Titan
     expect(pivotTicks).toBeGreaterThanOrEqual(sec(150 / UNITS.titan.turnRate!));
-    const gx = us[0].faceX;
-    const gz = us[0].faceZ;
-    expect(gx * fx + gz * fz, "đã quay ngược hướng").toBeLessThan(-0.7);
-    const front = new Set(us.filter((u) => (u.x - bx) * gx + (u.z - bz) * gz > 0).map((u) => u.id));
-    expect([...front].sort()).toEqual([...back].sort());
+    expect(us[0].faceX * fx + us[0].faceZ * fz, "đã quay ngược hướng").toBeLessThan(-0.7);
+  });
+
+  it("phân công tối ưu: không hai đường đi nào cắt nhau", () => {
+    const rng = new Rng(9);
+    for (let trial = 0; trial < 20; trial++) {
+      const n = 8;
+      const a = Array.from({ length: n }, () => [rng.next() * 40, rng.next() * 40]);
+      const b = Array.from({ length: n }, () => [rng.next() * 40 + 30, rng.next() * 40]);
+      const cost = b.map((p) => a.map((q) => Math.sqrt((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2)));
+      const pick = assignMin(cost);
+      expect(new Set(pick).size).toBe(n);
+      const cross = (p1: number[], p2: number[], p3: number[], p4: number[]): boolean => {
+        const d = (p: number[], q: number[], r: number[]): number => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+        return d(p1, p2, p3) * d(p1, p2, p4) < 0 && d(p3, p4, p1) * d(p3, p4, p2) < 0;
+      };
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) expect(cross(a[pick[i]], b[i], a[pick[j]], b[j])).toBe(false);
+    }
   });
 
   it("qua cầu hẹp: đội hình co thành hàng một / hàng đôi, qua hết rồi giãn lại ở đích", () => {

@@ -367,7 +367,7 @@ export interface Squad {
   trail: number[];
   /** Quãng đường người dẫn đầu đã đi (m). */
   s: number;
-  phase: "form" | "pivot" | "march" | "settle";
+  phase: "form" | "direct" | "pivot" | "march" | "settle";
   phaseT: number;
   /**
    * Xếp hàng theo vai trò (đầu / giữa / sau). Sau khi cả đội xoay tại chỗ thì tắt: giữ nguyên chỗ đứng, không ai đổi chỗ
@@ -376,6 +376,8 @@ export interface Squad {
   byRank: boolean;
   /** Có xe đang bắn mục tiêu trong tầm (đi-và-đánh): cả khối dừng lại. Xe đặt trong tick, khối đọc ở tick sau. */
   hold: boolean;
+  /** Đang dừng bắn (giá trị `hold` của tick trước): xe trong pha "đi thẳng tới ô" cũng đứng lại. */
+  holding: boolean;
   /** Cả khối dạt ngang khỏi đường của người dẫn đầu (m, + = phải) để né vật cản một bên; dạt dần tới `shiftWant`. */
   shift: number;
   shiftWant: number;
