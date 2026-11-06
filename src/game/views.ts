@@ -361,6 +361,8 @@ export class Views {
         } else {
           // xe có tháp pháo xoay chậm (sim giữ hướng nòng): vẽ đúng hướng nòng thật, để thấy độ trễ khi xoay
           v.rig.setAim?.(w?.traverse ? wrap(Math.atan2(u.aimX, u.aimZ) - v.yaw) : this.aimAt(world, x, z, v.yaw, tid));
+          // Lockdown không bắt buộc (SkyGuard): sim tính "đã cố định" khi đứng yên đủ deploy.time; rig hạ bệ cùng nhịp
+          if (w?.deploy && !a.has("move")) a.add("deploy");
         }
         // mục tiêu đang bay: xe có tư thế phòng không (Lynx) ngóc nòng lên; chỉ là phần vẽ, sim không đổi
         const tgt = tid ? world.target(tid) : null;
