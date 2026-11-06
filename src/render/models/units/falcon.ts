@@ -5,7 +5,7 @@
  * Ý đồ:
  * - Thân vát nhiều mặt (`facets`), mũi nhọn dài có gờ sườn, buồng lái kính vát, hai cửa hút gió hai bên.
  * - Cánh chính xuôi ngược, mặt cánh trắng viền xám (phối 3 lớp trắng · màu phe · thép như bài học SkyGuard).
- * - ĐỘNG CƠ MÚT CÁNH: 2 khối hộp ở hai mút cánh, khe tản nhiệt, luồng lửa riêng (cùng động cơ chính là 3 luồng lửa).
+ * - ĐỘNG CƠ MÚT CÁNH: 2 khối hộp ngắn ở hai mút cánh, chụm đuôi vào tâm; đuôi có 2 động cơ phản lực (tổng 4 luồng lửa).
  * - Cánh mũi nhỏ cạnh buồng lái, 2 đuôi đứng chếch ra ngoài (màu phe), 2 cánh đuôi ngang.
  * - Giữ chức năng cũ: pháo đôi 30mm ở gốc cánh (cách nhau 1,6 m như sim), 2 tên lửa dưới cánh (`setAmmo`), càng thu.
  */
@@ -20,6 +20,8 @@ type P3 = [number, number, number];
 /** Cánh chính nửa phải nhìn từ trên [x, z] (z dương là mũi): mép trước và mép sau đều xuôi về phía trước khi ra mút. */
 const WING: P2[] = [[0.3, 0.0], [2.12, 0.62], [2.12, 0.16], [0.3, -1.22]];
 const TIP_X = 2.3; // tâm khối động cơ mút cánh
+/** Góc chụm vào trong của động cơ mút cánh (rad): đuôi chĩa vào tâm, trục gặp nhau ở xa phía sau. */
+const TIP_TOE = 0.14;
 
 export function buildFalcon(p: Palette): Rig {
   const frame = group();
@@ -79,28 +81,35 @@ export function buildFalcon(p: Palette): Rig {
     fin.position.set(sx * 0.3, 0.18, 0);
     add(fin);
 
-    // Động cơ mút cánh: khối hộp vát, mặt trước màu phe, khe tản nhiệt hông ngoài, ống xả + luồng lửa
+    // Động cơ mút cánh: khối hộp vát ngắn, mặt trước màu phe, khe tản nhiệt hông ngoài, ống xả + luồng lửa.
+    // Cả cụm xoay nhẹ cho đuôi chụm vào trong: trục hai động cơ mút cánh gặp nhau ở xa phía sau máy bay.
+    const tip = group();
+    tip.position.set(sx * TIP_X, 0, 0.1);
+    tip.rotation.y = sx * TIP_TOE;
     const pod: P3[] = [
-      [2.1, -0.13, 0.9], [2.5, -0.13, 0.9], [2.12, 0.13, 0.85], [2.48, 0.13, 0.85],
-      [2.08, -0.16, -0.75], [2.52, -0.16, -0.75], [2.08, 0.17, -0.75], [2.52, 0.17, -0.75]
+      [-0.19, -0.12, 0.55], [0.19, -0.12, 0.55], [-0.17, 0.12, 0.5], [0.17, 0.12, 0.5],
+      [-0.21, -0.15, -0.5], [0.21, -0.15, -0.5], [-0.21, 0.16, -0.5], [0.21, 0.16, -0.5]
     ];
-    add(part("Động cơ mút cánh", facets(pod.map(([x, y, z]): P3 => [sx * x, y, z]), p.hull)));
-    add(part("Mặt trước động cơ (màu phe)", box(0.36, 0.22, 0.04, p.team, sx * TIP_X, 0, 0.9)));
-    add(part("Cửa hút gió mút cánh", box(0.26, 0.12, 0.05, p.metal, sx * TIP_X, 0, 0.92)));
-    for (const z of [0.25, 0.05, -0.15]) add(part("Khe tản nhiệt", box(0.03, 0.18, 0.12, p.hullDark, sx * 2.53, 0, z)));
-    const nozzle = part("Ống xả mút cánh", tubeZ(0.13, 0.15, 0.2, p.metal, 10));
-    nozzle.position.set(sx * TIP_X, 0, -0.84); // đặt thẳng vị trí: tubeZ đã xoay khối nên translateZ đi sai trục
-    add(nozzle);
-    const g = engineGlow(p, 0.12, 0.8);
-    g.position.set(sx * TIP_X, 0, -0.95);
-    add(g);
+    tip.add(part("Động cơ mút cánh", facets(pod, p.hull)));
+    tip.add(part("Mặt trước động cơ (màu phe)", box(0.34, 0.2, 0.04, p.team, 0, 0, 0.55)));
+    tip.add(part("Cửa hút gió mút cánh", box(0.24, 0.11, 0.05, p.metal, 0, 0, 0.57)));
+    for (const z of [0.2, 0.0, -0.2]) tip.add(part("Khe tản nhiệt", box(0.03, 0.17, 0.11, p.hullDark, sx * 0.22, 0, z)));
+    const nozzle = part("Ống xả mút cánh", tubeZ(0.12, 0.14, 0.18, p.metal, 10));
+    nozzle.position.z = -0.58;
+    const g = engineGlow(p, 0.11, 0.75);
+    g.position.z = -0.68;
+    tip.add(nozzle, g);
+    add(tip);
     engines.push(g);
   });
-  add(part("Ống xả động cơ chính", cyl(0.24, 0.2, 0.3, p.metal, 10, 0, 0, -1.85).rotateX(Math.PI / 2)));
-  const glow = engineGlow(p, 0.18, 1.0);
-  glow.position.z = -1.98;
-  add(glow);
-  engines.push(glow);
+  // Đuôi: 2 động cơ phản lực đặt cạnh nhau (tổng 4 luồng lửa: 2 ở đuôi, 2 ở mút cánh)
+  for (const sx of [-1, 1]) {
+    add(part("Ống xả động cơ đuôi", cyl(0.15, 0.13, 0.3, p.metal, 10, sx * 0.17, 0.0, -1.86).rotateX(Math.PI / 2)));
+    const tail = engineGlow(p, 0.12, 0.95);
+    tail.position.set(sx * 0.17, 0.0, -1.98);
+    add(tail);
+    engines.push(tail);
+  }
 
   // ================================================================ 3. VŨ KHÍ + CÀNG
   // 2 tên lửa nổ treo dưới cánh (vũ khí phụ): bắn quả nào thì quả đó biến mất, hạ cánh nạp lại
