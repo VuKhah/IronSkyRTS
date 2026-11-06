@@ -1277,12 +1277,13 @@ export class World {
     return !!w.deploy && src.cat === "unit" && src.still >= sec(w.deploy.time);
   }
 
-  /** Tầm bắn thực tế: cộng thêm khi đã triển khai, và khi đứng trên cao (quân mặt đất, công trình). */
-  private reach(src: Unit | Building, w: WeaponSpec): number {
+  /** Tầm bắn thực tế: cộng thêm khi đã triển khai, và khi đứng trên cao (quân mặt đất, công trình; Pháo được nhân `heightBonus`). */
+  reach(src: Unit | Building, w: WeaponSpec): number {
     let r = this.deployed(src, w) ? w.range * (1 + w.deploy!.range) : w.range;
     if (src.cat === "building" || src.air === "none") {
       const T = RULES.terrain;
-      r *= 1 + clamp(this.heightAt(src.x, src.z) * T.rangePerM, 0, T.rangeMax);
+      const k = w.heightBonus ?? 1;
+      r *= 1 + clamp(this.heightAt(src.x, src.z) * T.rangePerM * k, 0, T.rangeMax * k);
     }
     return r;
   }

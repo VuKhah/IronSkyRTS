@@ -91,6 +91,11 @@ export interface WeaponSpec {
   minRange?: number;
   /** Lộ vị trí: bắn xong thì đối phương nhìn thấy xuyên sương mù trong chừng này giây (Pháo). */
   reveal?: number;
+  /**
+   * Địa lợi tầm cao: nhân phần thưởng tầm bắn do đứng trên cao (`RULES.terrain.rangePerM`, trần `rangeMax`) lên chừng này lần.
+   * Bỏ trống = 1 (như mọi quân). Pháo = 2: đứng trên đồi được gấp đôi phần cộng tầm của quân thường.
+   */
+  heightBonus?: number;
   /** Độ tản (m): điểm rơi lệch ngẫu nhiên trong vòng tròn bán kính này, không bám mục tiêu (Tên Lửa Loạt). */
   scatter?: number;
   /** Vừa chạy vừa bắn: sát thương giảm `dmg` (tỉ lệ) và mỗi viên có xác suất `miss` bắn trượt (SkyGuard). */
@@ -596,10 +601,10 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     name: "Pháo Tự Hành",
     short: "Pháo",
     code: "SPG",
-    hotkey: "B",
-    role: "Pháo nòng lớn tầm cực xa: hạ bệ chữ X, duỗi nòng rồi mới bắn. Một viên xuyên giáp phá công sự. (Sau MVP)",
+    hotkey: "F",
+    role: "Pháo nòng lớn tầm cực xa: hạ bệ chữ X, duỗi nòng rồi mới bắn. Một viên xuyên giáp phá công sự.",
     domain: "ground",
-    mvp: false,
+    mvp: true,
     // MỌI SỐ LÀ SỐ TẠM (Docs/design/ARMY_DESIGN.md mục 8), chờ buổi cân bằng
     cost: { iron: 350, oil: 30 },
     buildTime: 9,
@@ -623,12 +628,14 @@ export const UNITS: Record<UnitId, UnitSpec> = {
       visual: "cannon",
       minRange: 10,
       reveal: 2,
+      heightBonus: 2,
       deploy: { time: 2, range: 0, dmg: 0, required: true }
     },
     features: [
       "Tầm bắn 38m, xa nhất trên mặt đất; cần quân khác nhìn thấy mục tiêu hộ.",
       "Phải hạ bệ chữ X và duỗi nòng 2 giây mới bắn được; không bắn được mục tiêu gần hơn 10m.",
       "Mỗi phát bắn lộ vị trí 2 giây xuyên sương mù.",
+      "Địa lợi tầm cao: đứng trên đồi được gấp đôi phần cộng tầm bắn của quân thường (tối đa +40%).",
       "Một viên xuyên giáp, công phá: khắc Titan và tháp phòng thủ."
     ],
     beats: ["titan", "turret"],
@@ -715,7 +722,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     armorClass: "struct",
     sight: 16,
     half: [3.4, 3],
-    produces: ["lynx", "titan", "skyguard", "rocket"],
+    produces: ["lynx", "titan", "skyguard", "rocket", "artillery"],
     power: -10,
     priority: 3,
     features: ["Hàng chờ tối đa 5 xe.", "Đặt điểm tập kết để xe mới tự chạy ra tiền tuyến.", "Xây thêm xưởng để đúc quân nhanh hơn."]

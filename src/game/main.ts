@@ -66,7 +66,11 @@ function showMenu(): void {
   });
 }
 
-const HUD_THUMBS = ["hauler", "lynx", "titan", "skyguard", "rocket", "falcon", "factory", "airfield", "turret", "power-plant", "power-pylon", "battery", "radar"] as const;
+/** Ảnh nút của HUD trận thường: mọi quân MVP đúc được + công trình MVP xây được (suy từ content.ts, thêm quân không phải sửa ở đây). */
+const HUD_THUMBS: readonly EntityId[] = [
+  ...Object.values(UNITS).filter((s) => s.mvp && s.builtAt && s.cost).map((s) => s.id),
+  ...Object.values(BUILDINGS).filter((s) => s.mvp && s.cost && s.id !== "hq").map((s) => s.id)
+];
 
 /** Ảnh nút bấm, vẽ theo màu phe người chơi (chơi phe Đỏ thì nút cũng màu Đỏ). */
 function makeThumbs(ids: readonly EntityId[], side: Side): Map<string, string> {

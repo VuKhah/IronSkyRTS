@@ -310,3 +310,44 @@ describe("B3c: rừng che tầm nhìn, nấp được", () => {
     expect(firstHit("titan", 41, 41)).toBeCloseTo(firstHit("titan", -41, -41), 6);
   });
 });
+
+describe("địa lợi tầm cao (heightBonus)", () => {
+  it("đứng trên đỉnh đồi: quân thường được + rangeMax tầm bắn, Pháo (heightBonus) được nhân thêm", () => {
+    const w = world(HILL);
+    const T = RULES.terrain;
+    const lynx = spawn(w, "lynx", 0, 0);
+    const arty = spawn(w, "artillery", 4, 0);
+    expect(w.heightAt(0, 0)).toBeGreaterThan(T.rangeMax / T.rangePerM); // đỉnh đồi đủ cao để chạm trần
+    const lw = UNITS.lynx.weapon!;
+    const aw = UNITS.artillery.weapon!;
+    expect(w.reach(lynx, lw)).toBeCloseTo(lw.range * (1 + T.rangeMax), 6);
+    expect(w.reach(arty, aw)).toBeCloseTo(aw.range * (1 + T.rangeMax * (aw.heightBonus ?? 1)), 6);
+    expect(aw.heightBonus ?? 1).toBeGreaterThan(1);
+    // dưới chân đồi (mặt thung lũng 0 m) thì không ai được cộng
+    const low = spawn(w, "artillery", 70, 0);
+    expect(w.heightAt(70, 0)).toBe(0);
+    expect(w.reach(low, aw)).toBe(aw.range);
+  });
+
+  it("Pháo trên đồi bắn tới mục tiêu ngoài tầm của nó khi đứng dưới thấp", () => {
+    const aw = UNITS.artillery.weapon!;
+    const T = RULES.terrain;
+    // khoảng cách nằm giữa tầm của quân thường trên đồi và tầm của Pháo trên đồi
+    const far = aw.range * (1 + (T.rangeMax * (1 + (aw.heightBonus ?? 1))) / 2);
+    const shotsAt = (hx: number): number => {
+      const w = world(HILL);
+      const a = spawn(w, "artillery", hx, 0);
+      spawn(w, "titan", hx + far, 0, 1);
+      spawn(w, "commander", hx + far - 8, 0); // quân soi đường: Pháo không tự nhìn xa tới vậy
+      w.step([{ side: 1, order: { t: "sbHold", side: 1, on: true } }]);
+      let n = 0;
+      for (let i = 0; i < sec(6); i++) {
+        w.step([]);
+        for (const e of w.events) if (e.t === "shot" && e.src === a.id) n++;
+      }
+      return n;
+    };
+    expect(shotsAt(0)).toBeGreaterThan(0); // đỉnh đồi
+    expect(shotsAt(-75)).toBe(0); // mặt thung lũng: cùng khoảng cách nhưng ngoài tầm
+  });
+});

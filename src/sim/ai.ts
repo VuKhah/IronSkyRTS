@@ -11,6 +11,8 @@ import { dcos, dist2, dsin, Rng, TAU } from "./fmath";
 import type { Building, Mine, Order, Unit, Uplink } from "./types";
 import { dirToCenter, sec, type World } from "./world";
 
+/** Giữ lựa chọn xe mặt đất để dành tiền tối đa chừng này (quá lâu thì chọn lại, ví dụ địch vừa đổi sang máy bay). */
+const SAVE_FOR = sec(30);
 const DIRS: readonly (readonly [number, number])[] = Array.from({ length: 16 }, (_, i) => [dcos((i * TAU) / 16), dsin((i * TAU) / 16)] as const);
 
 export class Ai {
@@ -20,6 +22,14 @@ export class Ai {
   private capIds = new Set<number>();
   private waveTarget: [number, number] | null = null;
   private seenAir = 0;
+  /** Nhớ số mục tiêu giáp dày (tháp phòng thủ đã biết + Titan đang thấy), phai dần: lý do để đúc Pháo Tự Hành. */
+  private seenArmor = 0;
+  /**
+   * Xe mặt đất đã chọn đúc mà chưa đủ tiền: giữ lựa chọn và để dành (tối đa `SAVE_FOR` tick) thay vì bốc thăm lại mỗi
+   * lượt. Không giữ thì quân đắt (Titan, Pháo) hầu như không bao giờ được đúc: lần nào thiếu tiền cũng bị Lynx rẻ chen ngang.
+   */
+  private nextGround: UnitId | null = null;
+  private nextGroundAt = 0;
   /** Mỗi AI có bộ số ngẫu nhiên riêng theo seed trận: tất định nhưng mỗi trận một khác. */
   private rng: Rng;
   private waveBonus = 0;
@@ -81,15 +91,22 @@ export class Ai {
     }
 
     // 3. Đúc quân
+    const armorNow =
+      enemyBuildings.filter((b) => b.kind === "turret").length + enemyUnits.filter((u) => u.kind === "titan").length;
+    this.seenArmor = Math.max(this.seenArmor * 0.999, armorNow); // think() 2 lần mỗi giây: nhớ chừng 6 phút
     for (const f of myB) {
       if (f.kind !== "factory" || !f.built || f.queue.length >= 2) continue;
-      const k = this.pickGround(mine, oil);
-      const c = UNITS[k].cost!;
-      if (iron - reserve >= c.iron && oil >= c.oil) {
-        out.push({ t: "produce", building: f.id, kind: k });
-        iron -= c.iron;
-        oil -= c.oil;
+      if (!this.nextGround || w.tick - this.nextGroundAt > SAVE_FOR) {
+        this.nextGround = this.pickGround(mine, oil, this.seenArmor);
+        this.nextGroundAt = w.tick;
       }
+      const k = this.nextGround;
+      const c = UNITS[k].cost!;
+      if (iron - reserve < c.iron || oil < c.oil) break; // để dành cho đúng xe đã chọn
+      out.push({ t: "produce", building: f.id, kind: k });
+      iron -= c.iron;
+      oil -= c.oil;
+      this.nextGround = null;
     }
     for (const a of myB) {
       if (a.kind !== "airfield" || !a.built || a.queue.length > 0 || !a.pads.includes(0)) continue;
@@ -236,7 +253,7 @@ export class Ai {
     return null;
   }
 
-  private pickGround(mine: Unit[], oil: number): UnitId {
+  private pickGround(mine: Unit[], oil: number, armored: number): UnitId {
     const n = (k: UnitId): number => mine.filter((u) => u.kind === k).length;
     const lynx = n("lynx");
     const titan = n("titan");
@@ -249,6 +266,8 @@ export class Ai {
     if (r < 0.22) return "skyguard";
     // Xe Tên Lửa Loạt: khoảng 1 chiếc cho mỗi 4 xe chiến đấu, chỉ khi còn dư Dầu (giữ Dầu cho máy bay, nhà máy điện)
     if (r < 0.4 && n("rocket") * 4 < lynx + titan && oil >= UNITS.rocket.cost!.oil + 80) return "rocket";
+    // Pháo Tự Hành: khi đã gặp mục tiêu giáp dày (tháp / Titan), khoảng 1 khẩu cho mỗi 5 xe chiến đấu
+    if (r < 0.55 && armored >= 0.5 && n("artillery") * 5 < lynx + titan && oil >= UNITS.artillery.cost!.oil + 80) return "artillery";
     if (titan <= lynx) return "titan";
     if (sky * 4 < lynx + titan) return "skyguard";
     return "lynx";

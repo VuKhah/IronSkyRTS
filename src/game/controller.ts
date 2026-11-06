@@ -748,7 +748,7 @@ export class Controller implements GestureHandlers {
         this.lastGroupKey = { n, t: now };
       }
     } else if (this.me !== null) {
-      // phím đúc quân nhanh: Z X C N V
+      // phím đúc quân nhanh: Z X C V G F N
       const kind = (Object.keys(UNITS) as UnitId[]).find((id) => UNITS[id].mvp && UNITS[id].hotkey.toLowerCase() === k && UNITS[id].cost);
       if (kind) {
         const where = this.world.buildings
