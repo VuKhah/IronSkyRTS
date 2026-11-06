@@ -284,9 +284,12 @@ export class Sandbox {
       const l = Math.hypot(cx - ex, cz - ez);
       for (let i = 0; i < ns[s]; i++) {
         const [x, z] = formation(i, ns[s], cx, cz, (cx - ex) / l, (cz - ez) / l);
-        this.match.issueAs(s, { t: "sbSpawn", kind: kinds[s], side: s, x, z, gx: ex, gz: ez });
+        this.match.issueAs(s, { t: "sbSpawn", kind: kinds[s], side: s, x, z });
       }
     }
+    // mỗi phe một lệnh đi-và-đánh cho CẢ NHÓM (dàn đội hình hàng ngang như khi Tư lệnh ra lệnh); sim chạy lệnh theo
+    // thứ tự trong cùng tick nên lệnh này đến sau các lệnh thả quân
+    for (const s of [0, 1] as Side[]) this.match.issueAs(s, { t: "sbGo", side: s, x: pos[1 - s][0], z: pos[1 - s][1] });
     this.resetStats(true);
     this.cam.focus(DUEL_CENTER[0], DUEL_CENTER[1]);
     this.cam.dist = Math.max(60, d * 1.5);

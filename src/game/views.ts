@@ -5,7 +5,7 @@
  * - Hoạt ảnh lấy từ trạng thái sim: đang chạy → "move", vừa bắn → "fire", tháp pháo quay về mục tiêu thật.
  */
 import * as THREE from "three";
-import { BUILDINGS, FACTION_OF, RULES, UNITS, type Side } from "../sim/content";
+import { BUILDINGS, doorSign, FACTION_OF, RULES, UNITS, type Side } from "../sim/content";
 import type { GameMap } from "../sim/maps";
 import type { Building, Mine, Target, Unit, Uplink, Wreck } from "../sim/types";
 import { AIRBORNE_ALT, DT, type World } from "../sim/world";
@@ -149,6 +149,7 @@ export class Views {
         const rig = buildModel(b.kind, FACTION_OF[b.side], false);
         bakeStatic(rig);
         rig.root.position.set(b.x, this.map.groundY(b.x, b.z), b.z);
+        rig.root.rotation.y = doorSign(b.kind, b.z) < 0 ? Math.PI : 0; // nhà xưởng quay cửa về phía giữa bản đồ
         v = { rig, yaw: 0, prevYaw: 0, roll: 0, pitch: 0, ring: null, active: new Set(), seen: f };
         this.scene.add(rig.root);
         this.buildings.set(b.id, v);

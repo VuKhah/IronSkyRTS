@@ -7,7 +7,7 @@
  * Trên máy tính: nhấp trái để chọn, nhấp phải để ra lệnh. Trên điện thoại: chạm đất khi đang chọn quân là ra lệnh đi.
  */
 import * as THREE from "three";
-import { BUILDINGS, canStrike, FACTION_OF, RES_NAME, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
+import { BUILDINGS, canStrike, doorSign, FACTION_OF, RES_NAME, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
 import type { Building, Entity, Mine, Order, Unit, Wreck } from "../sim/types";
 import { buildModel, disposeRig, type Rig } from "../render/models";
 import type { Sfx } from "./audio";
@@ -785,6 +785,7 @@ export class Controller implements GestureHandlers {
     if (this.mode === "place" && this.ghost && this.placePos && this.placeKind && this.me !== null) {
       const { x, z } = this.placePos;
       this.ghost.root.position.set(x, this.match.world.map.groundY(x, z) + 0.05, z);
+      this.ghost.root.rotation.y = this.placeKind && doorSign(this.placeKind, z) < 0 ? Math.PI : 0;
       this.ghost.root.visible = true;
       this.placeReason = this.world.canPlace(this.me, this.placeKind, x, z);
       const valid = this.placeReason === null;

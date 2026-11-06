@@ -7,7 +7,7 @@
  *   8. đạn tới đích → trừ máu   9. dọn xác   10. sương mù   11. kiểm tra thắng thua
  * Không có gì phụ thuộc thời gian thật hay số ngẫu nhiên không seed, nên cùng seed + cùng lệnh thì ra cùng trận.
  */
-import { BUILDINGS, canStrike, PAD_OFFSETS, RULES, UNITS, valueOf, type BuildingId, type Res, type Side, type UnitId, type UnitSpec, type WeaponSpec, type WeaponVisual } from "./content";
+import { BUILDINGS, canStrike, doorSign, PAD_OFFSETS, RULES, UNITS, valueOf, type BuildingId, type Res, type Side, type UnitId, type UnitSpec, type WeaponSpec, type WeaponVisual } from "./content";
 import { clamp, dcos, DEG, dist2, dsin, Rng, turnStep, turnToward, type TurnStep } from "./fmath";
 import { Grid } from "./grid";
 import { CELL, GameMap, getMap, TERRAIN, TERRAIN_KINDS } from "./maps";
@@ -35,12 +35,18 @@ const SALVAGE_POOL = 14;
 /** Đường tới xác bị chặn quá chừng này lần thì bỏ, không tìm đường lại mãi. */
 const SALVAGE_RETRIES = 5;
 
-/** Đội hình khi ra lệnh cho cả nhóm: các điểm lưới 3.6 m quanh đích, gần nhất trước. */
-const FORMATION: readonly (readonly [number, number])[] = (() => {
+/** Đội hình: khe hở giữa hai thân xe cạnh nhau (m), và tỉ lệ bề ngang / bề sâu (hàng ngang rộng hơn sâu). */
+const FORMATION_GAP = 1.4;
+const FORMATION_WIDE = 2.5;
+const FORMATION_RANK = { front: 0, mid: 1, back: 2 } as const;
+/** Va chạm giữa xe đang chạy và xe đứng yên: phần lực đẩy xe chạy phải chịu (xe đứng chịu phần còn lại). */
+const MOVER_SHARE = 0.85;
+/** Ô dự phòng quanh một vị trí đội hình bị chặn / trùng: tính theo bước 1 ô lưới, gần trước. */
+const SLOT_NUDGE: readonly (readonly [number, number])[] = (() => {
   const pts: [number, number][] = [];
   for (let j = -3; j <= 3; j++) for (let i = -3; i <= 3; i++) pts.push([i, j]);
-  pts.sort((a, b) => a[0] * a[0] + a[1] * a[1] - (b[0] * b[0] + b[1] * b[1]) || a[1] - b[1] || a[0] - b[0]);
-  return pts.map(([i, j]) => [i * 3.6, j * 3.6] as const);
+  pts.sort((a, b) => a[0] * a[0] + a[1] * a[1] - (b[0] * b[0] + b[1] * b[1]) || Math.abs(a[1]) - Math.abs(b[1]) || Math.abs(a[0]) - Math.abs(b[0]));
+  return pts;
 })();
 
 const TMP = { x: 0, z: 0 };
@@ -424,6 +430,9 @@ export class World {
       moved: false,
       packing: false,
       chasing: false,
+      faceX: 0,
+      faceZ: 0,
+      groupSpeed: 0,
       hState: "idle",
       mineId: 0,
       manual: false,
@@ -736,6 +745,11 @@ export class World {
       case "sbHold":
         sb.hold[o.side] = o.on;
         break;
+      case "sbGo": {
+        const ids = this.units.filter((u) => u.side === o.side && u.air === "none" && u.hp > 0).map((u) => u.id);
+        if (ids.length) this.orderMove(o.side, ids, o.x, o.z, "amove");
+        break;
+      }
       case "sbFuel":
         sb.infiniteFuel = o.on;
         break;
@@ -746,8 +760,11 @@ export class World {
 
   private orderMove(side: Side, ids: readonly number[], x: number, z: number, kind: "move" | "amove"): void {
     const units = this.ownUnits(side, ids);
-    const groundCount = units.filter((u) => u.air === "none").length;
-    let k = 0;
+    const ground = units.filter((u) => u.air === "none");
+    const plan = this.formation(ground, x, z);
+    // cả nhóm đi theo tốc độ xe chậm nhất để giữ hàng (một xe thì đi tự do)
+    let slowest = Infinity;
+    for (const u of ground) slowest = Math.min(slowest, UNITS[u.kind].speed);
     for (const u of units) {
       if (u.air !== "none") {
         u.mission = "move";
@@ -758,14 +775,16 @@ export class World {
         this.cancelRtbIfFuel(u);
         continue;
       }
-      const off = groundCount > 1 ? FORMATION[Math.min(k++, FORMATION.length - 1)] : ([0, 0] as const);
       if (u.kind === "hauler") {
         this.releaseMine(u);
         this.releaseWreck(u);
         u.manual = true;
         u.hState = "idle";
       }
-      const f = this.grid.nearestFree(x + off[0], z + off[1], 8) ?? [x, z];
+      const f = plan.slots.get(u.id) ?? [x, z];
+      u.faceX = plan.fx;
+      u.faceZ = plan.fz;
+      u.groupSpeed = ground.length > 1 ? slowest : 0;
       u.order = kind;
       u.targetId = 0;
       u.autoTarget = 0;
@@ -774,6 +793,109 @@ export class World {
       u.tz = f[1];
       this.setPath(u, f[0], f[1]);
     }
+  }
+
+  /**
+   * Đội hình hàng ngang cho một nhóm quân mặt đất (người dùng 06/11/2026: "xếp hàng ngay ngắn, không dính cục"):
+   * - quay mặt theo hướng hành quân (tâm nhóm → đích; đích quá gần thì theo hướng trung bình của nhóm);
+   * - hàng đầu / giữa / sau theo `UnitSpec.formation`; mỗi vai trò bắt đầu hàng mới; bề ngang ≈ √(n × 2,5) xe;
+   * - khoảng cách theo kích cỡ xe thật (2 × bán kính lớn nhất trong hàng + khe hở), hàng cuối thiếu thì căn giữa;
+   * - chia ô theo vị trí đang đứng (xe phía trước vào hàng trước, xe bên trái vào ô bên trái) để đường đi không cắt nhau;
+   * - ô bị chặn hoặc trùng thì dịch sang ô trống gần nhất.
+   * Tâm khối đội hình nằm ở điểm đích. Tất định: chỉ + − × ÷ √ và sắp xếp có khóa phụ là id.
+   */
+  private formation(units: readonly Unit[], x: number, z: number): { slots: Map<number, [number, number]>; fx: number; fz: number } {
+    const slots = new Map<number, [number, number]>();
+    const n = units.length;
+    if (n === 0) return { slots, fx: 0, fz: 0 };
+    let cx = 0;
+    let cz = 0;
+    for (const u of units) {
+      cx += u.x / n;
+      cz += u.z / n;
+    }
+    let fx = x - cx;
+    let fz = z - cz;
+    let l = Math.sqrt(fx * fx + fz * fz);
+    if (l < 2) {
+      fx = 0;
+      fz = 0;
+      for (const u of units) {
+        fx += u.hx;
+        fz += u.hz;
+      }
+      l = Math.sqrt(fx * fx + fz * fz);
+      if (l < 1e-6) {
+        fx = 0;
+        fz = 1;
+        l = 1;
+      }
+    }
+    fx /= l;
+    fz /= l;
+    if (n === 1) {
+      const u = units[0];
+      slots.set(u.id, this.grid.nearestFree(x, z, 8) ?? [x, z]);
+      return { slots, fx, fz };
+    }
+    const rx = fz; // vector sang phải (vuông góc hướng hành quân)
+    const rz = -fx;
+    const fwd = (u: Unit): number => (u.x - cx) * fx + (u.z - cz) * fz;
+    const lat = (u: Unit): number => (u.x - cx) * rx + (u.z - cz) * rz;
+    const rank = (u: Unit): number => FORMATION_RANK[UNITS[u.kind].formation ?? "mid"];
+    const order = [...units].sort((a, b) => rank(a) - rank(b) || fwd(b) - fwd(a) || a.id - b.id);
+    const cols = Math.min(n, Math.ceil(Math.sqrt(n * FORMATION_WIDE)));
+    const rows: Unit[][] = [];
+    for (const u of order) {
+      const row = rows[rows.length - 1];
+      if (!row || row.length >= cols || rank(row[0]) !== rank(u)) rows.push([u]);
+      else row.push(u);
+    }
+    const rMax = (row: Unit[]): number => {
+      let r = 0;
+      for (const u of row) r = Math.max(r, UNITS[u.kind].radius);
+      return r;
+    };
+    // vị trí từng hàng theo chiều sâu (hàng đầu = 0, lùi dần), rồi dời cho tâm khối nằm ở đích
+    const depth: number[] = [0];
+    for (let i = 1; i < rows.length; i++) depth.push(depth[i - 1] - (rMax(rows[i - 1]) + rMax(rows[i]) + FORMATION_GAP));
+    const shift = -depth[depth.length - 1] / 2; // nửa bề sâu: đẩy cả khối lên để tâm khối nằm ở đích
+    const used = new Set<number>();
+    rows.forEach((row, ri) => {
+      const spacing = 2 * rMax(row) + FORMATION_GAP;
+      const f = depth[ri] + shift;
+      row.sort((a, b) => lat(a) - lat(b) || a.id - b.id);
+      row.forEach((u, i) => {
+        const s = (i - (row.length - 1) / 2) * spacing;
+        slots.set(u.id, this.freeSlot(x + rx * s + fx * f, z + rz * s + fz * f, rx, rz, fx, fz, used));
+      });
+    });
+    return { slots, fx, fz };
+  }
+
+  /** Ô trống gần (x, z) nhất chưa có xe nào trong đội hình nhận (dò theo khung đội hình, bước 1 ô lưới). */
+  private freeSlot(x: number, z: number, rx: number, rz: number, fx: number, fz: number, used: Set<number>): [number, number] {
+    for (const [i, j] of SLOT_NUDGE) {
+      const px = x + (rx * i + fx * j) * CELL;
+      const pz = z + (rz * i + fz * j) * CELL;
+      if (!this.map.fits(px, pz, 1, 1) || this.grid.blockedAt(px, pz)) continue;
+      const c = this.grid.index(px, pz);
+      if (used.has(c)) continue;
+      used.add(c);
+      return [px, pz];
+    }
+    const f = this.grid.nearestFree(x, z, 8) ?? [x, z];
+    used.add(this.grid.index(f[0], f[1]));
+    return f;
+  }
+
+  /** Tới đích lệnh di chuyển: quay mặt theo hướng đội hình rồi đứng chờ. */
+  private arrive(u: Unit): void {
+    if (u.faceX !== 0 || u.faceZ !== 0) {
+      u.hx = u.faceX;
+      u.hz = u.faceZ;
+    }
+    this.setIdle(u);
   }
 
   private cancelRtbIfFuel(u: Unit): void {
@@ -1024,12 +1146,13 @@ export class World {
     b.prog = 0;
     b.queue.shift();
     if (us.domain === "air") {
-      // Nhà Máy Máy Bay: lăn ra cửa xưởng (phía +z), cất cánh thẳng ra trước, rồi tự bay về bãi trống gần nhất
-      // (giữ chỗ ngay từ lúc xuất xưởng để hai máy bay không tranh một bãi)
+      // Nhà Máy Máy Bay: lăn ra cửa xưởng (cửa quay về phía giữa bản đồ, doorSign), cất cánh thẳng ra trước, rồi tự
+      // bay về bãi trống gần nhất (giữ chỗ ngay từ lúc xuất xưởng để hai máy bay không tranh một bãi)
       const slot = this.nearestFreePad(b.side, b.x, b.z)!;
-      const u = this.spawnUnit(kind, b.side, b.x, b.z + BUILDINGS[b.kind].half[1] + 1);
+      const door = doorSign(b.kind, b.z);
+      const u = this.spawnUnit(kind, b.side, b.x, b.z + door * (BUILDINGS[b.kind].half[1] + 1));
       u.hx = u.phx = 0;
-      u.hz = u.phz = 1;
+      u.hz = u.phz = door;
       slot.b.pads[slot.i] = u.id;
       u.padB = slot.b.id;
       u.padI = slot.i;
@@ -1123,6 +1246,7 @@ export class World {
 
   private setIdle(u: Unit): void {
     u.order = "idle";
+    u.groupSpeed = 0;
     u.tx = u.x;
     u.tz = u.z;
     u.targetId = 0;
@@ -1216,7 +1340,9 @@ export class World {
     const fdz = u.path[u.pathI * 2 + 1] - u.z;
     const fd = Math.sqrt(fdx * fdx + fdz * fdz);
     const rally = this.mobilized(u) ? 1 + RULES.abilities.mobilize.speed : 1;
-    const full = spec.speed * DT * rally * (fd > 1e-6 ? this.moveFactor(u, fdx / fd, fdz / fd) : this.moveFactor(u, 0, 0));
+    // đi theo nhóm: không nhanh hơn xe chậm nhất (đang đuổi mục tiêu thì bỏ giới hạn)
+    const base = u.groupSpeed > 0 && !u.chasing ? Math.min(spec.speed, u.groupSpeed) : spec.speed;
+    const full = base * DT * rally * (fd > 1e-6 ? this.moveFactor(u, fdx / fd, fdz / fd) : this.moveFactor(u, 0, 0));
     let step = full;
     const ox = u.x;
     const oz = u.z;
@@ -1393,12 +1519,12 @@ export class World {
             u.chasing = false;
             this.setPath(u, u.tx, u.tz);
           }
-          if (this.follow(u)) this.setIdle(u);
+          if (this.follow(u)) this.arrive(u);
         }
         break;
       }
       case "move": {
-        if (this.follow(u)) this.setIdle(u);
+        if (this.follow(u)) this.arrive(u);
         if (w) fireAt = this.acquire(u, w, range);
         break;
       }
@@ -1438,6 +1564,11 @@ export class World {
             u.tx = u.x;
             u.tz = u.z;
             u.path = [];
+            // về lại chỗ trong đội hình: quay mặt theo hướng đội hình như lúc tới
+            if (u.faceX !== 0 || u.faceZ !== 0) {
+              u.hx = u.faceX;
+              u.hz = u.faceZ;
+            }
           }
         } else if (u.chasing) {
           u.chasing = false;
@@ -2337,15 +2468,33 @@ export class World {
           nx = dx / d;
           nz = dz / d;
         }
-        const push = (min - d) * 0.5;
-        const ax = a.x - nx * push;
-        const az = a.z - nz * push;
+        // xe đang chạy nhường xe đã đứng yên: xe chạy chịu phần lớn lực đẩy (lách qua), xe đã vào hàng chỉ xê dịch chút ít
+        // (vẫn nhường một chút để khe hẹp nới dần, xe chạy không kẹt mãi). Hai xe cùng chạy hoặc cùng đứng thì chia đều.
+        const wa = a.moved === b.moved ? 0.5 : a.moved ? MOVER_SHARE : 1 - MOVER_SHARE;
+        const over = min - d;
+        // xe chạy gặp xe đứng: ngoài đẩy ra còn LÁCH SANG BÊN (vuông góc hướng chạy, phía xa vật cản), không thì đâm
+        // thẳng vào nhau sẽ bị đẩy lùi đúng ngược hướng mỗi tick và kẹt mãi
+        let sx = 0;
+        let sz = 0;
+        const aMoves = a.moved && !b.moved;
+        if (a.moved !== b.moved) {
+          const m = aMoves ? a : b;
+          const ox = aMoves ? dx : -dx; // từ xe chạy tới xe đứng
+          const oz = aMoves ? dz : -dz;
+          const lo = ox * m.hz - oz * m.hx; // vật cản lệch về bên phải (+) hay trái (−) hướng chạy
+          const sg = lo > 1e-9 ? -1 : lo < -1e-9 ? 1 : m.id % 2 === 0 ? 1 : -1;
+          sx = m.hz * sg * over;
+          sz = -m.hx * sg * over;
+        }
+        const ax = a.x - nx * over * wa + (aMoves ? sx : 0);
+        const az = a.z - nz * over * wa + (aMoves ? sz : 0);
         if (!this.grid.blockedAt(ax, az)) {
           a.x = ax;
           a.z = az;
         }
-        const bx = b.x + nx * push;
-        const bz = b.z + nz * push;
+        const bMoves = b.moved && !a.moved;
+        const bx = b.x + nx * over * (1 - wa) + (bMoves ? sx : 0);
+        const bz = b.z + nz * over * (1 - wa) + (bMoves ? sz : 0);
         if (!this.grid.blockedAt(bx, bz)) {
           b.x = bx;
           b.z = bz;
@@ -2828,6 +2977,9 @@ export function hashWorld(w: World): number {
     num(u.cooldown);
     num(u.burst);
     num(u.still);
+    num(u.faceX);
+    num(u.faceZ);
+    num(u.groupSpeed);
     num(u.aimX);
     num(u.aimZ);
     num(u.pd);

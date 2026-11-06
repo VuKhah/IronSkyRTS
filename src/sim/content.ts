@@ -128,6 +128,11 @@ export interface UnitSpec {
   hotkey: string;
   role: string;
   domain: Domain;
+  /**
+   * Vị trí trong đội hình khi ra lệnh cho cả nhóm (quân mặt đất): hàng đầu (xe giáp), giữa (chỉ huy, phòng không),
+   * sau (hỏa lực tầm xa, xe hậu cần). Bỏ trống = giữa.
+   */
+  formation?: "front" | "mid" | "back";
   /** Có trong bản MVP không. */
   mvp: boolean;
   /** undefined = không chế tạo được (Xe Tư Lệnh có sẵn từ đầu trận). */
@@ -335,6 +340,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     hotkey: "F1",
     role: "Trái tim của binh đoàn. Mất Xe Tư Lệnh là thua trận.",
     domain: "ground",
+    formation: "mid",
     mvp: true,
     hp: 2025,
     armorClass: "heavy",
@@ -366,6 +372,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     hotkey: "V",
     role: "Đào Sắt hoặc Dầu ở mỏ phe mình rồi chở về Tổng Hành Dinh.",
     domain: "ground",
+    formation: "back",
     mvp: true,
     cost: { iron: 150, oil: 0 },
     buildTime: 6,
@@ -396,6 +403,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     hotkey: "Z",
     role: "Xe nhanh nhất mặt đất. Trinh sát, chiếm mỏ, săn xe vận tải.",
     domain: "ground",
+    formation: "front",
     mvp: true,
     cost: { iron: 150, oil: 0 },
     buildTime: 4.5,
@@ -426,6 +434,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     hotkey: "X",
     role: "Giáp dày, pháo 120mm nổ lan. Mũi nhọn công phá.",
     domain: "ground",
+    formation: "front",
     mvp: true,
     cost: { iron: 350, oil: 0 },
     buildTime: 7.5,
@@ -458,6 +467,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     hotkey: "C",
     role: "Tên lửa phòng không tự hành, hộ tống đoàn xe tăng.",
     domain: "ground",
+    formation: "mid",
     mvp: true,
     cost: { iron: 250, oil: 0 },
     buildTime: 6,
@@ -503,6 +513,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     hotkey: "G",
     role: "Dàn phóng tên lửa loạt: chọn một vùng, xe dựng dàn rồi xả cả loạt 12 quả. San phẳng cụm xe giáp mỏng và nhà xưởng.",
     domain: "ground",
+    formation: "back",
     mvp: true,
     cost: { iron: 300, oil: 40 },
     buildTime: 9,
@@ -611,6 +622,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     hotkey: "F",
     role: "Pháo nòng lớn tầm cực xa: hạ bệ chữ X, duỗi nòng rồi mới bắn. Một viên xuyên giáp phá công sự.",
     domain: "ground",
+    formation: "back",
     mvp: true,
     // MỌI SỐ LÀ SỐ TẠM (Docs/design/ARMY_DESIGN.md mục 8), chờ buổi cân bằng
     cost: { iron: 350, oil: 30 },
@@ -1022,6 +1034,15 @@ export const PAD_OFFSETS: readonly (readonly [number, number])[] = [
   [-4.45, 5.6],
   [4.45, 5.6]
 ];
+
+/**
+ * Nhà xưởng quay cửa (phía +z của mô hình) về phía giữa bản đồ theo trục z: xưởng nằm ở nửa +z thì xoay 180°.
+ * Quay đúng nửa vòng nên nền móng không đổi. Sim (máy bay cất cánh ra cửa) và phần vẽ cùng dùng hàm này.
+ */
+const DOOR_FACING: ReadonlySet<BuildingId> = new Set<BuildingId>(["factory", "special-factory", "aircraft-factory"]);
+export function doorSign(kind: BuildingId, z: number): 1 | -1 {
+  return DOOR_FACING.has(kind) && z > 0 ? -1 : 1;
+}
 
 export const MVP_BUILDABLE: readonly BuildingId[] = ["factory", "special-factory", "aircraft-factory", "airfield", "power-plant", "battery", "power-pylon", "turret", "radar"];
 

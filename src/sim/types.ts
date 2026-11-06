@@ -64,6 +64,10 @@ export interface Unit {
   moved: boolean;
   /** Đang đuổi theo mục tiêu (đường đi đang trỏ tới mục tiêu, không phải tới đích lệnh). */
   chasing: boolean;
+  /** Đội hình: hướng quay mặt khi tới đích (0, 0 = giữ hướng đang đi) và tốc độ chung của nhóm (m/s, 0 = tự do). */
+  faceX: number;
+  faceZ: number;
+  groupSpeed: number;
   // Xe Vận Tải
   hState: HaulState;
   mineId: number;
@@ -243,6 +247,8 @@ export type Order =
   | { t: "sbClear" }
   /** Phe `side` ngừng bắn (làm bia tập). */
   | { t: "sbHold"; side: Side; on: boolean }
+  /** Cả phe (quân mặt đất) đi-và-đánh tới (x, z) như MỘT nhóm: dàn đội hình (trận đấu thử). */
+  | { t: "sbGo"; side: Side; x: number; z: number }
   /** Máy bay không tốn nhiên liệu. */
   | { t: "sbFuel"; on: boolean };
 
