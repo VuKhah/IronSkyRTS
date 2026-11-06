@@ -155,6 +155,9 @@ export interface Building {
   rallyX: number;
   rallyZ: number;
   rallySet: boolean;
+  /** Hướng tháp (vector đơn vị, theo thế giới): công trình có vũ khí xoay tháp trong `traverse` độ/giây mới bắn được. */
+  aimX: number;
+  aimZ: number;
   cooldown: number;
   lastShot: number;
   burst: number;

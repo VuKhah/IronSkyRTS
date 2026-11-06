@@ -59,13 +59,15 @@ export function vehicleRig(
   // bánh xe quay đúng theo tốc độ chạy thật của xe
   const speed = spec.speed;
   let aimOverride: number | null = null;
+  let aimRaise = true;
   return {
     root,
     actions: [...baseActions, ...extra],
     defaultOn: [],
     radius,
-    setAim(y) {
+    setAim(y, raise = true) {
       aimOverride = y;
+      aimRaise = raise;
     },
     update(dt, t, a) {
       const moving = a.has("move");
@@ -75,7 +77,7 @@ export function vehicleRig(
 
       // Chiến trường đặt góc ngắm thật (setAim); Xưởng Mô Hình thì cho tháp pháo quét qua lại.
       const air = parts.airPitch !== undefined && a.has("aimAir");
-      const aiming = aimOverride !== null || a.has("aim") || a.has("fire") || air;
+      const aiming = (aimOverride !== null && aimRaise) || a.has("aim") || a.has("fire") || air;
       const yawTarget = aimOverride !== null ? aimOverride : a.has("aim") ? Math.sin(t * 0.7) * 1.1 : 0;
       yaw = approachAngle(yaw, yawTarget, aimOverride !== null ? 7 : 3, dt);
       pitch = approach(pitch, aiming ? (air ? parts.airPitch! : parts.aimPitch) + (aimOverride === null ? Math.sin(t * 1.3) * 0.06 : 0) : 0, air ? 2.2 : 3, dt);

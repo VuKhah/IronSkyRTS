@@ -45,6 +45,15 @@ describe("content", () => {
     }
   });
 
+  it("mọi mâm xoay đều mất thời gian: vũ khí của quân mặt đất và công trình phải có traverse, máy bay thì không", () => {
+    for (const u of Object.values(UNITS)) {
+      if (!u.weapon) continue;
+      if (u.domain === "air") expect(u.weapon.traverse, u.id).toBeUndefined();
+      else expect(u.weapon.traverse, `${u.id} thiếu traverse`).toBeGreaterThan(0);
+    }
+    for (const b of Object.values(BUILDINGS)) if (b.weapon) expect(b.weapon.traverse, `${b.id} thiếu traverse`).toBeGreaterThan(0);
+  });
+
   it("quân MVP đúc được thì phải có nơi đúc, và nơi đó liệt kê nó", () => {
     for (const u of Object.values(UNITS)) {
       if (!u.mvp || !u.cost) continue;

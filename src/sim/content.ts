@@ -107,7 +107,10 @@ export interface WeaponSpec {
    * `required`: chưa triển khai xong thì không bắn được (dàn phóng phải dựng xong mới xả loạt).
    */
   deploy?: { time: number; range: number; dmg: number; required?: boolean };
-  /** Tháp pháo xoay chậm (độ/giây): phải quay nòng về mục tiêu rồi mới bắn được (Titan). */
+  /**
+   * Tốc độ mâm xoay (độ/giây): phải quay nòng về mục tiêu rồi mới bắn được. BẮT BUỘC với mọi vũ khí của quân mặt đất và
+   * công trình (người dùng chốt 06/11/2026: mọi mâm xoay đều mất thời gian; content.test kiểm). Máy bay không có: ngắm bằng cả thân (fireArc).
+   */
   traverse?: number;
   /** Ném bom rải thảm: bom rơi theo đường bay thẳng phía trước máy bay, không bám mục tiêu (Valkyrie). */
   carpet?: boolean;
@@ -341,7 +344,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     sight: 26,
     radius: 1.9,
     captureWeight: 2.2,
-    weapon: { name: "Pháo kép 40mm", dmgGround: 44, dmgAir: 32, range: 20, cooldown: 1.05, dmgType: "normal", splash: 2, visual: "cannon" },
+    weapon: { name: "Pháo kép 40mm", dmgGround: 44, dmgAir: 32, range: 20, cooldown: 1.05, dmgType: "normal", splash: 2, visual: "cannon", traverse: 90 },
     aura: { radius: 13.5, fireRate: 1.18 },
     pointDefense: { charges: 2, recharge: 20 },
     features: [
@@ -404,7 +407,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     sight: 28,
     radius: 1.4,
     captureWeight: 1,
-    weapon: { name: "Súng máy 20mm", dmgGround: 32, dmgAir: 14, range: 15.5, cooldown: 0.65, dmgType: "normal", splash: 0, visual: "bullet" },
+    weapon: { name: "Súng máy 20mm", dmgGround: 32, dmgAir: 14, range: 15.5, cooldown: 0.65, dmgType: "normal", splash: 0, visual: "bullet", traverse: 120 },
     features: [
       "Nhanh nhất trên mặt đất và nhìn xa: đến mỏ trung lập trước mọi đối thủ.",
       "Săn Xe Vận Tải địch để cắt kinh tế.",
@@ -468,6 +471,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     captureWeight: 1,
     weapon: {
       name: "Loạt 5 tên lửa tầm nhiệt",
+      traverse: 75,
       dmgGround: 0,
       dmgAir: 30,
       range: 26.5,
@@ -512,6 +516,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     captureWeight: 1,
     weapon: {
       name: "Dàn 12 tên lửa 122mm",
+      traverse: 40,
       dmgGround: 50,
       dmgAir: 0,
       range: 24,
@@ -620,6 +625,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     captureWeight: 1,
     weapon: {
       name: "Pháo 155mm nòng dài",
+      traverse: 25,
       dmgGround: 150,
       dmgAir: 0,
       range: 38,
@@ -703,7 +709,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     produces: ["hauler"],
     power: 20,
     zone: 24,
-    weapon: { name: "Pháo kép tự vệ", dmgGround: 40, dmgAir: 28, range: 22, cooldown: 1.2, dmgType: "normal", splash: 1.5, visual: "cannon" },
+    weapon: { name: "Pháo kép tự vệ", dmgGround: 40, dmgAir: 28, range: 22, cooldown: 1.2, dmgType: "normal", splash: 1.5, visual: "cannon", traverse: 60 },
     features: [
       "Nơi Xe Vận Tải dỡ hàng: Sắt và Dầu chỉ vào kho khi được chở về đây.",
       "Thu nhập gốc +2 Sắt mỗi giây, để bên mất hết mỏ vẫn còn đường gỡ.",
@@ -811,7 +817,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     half: [1.5, 1.5],
     power: -5,
     priority: 1,
-    weapon: { name: "Pháo kép tự động 30mm", dmgGround: 30, dmgAir: 30, range: 20, cooldown: 0.6, dmgType: "normal", splash: 0, visual: "bullet" },
+    weapon: { name: "Pháo kép tự động 30mm", dmgGround: 30, dmgAir: 30, range: 20, cooldown: 0.6, dmgType: "normal", splash: 0, visual: "bullet", traverse: 90 },
     features: ["Bắn cả xe lẫn máy bay trong tầm 20m.", "Giáp Công sự: chỉ đạn xuyên giáp (Pháo) phá nhanh. Giữ mỏ và cửa ngõ căn cứ. Dùng Cột Điện để xây được tháp ở xa căn cứ.", "Thiếu điện thì bắn chậm, mất hẳn điện thì ngừng bắn."]
   },
   outpost: {
@@ -826,7 +832,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     sight: 20,
     half: [2.6, 2.6],
     power: 0,
-    weapon: { name: "Tháp pháo tự động", dmgGround: 26, dmgAir: 18, range: 18, cooldown: 0.9, dmgType: "normal", splash: 0, visual: "bullet" },
+    weapon: { name: "Tháp pháo tự động", dmgGround: 26, dmgAir: 18, range: 18, cooldown: 0.9, dmgType: "normal", splash: 0, visual: "bullet", traverse: 90 },
     features: ["Chiếm được: đứng trong vùng chiếm đóng đủ lâu để cắm cờ phe mình.", "Mở rộng vùng xây dựng ra tiền tuyến."]
   },
   "power-plant": {
@@ -959,7 +965,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     sight: 22,
     half: [1.4, 1.4],
     power: -6,
-    weapon: { name: "Pháo 6 nòng Vulcan", dmgGround: 0, dmgAir: 19, range: 22.5, cooldown: 0.24, dmgType: "he", splash: 0, visual: "bullet" },
+    weapon: { name: "Pháo 6 nòng Vulcan", dmgGround: 0, dmgAir: 19, range: 22.5, cooldown: 0.24, dmgType: "he", splash: 0, visual: "bullet", traverse: 150 },
     magazine: 28,
     features: ["Bắn 0.24 giây/viên: lưới đạn dày đặc tầm gần.", "Hết đạn từ đường ray thì ngừng bắn."]
   },
@@ -978,7 +984,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     half: [1.8, 1.8],
     power: -14,
     strictPower: true,
-    weapon: { name: "Tên lửa Patriot", dmgGround: 0, dmgAir: 112, range: 38.5, cooldown: 1.65, dmgType: "he", splash: 2.6, visual: "missile" },
+    weapon: { name: "Tên lửa Patriot", dmgGround: 0, dmgAir: 112, range: 38.5, cooldown: 1.65, dmgType: "he", splash: 2.6, visual: "missile", traverse: 60 },
     magazine: 14,
     features: ["Tầm bắn cực xa 38.5m, 2 đạn mỗi phát.", "Bắt buộc có điện."]
   },
@@ -997,7 +1003,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     half: [1.8, 1.8],
     power: -16,
     strictPower: true,
-    weapon: { name: "Xung điện từ", dmgGround: 0, dmgAir: 48, range: 30, cooldown: 1.25, dmgType: "he", splash: 5.2, visual: "pulse" },
+    weapon: { name: "Xung điện từ", dmgGround: 0, dmgAir: 48, range: 30, cooldown: 1.25, dmgType: "he", splash: 5.2, visual: "pulse", traverse: 60 },
     magazine: 16,
     features: ["Nổ xung bán kính 5.2m trên không.", "Máy bay trúng xung: -35% tốc bay và tốc ngoặt trong 3.8 giây.", "Bắt buộc có điện."]
   }

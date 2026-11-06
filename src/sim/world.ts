@@ -482,6 +482,8 @@ export class World {
       rallyX: x + dx * reach,
       rallyZ: z + dz * reach,
       rallySet: false,
+      aimX: dx,
+      aimZ: dz,
       cooldown: 0,
       lastShot: -1000,
       burst: 0,
@@ -1002,6 +1004,7 @@ export class World {
         }
         const t = this.acquireFrom(b, b.side, b.x, b.z, spec.weapon, spec.weapon.range, b.targetId);
         b.targetId = t ? t.id : 0;
+        this.aim(b, spec.weapon, t ? t.x : null, t ? t.z : 0);
         if (t) this.tryFire(b, spec.weapon, t);
       }
     }
@@ -1443,32 +1446,43 @@ export class World {
         break;
       }
     }
-    if (w) this.aim(u, w, fireAt);
+    if (w) {
+      // mâm xoay quay về mục tiêu (lệnh rải thảm: về điểm bắn); rảnh thì về hướng thân
+      if (fireAt) this.aim(u, w, fireAt.x, fireAt.z);
+      else if (u.order === "strike") this.aim(u, w, u.tx, u.tz);
+      else this.aim(u, w, null, 0);
+    }
     if (fireAt && w) this.tryFire(u, w, fireAt);
     // Lockdown: đếm thời gian đứng yên (chạy là mất triển khai; đang thu bệ thì follow() đã trừ dần)
     if (!u.packing) u.still = u.moved ? 0 : Math.min(u.still + 1, 100000);
     this.rechargePd(u);
   }
 
-  /** Tháp pháo xoay về mục tiêu (hoặc về hướng thân khi rảnh) với tốc độ giới hạn. */
-  private aim(u: Unit, w: WeaponSpec, t: Target | null): void {
+  /**
+   * Mâm xoay quay về điểm (tx, tz) với tốc độ giới hạn `traverse` độ/giây (người dùng chốt 06/11/2026: mọi mâm xoay đều
+   * mất thời gian, để chỉ huy sai thì phải trả giá). tx = null: quân về hướng thân, công trình giữ hướng cũ.
+   */
+  private aim(src: Unit | Building, w: WeaponSpec, tx: number | null, tz: number): void {
     if (!w.traverse) {
-      u.aimX = u.hx;
-      u.aimZ = u.hz;
+      if (src.cat === "unit") {
+        src.aimX = src.hx;
+        src.aimZ = src.hz;
+      }
       return;
     }
-    let dx = u.hx;
-    let dz = u.hz;
-    if (t) {
-      const l = Math.sqrt(dist2(u.x, u.z, t.x, t.z));
-      if (l > 1e-6) {
-        dx = (t.x - u.x) / l;
-        dz = (t.z - u.z) / l;
-      }
-    }
-    turnToward(u.aimX, u.aimZ, dx, dz, traverseStep(w.traverse), TMP);
-    u.aimX = TMP.x;
-    u.aimZ = TMP.z;
+    let dx: number;
+    let dz: number;
+    const l = tx === null ? 0 : Math.sqrt(dist2(src.x, src.z, tx, tz));
+    if (tx !== null && l > 1e-6) {
+      dx = (tx - src.x) / l;
+      dz = (tz - src.z) / l;
+    } else if (src.cat === "unit") {
+      dx = src.hx;
+      dz = src.hz;
+    } else return;
+    turnToward(src.aimX, src.aimZ, dx, dz, traverseStep(w.traverse), TMP);
+    src.aimX = TMP.x;
+    src.aimZ = TMP.z;
   }
 
   private rechargePd(u: Unit): void {
@@ -1525,8 +1539,8 @@ export class World {
     if (dmg <= 0) return false;
     const ground = src.cat === "unit" && src.air === "none";
     const d = Math.sqrt(dist2(src.x, src.z, t.x, t.z));
-    // Tháp pháo xoay chậm: nòng chưa về đúng hướng thì chưa bắn
-    if (w.traverse && ground && d > 1e-6 && (src.aimX * (t.x - src.x) + src.aimZ * (t.z - src.z)) / d < AIM_COS) return false;
+    // Mâm xoay: nòng chưa về đúng hướng thì chưa bắn (quân mặt đất và công trình; máy bay ngắm bằng cả thân, fireArc)
+    if (w.traverse && (ground || src.cat === "building") && d > 1e-6 && (src.aimX * (t.x - src.x) + src.aimZ * (t.z - src.z)) / d < AIM_COS) return false;
     const deployed = this.deployed(src, w);
     if (w.deploy?.required && !deployed) return false;
     if (deployed) dmg *= 1 + w.deploy!.dmg;
@@ -2439,6 +2453,8 @@ export class World {
     const deployed = this.deployed(u, w);
     if (w.deploy?.required && !deployed) return false;
     const d = Math.sqrt(dist2(u.x, u.z, x, z));
+    // mâm phóng chưa quay tới hướng điểm bắn thì chưa bắn
+    if (w.traverse && d > 1e-6 && (u.aimX * (x - u.x) + u.aimZ * (z - u.z)) / d < AIM_COS) return false;
     this.salvoStart(u, w, x, z);
     u.cooldown = Math.max(1, Math.round((this.nextCooldown(u, w) / this.auraFactor(u)) * TICK_RATE));
     u.lastShot = this.tick;
@@ -2829,6 +2845,8 @@ export function hashWorld(w: World): number {
     num(b.progress);
     num(b.queue.length);
     num(b.prog);
+    num(b.aimX);
+    num(b.aimZ);
   }
   for (const wr of w.wrecks) {
     num(wr.id);

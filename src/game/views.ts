@@ -350,16 +350,21 @@ export class Views {
       } else {
         const tid = u.targetId || u.autoTarget;
         const w = spec.weapon;
+        // mâm xoay: vẽ đúng hướng mâm trong sim (xoay mất thời gian, thấy được độ trễ); có việc mới nâng nòng
+        const busy = u.order === "strike" || tid !== 0;
+        const turretYaw = w?.traverse
+          ? wrap(Math.atan2(u.aimX, u.aimZ) - v.yaw)
+          : u.order === "strike"
+            ? wrap(Math.atan2(u.tx - x, u.tz - z) - v.yaw)
+            : this.aimAt(world, x, z, v.yaw, tid);
         if (w?.deploy?.required) {
           // dàn phóng / pháo: vẽ THEO SIM. Đứng yên (không thu bệ) là đang cố định: hạ chân chống, ngóc hộp phóng về điểm bắn;
           // thu bệ hoặc chạy thì thu lại. Nhịp hoạt ảnh = deploy.time nên khớp với lúc sim cho bắn / cho chạy.
           const planted = !a.has("move") && !u.packing;
           if (planted) a.add("deploy");
-          const aim = u.order === "strike" ? wrap(Math.atan2(u.tx - x, u.tz - z) - v.yaw) : this.aimAt(world, x, z, v.yaw, tid);
-          v.rig.setAim?.(planted ? (aim ?? 0) : null);
+          v.rig.setAim?.(turretYaw, planted && busy);
         } else {
-          // xe có tháp pháo xoay chậm (sim giữ hướng nòng): vẽ đúng hướng nòng thật, để thấy độ trễ khi xoay
-          v.rig.setAim?.(w?.traverse ? wrap(Math.atan2(u.aimX, u.aimZ) - v.yaw) : this.aimAt(world, x, z, v.yaw, tid));
+          v.rig.setAim?.(turretYaw, busy);
           // Lockdown không bắt buộc (SkyGuard): sim tính "đã cố định" khi đứng yên đủ deploy.time; rig hạ bệ cùng nhịp
           if (w?.deploy && !a.has("move") && !u.packing) a.add("deploy");
         }
@@ -390,7 +395,7 @@ export class Views {
         if (spec.storage) v.rig.setLevel?.(b.charge / spec.storage);
       } else a.add("work");
       if (spec.weapon) {
-        v.rig.setAim?.(this.aimAt(world, b.x, b.z, 0, b.targetId));
+        v.rig.setAim?.(spec.weapon.traverse ? wrap(Math.atan2(b.aimX, b.aimZ)) : this.aimAt(world, b.x, b.z, 0, b.targetId), b.targetId !== 0);
         if ((world.tick - b.lastShot) * DT < Math.max(0.45, spec.weapon.cooldown * 0.9)) a.add("fire");
       }
     }

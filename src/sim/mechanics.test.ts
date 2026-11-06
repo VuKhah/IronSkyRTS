@@ -7,7 +7,7 @@
  * Chỉ kiểm HÀNH VI (có loạt, có chặn, có trượt…), không khóa con số cân bằng.
  */
 import { describe, expect, it } from "vitest";
-import { RULES, UNITS, type BuildingId, type Side, type UnitId, type WeaponSpec } from "./content";
+import { BUILDINGS, RULES, UNITS, type BuildingId, type Side, type UnitId, type WeaponSpec } from "./content";
 import { arenaPoint } from "./scenarios";
 import type { Building, SimEvent, Unit } from "./types";
 import { sec, World } from "./world";
@@ -376,5 +376,45 @@ describe("quân cố định (deploy): đã hạ bệ thì không dễ di chuy�
     }
     expect(moved).toBeGreaterThanOrEqual(0);
     expect(moved).toBeLessThan(T / 2);
+  });
+});
+
+describe("mọi mâm xoay đều mất thời gian (traverse)", () => {
+  it("Tháp Phòng Thủ: mục tiêu ở phía sau hướng tháp thì phải chờ tháp quay mới bắn", () => {
+    const firstShot = (behind: boolean): number => {
+      const w = new World(1, { sandbox: true });
+      const tw = building(w, 0, "turret", ...P(0));
+      const s = behind ? -1 : 1;
+      const t0 = w.tick;
+      building(w, 1, "power-pylon", tw.x + tw.aimX * 12 * s, tw.z + tw.aimZ * 12 * s);
+      if (shotsNow(w, tw.id)) return w.tick - t0;
+      const shots = run(w, sec(6), tw.id);
+      expect(shots.length).toBeGreaterThan(0);
+      return shots[0].tick - t0;
+    };
+    const turn180 = sec(180 / BUILDINGS.turret.weapon!.traverse!);
+    expect(firstShot(true) - firstShot(false)).toBeGreaterThanOrEqual(turn180 - 2);
+  });
+
+  it("Xe Tên Lửa Loạt rải thảm điểm sau lưng: mâm phóng quay tới hướng bắn rồi mới phóng, thân đứng yên", () => {
+    const firstSalvo = (behind: boolean): number => {
+      const w = new World(1, { sandbox: true });
+      const r = unit(w, 0, "rocket", ...P(0));
+      for (let i = 0; i < sec(2); i++) w.step([]); // đã dựng dàn
+      const hx = r.hx;
+      const hz = r.hz;
+      const s = behind ? -1 : 1;
+      const d = (UNITS.rocket.weapon!.range + UNITS.rocket.weapon!.minRange!) / 2;
+      w.step([{ side: 0, order: { t: "barrage", ids: [r.id], x: r.x + hx * d * s, z: r.z + hz * d * s } }]);
+      const t0 = w.tick;
+      const shots = run(w, sec(8), r.id);
+      expect(shots.length).toBeGreaterThan(0);
+      expect(r.hx).toBe(hx);
+      expect(r.hz).toBe(hz);
+      return shots[0].tick - t0;
+    };
+    // quay gần 180° (được bắn khi lệch ≤ 5°, mâm bắt đầu quay ngay trong tick nhận lệnh)
+    const turn = sec(160 / UNITS.rocket.weapon!.traverse!);
+    expect(firstSalvo(true) - firstSalvo(false)).toBeGreaterThanOrEqual(turn);
   });
 });

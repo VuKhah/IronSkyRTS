@@ -17,6 +17,8 @@ type Update = (dt: number, t: number, a: ReadonlySet<string>) => void;
 /** Góc ngắm do chiến trường đặt (null = để hoạt ảnh tự quét). */
 interface AimRef {
   yaw: number | null;
+  /** Nâng nòng (có mục tiêu); rảnh thì tháp chỉ giữ hướng. */
+  raise?: boolean;
 }
 
 function rig(root: THREE.Group, actions: RigAction[], radius: number, updates: Update[], defaultOn: string[] = ["work"], aim?: AimRef): Rig {
@@ -29,7 +31,11 @@ function rig(root: THREE.Group, actions: RigAction[], radius: number, updates: U
       for (const u of updates) u(dt, t, a);
     }
   };
-  if (aim) r.setAim = (y) => (aim.yaw = y);
+  if (aim)
+    r.setAim = (y, raise = true) => {
+      aim.yaw = y;
+      aim.raise = raise;
+    };
   return r;
 }
 
@@ -73,7 +79,7 @@ function turretUpdate(turret: THREE.Object3D, gun: THREE.Object3D | null, flashe
   let i = 0;
   return (dt, t, a) => {
     const held = aim !== undefined && aim.yaw !== null;
-    const aiming = held || a.has("aim") || a.has("fire");
+    const aiming = (held && aim.raise !== false) || a.has("aim") || a.has("fire");
     const target = held ? (aim.yaw as number) : a.has("aim") ? Math.sin(t * 0.6) * sweep : 0;
     yaw = approachAngle(yaw, target, held ? 7 : 3, dt);
     pitch = approach(pitch, aiming ? aimPitch : 0, 3, dt);

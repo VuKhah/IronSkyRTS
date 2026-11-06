@@ -43,7 +43,8 @@ export interface Rig {
    * Chiến trường điều khiển tháp pháo: góc quay (rad) so với thân, null = tự do (hoạt ảnh "Ngắm" trên Xưởng Mô Hình).
    * Chỉ có ở mô hình có tháp pháo.
    */
-  setAim?(yaw: number | null): void;
+  /** Góc mâm xoay so với thân (null = để hoạt ảnh tự quét); `raise` = nâng nòng (mặc định có): rảnh thì chỉ quay, không nâng. */
+  setAim?(yaw: number | null, raise?: boolean): void;
   /**
    * Chiến trường điều khiển máy bay: độ cao do sim quyết định (đặt vào root.position.y),
    * rig chỉ lo càng, lửa động cơ và độ nghiêng cánh.
