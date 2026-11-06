@@ -112,6 +112,8 @@ export function buildRocket(p: Palette): Rig {
     );
     // tay xách trên nóc (hộp trên) / dưới đáy (hộp dưới): hộp phóng thay được như băng đạn
     pod.add(part("Tay xách hộp", box(0.32, 0.05, 0.06, p.metal, 0, Math.sign(by) * (PH / 2 + 0.04), -0.3)));
+    // nóc 2 hộp phía trên sơn màu phe: nhìn từ camera trên cao vẫn phân biệt được hai phe
+    if (by > 0) pod.add(part("Nóc hộp (màu phe)", box(PW - 0.08, 0.03, L - 0.5, p.team, 0, PH / 2 + 0.015, 0.1)));
     for (let row = 0; row < 2; row++)
       for (let col = 0; col < 3; col++) {
         const x = -0.23 + col * 0.23;
