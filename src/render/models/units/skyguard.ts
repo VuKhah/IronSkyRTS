@@ -118,7 +118,6 @@ export function buildSkyguard(p: Palette): Rig {
     const m = sx < 0;
     add(cabTools.skin("Kính hông cabin", [[2.0, 1.2], [1.25, 1.2], [1.25, 1.45], [1.75, 1.45]], p.glass, { face: "right", mirror: m, lift: 0.015 }));
     add(cabTools.skin("Đèn pha", [[0.26, 0.9], [0.44, 0.9], [0.44, 1.0], [0.26, 1.0]], p.glass, { face: "front", mirror: m, lift: 0.025 }));
-    add(part("Móc kéo", box(0.09, 0.12, 0.14, p.warning, sx * 0.4, 0.66, 2.36)));
     // ống phóng khói: 3 ống chếch lên phía trước ở hai bên cabin
     for (let k = 0; k < 3; k++) {
       const t = part("Ống phóng khói", tubeZ(0.05, 0.05, 0.22, p.metal, 6));
@@ -127,7 +126,21 @@ export function buildSkyguard(p: Palette): Rig {
       add(t);
     }
   }
-  add(part("Cản trước", box(1.3, 0.16, 0.16, p.metal, 0, 0.7, 2.3)));
+  // Hai khối giáp mũi kẹp hai bên mũi cabin (thay thanh cản mảnh): đầu xe đồ sộ, kiên cố; lưới tản nhiệt ở mặt trước,
+  // nắp màu phe, móc kéo. Học ý "hai khối giáp chìa ra trước" từ bản vẽ tham chiếu người dùng thích.
+  for (const sx of [1, -1]) {
+    const blk: P3[] = [
+      [0.42, 0.36, 1.55], [1.02, 0.36, 1.55], [0.42, 0.86, 1.55], [1.02, 0.86, 1.55],
+      [0.44, 0.4, 2.42], [1.0, 0.4, 2.42], [0.44, 0.78, 2.3], [1.0, 0.78, 2.3]
+    ];
+    add(part("Khối giáp mũi", facets(blk.map(([x, y, z]): P3 => [sx * x, y, z]), p.hull)));
+    const lid = part("Nắp khối mũi (màu phe)", box(0.5, 0.03, 0.66, p.team, sx * 0.72, 0.835, 1.93));
+    lid.rotation.x = 0.106;
+    add(lid);
+    for (const y of [0.5, 0.58, 0.66]) add(part("Lưới khối mũi", box(0.46, 0.035, 0.03, p.hullDark, sx * 0.72, y, 2.42 - (y - 0.4) * 0.316 + 0.02)));
+    add(part("Móc kéo", box(0.1, 0.12, 0.14, p.warning, sx * 0.72, 0.42, 2.46)));
+    add(cabTools.line("Mép nóc cabin (trắng)", [[sx * 0.5, 1.0], [sx * 0.5, 1.62]], p.white, { w: 0.06 }));
+  }
   add(cabTools.skin("Dải mũi (màu phe)", [[-0.5, 1.07], [0.5, 1.07], [0.5, 1.13], [-0.5, 1.13]], p.team, { face: "front", lift: 0.02 }));
   add(cabTools.skin("Nóc cabin (màu phe)", [[-0.4, 1.35], [0.4, 1.35], [0.4, 1.05], [-0.4, 1.05]], p.team));
   add(part("Kính ngắm quang điện tử", group(box(0.26, 0.22, 0.26, p.hullDark, 0.3, 1.71, 1.2), box(0.2, 0.13, 0.02, p.glass, 0.3, 1.72, 1.335), cyl(0.05, 0.05, 0.1, p.metal, 6, 0.3, 1.6, 1.2))));
@@ -210,7 +223,7 @@ export function buildSkyguard(p: Palette): Rig {
   add(ring);
 
   // ================================================================ 3. THÁP: mâm tròn (vòng tròn của ký hiệu benzen), bệ phóng, radar
-  // Bộ phận động (giá phóng, 2 hộp tên lửa, radar quay) mỗi cái tối đa 3 màu: không gộp được, mỗi màu một lệnh vẽ.
+  // Bộ phận động (giá phóng, 2 hộp tên lửa, radar quay) giữ ít màu: không gộp được, mỗi màu một lệnh vẽ.
   const turret = part("Mâm xoay", group(cyl(0.72, 0.78, 0.22, p.hullDark, 16, 0, 0.11, 0)));
   turret.position.set(0, DECK_Y + 0.1, TURRET_Z);
   turret.add(part("Viền mâm (màu phe)", cyl(0.8, 0.8, 0.05, p.team, 16, 0, 0.03, 0)));
@@ -221,6 +234,12 @@ export function buildSkyguard(p: Palette): Rig {
   // Khối nâng giữa hai hộp phóng + 2 tai đỡ trục
   turret.add(part("Khối nâng", group(box(0.6, 0.42, 0.8, p.hull, 0, 0.42, 0.02), box(0.66, 0.06, 0.84, p.hullDark, 0, 0.62, 0.02))));
   for (const sx of [-1, 1]) turret.add(part("Tai đỡ trục", box(0.14, 0.7, 0.4, p.hullDark, sx * 0.4, 0.57, 0.05)));
+  // "Mặt" của tháp: nóc trắng, dải đèn trạng thái màu cam, ô cảm biến tối (học ý từ bản vẽ tham chiếu)
+  turret.add(
+    part("Nóc khối nâng (trắng)", box(0.5, 0.03, 0.6, p.white, 0, 0.665, 0.02)),
+    part("Dải đèn trạng thái", box(0.5, 0.05, 0.02, p.warning, 0, 0.52, 0.43)),
+    part("Ô cảm biến", box(0.32, 0.12, 0.02, p.metal, 0, 0.36, 0.43))
+  );
 
   const gun = part("Giá phóng", group());
   gun.position.set(0, 0.86, 0.05);
@@ -235,9 +254,9 @@ export function buildSkyguard(p: Palette): Rig {
   const muzzles: THREE.Object3D[] = [];
   const barrels: THREE.Object3D[] = [];
   for (const side of [-1, 1]) {
-    // Hộp tên lửa: thân + 3 gân nổi (cùng màu thân), nóc và khung miệng màu phe, vạch phụt lửa sau đuôi, 4 ống + ống dẫn cáp
-    const pod = part(side < 0 ? "Hộp tên lửa trái (4 ống)" : "Hộp tên lửa phải (4 ống)", group(box(0.6, 0.62, 1.5, p.hull)));
-    for (const z of [-0.5, 0, 0.5]) pod.add(part("Gân hộp", box(0.66, 0.68, 0.07, p.hull, 0, 0, z)));
+    // Hộp tên lửa: thân + 3 gân nổi trắng, nóc và khung miệng màu phe, vạch phụt lửa sau đuôi, 6 ống + ống dẫn cáp
+    const pod = part(side < 0 ? "Hộp tên lửa trái (6 ống)" : "Hộp tên lửa phải (6 ống)", group(box(0.6, 0.62, 1.5, p.hull)));
+    for (const z of [-0.5, 0, 0.5]) pod.add(part("Gân hộp (trắng)", box(0.66, 0.68, 0.07, p.white, 0, 0, z)));
     pod.add(
       part("Nóc hộp (màu phe)", box(0.62, 0.05, 1.52, p.team, 0, 0.33, 0)),
       part("Khung miệng (màu phe)", group(box(0.62, 0.06, 0.04, p.team, 0, 0.29, 0.76), box(0.62, 0.06, 0.04, p.team, 0, -0.29, 0.76), box(0.06, 0.62, 0.04, p.team, 0.29, 0, 0.76), box(0.06, 0.62, 0.04, p.team, -0.29, 0, 0.76))),
@@ -246,8 +265,9 @@ export function buildSkyguard(p: Palette): Rig {
     );
     pod.position.set(side * 0.98, 0, 0.15);
     pod.scale.set(1.24, 1.24, 1.2); // hộp phóng to hơn (người dùng): 0,74 × 0,77 × 1,8 m
-    for (const [dx, dy] of [[-0.14, -0.14], [0.14, -0.14], [-0.14, 0.14], [0.14, 0.14]] as const) {
-      const hole = part("Ống phóng", cyl(0.1, 0.1, 0.05, p.metal, 10, dx, dy, 0.75));
+    // 6 ống mỗi hộp: 2 cột × 3 hàng
+    for (const [dx, dy] of [[-0.13, -0.18], [0.13, -0.18], [-0.13, 0], [0.13, 0], [-0.13, 0.18], [0.13, 0.18]] as const) {
+      const hole = part("Ống phóng", cyl(0.075, 0.075, 0.05, p.metal, 10, dx, dy, 0.75));
       hole.rotation.x = Math.PI / 2;
       pod.add(hole);
       const m = group();
