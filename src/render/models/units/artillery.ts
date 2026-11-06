@@ -8,7 +8,8 @@
  *
  * Ý đồ:
  * - Thân xe = 4 CÀNG (càng sau rộng và cao hơn: tay cầm cái kéo) + MŨI CHỮ T: đế thấp rộng 1,6 m nằm dưới hai càng trước,
- *   chìa ra trước; sống mũi (ghế lái) ở khe giữa, nóc ngang nóc càng. BẢN LỀ Ở MÉP NGOÀI ngang giữa xe: xoè ra thì phía trong mở, không càng nào cắt qua càng nào.
+ *   chìa ra trước; sống mũi (ghế lái) ở khe giữa, nóc ngang nóc càng; phần nối mũi kéo khối giữa tới đế mũi; 2 sống phụ
+ *   thấp hơn hai bên sống mũi, nằm trong lòng càng trước (chỉ lộ khi càng trước mở). BẢN LỀ Ở MÉP NGOÀI ngang giữa xe: xoè ra thì phía trong mở, không càng nào cắt qua càng nào.
  *   Càng trước xoè 20° (góc trước 40°), càng sau 34° (góc sau 68°). Góc trong mỗi càng vát xiên chừa chỗ cột bệ tháp.
  * - Tâm xe: KHỐI GIỮA NỐI CÀNG (bát giác, ôm nửa dưới cột bệ tháp, nóc thấp hơn giáp càng; lúc chạy khuất trong các càng,
  *   xoè ra thì nối các càng thành một thân chung) + cột bệ tháp thon + vai đỡ.
@@ -133,6 +134,16 @@ export function buildArtillery(p: Palette): Rig {
   const prow = part("Đế mũi", facets([[0.8, 0.12, 0.7], [0.8, 0.4, 0.7], [0.8, 0.12, 2.62], [0.8, 0.4, 2.78], [0.72, 0.2, 3.02], [0.72, 0.34, 3.0]], p.hull, true));
   const spine = part("Sống mũi (ghế lái)", facets([[0.25, 0.4, 0.7], [0.25, 1.06, 0.7], [0.25, 1.04, 2.0], [0.25, 0.4, 2.9], [0.24, 0.78, 2.55]], p.hull, true));
   add(prow, spine);
+  // Phần nối mũi: khối giữa kéo dài về phía đế mũi, thấp dần (khuất dưới càng trước / sống mũi lúc chạy)
+  add(part("Phần nối mũi", facets([[0.8, 0.14, 1.0], [0.74, 0.72, 1.0], [0.8, 0.14, 2.3], [0.74, 0.56, 2.1]], p.hull, true)));
+  // 2 sống phụ hai bên sống mũi: thấp hơn, ngắn hơn, nằm gọn trong lòng càng trước (chỉ lộ khi càng trước mở);
+  // đầu vát dốc xuống đế mũi, nóc màu phe, 3 khe tản nhiệt hông ngoài
+  for (const sx of [-1, 1]) {
+    const rib: P3[] = [[0.42, 0.4, 0.95], [0.72, 0.4, 0.95], [0.44, 0.86, 1.0], [0.7, 0.84, 1.0], [0.44, 0.84, 1.95], [0.7, 0.82, 1.9], [0.42, 0.4, 2.55], [0.72, 0.4, 2.5]];
+    add(part("Sống phụ", facets(rib.map(([x, y, z]): P3 => [sx * x, y, z]), p.hull)));
+    add(part("Nóc sống phụ (màu phe)", box(0.18, 0.03, 0.8, p.team, sx * 0.57, 0.86, 1.4)));
+    for (const z of [1.2, 1.45, 1.7]) add(part("Khe tản nhiệt sống phụ", box(0.03, 0.22, 0.12, p.hullDark, sx * 0.725, 0.62, z)));
+  }
   const ft = surfaceTools(body, [prow, spine]);
   add(ft.skin("Kính lái", [[-0.2, 2.42], [0.2, 2.42], [0.2, 2.12], [-0.2, 2.12]], p.glass, { lift: 0.02 }));
   add(ft.skin("Nóc sống mũi (màu phe)", [[-0.18, 1.85], [0.18, 1.85], [0.18, 0.9], [-0.18, 0.9]], p.team));
