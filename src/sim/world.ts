@@ -350,6 +350,7 @@ export class World {
       u.phx = u.hx;
       u.phz = u.hz;
       u.moved = false;
+      u.packing = false;
     }
     if (this.sandbox)
       for (const st of this.sides) {
@@ -421,6 +422,7 @@ export class World {
       repathAt: 0,
       stuck: 0,
       moved: false,
+      packing: false,
       chasing: false,
       hState: "idle",
       mineId: 0,
@@ -1199,6 +1201,13 @@ export class World {
   private follow(u: Unit): boolean {
     if (u.pathI * 2 >= u.path.length) return true;
     const spec = UNITS[u.kind];
+    // Quân cố định (deploy): thu bệ xong mới chạy được, mất đúng ngần ấy thời gian đã hạ bệ (tối đa deploy.time)
+    const dep = spec.weapon?.deploy;
+    if (dep && u.still > 0) {
+      u.still = Math.min(u.still, sec(dep.time)) - 1;
+      u.packing = true;
+      return false;
+    }
     // tốc độ theo địa hình và độ dốc, đo theo hướng tới điểm kế tiếp trên đường
     const fdx = u.path[u.pathI * 2] - u.x;
     const fdz = u.path[u.pathI * 2 + 1] - u.z;
@@ -1370,7 +1379,9 @@ export class World {
       }
       case "amove": {
         const t = w ? this.acquire(u, w, range + IDLE_ACQUIRE_BONUS) : null;
-        if (t && w) {
+        // quân cố định không rẽ đường đuổi mục tiêu ngoài tầm: chỉ dừng lại bắn khi mục tiêu đã trong tầm
+        const anchored = !!w?.deploy;
+        if (t && w && (!anchored || this.inRange(u.x, u.z, w, t, range))) {
           fireAt = t;
           if (this.inRange(u.x, u.z, w, t, range)) this.halt(u);
           else this.chase(u, t);
@@ -1412,7 +1423,8 @@ export class World {
         if (t && w) {
           fireAt = t;
           if (this.inRange(u.x, u.z, w, t, range)) this.halt(u);
-          else if (dist2(u.x, u.z, u.tx, u.tz) < LEASH * LEASH) this.chase(u, t);
+          // quân cố định (SkyGuard, Pháo, Tên Lửa Loạt) giữ chỗ đứng: không tự bỏ vị trí đuổi theo mục tiêu
+          else if (!w.deploy && dist2(u.x, u.z, u.tx, u.tz) < LEASH * LEASH) this.chase(u, t);
           else this.halt(u);
         } else if (dist2(u.x, u.z, u.tx, u.tz) > 16) {
           if (u.chasing || u.path.length === 0) {
@@ -1433,8 +1445,8 @@ export class World {
     }
     if (w) this.aim(u, w, fireAt);
     if (fireAt && w) this.tryFire(u, w, fireAt);
-    // Lockdown: đếm thời gian đứng yên (chạy là mất triển khai)
-    u.still = u.moved ? 0 : Math.min(u.still + 1, 100000);
+    // Lockdown: đếm thời gian đứng yên (chạy là mất triển khai; đang thu bệ thì follow() đã trừ dần)
+    if (!u.packing) u.still = u.moved ? 0 : Math.min(u.still + 1, 100000);
     this.rechargePd(u);
   }
 
@@ -1558,8 +1570,9 @@ export class World {
       }
       this.pushShot(src, w, target, tx, tz, talt, dmg, air, ticks, px * side, pz * side);
     }
-    if (ground && !w.traverse) {
-      // quay thân về phía mục tiêu khi đứng bắn (xe có tháp pháo xoay thì thân giữ nguyên, chỉ nòng quay)
+    if (ground && !w.traverse && !w.deploy) {
+      // quay thân về phía mục tiêu khi đứng bắn. Giữ nguyên thân, chỉ mâm / nòng quay: xe có tháp pháo xoay chậm,
+      // và quân cố định (deploy: đế đã hạ chân chống thì không xoay theo mục tiêu, kể cả máy bay)
       if (src.path.length === 0) {
         const l = d || 1;
         src.hx = (t.x - src.x) / l;
@@ -2433,7 +2446,8 @@ export class World {
     const s = w.scatter ?? 0;
     const ticks = Math.max(1, Math.ceil((d / SHOT_SPEED[w.visual]) * TICK_RATE));
     this.pushShot(u, w, 0, x + ox * s, z + oz * s, 0, deployed ? w.dmgGround * (1 + w.deploy!.dmg) : w.dmgGround, false, ticks);
-    if (d > 1e-6) {
+    // quân cố định giữ nguyên thân, chỉ mâm phóng quay về điểm bắn
+    if (d > 1e-6 && !w.deploy) {
       u.hx = (x - u.x) / d;
       u.hz = (z - u.z) / d;
     }

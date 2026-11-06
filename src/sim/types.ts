@@ -38,8 +38,13 @@ export interface Unit {
   lastShot: number;
   /** Số viên còn lại của loạt đang bắn (0 = loạt mới). */
   burst: number;
-  /** Số tick đã đứng yên liên tục (Lockdown). */
+  /**
+   * Số tick đã đứng yên liên tục (Lockdown). Quân có `deploy` muốn chạy thì phải THU BỆ trước: mỗi tick trừ 1 (tối đa
+   * từ `deploy.time`), về 0 mới lăn bánh. Hạ bệ bao lâu thì thu bệ bấy lâu, khớp hoạt ảnh.
+   */
   still: number;
+  /** Tick này đang thu bệ (không chạy, không được tính là đã cố định). Phần vẽ dùng để thu chân chống đúng lúc. */
+  packing: boolean;
   /** Hướng nòng tháp pháo (vector đơn vị). Quân không có `traverse` thì luôn trùng hướng thân. */
   aimX: number;
   aimZ: number;

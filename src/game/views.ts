@@ -351,10 +351,9 @@ export class Views {
         const tid = u.targetId || u.autoTarget;
         const w = spec.weapon;
         if (w?.deploy?.required) {
-          // dàn phóng: đứng yên mà đang có việc (lệnh rải thảm / có mục tiêu) thì hạ chân chống, ngóc hộp phóng về điểm bắn;
-          // chạy thì hạ hộp phóng nằm ngang
-          const busy = u.order === "strike" || tid !== 0;
-          const planted = busy && !a.has("move");
+          // dàn phóng / pháo: vẽ THEO SIM. Đứng yên (không thu bệ) là đang cố định: hạ chân chống, ngóc hộp phóng về điểm bắn;
+          // thu bệ hoặc chạy thì thu lại. Nhịp hoạt ảnh = deploy.time nên khớp với lúc sim cho bắn / cho chạy.
+          const planted = !a.has("move") && !u.packing;
           if (planted) a.add("deploy");
           const aim = u.order === "strike" ? wrap(Math.atan2(u.tx - x, u.tz - z) - v.yaw) : this.aimAt(world, x, z, v.yaw, tid);
           v.rig.setAim?.(planted ? (aim ?? 0) : null);
@@ -362,7 +361,7 @@ export class Views {
           // xe có tháp pháo xoay chậm (sim giữ hướng nòng): vẽ đúng hướng nòng thật, để thấy độ trễ khi xoay
           v.rig.setAim?.(w?.traverse ? wrap(Math.atan2(u.aimX, u.aimZ) - v.yaw) : this.aimAt(world, x, z, v.yaw, tid));
           // Lockdown không bắt buộc (SkyGuard): sim tính "đã cố định" khi đứng yên đủ deploy.time; rig hạ bệ cùng nhịp
-          if (w?.deploy && !a.has("move")) a.add("deploy");
+          if (w?.deploy && !a.has("move") && !u.packing) a.add("deploy");
         }
         // mục tiêu đang bay: xe có tư thế phòng không (Lynx) ngóc nòng lên; chỉ là phần vẽ, sim không đổi
         const tgt = tid ? world.target(tid) : null;

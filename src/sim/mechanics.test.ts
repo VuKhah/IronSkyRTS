@@ -313,3 +313,68 @@ describe("cơ chế bắn", () => {
     expect(play()).toBe(play());
   });
 });
+
+describe("quân cố định (deploy): đã hạ bệ thì không dễ di chuyển", () => {
+  it("SkyGuard đã cố định bắn máy bay: không chạy theo, đế không xoay theo máy bay", () => {
+    const w = new World(1, { sandbox: true });
+    const [x, z] = P(0);
+    const sg = unit(w, 0, "skyguard", x, z);
+    for (let i = 0; i < sec(UNITS.skyguard.weapon!.deploy!.time) + 2; i++) w.step([]);
+    const hx = sg.hx;
+    const hz = sg.hz;
+    // Falcon bay ngang qua phía bên hông, đi xa dần ra ngoài tầm
+    const fx = x + 14;
+    w.step([{ side: 1, order: { t: "sbSpawn", kind: "falcon", side: 1, x: fx, z: z - 40, gx: fx, gz: z + 60, go: "move" } }]);
+    hold(w, 1);
+    const shots = run(w, sec(10), sg.id);
+    expect(shots.length, "có bắn máy bay").toBeGreaterThan(0);
+    expect(sg.x).toBe(x);
+    expect(sg.z).toBe(z);
+    expect(sg.hx).toBe(hx);
+    expect(sg.hz).toBe(hz);
+  });
+
+  it("Pháo đứng chờ không tự bỏ vị trí đuổi mục tiêu ngoài tầm", () => {
+    const w = new World(1, { sandbox: true });
+    const [x, z] = P(-20);
+    const a = unit(w, 0, "artillery", x, z);
+    const R = UNITS.artillery.weapon!.range;
+    unit(w, 1, "titan", x + R + 3, z); // ngoài tầm, nhưng trong vùng "để ý" của quân đứng chờ (tầm + 4 m)
+    unit(w, 0, "commander", x + R - 4, z + 6); // soi mục tiêu hộ
+    hold(w, 1);
+    run(w, sec(6));
+    expect(a.x).toBe(x);
+    expect(a.z).toBe(z);
+  });
+
+  it("thu bệ trước khi chạy: hạ bệ bao lâu thì thu bấy lâu", () => {
+    const w = new World(1, { sandbox: true });
+    const [x, z] = P(-10);
+    const a = unit(w, 0, "artillery", x, z);
+    const T = sec(UNITS.artillery.weapon!.deploy!.time);
+    for (let i = 0; i < T + 5; i++) w.step([]);
+    w.step([{ side: 0, order: { t: "move", ids: [a.id], x: x + 20, z } }]);
+    let firstMove = -1;
+    let packingTicks = 0;
+    for (let i = 0; i < T + 10 && firstMove < 0; i++) {
+      if (a.packing) packingTicks++;
+      if (a.x !== x || a.z !== z) firstMove = i;
+      w.step([]);
+    }
+    expect(firstMove, "đứng yên trong lúc thu bệ").toBeGreaterThanOrEqual(T - 1);
+    expect(packingTicks).toBeGreaterThanOrEqual(T - 1);
+
+    // vừa đứng yên một chút (chưa hạ xong) thì thu cũng nhanh hơn
+    const w2 = new World(1, { sandbox: true });
+    const b = unit(w2, 0, "artillery", x, z);
+    for (let i = 0; i < 4; i++) w2.step([]);
+    w2.step([{ side: 0, order: { t: "move", ids: [b.id], x: x + 20, z } }]);
+    let moved = -1;
+    for (let i = 0; i < T && moved < 0; i++) {
+      w2.step([]);
+      if (b.x !== x || b.z !== z) moved = i;
+    }
+    expect(moved).toBeGreaterThanOrEqual(0);
+    expect(moved).toBeLessThan(T / 2);
+  });
+});
