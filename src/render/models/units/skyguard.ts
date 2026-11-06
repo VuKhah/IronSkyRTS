@@ -4,9 +4,10 @@
  * Không dùng chân nhện. Lấy ý cơ chế "khi cố định tạo bệ hình gần giống vòng benzen" (người dùng thích),
  * hình khối là của Iron Sky.
  *
- * Ý đồ:
- * - Xe xích thân thép dày, sườn giáp che xích, cabin kính phía trước, máy phát điện phía đuôi (radar cần điện).
- * - Bệ xoay lục giác trên nóc dưới mâm tròn: mô-típ vòng benzen ngay cả khi đang chạy.
+ * Ý đồ (bản 2 phần thân: người dùng muốn thân bên trong cũng là benzen):
+ * - THÂN LỤC GIÁC đều nhìn từ trên (dải giáp đứng + mặt vát), đồng tâm với vành chân chống; 6 góc thân trùng 6 hướng chân.
+ *   Cabin kính trên 2 mặt vát trước, lưới tản nhiệt máy phát trên 2 mặt vát sau (radar cần điện), giáp sườn mọi mặt.
+ * - Sàn trên: bệ xoay lục giác + 3 vạch màu phe song song 3 cạnh xen kẽ (vòng benzen kiểu Kekulé) + mâm tròn ở giữa.
  * - CỐ ĐỊNH (Lockdown, sim: đứng yên `deploy.time` = 1,2 giây): 6 chân chống thò ra theo 6 hướng cách đều 60°,
  *   kích thủy lực hạ đế lục giác xuống đất, rồi vành giằng nối 6 chân thành hình lục giác trên mặt đất.
  *   Vành lục giác + mâm tròn ở giữa = vòng benzen. Hoạt ảnh dài đúng 1,2 giây để khớp luật.
@@ -19,12 +20,24 @@ import { vehicleRig, tracks } from "./ground";
 
 /** Thời gian hạ bệ, khớp `UNITS.skyguard.weapon.deploy.time` (sim tính Lockdown sau ngần ấy giây đứng yên). */
 const DEPLOY_TIME = 1.2;
+/** Thân lục giác đều nhìn từ trên, đỉnh chĩa trước / sau / 4 hướng chéo (trùng 6 hướng chân chống). */
+const HEX_R = 1.85; // bán kính đỉnh dải giáp đứng
+const DECK_R = 1.45; // bán kính đỉnh mặt sàn trên (sau mặt vát)
+const BAND_Y0 = 0.8;
+const BAND_Y1 = 1.08;
+const DECK_Y = 1.32;
 /** Bán kính đặt 6 đế chân khi cố định (đỉnh của vành lục giác). */
-const PAD_R = 3.0;
-/** Độ cao trục chân chống (ngang sườn xe). */
+const PAD_R = 3.2;
+/** Độ cao trục chân chống (giữa dải giáp đứng). */
 const ARM_Y = 0.95;
 const PAD_STOW_Y = 0.84;
 const PAD_GROUND_Y = 0.05;
+
+type P2 = [number, number];
+type P3 = [number, number, number];
+/** Đỉnh thứ i của lục giác bán kính r, dạng [x, z]: 0 = mũi, 1 = trước phải, 2 = sau phải, 3 = đuôi… */
+const hexV = (i: number, r: number): P2 => [r * Math.sin((i * Math.PI) / 3), r * Math.cos((i * Math.PI) / 3)];
+const lerp2 = (a: P2, b: P2, t: number): P2 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
 
 const smooth = (a: number, b: number, t: number) => {
   const k = Math.min(1, Math.max(0, (t - a) / (b - a)));
@@ -35,68 +48,81 @@ export function buildSkyguard(p: Palette): Rig {
   const body = group();
   const add = (...o: THREE.Object3D[]) => body.add(...o);
 
-  // ================================================================ 1. XÍCH + THÂN THÉP
-  const tr = tracks(p, 1.05, 4.3, 0.33, 5);
+  // ================================================================ 1. XÍCH + THÂN LỤC GIÁC
+  const tr = tracks(p, 1.05, 3.1, 0.33, 4);
   add(tr.g);
-  const hull = part(
-    "Thân xe",
-    facets(
-      [
-        [0.78, 0.3, 1.95], [0.78, 0.3, -2.0], // thân dưới giữa hai dải xích
-        [1.32, 0.84, 2.15], [1.32, 0.84, -2.2], // sườn giáp che xích
-        [1.32, 1.12, 1.9], [1.32, 1.15, -2.2],
-        [1.15, 1.26, 1.35], [1.15, 1.26, -2.15], // mép sàn trên
-        [0.95, 0.7, 2.5], [0.95, 0.98, 2.45] // mũi
-      ],
-      p.hull,
-      true
-    )
-  );
-  add(hull);
-  const { skin, line, at } = surfaceTools(body, [hull]);
-
-  // Cabin: kính chắn gió vát 2 ô + thanh khung; đèn pha
-  for (const sx of [1, -1]) {
-    const m = sx < 0;
-    add(skin("Kính cabin", [[0.1, 2.3], [0.82, 2.2], [0.78, 1.72], [0.1, 1.78]], p.glass, { mirror: m }));
-    add(skin("Đèn pha", [[0.55, 0.78], [0.82, 0.78], [0.82, 0.88], [0.55, 0.88]], p.glass, { face: "front", mirror: m }));
-    // Sọc màu phe dọc sườn + tấm giáp sườn tối màu chia 3 phiến
-    add(skin("Sọc màu phe", [[1.85, 1.02], [-2.05, 1.02], [-2.05, 1.08], [1.85, 1.08]], p.team, { face: "right", mirror: m }));
-    for (const [a, b] of [[1.75, 0.55], [0.4, -0.8], [-0.95, -2.05]]) add(skin("Giáp sườn", [[a, 0.88], [b, 0.88], [b, 0.98], [a, 0.98]], p.hullDark, { face: "right", mirror: m, lift: 0.03, thick: 0.05 }));
-    // Ăng-ten roi ở góc sau
-    const [ax, ay, az] = at(0.95, -1.95, "top", 0, m);
-    add(part("Ăng-ten roi", cyl(0.012, 0.012, 1.3, p.metal, 4, ax, ay + 0.65, az)));
+  add(part("Gầm xe", facets([[0.78, 0.3, 1.35], [0.78, 0.3, -1.35], [0.8, 0.84, 1.5], [0.8, 0.84, -1.5]], p.hullDark, true)));
+  const hullPts: P3[] = [];
+  for (let i = 0; i < 6; i++) {
+    const [bx, bz] = hexV(i, HEX_R);
+    const [dx, dz] = hexV(i, DECK_R);
+    hullPts.push([bx, BAND_Y0, bz], [bx, BAND_Y1, bz], [dx, DECK_Y, dz]);
   }
-  add(line("Khung kính", [[0, 2.32], [0, 1.72]], p.metal, { w: 0.08 }));
-  add(skin("Ô nhận diện (màu phe)", [[-0.3, 1.25], [0.3, 1.25], [0.3, 0.85], [-0.3, 0.85]], p.team));
+  const hull = part("Thân lục giác", facets(hullPts, p.hull));
+  add(hull);
+  const { skin, line } = surfaceTools(body, [hull]);
 
-  // Máy phát điện ở đuôi (radar ăn điện): khối tối + lưới tản nhiệt + 2 ống xả
-  const gen = part("Máy phát điện", group(box(1.7, 0.38, 0.7, p.hullDark, 0, 0, 0)));
-  gen.position.set(0, 1.45, -1.72);
-  for (const x of [-0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6]) gen.add(part("Lưới tản nhiệt", box(0.06, 0.03, 0.5, p.metal, x, 0.2, 0)));
-  for (const sx of [-1, 1]) gen.add(part("Ống xả", cyl(0.05, 0.05, 0.4, p.metal, 6, sx * 0.72, 0.3, -0.22)));
-  add(gen);
+  /** Điểm trên mặt vát thứ i (giữa đỉnh i và i+1): t dọc cạnh 0..1, s từ mép ngoài (0) vào mép sàn (1). */
+  const slopePt = (i: number, t: number, s: number): P2 =>
+    lerp2(lerp2(hexV(i, HEX_R), hexV(i + 1, HEX_R), t), lerp2(hexV(i, DECK_R), hexV(i + 1, DECK_R), t), s);
+  /** Tấm dán lên dải giáp đứng thứ i (mặt phẳng đứng, tính thẳng không cần tia dò): t dọc cạnh, y cao độ. */
+  const bandPanel = (name: string, i: number, t0: number, t1: number, y0: number, y1: number, mat: THREE.Material, out = 0.03) => {
+    const a = hexV(i, HEX_R);
+    const b = hexV(i + 1, HEX_R);
+    const mid = lerp2(a, b, 0.5);
+    const len = Math.sqrt(mid[0] ** 2 + mid[1] ** 2);
+    const n: P2 = [mid[0] / len, mid[1] / len];
+    const pts: P3[] = [];
+    for (const t of [t0, t1])
+      for (const y of [y0, y1])
+        for (const o of [-0.01, out]) {
+          const q = lerp2(a, b, t);
+          pts.push([q[0] + n[0] * o, y, q[1] + n[1] * o]);
+        }
+    return part(name, facets(pts, mat));
+  };
 
-  // Bệ xoay lục giác dưới mâm tròn: lục giác + vòng tròn = mô-típ vòng benzen
-  const TURRET_Z = -0.2;
-  add(part("Bệ xoay lục giác", cyl(0.9, 0.95, 0.1, p.hullDark, 6, 0, 1.31, TURRET_Z)));
-  add(part("Viền bệ (màu phe)", cyl(0.96, 0.96, 0.03, p.team, 6, 0, 1.27, TURRET_Z)));
+  // Cabin: kính vát trên 2 mặt vát phía trước (mặt 0: trước phải, mặt 5: trước trái)
+  for (const i of [0, 5]) add(skin("Kính cabin", [slopePt(i, 0.14, 0.15), slopePt(i, 0.86, 0.15), slopePt(i, 0.86, 0.78), slopePt(i, 0.14, 0.78)], p.glass));
+  // Đèn pha trên 2 mặt đứng phía trước; giáp sườn tối trên mọi mặt đứng; sọc màu phe chạy quanh mép trên
+  for (const i of [0, 5]) add(bandPanel("Đèn pha", i, 0.12, 0.34, 0.86, 0.96, p.glass, 0.04));
+  for (let i = 0; i < 6; i++) {
+    const front = i === 0 || i === 5;
+    add(bandPanel("Giáp sườn", i, front ? 0.42 : 0.16, 0.84, 0.85, 1.02, p.hullDark, 0.04));
+    add(bandPanel("Sọc màu phe", i, 0.1, 0.9, 1.035, 1.075, p.team, 0.02));
+  }
+  // Lưới tản nhiệt máy phát (radar ăn điện) trên 2 mặt vát phía sau + 2 ống xả ở đuôi
+  for (const i of [2, 3])
+    for (const t of [0.2, 0.35, 0.5, 0.65, 0.8]) add(line("Lưới tản nhiệt", [slopePt(i, t, 0.12), slopePt(i, t, 0.85)], p.hullDark, { w: 0.06 }));
+  for (const sx of [-1, 1]) add(part("Ống xả", cyl(0.06, 0.06, 0.45, p.metal, 6, sx * 0.45, DECK_Y + 0.12, -1.42)));
+  // Ăng-ten roi ở 2 góc sau
+  for (const i of [2, 4]) {
+    const [x, z] = hexV(i, DECK_R - 0.12);
+    add(part("Ăng-ten roi", group(cyl(0.05, 0.06, 0.08, p.metal, 6, x, DECK_Y + 0.04, z), cyl(0.012, 0.012, 1.3, p.metal, 4, x, DECK_Y + 0.68, z))));
+  }
+
+  // Sàn trên: bệ xoay lục giác + 3 vạch màu phe song song 3 cạnh xen kẽ (3 liên kết đôi của vòng benzen kiểu Kekulé)
+  // + mâm tròn của tháp ở giữa: nhìn từ trên là ký hiệu vòng benzen.
+  const TURRET_Z = 0;
+  add(part("Bệ xoay lục giác", cyl(0.9, 0.95, 0.1, p.hullDark, 6, 0, DECK_Y + 0.05, TURRET_Z)));
+  for (const i of [1, 3, 5]) {
+    const a = hexV(i, 1.16);
+    const b = hexV(i + 1, 1.16);
+    add(line("Vạch benzen (màu phe)", [lerp2(a, b, 0.2), lerp2(a, b, 0.8)], p.team, { w: 0.09 }));
+  }
 
   // ================================================================ 2. CHÂN CHỐNG + VÀNH GIẰNG LỤC GIÁC
   // Mỗi bộ phận động chỉ một màu: không gộp được với phần đứng yên, thêm màu là thêm lệnh vẽ.
-  // 6 hướng cách đều 60°: trước, sau và 4 hướng chéo. Thu gọn thì đế lục giác nằm sát sườn / mũi / đuôi xe.
-  const legs: { slide: THREE.Group; jack: THREE.Mesh; pad: THREE.Group; rIn: number }[] = [];
+  // 6 chân thò ra từ 6 góc thân lục giác; thu gọn thì đế nằm sát góc, cả 6 chân giống hệt nhau.
+  const legs: { slide: THREE.Group; jack: THREE.Mesh; pad: THREE.Group }[] = [];
+  const R_IN = HEX_R + 0.38;
   for (let i = 0; i < 6; i++) {
-    const phi = (i * Math.PI) / 3;
-    const rIn = i === 0 ? 2.78 : i === 3 ? 2.55 : 1.84;
     const leg = group();
     leg.position.y = ARM_Y;
-    leg.rotation.y = phi; // trục +z cục bộ chĩa ra ngoài theo hướng phi
-    // Hộp chân chống gắn trên thân (đứng yên): chỗ ống trượt thò ra
-    const housingR = i === 0 ? 2.38 : i === 3 ? 2.2 : 1.45;
-    leg.add(part("Hộp chân chống", box(0.44, 0.38, 0.4, p.hullDark, 0, 0, housingR)));
+    leg.rotation.y = (i * Math.PI) / 3; // trục +z cục bộ chĩa ra góc thứ i
+    leg.add(part("Hộp chân chống", box(0.44, 0.34, 0.42, p.hullDark, 0, 0, HEX_R - 0.02)));
     const slide = part("Ống trượt chân chống", group(box(0.24, 0.22, 1.5, p.hullDark, 0, 0, -0.75), box(0.34, 0.3, 0.3, p.hullDark, 0, 0, 0)));
-    slide.position.z = rIn;
+    slide.position.z = R_IN;
     const jackGeo = new THREE.CylinderGeometry(0.09, 0.09, 1, 8);
     jackGeo.translate(0, -0.5, 0); // gốc ở đỉnh: scale.y = độ dài kích
     const jack = part("Kích thủy lực", new THREE.Mesh(jackGeo, p.metal));
@@ -108,19 +134,23 @@ export function buildSkyguard(p: Palette): Rig {
     slide.add(jack, pad);
     leg.add(slide);
     add(leg);
-    legs.push({ slide, jack, pad, rIn });
+    legs.push({ slide, jack, pad });
   }
-  // Vành giằng: 6 thanh nối 6 đế thành lục giác trên mặt đất (một khối, trồi lên khi chân đã chạm đất)
+  // Vành giằng: 6 thanh nối 6 đế thành lục giác trên mặt đất; vạch màu phe chỉ ở 3 cạnh xen kẽ (Kekulé), lệch vào trong
   const ring = part("Vành giằng lục giác", group());
+  const apo = PAD_R * Math.cos(Math.PI / 6);
   for (let i = 0; i < 6; i++) {
     const a = ((i + 0.5) * Math.PI) / 3;
     const bar = box(0.22, 0.09, PAD_R - 0.6, p.hullDark);
-    bar.position.set(Math.sin(a) * PAD_R * Math.cos(Math.PI / 6), 0.04, Math.cos(a) * PAD_R * Math.cos(Math.PI / 6));
+    bar.position.set(Math.sin(a) * apo, 0.04, Math.cos(a) * apo);
     bar.rotation.y = a + Math.PI / 2;
-    const stripe = box(0.08, 0.02, PAD_R - 0.9, p.team);
-    stripe.position.copy(bar.position).setY(0.09);
-    stripe.rotation.y = bar.rotation.y;
-    ring.add(bar, stripe);
+    ring.add(bar);
+    if (i % 2 === 1) {
+      const stripe = box(0.12, 0.05, PAD_R - 1.3, p.team);
+      stripe.position.set(Math.sin(a) * (apo - 0.32), 0.03, Math.cos(a) * (apo - 0.32));
+      stripe.rotation.y = bar.rotation.y;
+      ring.add(stripe);
+    }
   }
   ring.visible = false;
   ring.scale.y = 0.01;
@@ -171,7 +201,7 @@ export function buildSkyguard(p: Palette): Rig {
       const drop = smooth(0.45, 0.9, dep);
       const padY = PAD_STOW_Y + (PAD_GROUND_Y - PAD_STOW_Y) * drop;
       for (const l of legs) {
-        l.slide.position.z = l.rIn + (PAD_R - l.rIn) * ext;
+        l.slide.position.z = R_IN + (PAD_R - R_IN) * ext;
         l.pad.position.y = padY - ARM_Y;
         l.jack.scale.y = Math.max(0.01, ARM_Y - padY);
         l.jack.visible = drop > 0.01; // thu gọn hẳn thì ẩn: đỡ một lệnh vẽ mỗi chân lúc xe chạy
