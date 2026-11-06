@@ -310,7 +310,8 @@ export const RULES = {
     repairRate: 25,
     /** 1 Dầu trong kho = 1 lít nhiên liệu. */
     oilPerLiter: 1,
-    pads: 4
+    /** Số bãi đậu mỗi Sân Đáp (vị trí: `PAD_OFFSETS` cuối file này). */
+    pads: 6
   }
 } as const;
 
@@ -679,7 +680,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     id: "airfield",
     kind: "building",
     name: "Sân Đáp Không Quân",
-    label: "4 BÃI ĐÁP",
+    label: "6 BÃI ĐÁP",
     role: "Đúc Falcon; nơi máy bay cất, hạ cánh, nạp Dầu và sửa chữa.",
     mvp: true,
     cost: { iron: 400, oil: 0 },
@@ -687,12 +688,12 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     hp: 1150,
     armorClass: "struct",
     sight: 18,
-    half: [5.5, 4.3],
+    half: [7.6, 8.6],
     produces: ["falcon"],
     power: -15,
     priority: 2,
     features: [
-      "4 bãi đậu: mỗi sân nuôi được tối đa 4 máy bay.",
+      "6 bãi đậu hai bên đường băng: mỗi sân nuôi được tối đa 6 máy bay.",
       "Máy bay đậu được nạp 10L dầu mỗi giây (trừ vào kho Dầu) và sửa 25 HP mỗi giây.",
       "Sân bị phá thì máy bay của nó phải tìm bãi trống ở sân khác."
     ]
@@ -905,6 +906,19 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
 };
 
 /** Công trình người chơi được xây trong bản MVP, theo thứ tự trên thanh xây. */
+/**
+ * Vị trí 6 bãi đậu so với tâm Sân Đáp (dùng chung cho sim và mô hình `buildAirfield`): 2 dãy × 3 ô kẹp đường băng dọc trục z
+ * ở giữa; máy bay đậu quay mũi về +z (hướng cất cánh). Số phần tử = `RULES.air.pads`.
+ */
+export const PAD_OFFSETS: readonly (readonly [number, number])[] = [
+  [-4.45, -5.6],
+  [4.45, -5.6],
+  [-4.45, 0],
+  [4.45, 0],
+  [-4.45, 5.6],
+  [4.45, 5.6]
+];
+
 export const MVP_BUILDABLE: readonly BuildingId[] = ["factory", "airfield", "power-plant", "battery", "power-pylon", "turret", "radar"];
 
 export function isUnitId(id: string): id is UnitId {

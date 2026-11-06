@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ARMOR_NAME, BUILDINGS, DMG_NAME, RULES, UNITS, getSpec, type ArmorClass, type DmgType, type EntityId } from "./content";
+import { ARMOR_NAME, BUILDINGS, DMG_NAME, PAD_OFFSETS, RULES, UNITS, getSpec, type ArmorClass, type DmgType, type EntityId } from "./content";
 
 const ALL = [...Object.keys(UNITS), ...Object.keys(BUILDINGS)] as EntityId[];
 
@@ -51,5 +51,20 @@ describe("content", () => {
       expect(u.builtAt, u.id).toBeDefined();
       expect(BUILDINGS[u.builtAt!].produces, u.id).toContain(u.id);
     }
+  });
+  it("Sân Đáp: số vị trí bãi đậu khớp RULES.air.pads, bãi nằm trọn trong sân và không chồng nhau", () => {
+    expect(PAD_OFFSETS.length).toBe(RULES.air.pads);
+    const [hx, hz] = BUILDINGS.airfield.half;
+    const PAD = [2.8, 2.6]; // nửa kích thước một ô đáp (5,6 × 5,2 m, vừa Falcon sải cánh 5,1 m)
+    for (const [x, z] of PAD_OFFSETS) {
+      expect(Math.abs(x) + PAD[0]).toBeLessThanOrEqual(hx);
+      expect(Math.abs(z) + PAD[1]).toBeLessThanOrEqual(hz);
+    }
+    for (let i = 0; i < PAD_OFFSETS.length; i++)
+      for (let j = i + 1; j < PAD_OFFSETS.length; j++) {
+        const [ax, az] = PAD_OFFSETS[i];
+        const [bx, bz] = PAD_OFFSETS[j];
+        expect(Math.abs(ax - bx) >= PAD[0] * 2 || Math.abs(az - bz) >= PAD[1] * 2, `bãi ${i} và ${j}`).toBe(true);
+      }
   });
 });

@@ -7,7 +7,7 @@
  *   8. đạn tới đích → trừ máu   9. dọn xác   10. sương mù   11. kiểm tra thắng thua
  * Không có gì phụ thuộc thời gian thật hay số ngẫu nhiên không seed, nên cùng seed + cùng lệnh thì ra cùng trận.
  */
-import { BUILDINGS, canStrike, RULES, UNITS, valueOf, type BuildingId, type Res, type Side, type UnitId, type UnitSpec, type WeaponSpec, type WeaponVisual } from "./content";
+import { BUILDINGS, canStrike, PAD_OFFSETS, RULES, UNITS, valueOf, type BuildingId, type Res, type Side, type UnitId, type UnitSpec, type WeaponSpec, type WeaponVisual } from "./content";
 import { clamp, dcos, DEG, dist2, dsin, Rng, turnStep, turnToward, type TurnStep } from "./fmath";
 import { Grid } from "./grid";
 import { CELL, GameMap, getMap, TERRAIN, TERRAIN_KINDS } from "./maps";
@@ -20,14 +20,8 @@ export const sec = (s: number): number => Math.round(s * TICK_RATE);
 
 /** Cao hơn mức này thì máy bay là mục tiêu "trên không". */
 export const AIRBORNE_ALT = 2;
+export { PAD_OFFSETS };
 const SHOT_SPEED: Record<WeaponVisual, number> = { bullet: 90, cannon: 60, missile: 40, rocket: 30, bomb: 25, pulse: 120 };
-/** Vị trí 4 bãi đậu so với tâm Sân Đáp (khớp với mô hình). */
-export const PAD_OFFSETS: readonly (readonly [number, number])[] = [
-  [-2.4, -1.8],
-  [2.4, -1.8],
-  [-2.4, 1.8],
-  [2.4, 1.8]
-];
 /** 3 chỗ đứng đào quanh một mỏ. */
 const SLOT_OFFSETS: readonly (readonly [number, number])[] = [
   [3.9, 0],
@@ -491,7 +485,7 @@ export class World {
       burst: 0,
       targetId: 0,
       cells,
-      pads: kind === "airfield" ? [0, 0, 0, 0] : [],
+      pads: kind === "airfield" ? new Array<number>(RULES.air.pads).fill(0) : [],
       active: false,
       powerFrac: 1,
       load: 0,
