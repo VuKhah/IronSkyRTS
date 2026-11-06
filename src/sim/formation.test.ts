@@ -93,20 +93,33 @@ describe("đội hình khi ra lệnh cho cả nhóm", () => {
     expect(us.every((u) => u.order === "idle")).toBe(true);
   });
 
-  it("quay đầu 180°: cả khối xoay như cánh cửa, hàng đầu vẫn là hàng đầu", () => {
+  it("quay đầu 180°: cả đội xoay tại chỗ, đồng bộ, không ai đổi chỗ (hàng sau thành hàng đầu)", () => {
     const { w, us, tx, tz } = march(Array<UnitId>(6).fill("titan"));
-    const fx = us[0].hx;
-    const fz = us[0].hz;
-    const front = new Set(us.filter((u) => (u.x - tx) * fx + (u.z - tz) * fz > 0).map((u) => u.id));
+    const fx = us[0].faceX;
+    const fz = us[0].faceZ;
+    const back = new Set(us.filter((u) => (u.x - tx) * fx + (u.z - tz) * fz < 0).map((u) => u.id));
     const [bx, bz] = arenaPoint(-6);
     w.step([{ side: 0, order: { t: "move", ids: us.map((u) => u.id), x: bx, z: bz } }]);
-    expect(w.squads[0].phase, "đội đã vào hàng: xoay chứ không tập hợp lại").toBe("wheel");
-    for (let i = 0; i < sec(90) && w.squads.length; i++) w.step([]);
-    const gx = us[0].hx;
-    const gz = us[0].hz;
-    expect(gx * fx + gz * fz, "đã quay ngược hướng").toBeLessThan(-0.5);
-    const front2 = new Set(us.filter((u) => (u.x - bx) * gx + (u.z - bz) * gz > 0).map((u) => u.id));
-    expect([...front2].sort()).toEqual([...front].sort());
+    const sq = w.squads[0];
+    expect(sq.phase, "đội đã vào hàng: xoay tại chỗ chứ không tập hợp lại").toBe("pivot");
+    const start = new Map(us.map((u) => [u.id, [u.x, u.z]]));
+    let pivotTicks = 0;
+    for (let i = 0; i < sec(90) && w.squads.includes(sq); i++) {
+      w.step([]);
+      if (sq.phase !== "pivot") continue;
+      pivotTicks++;
+      for (const u of us) {
+        const [x0, z0] = start.get(u.id)!;
+        expect(Math.sqrt((u.x - x0) ** 2 + (u.z - z0) ** 2), "xoay tại chỗ: không xe nào di chuyển").toBeLessThan(0.3);
+      }
+    }
+    // quay gần 180° theo tốc độ quay thân của Titan
+    expect(pivotTicks).toBeGreaterThanOrEqual(sec(150 / UNITS.titan.turnRate!));
+    const gx = us[0].faceX;
+    const gz = us[0].faceZ;
+    expect(gx * fx + gz * fz, "đã quay ngược hướng").toBeLessThan(-0.7);
+    const front = new Set(us.filter((u) => (u.x - bx) * gx + (u.z - bz) * gz > 0).map((u) => u.id));
+    expect([...front].sort()).toEqual([...back].sort());
   });
 
   it("qua cầu hẹp: đội hình co thành hàng một / hàng đôi, qua hết rồi giãn lại ở đích", () => {
@@ -167,5 +180,37 @@ describe("đội hình khi ra lệnh cho cả nhóm", () => {
     expect(mover.order, "xe chạy tới được đích").toBe("idle");
     expect(Math.sqrt((mover.x - bx) ** 2 + (mover.z - bz) ** 2)).toBeLessThan(2.5);
     expect(maxShift, "xe đứng chỉ xê dịch chút ít").toBeLessThan(1.5);
+  });
+});
+
+describe("xoay thân xe tại chỗ (turnRate)", () => {
+  it("xe đổi hướng nhiều thì đứng lại xoay tại chỗ, mất thời gian theo tốc độ quay thân, rồi mới chạy", () => {
+    const w = new World(1, { sandbox: true });
+    const [x, z] = arenaPoint(0);
+    const t = spawn(w, "titan", x, z);
+    // ra lệnh đi về phía sau lưng
+    w.step([{ side: 0, order: { t: "move", ids: [t.id], x: x - t.hx * 20, z: z - t.hz * 20 } }]);
+    let still = 0;
+    for (let i = 0; i < sec(10) && t.x === x && t.z === z; i++) {
+      w.step([]);
+      if (t.x === x && t.z === z) still++;
+    }
+    // phải xoay ít nhất ~150° (lệch ≤ 30° thì được lăn bánh) trước khi nhúc nhích
+    expect(still).toBeGreaterThanOrEqual(sec(150 / UNITS.titan.turnRate!) - 1);
+  });
+
+  it("quân cố định đang hạ bệ thì phải thu bệ trước rồi mới xoay", () => {
+    const w = new World(1, { sandbox: true });
+    const [x, z] = arenaPoint(-10);
+    const a = spawn(w, "artillery", x, z);
+    const T = sec(UNITS.artillery.weapon!.deploy!.time);
+    for (let i = 0; i < T + 5; i++) w.step([]);
+    const hx = a.hx;
+    const hz = a.hz;
+    w.step([{ side: 0, order: { t: "move", ids: [a.id], x: x - hx * 20, z: z - hz * 20 } }]);
+    for (let i = 0; i < T - 2; i++) {
+      w.step([]);
+      expect(a.hx, "chưa thu bệ xong thì thân chưa quay").toBe(hx);
+    }
   });
 });

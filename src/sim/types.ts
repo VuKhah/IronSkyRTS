@@ -367,12 +367,13 @@ export interface Squad {
   trail: number[];
   /** Quãng đường người dẫn đầu đã đi (m). */
   s: number;
-  phase: "form" | "wheel" | "march" | "settle";
+  phase: "form" | "pivot" | "march" | "settle";
   phaseT: number;
-  /** Xoay cánh cửa: bản lề và bán kính xa nhất (m). */
-  pivotX: number;
-  pivotZ: number;
-  wheelR: number;
+  /**
+   * Xếp hàng theo vai trò (đầu / giữa / sau). Sau khi cả đội xoay tại chỗ thì tắt: giữ nguyên chỗ đứng, không ai đổi chỗ
+   * (người dùng chốt 06/11/2026: quay đầu 180° thì hàng sau thành hàng đầu).
+   */
+  byRank: boolean;
   /** Có xe đang bắn mục tiêu trong tầm (đi-và-đánh): cả khối dừng lại. Xe đặt trong tick, khối đọc ở tick sau. */
   hold: boolean;
   /** Cả khối dạt ngang khỏi đường của người dẫn đầu (m, + = phải) để né vật cản một bên; dạt dần tới `shiftWant`. */

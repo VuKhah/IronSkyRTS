@@ -70,8 +70,21 @@ function spawn(w: World, kind: UnitId, x: number, z: number, side: Side = 0): Un
   return w.units.filter((u) => u.side === side && u.kind === kind).pop()!;
 }
 
+/**
+ * Quay sẵn thân xe về phía (tx, tz): các phép thử này đo TỐC ĐỘ CHẠY theo địa hình, không đo thời gian xoay tại chỗ
+ * (xoay thân có kiểm thử riêng trong formation.test.ts).
+ */
+function face(u: Unit, tx: number, tz: number): void {
+  const dx = tx - u.x;
+  const dz = tz - u.z;
+  const l = Math.sqrt(dx * dx + dz * dz);
+  u.hx = u.phx = dx / l;
+  u.hz = u.phz = dz / l;
+}
+
 /** Quãng đường xe đi được trong `ticks` tick khi được lệnh chạy thẳng về (tx, tz). */
 function distanceIn(w: World, u: Unit, tx: number, tz: number, ticks: number): number {
+  face(u, tx, tz);
   w.step([{ side: u.side, order: { t: "move", ids: [u.id], x: tx, z: tz } }]);
   const x0 = u.x;
   const z0 = u.z;
@@ -81,6 +94,7 @@ function distanceIn(w: World, u: Unit, tx: number, tz: number, ticks: number): n
 
 /** Số tick để xe đi từ chỗ đang đứng tới gần (tx, tz) (trong 0,5 m). */
 function ticksTo(w: World, u: Unit, tx: number, tz: number): number {
+  face(u, tx, tz);
   w.step([{ side: u.side, order: { t: "move", ids: [u.id], x: tx, z: tz } }]);
   for (let i = 1; i < sec(60); i++) {
     w.step([]);

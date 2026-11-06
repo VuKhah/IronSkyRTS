@@ -44,8 +44,12 @@ const FORMATION_RANK = { front: 0, mid: 1, back: 2 } as const;
 const MOVER_SHARE = 0.85;
 /** Đội hình hành quân: bán kính quay nhỏ nhất của người dẫn đầu (m) khi đội hình hẹp (một hai xe mỗi hàng). */
 const SQUAD_MIN_TURN_R = 3;
-/** Hướng đội hình lệch hướng đi mới quá góc này thì xoay kiểu cánh cửa trước rồi mới hành quân. */
-const SQUAD_WHEEL_COS = dcos(25 * DEG);
+/** Hướng đội hình lệch hướng đi mới quá góc này thì cả đội xoay tại chỗ trước rồi mới hành quân. */
+const SQUAD_PIVOT_COS = dcos(25 * DEG);
+/** Xe lệch hướng muốn đi quá góc này thì đứng lại xoay tại chỗ; lệch ít hơn thì vừa chạy vừa chỉnh. */
+const PIVOT_COS = dcos(30 * DEG);
+/** Coi như đã quay xong (lệch ≤ 3°). */
+const ALIGNED_COS = dcos(3 * DEG);
 /** Xe lệch khỏi ô quá chừng này (m) thì cả khối chậm lại chờ; lệch gấp đôi thì dừng hẳn. */
 const SQUAD_LAG = 3;
 /** Nhìn trước bao xa (m) theo đường đi để co đội hình trước khi vào chỗ hẹp. */
@@ -55,8 +59,8 @@ const SQUAD_FAR = 9;
 /** Tập hợp vào hàng / ổn định chỗ khi tới nơi tối đa bao lâu (giây), rồi cứ đi tiếp / giải tán. */
 const SQUAD_FORM_MAX = 15;
 const SQUAD_SETTLE_MAX = 6;
-/** Xoay cánh cửa tối đa bao lâu (giây): quá thì cứ hành quân (an toàn, phòng kẹt địa hình). */
-const SQUAD_WHEEL_MAX = 30;
+/** Cả đội xoay tại chỗ tối đa bao lâu (giây): quá thì cứ đi tiếp (an toàn). */
+const SQUAD_PIVOT_MAX = 20;
 /** Giãn thêm hàng khi đã đủ rộng liên tục bấy nhiêu lần đo (mỗi lần cách 3 tick: 7 lần ≈ 2 giây). */
 const SQUAD_WIDEN_CHECKS = 7;
 /** Ô dự phòng quanh một vị trí đội hình bị chặn / trùng: tính theo bước 1 ô lưới, gần trước. */
@@ -917,13 +921,31 @@ export class World {
     return f;
   }
 
-  /** Tới đích lệnh di chuyển: quay mặt theo hướng đội hình rồi đứng chờ. */
+  /** Tới đích lệnh di chuyển: đứng chờ; thân xe tự xoay dần về `faceX/faceZ` (cuối updateGround). */
   private arrive(u: Unit): void {
-    if (u.faceX !== 0 || u.faceZ !== 0) {
-      u.hx = u.faceX;
-      u.hz = u.faceZ;
-    }
     this.setIdle(u);
+  }
+
+  /**
+   * Quay thân xe về hướng (dx, dz) với tốc độ `turnRate` độ/giây: xoay tại chỗ (người dùng chốt 06/11/2026, mọi xe mặt đất).
+   * Trả về true khi lệch ≤ 30° (được lăn bánh, vừa chạy vừa chỉnh tiếp). Quân cố định đang hạ bệ thì thu bệ trước, chưa quay.
+   * Quay thân cũng tính là chuyển động (mất trạng thái cố định, phần vẽ cho xích / bánh chạy).
+   */
+  private turnHull(u: Unit, dx: number, dz: number): boolean {
+    const spec = UNITS[u.kind];
+    if (u.hx * dx + u.hz * dz < ALIGNED_COS) {
+      const dep = spec.weapon?.deploy;
+      if (dep && u.still > 0) {
+        u.still = Math.min(u.still, sec(dep.time)) - 1;
+        u.packing = true;
+        return false;
+      }
+      turnToward(u.hx, u.hz, dx, dz, traverseStep(spec.turnRate ?? 90), TMP);
+      u.hx = TMP.x;
+      u.hz = TMP.z;
+      u.moved = true;
+    }
+    return u.hx * dx + u.hz * dz >= PIVOT_COS;
   }
 
   // ------------------------------------------------------------------ đội hình hành quân (squad)
@@ -940,6 +962,12 @@ export class World {
       cz += u.z / n;
       ax += u.hx;
       az += u.hz;
+    }
+    // đội vừa giải tán cùng nhận một hướng đội hình (faceX/faceZ): dùng hướng đó, thân xe có thể đang quay dở
+    const f0 = units[0];
+    if ((f0.faceX !== 0 || f0.faceZ !== 0) && units.every((u) => u.faceX * f0.faceX + u.faceZ * f0.faceZ > 0.999)) {
+      ax = f0.faceX * n;
+      az = f0.faceZ * n;
     }
     const al = Math.sqrt(ax * ax + az * az);
     let wx = x - cx;
@@ -978,9 +1006,7 @@ export class World {
       s: 0,
       phase: "form",
       phaseT: 0,
-      pivotX: 0,
-      pivotZ: 0,
-      wheelR: 1,
+      byRank: true,
       hold: false,
       shift: 0,
       shiftWant: 0,
@@ -1019,8 +1045,10 @@ export class World {
       u.faceX = wx;
       u.faceZ = wz;
     });
-    if (formed && sq.hx * wx + sq.hz * wz < SQUAD_WHEEL_COS) this.squadWheel(sq);
-    else if (formed) this.squadMarch(sq);
+    if (formed && sq.hx * wx + sq.hz * wz < SQUAD_PIVOT_COS) {
+      sq.phase = "pivot";
+      sq.phaseT = 0;
+    } else if (formed) this.squadMarch(sq);
     this.squads.push(sq);
   }
 
@@ -1033,7 +1061,7 @@ export class World {
     const rz = -hx;
     const fwd = (u: Unit): number => (u.x - cx) * hx + (u.z - cz) * hz;
     const lat = (u: Unit): number => (u.x - cx) * rx + (u.z - cz) * rz;
-    const rank = (u: Unit): number => FORMATION_RANK[UNITS[u.kind].formation ?? "mid"];
+    const rank = (u: Unit): number => (sq.byRank ? FORMATION_RANK[UNITS[u.kind].formation ?? "mid"] : 0);
     const order = [...units].sort((a, b) => rank(a) - rank(b) || fwd(b) - fwd(a) || a.id - b.id);
     const rows: Unit[][] = [];
     for (const u of order) {
@@ -1064,7 +1092,7 @@ export class World {
    */
   private squadLayout(sq: Squad): void {
     const unit = (id: number): Unit => this.byId.get(id) as Unit;
-    const rank = (id: number): number => FORMATION_RANK[UNITS[unit(id).kind].formation ?? "mid"];
+    const rank = (id: number): number => (sq.byRank ? FORMATION_RANK[UNITS[unit(id).kind].formation ?? "mid"] : 0);
     const rows: number[][] = [];
     sq.ids.forEach((id, i) => {
       const row = rows[rows.length - 1];
@@ -1136,42 +1164,61 @@ export class World {
     return [t[a] + (t[b] - t[a]) * f, t[a + 1] + (t[b + 1] - t[a + 1]) * f, hx, hz];
   }
 
-  /** Bắt đầu xoay cánh cửa: bản lề ở đầu hàng trước phía bên rẽ; tốc độ xoay để xe xa bản lề nhất không vượt tốc độ. */
-  private squadWheel(sq: Squad): void {
-    const cross = sq.hx * sq.wantZ - sq.hz * sq.wantX; // < 0: rẽ phải
-    const side = cross > 1e-9 ? -1 : 1;
-    let edge = 0;
-    sq.offBack.forEach((b, i) => {
-      if (b === 0) edge = side > 0 ? Math.max(edge, sq.offLat[i]) : Math.min(edge, sq.offLat[i]);
+  /**
+   * Cả đội đã xoay tại chỗ xong: GIỮ NGUYÊN CHỖ ĐỨNG (không xếp lại theo vai trò, người dùng chốt 06/11/2026: quay đầu
+   * 180° thì hàng sau thành hàng đầu). Đội hình mới lấy đúng vị trí đang đứng, đo theo hướng mới: xoay bao nhiêu độ cũng
+   * không ai phải nhích. Thứ tự vẫn kiểu "gấp dây" (theo hàng từ trước ra sau) để sau này co / giãn hàng vẫn gọn.
+   */
+  private squadAfterPivot(sq: Squad): void {
+    const units = sq.ids.map((id) => this.byId.get(id) as Unit);
+    const n = units.length;
+    let cx = 0;
+    let cz = 0;
+    for (const u of units) {
+      cx += u.x / n;
+      cz += u.z / n;
+    }
+    const hx = sq.wantX;
+    const hz = sq.wantZ;
+    const fwd = (u: Unit): number => (u.x - cx) * hx + (u.z - cz) * hz;
+    const lat = (u: Unit): number => (u.x - cx) * hz - (u.z - cz) * hx;
+    let front = -Infinity;
+    for (const u of units) front = Math.max(front, fwd(u));
+    // gom hàng: các xe lệch nhau theo chiều sâu không quá 1,5 m là cùng một hàng
+    const sorted = [...units].sort((a, b) => fwd(b) - fwd(a) || a.id - b.id);
+    const rows: Unit[][] = [];
+    for (const u of sorted) {
+      const row = rows[rows.length - 1];
+      if (row && fwd(row[0]) - fwd(u) <= 1.5) row.push(u);
+      else rows.push([u]);
+    }
+    sq.byRank = false;
+    sq.ids = [];
+    sq.offLat = [];
+    sq.offBack = [];
+    let minL = Infinity;
+    let maxL = -Infinity;
+    let cols = 1;
+    rows.forEach((row, ri) => {
+      row.sort((a, b) => lat(a) - lat(b) || a.id - b.id);
+      if (ri % 2 === 1) row.reverse();
+      cols = Math.max(cols, row.length);
+      for (const u of row) {
+        sq.ids.push(u.id);
+        sq.offLat.push(lat(u));
+        sq.offBack.push(front - fwd(u));
+        minL = Math.min(minL, lat(u));
+        maxL = Math.max(maxL, lat(u));
+      }
     });
-    sq.pivotX = sq.x + sq.hz * edge;
-    sq.pivotZ = sq.z - sq.hx * edge;
-    // Xoay quanh một đầu làm cả khối dịch ngang: chọn hướng xoay sao cho XOAY XONG là nhìn thẳng tới đích (khỏi phải rẽ
-    // thêm lúc hành quân). Vị trí sau xoay phụ thuộc góc xoay nên lặp vài lần cho hội tụ.
-    let dx = sq.wantX;
-    let dz = sq.wantZ;
-    for (let k = 0; k < 4; k++) {
-      const c = sq.hx * dx + sq.hz * dz;
-      const sn = sq.hx * dz - sq.hz * dx;
-      const vx = sq.x - sq.pivotX;
-      const vz = sq.z - sq.pivotZ;
-      const ex = sq.goalX + dx * (sq.depth / 2) - (sq.pivotX + vx * c - vz * sn);
-      const ez = sq.goalZ + dz * (sq.depth / 2) - (sq.pivotZ + vx * sn + vz * c);
-      const el = Math.sqrt(ex * ex + ez * ez);
-      if (el < 1) break;
-      dx = ex / el;
-      dz = ez / el;
-    }
-    sq.wantX = dx;
-    sq.wantZ = dz;
-    let r = 1;
-    for (let i = 0; i < sq.ids.length; i++) {
-      const [sx, sz] = this.squadSlot(sq, i);
-      r = Math.max(r, Math.sqrt(dist2(sx, sz, sq.pivotX, sq.pivotZ)));
-    }
-    sq.wheelR = r;
-    sq.phase = "wheel";
-    sq.phaseT = 0;
+    sq.cols = Math.min(cols, sq.colsMax);
+    sq.width = maxL - minL + 2 * sq.rMax;
+    sq.depth = Math.max(...sq.offBack);
+    sq.hx = hx;
+    sq.hz = hz;
+    sq.x = cx + hx * front;
+    sq.z = cz + hz * front;
+    this.squadMarch(sq);
   }
 
   /** Bắt đầu hành quân: tìm đường cho người dẫn đầu (tới đích + nửa bề sâu, để tâm khối dừng đúng đích), vệt thẳng phía sau. */
@@ -1224,8 +1271,8 @@ export class World {
       if (!u || u.cat !== "unit") continue;
       u.squad = 0;
       this.setIdle(u);
-      u.hx = u.faceX = sq.hx;
-      u.hz = u.faceZ = sq.hz;
+      u.faceX = sq.hx;
+      u.faceZ = sq.hz;
     }
     sq.ids = [];
   }
@@ -1257,25 +1304,26 @@ export class World {
       lag = Math.max(lag, this.squadLag(sq, i, u)[0]);
     }
     // xe tụt khỏi ô thì cả khối chậm lại chờ; lúc hành quân không dừng hẳn (tối thiểu 25%) để không bao giờ kẹt chết
-    const wait = clamp(1 - (lag - SQUAD_LAG) / SQUAD_LAG, sq.phase === "march" || sq.phase === "wheel" ? 0.25 : 0, 1);
+    const wait = clamp(1 - (lag - SQUAD_LAG) / SQUAD_LAG, sq.phase === "march" ? 0.25 : 0, 1);
     switch (sq.phase) {
       case "form":
         if (lag < 1.2 || sq.phaseT > sec(SQUAD_FORM_MAX)) this.squadMarch(sq);
         return;
-      case "wheel": {
-        // cả khối xoay quanh bản lề: góc mỗi tick sao cho xe xa bản lề nhất chạy không quá tốc độ chung
-        const ang = (speed * wait * DT) / sq.wheelR;
-        if (ang <= 0) return;
-        turnToward(sq.hx, sq.hz, sq.wantX, sq.wantZ, turnStep(ang), TMP);
-        const c = sq.hx * TMP.x + sq.hz * TMP.z;
-        const sn = sq.hx * TMP.z - sq.hz * TMP.x;
-        const vx = sq.x - sq.pivotX;
-        const vz = sq.z - sq.pivotZ;
-        sq.x = sq.pivotX + vx * c - vz * sn;
-        sq.z = sq.pivotZ + vx * sn + vz * c;
+      case "pivot": {
+        // cả đội xoay tại chỗ, đồng bộ theo xe quay chậm nhất; xong khi mọi thân xe đã quay đúng hướng
+        let rate = Infinity;
+        for (const id of sq.ids) rate = Math.min(rate, UNITS[(this.byId.get(id) as Unit).kind].turnRate ?? 90);
+        turnToward(sq.hx, sq.hz, sq.wantX, sq.wantZ, traverseStep(rate), TMP);
         sq.hx = TMP.x;
         sq.hz = TMP.z;
-        if ((sq.hx === sq.wantX && sq.hz === sq.wantZ) || sq.phaseT > sec(SQUAD_WHEEL_MAX)) this.squadMarch(sq);
+        const done =
+          sq.hx === sq.wantX &&
+          sq.hz === sq.wantZ &&
+          sq.ids.every((id) => {
+            const u = this.byId.get(id) as Unit;
+            return u.hx * sq.wantX + u.hz * sq.wantZ >= ALIGNED_COS;
+          });
+        if (done || sq.phaseT > sec(SQUAD_PIVOT_MAX)) this.squadAfterPivot(sq);
         return;
       }
       case "settle":
@@ -1349,7 +1397,26 @@ export class World {
     sq.phaseT = 0;
     sq.shift = 0;
     sq.shiftWant = 0;
+    // đội hình đang có (kể cả hình "giữ nguyên chỗ đứng" sau khi xoay) đứng vừa ở đây và không đang co hàng: giữ nguyên
+    if (sq.cols >= sq.colsMax) {
+      let ok = true;
+      for (let i = 0; i < sq.ids.length && ok; i++) {
+        const [sx, sz] = this.squadSlot(sq, i);
+        ok = !this.grid.blockedAt(sx, sz) && this.map.inset(sx, sz) >= 1;
+      }
+      if (ok) return;
+    }
+    // khối đang đứng ở cuối đường: giữ nguyên chỗ; chỉ khi đổi số xe mỗi hàng (cột vừa qua chỗ hẹp giãn ra) mới đặt lại
+    // tâm khối vào đích. Dời chỗ không cần thiết làm xe phải nhích và quay thân lung tung lúc dừng.
+    const was = sq.cols;
+    const hx0 = sq.x;
+    const hz0 = sq.z;
     const place = (): void => {
+      if (sq.cols === was) {
+        sq.x = hx0;
+        sq.z = hz0;
+        return;
+      }
       sq.x = sq.goalX + sq.hx * (sq.depth / 2);
       sq.z = sq.goalZ + sq.hz * (sq.depth / 2);
     };
@@ -1471,6 +1538,11 @@ export class World {
         if (sq.kind === "amove") sq.hold = true;
       }
     }
+    if (sq.phase === "pivot") {
+      // cả đội xoay tại chỗ: không ai di chuyển, thân quay theo hướng đội hình (đội quay theo xe chậm nhất nên đồng bộ)
+      this.turnHull(u, sq.hx, sq.hz);
+      return fireAt;
+    }
     const [, shx, shz, sx, sz] = this.squadLag(sq, i, u);
     const d = Math.sqrt(dist2(u.x, u.z, sx, sz));
     if (d > SQUAD_FAR || (d > 2 && !this.grid.los(u.x, u.z, sx, sz))) {
@@ -1485,11 +1557,8 @@ export class World {
       u.pathI = 0;
       this.stepToward(u, sx, sz, d);
     }
-    // đứng sát ô: thân quay theo hướng đội hình (đi đều, không lắc theo từng chỉnh nhỏ)
-    if (d < 1.5) {
-      u.hx = shx;
-      u.hz = shz;
-    }
+    // đứng sát ô: thân quay dần theo hướng đội hình (đi đều, không lắc theo từng chỉnh nhỏ)
+    if (d < 1.5) this.turnHull(u, shx, shz);
     return fireAt;
   }
 
@@ -1524,16 +1593,14 @@ export class World {
     }
     const dx = (x - u.x) / d;
     const dz = (z - u.z) / d;
+    // đi xa (từ 3 m): quay thân về hướng đi trước, lệch nhiều thì xoay tại chỗ; nhích chỉnh hàng thì khỏi quay thân
+    if (d >= 3 && !this.turnHull(u, dx, dz)) return;
     const rally = this.mobilized(u) ? 1 + RULES.abilities.mobilize.speed : 1;
     const step = Math.min(spec.speed * DT * rally * this.moveFactor(u, dx, dz), d);
     const ox = u.x;
     const oz = u.z;
     this.tryMove(u, u.x + dx * step, u.z + dz * step);
-    u.moved = dist2(ox, oz, u.x, u.z) > 1e-6;
-    if (u.moved && d >= 1.5) {
-      u.hx = dx;
-      u.hz = dz;
-    }
+    u.moved = u.moved || dist2(ox, oz, u.x, u.z) > 1e-6;
   }
 
   private cancelRtbIfFuel(u: Unit): void {
@@ -1976,6 +2043,8 @@ export class World {
     const fdx = u.path[u.pathI * 2] - u.x;
     const fdz = u.path[u.pathI * 2 + 1] - u.z;
     const fd = Math.sqrt(fdx * fdx + fdz * fdz);
+    // lệch hướng nhiều: đứng lại xoay tại chỗ (chưa chạy, không tính là kẹt)
+    if (fd > 1e-6 && !this.turnHull(u, fdx / fd, fdz / fd)) return false;
     const rally = this.mobilized(u) ? 1 + RULES.abilities.mobilize.speed : 1;
     const full = spec.speed * DT * rally * (fd > 1e-6 ? this.moveFactor(u, fdx / fd, fdz / fd) : this.moveFactor(u, 0, 0));
     let step = full;
@@ -1987,10 +2056,6 @@ export class World {
       const dx = wx - u.x;
       const dz = wz - u.z;
       const d = Math.sqrt(dx * dx + dz * dz);
-      if (d > 1e-6) {
-        u.hx = dx / d;
-        u.hz = dz / d;
-      }
       if (d <= step) {
         if (!this.tryMove(u, wx, wz)) break;
         step -= d;
@@ -2001,7 +2066,7 @@ export class World {
       break;
     }
     const moved2 = dist2(ox, oz, u.x, u.z);
-    u.moved = moved2 > 1e-6;
+    u.moved = u.moved || moved2 > 1e-6;
     // "kẹt" so với tốc độ thực tế lúc này (lội bùn, leo dốc chậm không phải là kẹt)
     const expect = full * 0.2;
     if (moved2 < expect * expect) u.stuck++;
@@ -2201,11 +2266,6 @@ export class World {
             u.tx = u.x;
             u.tz = u.z;
             u.path = [];
-            // về lại chỗ trong đội hình: quay mặt theo hướng đội hình như lúc tới
-            if (u.faceX !== 0 || u.faceZ !== 0) {
-              u.hx = u.faceX;
-              u.hz = u.faceZ;
-            }
           }
         } else if (u.chasing) {
           u.chasing = false;
@@ -2221,6 +2281,9 @@ export class World {
       else this.aim(u, w, null, 0);
     }
     if (fireAt && w) this.tryFire(u, w, fireAt);
+    // đứng chờ: thân xoay dần về hướng được giao (hướng đội hình khi tới nơi); đang bắn thì thôi
+    if (u.order === "idle" && !u.squad && !u.moved && !fireAt && (u.faceX !== 0 || u.faceZ !== 0) && u.hx * u.faceX + u.hz * u.faceZ < ALIGNED_COS)
+      this.turnHull(u, u.faceX, u.faceZ);
     // Lockdown: đếm thời gian đứng yên (chạy là mất triển khai; đang thu bệ thì follow() đã trừ dần)
     if (!u.packing) u.still = u.moved ? 0 : Math.min(u.still + 1, 100000);
     this.rechargePd(u);

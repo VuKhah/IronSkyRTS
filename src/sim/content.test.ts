@@ -54,6 +54,13 @@ describe("content", () => {
     for (const b of Object.values(BUILDINGS)) if (b.weapon) expect(b.weapon.traverse, `${b.id} thiếu traverse`).toBeGreaterThan(0);
   });
 
+  it("mọi xe mặt đất có tốc độ quay thân (xoay tại chỗ), máy bay thì không", () => {
+    for (const u of Object.values(UNITS)) {
+      if (u.domain === "air") expect(u.turnRate, u.id).toBeUndefined();
+      else expect(u.turnRate, `${u.id} thiếu turnRate`).toBeGreaterThan(0);
+    }
+  });
+
   it("quân MVP đúc được thì phải có nơi đúc, và nơi đó liệt kê nó", () => {
     for (const u of Object.values(UNITS)) {
       if (!u.mvp || !u.cost) continue;

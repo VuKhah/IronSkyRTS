@@ -133,6 +133,11 @@ export interface UnitSpec {
    * sau (hỏa lực tầm xa, xe hậu cần). Bỏ trống = giữa.
    */
   formation?: "front" | "mid" | "back";
+  /**
+   * Tốc độ quay thân xe (độ/giây), mọi xe mặt đất BẮT BUỘC có (người dùng chốt 06/11/2026: mọi xe xoay tại chỗ; quay
+   * đầu cũng mất thời gian). Lệch hướng quá 30° thì xe đứng lại xoay tại chỗ rồi mới chạy. Máy bay bỏ trống.
+   */
+  turnRate?: number;
   /** Có trong bản MVP không. */
   mvp: boolean;
   /** undefined = không chế tạo được (Xe Tư Lệnh có sẵn từ đầu trận). */
@@ -341,6 +346,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     role: "Trái tim của binh đoàn. Mất Xe Tư Lệnh là thua trận.",
     domain: "ground",
     formation: "mid",
+    turnRate: 90,
     mvp: true,
     hp: 2025,
     armorClass: "heavy",
@@ -373,6 +379,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     role: "Đào Sắt hoặc Dầu ở mỏ phe mình rồi chở về Tổng Hành Dinh.",
     domain: "ground",
     formation: "back",
+    turnRate: 90,
     mvp: true,
     cost: { iron: 150, oil: 0 },
     buildTime: 6,
@@ -404,6 +411,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     role: "Xe nhanh nhất mặt đất. Trinh sát, chiếm mỏ, săn xe vận tải.",
     domain: "ground",
     formation: "front",
+    turnRate: 120,
     mvp: true,
     cost: { iron: 150, oil: 0 },
     buildTime: 4.5,
@@ -435,6 +443,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     role: "Giáp dày, pháo 120mm nổ lan. Mũi nhọn công phá.",
     domain: "ground",
     formation: "front",
+    turnRate: 45,
     mvp: true,
     cost: { iron: 350, oil: 0 },
     buildTime: 7.5,
@@ -468,6 +477,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     role: "Tên lửa phòng không tự hành, hộ tống đoàn xe tăng.",
     domain: "ground",
     formation: "mid",
+    turnRate: 60,
     mvp: true,
     cost: { iron: 250, oil: 0 },
     buildTime: 6,
@@ -514,6 +524,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     role: "Dàn phóng tên lửa loạt: chọn một vùng, xe dựng dàn rồi xả cả loạt 12 quả. San phẳng cụm xe giáp mỏng và nhà xưởng.",
     domain: "ground",
     formation: "back",
+    turnRate: 60,
     mvp: true,
     cost: { iron: 300, oil: 40 },
     buildTime: 9,
@@ -623,6 +634,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     role: "Pháo nòng lớn tầm cực xa: hạ bệ chữ X, duỗi nòng rồi mới bắn. Một viên xuyên giáp phá công sự.",
     domain: "ground",
     formation: "back",
+    turnRate: 30,
     mvp: true,
     // MỌI SỐ LÀ SỐ TẠM (Docs/design/ARMY_DESIGN.md mục 8), chờ buổi cân bằng
     cost: { iron: 350, oil: 30 },
