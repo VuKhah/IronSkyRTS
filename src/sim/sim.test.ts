@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { Ai } from "./ai";
 import { dcos, dsin, Rng } from "./fmath";
 import { DEV_MAP_DEFS, MAP_DEFS } from "./maps";
-import type { BuildingId } from "./content";
+import { BUILDINGS, type BuildingId } from "./content";
 import type { Command } from "./types";
 import { runScenario, SCENARIOS } from "./scenarios";
 import { hashWorld, sec, World } from "./world";
@@ -132,25 +132,58 @@ describe("lõi mô phỏng", () => {
     expect(a.hashes).toEqual(b.hashes);
   });
 
+  /** Chạy tới khi phe 0 có Falcon (thiếu điện thì xưởng đúc chậm), tối đa 30 giây. */
+  const untilFalcon = (w: World) => {
+    for (let i = 0; i < sec(30); i++) {
+      const f = w.units.find((u) => u.kind === "falcon" && u.side === 0);
+      if (f) return f;
+      w.step([]);
+    }
+    return undefined as never;
+  };
+
+  it("Nhà Máy Máy Bay: cần Sân Đáp còn bãi trống; máy bay cất cánh tại xưởng rồi tự về đậu ở bãi", () => {
+    const w = new World(11);
+    const st = w.sides[0];
+    st.iron = 5000;
+    st.oil = 5000;
+    const plant = placeNear(w, "aircraft-factory");
+    wait(w, 13);
+    expect(plant.built).toBe(true);
+    // chưa có Sân Đáp: xưởng nhận lệnh nhưng không đúc (máy bay mới không có chỗ đậu)
+    w.step([{ side: 0, order: { t: "produce", building: plant.id, kind: "falcon" } }]);
+    wait(w, 10);
+    expect(w.units.some((u) => u.kind === "falcon")).toBe(false);
+    expect(plant.prog).toBe(0);
+    const af = placeNear(w, "airfield");
+    wait(w, 13);
+    expect(af.built).toBe(true);
+    const f = untilFalcon(w);
+    expect(f, "đúc được Falcon khi đã có bãi trống").toBeDefined();
+    expect(f.padB, "giữ chỗ ở Sân Đáp ngay khi xuất xưởng").toBe(af.id);
+    let tookOff = false;
+    for (let i = 0; i < sec(30) && f.air !== "parked"; i++) {
+      w.step([]);
+      if (f.alt > 1) tookOff = true;
+    }
+    expect(tookOff, "cất cánh từ xưởng").toBe(true);
+    expect(f.air, "tự hạ cánh xuống bãi").toBe("parked");
+    expect(Math.sqrt((f.x - af.x) ** 2 + (f.z - af.z) ** 2)).toBeLessThan(Math.max(...BUILDINGS.airfield.half));
+    expect(f.mission).toBe("none");
+  });
+
   it("máy bay hết dầu tự bay về sân thay vì rơi (dầu dự trữ)", () => {
     const w = new World(11);
     const st = w.sides[0];
     st.iron = 5000;
     st.oil = 5000;
-    const hq = w.hqOf(0)!;
-    let spot: [number, number] | null = null;
-    for (let r = 12; r <= 28 && !spot; r += 2)
-      for (const [dx, dz] of [[1, 0], [0, -1], [1, -1], [-1, 0], [0, 1]] as const)
-        if (!spot && w.canPlace(0, "airfield", Math.round(hq.x + dx * r), Math.round(hq.z + dz * r)) === null) spot = [Math.round(hq.x + dx * r), Math.round(hq.z + dz * r)];
-    expect(spot, "tìm được chỗ đặt Sân Đáp").not.toBeNull();
-    w.step([{ side: 0, order: { t: "build", kind: "airfield", x: spot![0], z: spot![1] } }]);
-    const af = w.buildings.find((b) => b.kind === "airfield" && b.side === 0);
-    expect(af, "đặt được Sân Đáp").toBeDefined();
-    for (let i = 0; i < sec(13); i++) w.step([]);
-    w.step([{ side: 0, order: { t: "produce", building: af!.id, kind: "falcon" } }]);
-    for (let i = 0; i < sec(8); i++) w.step([]);
-    const f = w.units.find((u) => u.kind === "falcon" && u.side === 0)!;
+    const af = placeNear(w, "airfield");
+    const plant = placeNear(w, "aircraft-factory");
+    wait(w, 13);
+    w.step([{ side: 0, order: { t: "produce", building: plant.id, kind: "falcon" } }]);
+    const f = untilFalcon(w);
     expect(f).toBeDefined();
+    expect(f.padB).toBe(af.id);
     // bay ra tận góc xa nhất bên kia bản đồ, rồi để mặc
     w.step([{ side: 0, order: { t: "move", ids: [f.id], x: 64, z: 64 } }]);
     let landed = false;

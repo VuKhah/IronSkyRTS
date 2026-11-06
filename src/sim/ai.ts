@@ -25,11 +25,11 @@ export class Ai {
   /** Nhớ số mục tiêu giáp dày (tháp phòng thủ đã biết + Titan đang thấy), phai dần: lý do để đúc Pháo Tự Hành. */
   private seenArmor = 0;
   /**
-   * Xe mặt đất đã chọn đúc mà chưa đủ tiền: giữ lựa chọn và để dành (tối đa `SAVE_FOR` tick) thay vì bốc thăm lại mỗi
-   * lượt. Không giữ thì quân đắt (Titan, Pháo) hầu như không bao giờ được đúc: lần nào thiếu tiền cũng bị Lynx rẻ chen ngang.
+   * Xe đã chọn đúc mà chưa đủ tiền, mỗi loại xưởng một lựa chọn: giữ lựa chọn và để dành (tối đa `SAVE_FOR` tick) thay vì
+   * bốc thăm lại mỗi lượt. Không giữ thì quân đắt (Titan, Pháo) hầu như không bao giờ được đúc: lần nào thiếu tiền cũng bị
+   * Lynx rẻ chen ngang. Xưởng nào giữ lựa chọn lâu hơn được tiêu tiền trước (không xưởng nào bị bỏ đói).
    */
-  private nextGround: UnitId | null = null;
-  private nextGroundAt = 0;
+  private plans: Partial<Record<BuildingId, { k: UnitId; at: number }>> = {};
   /** Mỗi AI có bộ số ngẫu nhiên riêng theo seed trận: tất định nhưng mỗi trận một khác. */
   private rng: Rng;
   private waveBonus = 0;
@@ -94,22 +94,28 @@ export class Ai {
     const armorNow =
       enemyBuildings.filter((b) => b.kind === "turret").length + enemyUnits.filter((u) => u.kind === "titan").length;
     this.seenArmor = Math.max(this.seenArmor * 0.999, armorNow); // think() 2 lần mỗi giây: nhớ chừng 6 phút
-    for (const f of myB) {
-      if (f.kind !== "factory" || !f.built || f.queue.length >= 2) continue;
-      if (!this.nextGround || w.tick - this.nextGroundAt > SAVE_FOR) {
-        this.nextGround = this.pickGround(mine, oil, this.seenArmor);
-        this.nextGroundAt = w.tick;
-      }
-      const k = this.nextGround;
-      const c = UNITS[k].cost!;
+    const shops = myB.filter((b) => (b.kind === "factory" || b.kind === "special-factory") && b.built && b.queue.length < 2);
+    for (const f of shops) {
+      const plan = this.plans[f.kind];
+      if (plan && w.tick - plan.at <= SAVE_FOR) continue;
+      const k = f.kind === "factory" ? this.pickTank(mine) : this.pickSpecial(mine, oil, this.seenArmor);
+      if (k) this.plans[f.kind] = { k, at: w.tick };
+      else delete this.plans[f.kind];
+    }
+    shops.sort((a, b) => (this.plans[a.kind]?.at ?? Infinity) - (this.plans[b.kind]?.at ?? Infinity) || a.id - b.id);
+    for (const f of shops) {
+      const plan = this.plans[f.kind];
+      if (!plan) continue;
+      const c = UNITS[plan.k].cost!;
       if (iron - reserve < c.iron || oil < c.oil) break; // để dành cho đúng xe đã chọn
-      out.push({ t: "produce", building: f.id, kind: k });
+      out.push({ t: "produce", building: f.id, kind: plan.k });
       iron -= c.iron;
       oil -= c.oil;
-      this.nextGround = null;
+      delete this.plans[f.kind];
     }
+    // máy bay: chỉ đúc khi còn bãi đậu trống (máy bay mới phải có chỗ đậu)
     for (const a of myB) {
-      if (a.kind !== "airfield" || !a.built || a.queue.length > 0 || !a.pads.includes(0)) continue;
+      if (a.kind !== "aircraft-factory" || !a.built || a.queue.length > 0 || !w.hasFreePad(me)) continue;
       const c = UNITS.falcon.cost!;
       if (iron - reserve >= c.iron && oil >= c.oil + 60) {
         out.push({ t: "produce", building: a.id, kind: "falcon" });
@@ -225,7 +231,9 @@ export class Ai {
     const turrets = count("turret");
     if (count("factory") === 0) want = "factory";
     else if (count("airfield") === 0 && t > sec(70)) want = "airfield";
+    else if (count("aircraft-factory") === 0 && t > sec(90)) want = "aircraft-factory";
     else if (t > sec(110) && turrets < Math.min(3, 1 + Math.floor(t / sec(200)))) want = "turret";
+    else if (count("special-factory") === 0 && t > sec(200)) want = "special-factory"; // không đòi dư Sắt: kế hoạch xây tự giữ tiền (reserve)
     else if (count("factory") < 2 && t > sec(280) && st.iron > 450) want = "factory";
     else if (count("radar") === 0 && t > sec(300) && st.iron > 350) want = "radar";
     else if (count("airfield") < 2 && t > sec(420) && st.oil > 250) want = "airfield";
@@ -239,7 +247,7 @@ export class Ai {
   /** Tìm chỗ đặt công trình quanh căn cứ: công trình chiến đấu hướng ra sông, Sân Đáp lùi về sau. */
   private findSpot(w: World, kind: BuildingId, base: Building): [number, number] | null {
     const [cx, cz] = dirToCenter(base.x, base.z);
-    const back = kind === "airfield" || kind === "power-plant" || kind === "radar" || kind === "battery";
+    const back = kind === "airfield" || kind === "aircraft-factory" || kind === "power-plant" || kind === "radar" || kind === "battery";
     const cands: { x: number; z: number; score: number }[] = [];
     for (const r of [13, 17, 21, 25, 29]) {
       for (const [dx, dz] of DIRS) {
@@ -253,7 +261,8 @@ export class Ai {
     return null;
   }
 
-  private pickGround(mine: Unit[], oil: number, armored: number): UnitId {
+  /** Xưởng Xe Tăng: Lynx, Titan, SkyGuard. */
+  private pickTank(mine: Unit[]): UnitId {
     const n = (k: UnitId): number => mine.filter((u) => u.kind === k).length;
     const lynx = n("lynx");
     const titan = n("titan");
@@ -264,13 +273,23 @@ export class Ai {
     const r = this.rng.next();
     if (r < 0.15) return "titan";
     if (r < 0.22) return "skyguard";
-    // Xe Tên Lửa Loạt: khoảng 1 chiếc cho mỗi 4 xe chiến đấu, chỉ khi còn dư Dầu (giữ Dầu cho máy bay, nhà máy điện)
-    if (r < 0.4 && n("rocket") * 4 < lynx + titan && oil >= UNITS.rocket.cost!.oil + 80) return "rocket";
-    // Pháo Tự Hành: khi đã gặp mục tiêu giáp dày (tháp / Titan), khoảng 1 khẩu cho mỗi 5 xe chiến đấu
-    if (r < 0.55 && armored >= 0.5 && n("artillery") * 5 < lynx + titan && oil >= UNITS.artillery.cost!.oil + 80) return "artillery";
     if (titan <= lynx) return "titan";
     if (sky * 4 < lynx + titan) return "skyguard";
     return "lynx";
+  }
+
+  /**
+   * Xưởng Xe Chuyên Dụng: Xe Tên Lửa Loạt (khoảng 1 chiếc mỗi 4 xe chiến đấu) và Pháo Tự Hành (khi đã gặp mục tiêu giáp dày:
+   * tháp / Titan, khoảng 1 khẩu mỗi 5 xe chiến đấu). Chỉ đúc khi còn dư Dầu (giữ Dầu cho máy bay, nhà máy điện).
+   * null = chưa cần, xưởng nghỉ.
+   */
+  private pickSpecial(mine: Unit[], oil: number, armored: number): UnitId | null {
+    const n = (k: UnitId): number => mine.filter((u) => u.kind === k).length;
+    const combat = n("lynx") + n("titan");
+    const rocket = n("rocket") * 4 < combat && oil >= UNITS.rocket.cost!.oil + 80;
+    const arty = armored >= 0.5 && n("artillery") * 5 < combat && oil >= UNITS.artillery.cost!.oil + 80;
+    if (rocket && arty) return this.rng.next() < 0.5 ? "rocket" : "artillery";
+    return rocket ? "rocket" : arty ? "artillery" : null;
   }
 
   /** Đối phương giữ trọn trừ một mỏ của một loại tài nguyên → trả về mỏ cần chiếm / giữ gấp. */

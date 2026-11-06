@@ -1,5 +1,5 @@
 /**
- * Mô hình 10 công trình (BẢN NHẸ). Mỗi công trình có hoạt ảnh "Vận hành" riêng
+ * Mô hình các công trình (BẢN NHẸ). Mỗi công trình có hoạt ảnh "Vận hành" riêng
  * và các tháp có vũ khí thì có thêm "Ngắm" / "Khai hỏa".
  */
 import * as THREE from "three";
@@ -135,7 +135,7 @@ function buildHQ(p: Palette): Rig {
   );
 }
 
-/** Xưởng Xe: nhà xưởng mái răng cưa, cửa cuốn mở khi đang đúc xe, ống khói và cầu trục. */
+/** Xưởng Xe Tăng: nhà xưởng mái răng cưa, cửa cuốn mở khi đang đúc xe, ống khói và cầu trục. */
 function buildFactory(p: Palette): Rig {
   const root = group(foundation(p, 7, 6.2));
   root.add(box(5.4, 2.6, 4.4, p.hull, -0.2, 1.55, -0.5), box(5.44, 0.18, 4.44, p.team, -0.2, 2.15, -0.5));
@@ -189,6 +189,161 @@ function buildFactory(p: Palette): Rig {
       }
     },
     blinker(lamp, 4)
+  ]);
+}
+
+/**
+ * Xưởng Xe Chuyên Dụng: nhà xưởng dài và cao hơn Xưởng Xe Tăng (đủ chỗ cho xe phóng tên lửa và pháo nòng dài), cửa cao
+ * phía trước (+z), cầu trục cổng chạy dọc nóc, và giàn ống phóng thử trên nóc ngóc lên khi xưởng đang đúc.
+ */
+function buildSpecialFactory(p: Palette): Rig {
+  const [HX, HZ] = BUILDINGS["special-factory"].half;
+  const root = group(foundation(p, HX * 2, HZ * 2));
+  const W = HX * 2 - 1.4;
+  const D = HZ * 2 - 1.8;
+  const H = 3.4;
+  const zc = -0.4; // thân xưởng lùi về sau, chừa sân trước cửa
+  root.add(part("Thân xưởng", box(W, H, D, p.hull, 0, 0.25 + H / 2, zc)));
+  root.add(part("Dải màu phe", box(W + 0.04, 0.22, D + 0.04, p.team, 0, 0.25 + H - 0.5, zc)));
+  root.add(part("Mái", box(W + 0.3, 0.16, D + 0.3, p.hullDark, 0, 0.25 + H + 0.08, zc)));
+  // cửa cao giữa mặt trước, khung vàng đen
+  const front = zc + D / 2;
+  const DW = 3.4;
+  const DH = 2.9;
+  root.add(
+    part(
+      "Khung cửa",
+      group(
+        box(DW + 0.5, 0.3, 0.3, p.warning, 0, 0.25 + DH + 0.15, front + 0.05),
+        box(0.3, DH, 0.3, p.hullDark, -DW / 2 - 0.1, 0.25 + DH / 2, front + 0.05),
+        box(0.3, DH, 0.3, p.hullDark, DW / 2 + 0.1, 0.25 + DH / 2, front + 0.05)
+      )
+    )
+  );
+  const door = part("Cửa cuốn", box(DW, DH - 0.1, 0.12, p.teamDark, 0, 0.25 + DH / 2, front + 0.1));
+  root.add(door);
+  // sân trước có sọc cảnh báo
+  const yardZ = (front + HZ) / 2;
+  root.add(part("Dốc ra xe", box(DW, 0.08, HZ - front, p.concreteDark, 0, 0.29, yardZ)));
+  for (let i = 0; i < 5; i++) root.add(part("Sọc cảnh báo", box(0.28, 0.03, (HZ - front) * 0.8, p.warning, -1.4 + i * 0.7, 0.34, yardZ)));
+  // gian phụ thấp bên hông (phòng kỹ thuật)
+  root.add(part("Gian kỹ thuật", box(1.2, 1.9, 2.4, p.hullDark, -W / 2 - 0.2, 0.25 + 0.95, zc - 0.8)));
+  root.add(part("Cửa sổ", box(0.05, 0.4, 1.6, p.glass, -W / 2 - 0.82, 1.7, zc - 0.8)));
+  // cầu trục cổng: 2 dầm ngang trên cột ở 4 góc nóc, xe con chạy dọc
+  const top = 0.25 + H + 0.16;
+  for (const x of [-W / 2 + 0.3, W / 2 - 0.3])
+    for (const z of [zc - D / 2 + 0.3, zc + D / 2 - 0.3]) root.add(part("Cột cầu trục", box(0.16, 1.1, 0.16, p.metal, x, top + 0.55, z)));
+  for (const z of [zc - D / 2 + 0.3, zc + D / 2 - 0.3]) root.add(part("Dầm cầu trục", box(W - 0.4, 0.18, 0.18, p.warning, 0, top + 1.1, z)));
+  const trolley = part(
+    "Xe con cầu trục",
+    group(box(0.4, 0.18, D - 0.4, p.metal, 0, 0, 0), box(0.5, 0.35, 0.5, p.hullDark, 0, -0.2, 0), cyl(0.03, 0.03, 0.6, p.rubber, 4, 0, -0.65, 0))
+  );
+  trolley.position.set(0, top + 1.25, zc);
+  root.add(trolley);
+  // giàn ống phóng thử trên nóc (phía sau): bản lề ở mép sau, ngóc lên khi đang đúc
+  const rack = part("Giàn phóng thử", group());
+  rack.add(box(1.6, 0.7, 1.9, p.hullDark, 0, 0.35, 0.95), part("Nắp giàn (màu phe)", box(1.64, 0.1, 1.94, p.team, 0, 0.72, 0.95)));
+  for (let r = 0; r < 2; r++)
+    for (let c = 0; c < 3; c++) {
+      const tube = part("Ống phóng", cyl(0.17, 0.17, 0.05, p.metal, 8, -0.5 + c * 0.5, 0.18 + r * 0.34, 1.91));
+      tube.rotation.x = Math.PI / 2;
+      rack.add(tube);
+    }
+  rack.position.set(W / 2 - 1.3, top, zc - D / 2 + 0.4);
+  root.add(rack, part("Bệ giàn phóng", box(1.8, 0.2, 0.5, p.metal, W / 2 - 1.3, top + 0.1, zc - D / 2 + 0.4)));
+  const lamp = p.teamGlow.clone() as THREE.MeshStandardMaterial;
+  root.add(
+    part("Đèn cửa", group(sphere(0.12, lamp, -DW / 2 - 0.1, 0.25 + DH + 0.45, front + 0.12, 6), sphere(0.12, lamp, DW / 2 + 0.1, 0.25 + DH + 0.45, front + 0.12, 6)))
+  );
+  let doorT = 0;
+  let rackT = 0;
+  return rig(root, [WORK], Math.max(HX, HZ) + 0.6, [
+    (dt, t, a) => {
+      const on = a.has("work");
+      doorT = approach(doorT, on ? 1 : 0, 2.5, dt);
+      door.position.y = 0.25 + DH / 2 + doorT * 1.2;
+      door.scale.y = 1 - doorT * 0.8;
+      rackT = approach(rackT, on ? 1 : 0, 1.5, dt);
+      rack.rotation.x = -rackT * 0.7; // miệng ống phóng (phía +z) ngóc lên
+      trolley.position.x = on ? Math.sin(t * 0.6) * (W / 2 - 0.8) : approach(trolley.position.x, 0, 2, dt);
+    },
+    blinker(lamp, 3)
+  ]);
+}
+
+/**
+ * Nhà Máy Máy Bay: nhà chứa mái vòm (nửa trụ nằm dọc z), cửa lớn hai cánh phía trước (+z) trượt sang hai bên khi đang đúc,
+ * sân đỗ trước cửa có vạch dẫn (máy bay mới lăn ra đây rồi cất cánh thẳng ra trước, khớp sim), xưởng động cơ bên hông,
+ * cột ống gió và đèn hiệu trên đỉnh vòm.
+ */
+function buildAircraftFactory(p: Palette): Rig {
+  const [HX, HZ] = BUILDINGS["aircraft-factory"].half;
+  const root = group(foundation(p, HX * 2, HZ * 2));
+  const R = 3.0;
+  const L = 5.4;
+  const cx = -0.6;
+  const DOOR_SLIDE = 1.25; // mỗi cánh trượt sang bên chừng này (m): đủ cho Falcon sải cánh 5,1 m lăn ra
+  const zc = -HZ + 0.5 + L / 2; // vòm sát mép sau, sân đỗ phía trước
+  // nửa trụ: trục Y của CylinderGeometry xoay thành trục Z; góc PI/2..3PI/2 là nửa phía trên sau khi xoay.
+  // Nhóm vật liệu của trụ: [thân, nắp trên, nắp dưới]; nắp trên quay ra trước (+z) = lòng nhà chứa tối, lộ ra khi mở cửa.
+  const vault = new THREE.Mesh(new THREE.CylinderGeometry(R, R, L, 20, 1, false, Math.PI / 2, Math.PI), [p.hull, p.rubber, p.hull]);
+  vault.castShadow = vault.receiveShadow = true;
+  vault.rotation.x = Math.PI / 2;
+  vault.position.set(cx, 0.25, zc);
+  root.add(part("Mái vòm nhà chứa", vault));
+  for (const k of [-0.5, 0, 0.5]) {
+    const rib = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.05, R + 0.05, 0.16, 20, 1, true, Math.PI / 2, Math.PI), k === 0 ? p.team : p.hullDark);
+    rib.castShadow = true;
+    rib.rotation.x = Math.PI / 2;
+    rib.position.set(cx, 0.25, zc + k * (L - 0.4));
+    root.add(part(k === 0 ? "Vành mái (màu phe)" : "Vành mái", rib));
+  }
+  // cửa hai cánh trượt: mỗi cánh gồm 4 dải cao thấp dần ra ngoài để ôm theo vòm
+  const front = zc + L / 2 + 0.05;
+  const leaves: { g: THREE.Group; dir: number }[] = [];
+  for (const dir of [-1, 1]) {
+    const g = part(dir < 0 ? "Cánh cửa trái" : "Cánh cửa phải", group());
+    [2.9, 2.65, 2.2, 1.4].forEach((h, i) => g.add(box(0.72, h, 0.12, p.teamDark, dir * (0.36 + i * 0.72), h / 2, 0)));
+    g.add(part("Sọc chân cửa", box(2.88, 0.1, 0.14, p.warning, dir * 1.44, 0.15, 0.02)));
+    g.position.set(cx, 0.25, front + 0.08);
+    leaves.push({ g, dir });
+    root.add(g);
+  }
+  // ray trượt của cửa: chạy ngang trước mặt tiền, chìa ra hai bên đủ chỗ cho cánh cửa mở
+  root.add(part("Ray cửa", box(2 * (2.88 + DOOR_SLIDE) - 0.4, 0.06, 0.18, p.metal, cx, 0.28, front + 0.08)));
+  // sân đỗ trước cửa: vạch dẫn vàng theo hướng cất cánh
+  const apronZ0 = front + 0.1;
+  const apronMid = (apronZ0 + HZ) / 2;
+  const apronLen = HZ - apronZ0;
+  root.add(part("Sân đỗ", box(5.4, 0.04, apronLen, p.concrete, cx, 0.27, apronMid)));
+  root.add(part("Vạch dẫn", box(0.14, 0.03, apronLen - 0.2, p.warning, cx, 0.3, apronMid)));
+  for (const x of [cx - 2.5, cx + 2.5]) root.add(part("Vạch mép sân", box(0.1, 0.03, apronLen - 0.2, p.white, x, 0.3, apronMid)));
+  // xưởng động cơ bên hông phải
+  const sx = HX - 1.2;
+  root.add(part("Xưởng động cơ", box(1.8, 2.2, 3.6, p.hullDark, sx, 0.25 + 1.1, zc - 0.4)));
+  root.add(part("Dải màu phe", box(1.84, 0.18, 3.64, p.team, sx, 0.25 + 1.9, zc - 0.4)));
+  root.add(part("Cửa sổ", box(0.05, 0.5, 2.4, p.glass, sx - 0.92, 1.6, zc - 0.4)));
+  root.add(part("Ống thông gió", cyl(0.2, 0.24, 1.0, p.metal, 8, sx + 0.3, 0.25 + 2.7, zc - 1.6)));
+  // cột ống gió ở góc trước bên phải
+  const sock = part("Ống gió", group());
+  const sockTube = cyl(0.12, 0.05, 0.9, p.warning, 8, 0, 0, 0.45);
+  sockTube.rotation.x = Math.PI / 2;
+  sock.add(sockTube);
+  sock.position.set(HX - 0.6, 0.25 + 2.6, HZ - 0.8);
+  root.add(part("Cột ống gió", cyl(0.04, 0.04, 2.6, p.metal, 4, HX - 0.6, 0.25 + 1.3, HZ - 0.8)), sock);
+  // đèn hiệu xoay trên đỉnh vòm
+  const beacon = part("Đèn hiệu", group(box(0.5, 0.15, 0.15, p.teamGlow), cyl(0.05, 0.05, 0.3, p.metal, 4, 0, -0.15, 0)));
+  beacon.position.set(cx, 0.25 + R + 0.25, zc);
+  root.add(beacon);
+  let doorT = 0;
+  return rig(root, [WORK], Math.max(HX, HZ) + 0.6, [
+    (dt, t, a) => {
+      const on = a.has("work");
+      doorT = approach(doorT, on ? 1 : 0, 2, dt);
+      for (const l of leaves) l.g.position.x = cx + l.dir * doorT * DOOR_SLIDE;
+      if (on) beacon.rotation.y += dt * 3;
+      sock.rotation.y = Math.sin(t * 0.7) * 0.4;
+    }
   ]);
 }
 
@@ -383,7 +538,7 @@ function buildOilExtractor(p: Palette): Rig {
 function buildAirfield(p: Palette, faction: Faction, showcase: boolean): Rig {
   // Bố cục (khớp PAD_OFFSETS trong sim): đường băng dọc trục z ở giữa, 2 dãy × 3 ô đáp hai bên; máy bay đậu quay mũi
   // về +z (hướng cất cánh). Đài kiểm soát + bồn dầu ở cuối đường băng phía sau, không chắn đường cất cánh.
-  // Sân Đáp chỉ là nơi cất / hạ cánh, nạp dầu, sửa chữa; nhà máy đúc máy bay sẽ tách thành công trình riêng (sau).
+  // Sân Đáp chỉ là nơi cất / hạ cánh, nạp dầu, sửa chữa; máy bay đúc ở Nhà Máy Máy Bay (buildAircraftFactory).
   const [HX, HZ] = BUILDINGS.airfield.half;
   const root = group(part("Nền sân", box(HX * 2, 0.18, HZ * 2, p.concreteDark, 0, 0.09, 0)));
   const RUNWAY_W = 3.0;
@@ -701,6 +856,8 @@ const BUILDERS: Record<BuildingId, (p: Palette, f: Faction, showcase: boolean) =
   battery: (p) => buildBattery(p),
   hq: (p) => buildHQ(p),
   factory: (p) => buildFactory(p),
+  "special-factory": (p) => buildSpecialFactory(p),
+  "aircraft-factory": (p) => buildAircraftFactory(p),
   turret: (p) => buildTurret(p),
   outpost: (p) => buildOutpost(p),
   "power-plant": (p) => buildPowerPlant(p),

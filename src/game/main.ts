@@ -38,8 +38,8 @@ const HELP = `
     <tr><td>Mục tiêu</td><td>Thắng khi: <b>diệt Xe Tư Lệnh địch</b>, hoặc <b>phá hết công trình địch</b>, hoặc <b>giữ trọn một loại mỏ</b> (4/4 Sắt hoặc 5/5 Dầu) liên tục 30 giây.</td></tr>
     <tr><td>Kinh tế</td><td>Đưa quân đứng cạnh mỏ để chiếm. Xe Vận Tải tự đào và chở Sắt / Dầu về Tổng Hành Dinh. Sắt để xây và đúc quân, Dầu để nạp cho máy bay.</td></tr>
     <tr><td>Địa hình</td><td>Xe <b>bánh</b> (Tư Lệnh, Lynx, Vận Tải) nhanh trên <b>đường</b>, sa lầy trong <b>bùn</b>; xe <b>xích</b> (Titan, SkyGuard) đều hơn trên mọi loại đất. Lên dốc chậm. Xe tự chọn đường nhanh nhất. <b>Rừng</b> che tầm nhìn: đứng trong nhìn ra được, đứng ngoài không nhìn vào được; nấp trong rừng giảm 20% sát thương đạn thẳng (đạn Nổ thì không). Đứng trên cao nhìn xa, bắn xa hơn.</td></tr>
-    <tr><td>Kỹ năng</td><td>Mỗi kỹ năng thuộc về một binh chủng có thật, phải đúc ra. <b>Rải thảm</b> [T] (Xe Tên Lửa Loạt, đúc ở Xưởng Xe): chọn một vùng, xe tự chạy tới tầm, dựng dàn rồi xả 12 quả tên lửa, sau đó nạp lại 15 giây; bắn được cả vào sương mù. <b>Tổng động viên</b> [R] (Xe Tư Lệnh): quân quanh xe chạy nhanh, bắn nhanh 10 giây. <b>Đài Liên Lạc</b> (📡, chiếm như mỏ): nhìn xa quanh đài. Quân lập công lên <b>cựu binh</b> (vạch vàng). Xe bị hạ để lại <b>xác</b> chứa Sắt: <b>Xe Vận Tải</b> kéo về Tổng Hành Dinh mới thành Sắt (xác trong vùng căn cứ và quanh mỏ thì hậu cần tự kéo; xác ở xa thì chọn xe rồi chạm vào xác).</td></tr>
-    <tr><td>Không quân</td><td>Falcon rất mạnh nhưng chỉ bay ~33 giây. Hết dầu tự về Sân Đáp nạp (trừ vào kho Dầu). Kho Dầu cạn thì máy bay nằm sân.</td></tr>
+    <tr><td>Kỹ năng</td><td>Mỗi kỹ năng thuộc về một binh chủng có thật, phải đúc ra. <b>Rải thảm</b> [T] (Xe Tên Lửa Loạt, đúc ở Xưởng Xe Chuyên Dụng): chọn một vùng, xe tự chạy tới tầm, dựng dàn rồi xả 12 quả tên lửa, sau đó nạp lại 15 giây; bắn được cả vào sương mù. <b>Tổng động viên</b> [R] (Xe Tư Lệnh): quân quanh xe chạy nhanh, bắn nhanh 10 giây. <b>Đài Liên Lạc</b> (📡, chiếm như mỏ): nhìn xa quanh đài. Quân lập công lên <b>cựu binh</b> (vạch vàng). Xe bị hạ để lại <b>xác</b> chứa Sắt: <b>Xe Vận Tải</b> kéo về Tổng Hành Dinh mới thành Sắt (xác trong vùng căn cứ và quanh mỏ thì hậu cần tự kéo; xác ở xa thì chọn xe rồi chạm vào xác).</td></tr>
+    <tr><td>Không quân</td><td>Falcon đúc ở Nhà Máy Máy Bay (cần Sân Đáp còn bãi trống để đậu), rất mạnh nhưng chỉ bay ~33 giây. Hết dầu tự về Sân Đáp nạp (trừ vào kho Dầu). Kho Dầu cạn thì máy bay nằm sân.</td></tr>
     <tr><td>Chạm</td><td>Chạm quân để chọn · chạm đất / địch / mỏ để ra lệnh · <b>giữ rồi kéo</b> để chọn nhiều · chạm đúp để chọn cả loại · một ngón kéo để cuộn · hai ngón để thu phóng và xoay.</td></tr>
     <tr><td>Chuột</td><td>Trái: chọn (kéo để quét) · Phải: ra lệnh (kéo để xoay camera) · Giữa kéo / mũi tên / sát mép: cuộn · Lăn: thu phóng · Q/E: xoay.</td></tr>
     <tr><td>Phím</td><td>A tấn công-di chuyển · S dừng · B máy bay về sân · H Tổng Hành Dinh · F1 Xe Tư Lệnh · Ctrl+1..5 lưu nhóm, 1..5 gọi nhóm · Z X C G N V đúc nhanh · T rải thảm · R tổng động viên · Space tới chỗ vừa báo động · P tạm dừng.</td></tr>
@@ -119,7 +119,7 @@ const ALERT_TEXT: Record<string, (n: number) => string> = {
   nooil: () => "Kho Dầu cạn: máy bay không nạp được!",
   mineLost: () => "Ta vừa mất một mỏ!",
   uplinkLost: () => "Mất Đài Liên Lạc! Mất tầm nhìn quanh đài",
-  powerShort: (n) => `Hậu cần: thiếu ${n} MW — đã cắt điện Xưởng Xe / Sân Đáp trước, giữ điện cho phòng thủ`,
+  powerShort: (n) => `Hậu cần: thiếu ${n} MW — đã cắt điện nhà xưởng / Sân Đáp trước, giữ điện cho phòng thủ`,
   powerForecast: (n) => `Hậu cần: xây xong sẽ thiếu ${n} MW — cần thêm Nhà Máy Điện`,
   oilLow: (n) => `Hậu cần: Dầu cho Nhà Máy Điện chỉ còn khoảng ${n} giây!`,
   batteryLow: (n) => `Hậu cần: pin dự trữ chỉ còn khoảng ${n} giây!`
@@ -415,7 +415,7 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
           if (!sandbox && e.side === me && now - lastReady > 600 && world.tick > 1) {
             lastReady = now;
             sfx.ui("ready");
-            if (UNITS[e.kind as UnitId].domain === "air") hud.alert("Falcon sẵn sàng trên Sân Đáp", "good");
+            if (UNITS[e.kind as UnitId].domain === "air") hud.alert(`${UNITS[e.kind as UnitId].short} xuất xưởng, đang bay về Sân Đáp`, "good");
           }
           break;
         case "monopoly":

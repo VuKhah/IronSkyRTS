@@ -383,7 +383,8 @@ export class Views {
     const a = v.active;
     a.clear();
     if (b.built) {
-      if (b.kind === "factory") {
+      if (spec.produces && b.kind !== "hq") {
+        // nhà xưởng: chỉ "vận hành" (mở cửa, cầu trục chạy...) khi đang đúc
         if (b.queue.length && b.active) a.add("work");
       } else if (b.kind === "power-plant" || b.kind === "radar" || b.kind === "battery" || spec.power < 0) {
         if (b.active) a.add("work");

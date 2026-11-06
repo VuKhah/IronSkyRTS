@@ -30,6 +30,8 @@ export type UnitId = "commander" | "hauler" | "lynx" | "titan" | "skyguard" | "r
 export type BuildingId =
   | "hq"
   | "factory"
+  | "special-factory"
+  | "aircraft-factory"
   | "airfield"
   | "turret"
   | "power-plant"
@@ -500,7 +502,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     mvp: true,
     cost: { iron: 300, oil: 40 },
     buildTime: 9,
-    builtAt: "factory",
+    builtAt: "special-factory",
     hp: 480,
     armorClass: "light",
     speed: 4.3,
@@ -547,7 +549,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     mvp: true,
     cost: { iron: 300, oil: 50 },
     buildTime: 6.5,
-    builtAt: "airfield",
+    builtAt: "aircraft-factory",
     hp: 540,
     armorClass: "light",
     speed: 22,
@@ -608,7 +610,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     // MỌI SỐ LÀ SỐ TẠM (Docs/design/ARMY_DESIGN.md mục 8), chờ buổi cân bằng
     cost: { iron: 350, oil: 30 },
     buildTime: 9,
-    builtAt: "factory",
+    builtAt: "special-factory",
     hp: 480,
     armorClass: "light",
     speed: 3.4,
@@ -653,7 +655,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     mvp: false,
     cost: { iron: 230, oil: 90 },
     buildTime: 9,
-    builtAt: "airfield",
+    builtAt: "aircraft-factory",
     hp: 870,
     armorClass: "heavy",
     speed: 14,
@@ -678,7 +680,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     features: [
       "Rải thảm: thả chuỗi 6 quả bom nổ liên hoàn dọc đường bay thẳng, nổ lan 4.6m. Bom công phá: san phẳng nhà xưởng.",
       "Mỗi lượt ném xong phải vòng lại nạp 6 giây.",
-      "Mục tiêu lý tưởng: Xưởng Xe, Sân Đáp và cụm xe tăng Titan.",
+      "Mục tiêu lý tưởng: nhà xưởng, Sân Đáp và cụm xe tăng Titan.",
       "Ngoặt chậm: cần tiêm kích hộ tống."
     ],
     beats: ["titan", "factory"],
@@ -712,9 +714,9 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
   factory: {
     id: "factory",
     kind: "building",
-    name: "Xưởng Xe",
-    label: "XƯỞNG XE",
-    role: "Đúc quân mặt đất: Lynx, Titan, SkyGuard, Xe Tên Lửa Loạt.",
+    name: "Xưởng Xe Tăng",
+    label: "XE TĂNG",
+    role: "Đúc xe chiến đấu: Lynx, Titan, SkyGuard.",
     mvp: true,
     cost: { iron: 300, oil: 0 },
     buildTime: 10,
@@ -722,25 +724,70 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     armorClass: "struct",
     sight: 16,
     half: [3.4, 3],
-    produces: ["lynx", "titan", "skyguard", "rocket", "artillery"],
+    produces: ["lynx", "titan", "skyguard"],
     power: -10,
     priority: 3,
     features: ["Hàng chờ tối đa 5 xe.", "Đặt điểm tập kết để xe mới tự chạy ra tiền tuyến.", "Xây thêm xưởng để đúc quân nhanh hơn."]
+  },
+  "special-factory": {
+    id: "special-factory",
+    kind: "building",
+    name: "Xưởng Xe Chuyên Dụng",
+    label: "CHUYÊN DỤNG",
+    role: "Đúc xe chuyên dụng tầm xa: Xe Tên Lửa Loạt, Pháo Tự Hành.",
+    mvp: true,
+    // số tạm (06/11/2026), chờ buổi cân bằng
+    cost: { iron: 350, oil: 0 },
+    buildTime: 12,
+    hp: 1000,
+    armorClass: "struct",
+    sight: 16,
+    half: [3.8, 3.4],
+    produces: ["rocket", "artillery"],
+    power: -10,
+    priority: 3,
+    features: [
+      "Nhà xưởng dài, cửa cao, cầu trục lớn: đủ chỗ cho xe phóng tên lửa và pháo nòng dài.",
+      "Hàng chờ tối đa 5 xe; đặt điểm tập kết như Xưởng Xe Tăng.",
+      "Tách khỏi Xưởng Xe Tăng: muốn có hỏa lực tầm xa phải đầu tư riêng."
+    ]
+  },
+  "aircraft-factory": {
+    id: "aircraft-factory",
+    kind: "building",
+    name: "Nhà Máy Máy Bay",
+    label: "MÁY BAY",
+    role: "Đúc máy bay. Máy bay đúc xong cất cánh ngay tại xưởng rồi bay về đậu ở Sân Đáp.",
+    mvp: true,
+    // số tạm (06/11/2026), chờ buổi cân bằng
+    cost: { iron: 300, oil: 0 },
+    buildTime: 12,
+    hp: 1000,
+    armorClass: "struct",
+    sight: 16,
+    half: [4.4, 4],
+    produces: ["falcon", "valkyrie"],
+    power: -10,
+    priority: 3,
+    features: [
+      "Cần ít nhất một Sân Đáp còn bãi trống: máy bay mới cần chỗ đậu, hết bãi thì xưởng tạm dừng.",
+      "Máy bay lăn ra cửa xưởng, cất cánh rồi tự bay về bãi trống gần nhất (đầy dầu).",
+      "Xưởng bị phá thì không đúc thêm được, máy bay đang có vẫn bay từ Sân Đáp."
+    ]
   },
   airfield: {
     id: "airfield",
     kind: "building",
     name: "Sân Đáp Không Quân",
     label: "6 BÃI ĐÁP",
-    role: "Đúc Falcon; nơi máy bay cất, hạ cánh, nạp Dầu và sửa chữa.",
+    role: "Nơi máy bay cất, hạ cánh, nạp Dầu và sửa chữa (máy bay đúc ở Nhà Máy Máy Bay).",
     mvp: true,
-    cost: { iron: 400, oil: 0 },
+    cost: { iron: 250, oil: 0 },
     buildTime: 12,
     hp: 1150,
     armorClass: "struct",
     sight: 18,
     half: [7.6, 8.6],
-    produces: ["falcon"],
     power: -15,
     priority: 2,
     features: [
@@ -970,7 +1017,7 @@ export const PAD_OFFSETS: readonly (readonly [number, number])[] = [
   [4.45, 5.6]
 ];
 
-export const MVP_BUILDABLE: readonly BuildingId[] = ["factory", "airfield", "power-plant", "battery", "power-pylon", "turret", "radar"];
+export const MVP_BUILDABLE: readonly BuildingId[] = ["factory", "special-factory", "aircraft-factory", "airfield", "power-plant", "battery", "power-pylon", "turret", "radar"];
 
 export function isUnitId(id: string): id is UnitId {
   return id in UNITS;

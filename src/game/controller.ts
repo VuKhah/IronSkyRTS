@@ -343,7 +343,7 @@ export class Controller implements GestureHandlers {
     if (this.me === null) return;
     if (!this.strikeIds().length) {
       this.sfx.ui("error");
-      this.hud?.alert(`Chưa có Xe Tên Lửa Loạt: đúc ở Xưởng Xe [${UNITS.rocket.hotkey}]`, "bad");
+      this.hud?.alert(`Chưa có Xe Tên Lửa Loạt: đúc ở Xưởng Xe Chuyên Dụng [${UNITS.rocket.hotkey}]`, "bad");
       return;
     }
     this.cancelPlace();

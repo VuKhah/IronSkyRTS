@@ -56,7 +56,7 @@ export class Hud {
             : `<div class="chip-res iron" title="Sắt: xây công trình và đúc quân"><i></i><span data-n="iron"></span><small data-n="ironRate"></small></div>
                <div class="chip-res oil" title="Dầu: nhiên liệu máy bay"><i></i><span data-n="oil"></span></div>
                <div class="chip-res units" title="Số quân / giới hạn"><i></i><span data-n="units"></span></div>
-               <div class="chip-res power" title="Điện: đang dùng / khả năng phát (MW) · % pin dự trữ. Hậu cần tự điều độ; thiếu điện thì cắt theo ưu tiên: phòng thủ → Sân Đáp → Xưởng Xe"><i>⚡</i><span data-n="power"></span></div>`
+               <div class="chip-res power" title="Điện: đang dùng / khả năng phát (MW) · % pin dự trữ. Hậu cần tự điều độ; thiếu điện thì cắt theo ưu tiên: phòng thủ → Sân Đáp → nhà xưởng"><i>⚡</i><span data-n="power"></span></div>`
         }
         <span class="spacer"></span>
         <div class="clock" data-n="clock">00:00</div>
@@ -102,6 +102,17 @@ export class Hud {
     // chạm vào giao diện không được lọt xuống bản đồ
     const abil = this.root.querySelector<HTMLElement>(".abilities");
     for (const el of [this.panel, this.topbar, this.confirm, abil]) el?.addEventListener("pointerdown", (e) => e.stopPropagation());
+    // hàng nút dài hơn bảng (9 công trình): lăn chuột thì cuộn ngang, vì chuột thường chỉ có con lăn dọc
+    this.panel.addEventListener(
+      "wheel",
+      (e) => {
+        const row = (e.target as HTMLElement).closest<HTMLElement>(".row");
+        if (!row || row.scrollWidth <= row.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+        row.scrollLeft += e.deltaY;
+        e.preventDefault();
+      },
+      { passive: false }
+    );
   }
 
   private img(id: string): string {
@@ -305,8 +316,9 @@ export class Hud {
           const u = UNITS[b.queue[0]];
           const k = b.prog / sec(u.buildTime ?? 5);
           status = `Đang đúc ${u.short} ${Math.floor(k * 100)}%${b.queue.length > 1 ? ` · chờ ${b.queue.length - 1}` : ""}`;
-          if (u.domain === "air" && !b.pads.includes(0)) status = "Hết bãi đậu: chờ máy bay cất cánh";
-        } else if (b.kind === "airfield") status = `Bãi đậu ${b.pads.filter((p) => p).length}/${RULES.air.pads}`;
+          if (u.domain === "air" && !w.hasFreePad(b.side)) status = "Tạm dừng: không còn bãi đậu trống, xây thêm Sân Đáp";
+        } else if (b.kind === "aircraft-factory" && !w.hasFreePad(b.side)) status = "Cần Sân Đáp còn bãi trống để đúc máy bay";
+        else if (b.kind === "airfield") status = `Bãi đậu ${b.pads.filter((p) => p).length}/${RULES.air.pads}`;
         if (b.built && s.oilBurn)
           status = b.active
             ? `Đang phát ${Math.round(b.load)}/${s.power} MW · đốt ${((b.load / s.power) * s.oilBurn).toFixed(2)} Dầu/s`

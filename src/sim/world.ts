@@ -1011,21 +1011,26 @@ export class World {
     let live = 0;
     for (const u of this.units) if (u.side === b.side && u.kind !== "commander") live++;
     if (live >= RULES.unitCap) return;
-    if (us.domain === "air" && b.pads.indexOf(0) < 0) return;
+    // máy bay mới cần chỗ đậu: không còn Sân Đáp nào còn bãi trống thì nhà máy tạm dừng
+    if (us.domain === "air" && !this.nearestFreePad(b.side, b.x, b.z)) return;
     // thiếu điện thì đúc chậm (Tổng Hành Dinh tự có điện nên không bị ảnh hưởng)
     b.prog += BUILDINGS[b.kind].power < 0 ? b.powerFrac : 1;
     if (b.prog < sec(us.buildTime ?? 5)) return;
     b.prog = 0;
     b.queue.shift();
     if (us.domain === "air") {
-      const pad = b.pads.indexOf(0);
-      const [x, z] = this.padPos(b, pad);
-      const u = this.spawnUnit(kind, b.side, x, z);
+      // Nhà Máy Máy Bay: lăn ra cửa xưởng (phía +z), cất cánh thẳng ra trước, rồi tự bay về bãi trống gần nhất
+      // (giữ chỗ ngay từ lúc xuất xưởng để hai máy bay không tranh một bãi)
+      const slot = this.nearestFreePad(b.side, b.x, b.z)!;
+      const u = this.spawnUnit(kind, b.side, b.x, b.z + BUILDINGS[b.kind].half[1] + 1);
       u.hx = u.phx = 0;
       u.hz = u.phz = 1;
-      b.pads[pad] = u.id;
-      u.padB = b.id;
-      u.padI = pad;
+      slot.b.pads[slot.i] = u.id;
+      u.padB = slot.b.id;
+      u.padI = slot.i;
+      u.rtb = true;
+      u.air = "takeoff";
+      u.airT = 0;
     } else {
       const spec = BUILDINGS[b.kind];
       const [dx, dz] = dirToCenter(b.x, b.z);
@@ -1943,28 +1948,39 @@ export class World {
     return this.padPos(b, u.padI);
   }
 
-  private ensurePad(u: Unit): [number, number] | null {
-    const p = this.padPosOf(u);
-    if (p) return p;
+  /** Sân Đáp (đã xây xong) còn bãi trống gần (x, z) nhất của một phe, kèm số thứ tự bãi trống đầu tiên. */
+  private nearestFreePad(side: Side, x: number, z: number): { b: Building; i: number } | null {
     let best: Building | null = null;
     let bi = -1;
     let bd = Infinity;
     for (const b of this.buildings) {
-      if (b.side !== u.side || b.kind !== "airfield" || !b.built || b.hp <= 0) continue;
+      if (b.side !== side || b.kind !== "airfield" || !b.built || b.hp <= 0) continue;
       const i = b.pads.indexOf(0);
       if (i < 0) continue;
-      const d = dist2(u.x, u.z, b.x, b.z);
+      const d = dist2(x, z, b.x, b.z);
       if (d < bd) {
         bd = d;
         best = b;
         bi = i;
       }
     }
-    if (!best) return null;
-    best.pads[bi] = u.id;
-    u.padB = best.id;
-    u.padI = bi;
-    return this.padPos(best, bi);
+    return best ? { b: best, i: bi } : null;
+  }
+
+  /** Phe này còn bãi đậu trống không (Nhà Máy Máy Bay chỉ đúc khi có; HUD và AI cũng hỏi). */
+  hasFreePad(side: Side): boolean {
+    return this.nearestFreePad(side, 0, 0) !== null;
+  }
+
+  private ensurePad(u: Unit): [number, number] | null {
+    const p = this.padPosOf(u);
+    if (p) return p;
+    const slot = this.nearestFreePad(u.side, u.x, u.z);
+    if (!slot) return null;
+    slot.b.pads[slot.i] = u.id;
+    u.padB = slot.b.id;
+    u.padI = slot.i;
+    return this.padPos(slot.b, slot.i);
   }
 
   private releasePad(u: Unit): void {
@@ -2365,7 +2381,7 @@ export class World {
 
   /** null = ra lệnh rải thảm được; ngược lại là lý do (tiếng Việt) để giao diện hiện cho người chơi. */
   strikeError(side: Side, ids: readonly number[], x: number, z: number): string | null {
-    if (!this.ownUnits(side, ids).some((u) => canStrike(u.kind))) return "Cần Xe Tên Lửa Loạt (đúc ở Xưởng Xe)";
+    if (!this.ownUnits(side, ids).some((u) => canStrike(u.kind))) return "Cần Xe Tên Lửa Loạt (đúc ở Xưởng Xe Chuyên Dụng)";
     if (!this.map.fits(x, z, 0, 0)) return "Ngoài bản đồ";
     return null;
   }
