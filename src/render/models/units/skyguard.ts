@@ -15,7 +15,7 @@
  * Bộ phận động: mâm xoay + radar quay, giá phóng ngóc, 6 chân chống (ống trượt, kích, đế), vành giằng, xích.
  */
 import * as THREE from "three";
-import { box, cyl, facets, group, part, surfaceTools, type Palette, type Rig } from "../kit";
+import { box, cyl, facets, group, part, surfaceTools, tubeZ, type Palette, type Rig } from "../kit";
 import { vehicleRig, tracks } from "./ground";
 
 /** Thời gian hạ bệ, khớp `UNITS.skyguard.weapon.deploy.time` (sim tính Lockdown sau ngần ấy giây đứng yên). */
@@ -24,10 +24,13 @@ const DEPLOY_TIME = 1.2;
 const HEX_R = 1.85; // bán kính đỉnh dải giáp đứng
 const DECK_R = 1.45; // bán kính đỉnh mặt sàn trên (sau mặt vát)
 const BAND_Y0 = 0.8;
+/** Váy giáp: tầng dưới vát vào trong, phủ xích xuống gần mặt đất. */
+const SKIRT_R = 1.68;
+const SKIRT_Y = 0.34;
 const BAND_Y1 = 1.08;
 const DECK_Y = 1.32;
 /** Bán kính đặt 6 đế chân khi cố định (đỉnh của vành lục giác). */
-const PAD_R = 3.2;
+const PAD_R = 2.75;
 /** Độ cao trục chân chống (giữa dải giáp đứng). */
 const ARM_Y = 0.95;
 const PAD_STOW_Y = 0.84;
@@ -49,14 +52,16 @@ export function buildSkyguard(p: Palette): Rig {
   const add = (...o: THREE.Object3D[]) => body.add(...o);
 
   // ================================================================ 1. XÍCH + THÂN LỤC GIÁC
-  const tr = tracks(p, 1.05, 3.1, 0.33, 4);
+  // Xích ngắn nằm gọn dưới váy giáp lục giác, chỉ lộ nửa dưới bánh; bỏ tấm che xích màu phe (đã bị váy che)
+  const tr = tracks(p, 0.95, 2.3, 0.3, 4);
+  tr.g.children.filter((c) => (c as THREE.Mesh).material === p.teamDark).forEach((c) => tr.g.remove(c));
   add(tr.g);
-  add(part("Gầm xe", facets([[0.78, 0.3, 1.35], [0.78, 0.3, -1.35], [0.8, 0.84, 1.5], [0.8, 0.84, -1.5]], p.hullDark, true)));
   const hullPts: P3[] = [];
   for (let i = 0; i < 6; i++) {
     const [bx, bz] = hexV(i, HEX_R);
     const [dx, dz] = hexV(i, DECK_R);
-    hullPts.push([bx, BAND_Y0, bz], [bx, BAND_Y1, bz], [dx, DECK_Y, dz]);
+    const [kx, kz] = hexV(i, SKIRT_R);
+    hullPts.push([kx, SKIRT_Y, kz], [bx, BAND_Y0, bz], [bx, BAND_Y1, bz], [dx, DECK_Y, dz]);
   }
   const hull = part("Thân lục giác", facets(hullPts, p.hull));
   add(hull);
@@ -156,32 +161,76 @@ export function buildSkyguard(p: Palette): Rig {
   ring.scale.y = 0.01;
   add(ring);
 
-  // ================================================================ 3. THÁP: GIỮ NGUYÊN radar + 2 hộp tên lửa (người dùng ưng)
-  const turret = part("Mâm xoay", group(cyl(0.55, 0.65, 0.4, p.hullDark, 10, 0, 0.2, 0)));
-  turret.position.set(0, 1.36, TURRET_Z);
-  const gun = group();
-  gun.position.set(0, 0.6, 0);
+  // ================================================================ 3. THÁP: mâm tròn (vòng tròn của ký hiệu benzen), bệ phóng, radar
+  // Bộ phận động (giá phóng, 2 hộp tên lửa, radar quay) mỗi cái tối đa 3 màu: không gộp được, mỗi màu một lệnh vẽ.
+  const turret = part("Mâm xoay", group(cyl(0.72, 0.78, 0.22, p.hullDark, 16, 0, 0.11, 0)));
+  turret.position.set(0, DECK_Y + 0.1, TURRET_Z);
+  turret.add(part("Viền mâm (màu phe)", cyl(0.8, 0.8, 0.05, p.team, 16, 0, 0.03, 0)));
+  for (let i = 0; i < 12; i++) {
+    const a = (i * Math.PI) / 6;
+    turret.add(part("Bu lông mâm", box(0.07, 0.04, 0.07, p.metal, Math.sin(a) * 0.64, 0.24, Math.cos(a) * 0.64)));
+  }
+  // Khối nâng giữa hai hộp phóng + 2 tai đỡ trục
+  turret.add(part("Khối nâng", group(box(0.6, 0.42, 0.8, p.hull, 0, 0.42, 0.02), box(0.66, 0.06, 0.84, p.hullDark, 0, 0.62, 0.02))));
+  for (const sx of [-1, 1]) turret.add(part("Tai đỡ trục", box(0.12, 0.5, 0.36, p.hullDark, sx * 0.38, 0.47, 0.05)));
+
+  const gun = part("Giá phóng", group());
+  gun.position.set(0, 0.66, 0.05);
+  // trục nâng xuyên qua hai hộp + radar dẫn bắn nhỏ ngóc lên theo giá phóng
+  const axle = part("Trục nâng", tubeZ(0.08, 0.08, 1.9, p.hullDark, 10));
+  axle.rotation.y = Math.PI / 2;
+  const fc = part("Radar dẫn bắn", group(cyl(0.24, 0.2, 0.08, p.hullDark, 12), cyl(0.15, 0.15, 0.09, p.teamGlow, 12), box(0.12, 0.22, 0.12, p.hullDark, 0, 0, -0.14)));
+  fc.rotation.x = Math.PI / 2;
+  fc.position.set(0, 0.3, 0.36);
+  gun.add(axle, fc);
+
   const muzzles: THREE.Object3D[] = [];
   const barrels: THREE.Object3D[] = [];
   for (const side of [-1, 1]) {
-    const pod = part(side < 0 ? "Hộp tên lửa trái (4 ống)" : "Hộp tên lửa phải (4 ống)", group(box(0.5, 0.5, 1.2, p.hull), box(0.52, 0.08, 1.22, p.team, 0, 0.27, 0)));
-    pod.position.set(side * 0.62, 0, 0.1);
-    for (const [dx, dy] of [[-0.12, -0.12], [0.12, -0.12], [-0.12, 0.12], [0.12, 0.12]] as const) {
-      const hole = cyl(0.08, 0.08, 0.05, p.metal, 8, dx, dy, 0.6);
+    // Hộp tên lửa: thân + 3 gân nổi (cùng màu thân), nóc và khung miệng màu phe, vạch phụt lửa sau đuôi, 4 ống + ống dẫn cáp
+    const pod = part(side < 0 ? "Hộp tên lửa trái (4 ống)" : "Hộp tên lửa phải (4 ống)", group(box(0.6, 0.62, 1.5, p.hull)));
+    for (const z of [-0.5, 0, 0.5]) pod.add(part("Gân hộp", box(0.66, 0.68, 0.07, p.hull, 0, 0, z)));
+    pod.add(
+      part("Nóc hộp (màu phe)", box(0.62, 0.05, 1.52, p.team, 0, 0.33, 0)),
+      part("Khung miệng (màu phe)", group(box(0.62, 0.06, 0.04, p.team, 0, 0.29, 0.76), box(0.62, 0.06, 0.04, p.team, 0, -0.29, 0.76), box(0.06, 0.62, 0.04, p.team, 0.29, 0, 0.76), box(0.06, 0.62, 0.04, p.team, -0.29, 0, 0.76))),
+      part("Vạch phụt lửa (màu phe)", box(0.5, 0.08, 0.03, p.team, 0, 0.18, -0.76)),
+      part("Ống dẫn cáp", box(0.07, 0.07, 1.3, p.metal, -side * 0.3, -0.24, -0.05))
+    );
+    pod.position.set(side * 0.78, 0, 0.15);
+    for (const [dx, dy] of [[-0.14, -0.14], [0.14, -0.14], [-0.14, 0.14], [0.14, 0.14]] as const) {
+      const hole = part("Ống phóng", cyl(0.1, 0.1, 0.05, p.metal, 10, dx, dy, 0.75));
       hole.rotation.x = Math.PI / 2;
       pod.add(hole);
       const m = group();
-      m.position.set(dx, dy, 0.65);
+      m.position.set(dx, dy, 0.8);
       pod.add(m);
       muzzles.push(m);
     }
-    pod.userData.z0 = 0.1;
+    pod.userData.z0 = 0.15;
     barrels.push(pod);
     gun.add(pod);
   }
-  const radar = part("Radar dò tìm", group(box(0.9, 0.5, 0.06, p.hullDark), box(0.7, 0.35, 0.07, p.teamGlow, 0, 0, 0.01)));
-  radar.position.set(0, 0.95, -0.45);
-  turret.add(gun, part("Cột radar", cyl(0.05, 0.05, 0.5, p.metal, 6, 0, 0.65, -0.45)), radar);
+  turret.add(gun);
+
+  // Radar dò tìm mảng pha: cột cao trên đế lục giác sau tháp, tấm radar to ngửa ra sau, mặt phát sáng chia ô,
+  // khối xử lý phía sau, viền màu phe. Quay tròn liên tục (spinners).
+  const MAST_Z = -0.62;
+  turret.add(part("Đế cột radar", cyl(0.26, 0.3, 0.14, p.hullDark, 6, 0, 0.29, MAST_Z)), part("Cột radar", cyl(0.07, 0.1, 1.2, p.metal, 8, 0, 0.9, MAST_Z)));
+  const radar = part("Radar dò tìm", group());
+  radar.position.set(0, 1.6, MAST_Z);
+  const tilt = group();
+  tilt.rotation.x = -0.28; // ngửa ra sau
+  tilt.add(
+    part("Khung radar", box(1.44, 0.92, 0.1, p.hullDark)),
+    part("Mặt radar mảng pha", box(1.28, 0.78, 0.03, p.teamGlow, 0, 0, 0.06)),
+    part("Khối xử lý radar", box(0.62, 0.42, 0.32, p.hullDark, 0, -0.05, -0.2)),
+    part("Viền radar (màu phe)", box(1.46, 0.06, 0.13, p.team, 0, 0.47, 0))
+  );
+  for (const x of [-0.32, 0, 0.32]) tilt.add(part("Ô mảng pha", box(0.03, 0.78, 0.03, p.hullDark, x, 0, 0.08)));
+  for (const y of [-0.13, 0.13]) tilt.add(part("Ô mảng pha", box(1.28, 0.03, 0.03, p.hullDark, 0, y, 0.08)));
+  for (const sx of [-1, 1]) tilt.add(part("Ăng-ten nhận dạng", box(0.06, 0.24, 0.06, p.hullDark, sx * 0.62, 0.58, 0)));
+  radar.add(tilt);
+  turret.add(radar);
   add(turret);
 
   // ================================================================ 4. HOẠT ẢNH CỐ ĐỊNH
@@ -192,7 +241,7 @@ export function buildSkyguard(p: Palette): Rig {
     "skyguard",
     p,
     { body, wheels: tr.wheels, turret, gun, barrels, muzzles, flashes: [], spinners: [radar], aimPitch: 0.6, recoil: 0.05, missiles: true },
-    3.4,
+    3.3,
     [{ id: "deploy", label: "Cố định (bệ lục giác)" }],
     (dt, _t, a) => {
       const target = a.has("deploy") ? 1 : 0;
