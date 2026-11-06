@@ -10,6 +10,7 @@ import type { Faction, UnitId } from "../../../sim/content";
 import { palette, type Palette, type Rig } from "../kit";
 import { buildCommander } from "./commander";
 import { buildLynx } from "./lynx";
+import { buildArtillery } from "./artillery";
 import { buildTitan } from "./titan";
 import { buildSkyguard } from "./skyguard";
 import { buildRocket } from "./rocket";
@@ -24,6 +25,7 @@ const BUILDERS: Record<UnitId, (p: Palette) => Rig> = {
   titan: buildTitan,
   skyguard: buildSkyguard,
   rocket: buildRocket,
+  artillery: buildArtillery,
   falcon: buildFalcon,
   valkyrie: buildValkyrie,
   hauler: buildHauler

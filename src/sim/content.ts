@@ -25,7 +25,7 @@ export interface Cost {
   oil: number;
 }
 
-export type UnitId = "commander" | "hauler" | "lynx" | "titan" | "skyguard" | "rocket" | "falcon" | "valkyrie";
+export type UnitId = "commander" | "hauler" | "lynx" | "titan" | "skyguard" | "rocket" | "artillery" | "falcon" | "valkyrie";
 
 export type BuildingId =
   | "hq"
@@ -589,6 +589,50 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     ],
     beats: ["titan", "hauler", "lynx"],
     fears: ["skyguard", "turret"]
+  },
+  artillery: {
+    id: "artillery",
+    kind: "unit",
+    name: "Pháo Tự Hành",
+    short: "Pháo",
+    code: "SPG",
+    hotkey: "B",
+    role: "Pháo nòng lớn tầm cực xa: hạ bệ chữ X, duỗi nòng rồi mới bắn. Một viên xuyên giáp phá công sự. (Sau MVP)",
+    domain: "ground",
+    mvp: false,
+    // MỌI SỐ LÀ SỐ TẠM (Docs/design/ARMY_DESIGN.md mục 8), chờ buổi cân bằng
+    cost: { iron: 350, oil: 30 },
+    buildTime: 9,
+    builtAt: "factory",
+    hp: 480,
+    armorClass: "light",
+    speed: 3.4,
+    mobility: "track",
+    sight: 18,
+    radius: 1.8,
+    captureWeight: 1,
+    weapon: {
+      name: "Pháo 155mm nòng dài",
+      dmgGround: 150,
+      dmgAir: 0,
+      range: 38,
+      cooldown: 5,
+      dmgType: "ap",
+      splash: 1.5,
+      breach: true,
+      visual: "cannon",
+      minRange: 10,
+      reveal: 2,
+      deploy: { time: 2, range: 0, dmg: 0, required: true }
+    },
+    features: [
+      "Tầm bắn 38m, xa nhất trên mặt đất; cần quân khác nhìn thấy mục tiêu hộ.",
+      "Phải hạ bệ chữ X và duỗi nòng 2 giây mới bắn được; không bắn được mục tiêu gần hơn 10m.",
+      "Mỗi phát bắn lộ vị trí 2 giây xuyên sương mù.",
+      "Một viên xuyên giáp, công phá: khắc Titan và tháp phòng thủ."
+    ],
+    beats: ["titan", "turret"],
+    fears: ["lynx", "falcon"]
   },
   valkyrie: {
     id: "valkyrie",
