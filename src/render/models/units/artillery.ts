@@ -178,25 +178,25 @@ export function buildArtillery(p: Palette): Rig {
   turret.add(
     part("Vành tháp", cyl(1.0, 1.05, 0.14, p.hullDark, 16, 0, 0.03, -0.15)),
     part("Bệ quay", cyl(0.75, 0.9, 0.3, p.hull, 12, 0, 0.22, -0.15)),
-    part("Trục nâng", cyl(0.13, 0.13, 2.4, p.metal, 10, 0, TRUNNION_Y, TRUNNION_Z).rotateZ(Math.PI / 2))
+    part("Trục nâng", cyl(0.13, 0.13, 1.95, p.metal, 10, 0, TRUNNION_Y, TRUNNION_Z).rotateZ(Math.PI / 2))
   );
-  for (const sx of [-1, 1]) turret.add(part("Tai đỡ trục", facets([[sx * 1.0, 0.1, 0.5], [sx * 1.16, 0.1, 0.5], [sx * 1.0, 0.1, -0.4], [sx * 1.16, 0.1, -0.4], [sx * 1.0, TRUNNION_Y + 0.18, 0.28], [sx * 1.16, TRUNNION_Y + 0.18, 0.28], [sx * 1.0, TRUNNION_Y + 0.18, -0.08], [sx * 1.16, TRUNNION_Y + 0.18, -0.08]], p.hullDark)));
+  for (const sx of [-1, 1]) turret.add(part("Tai đỡ trục", facets([[sx * 0.76, 0.1, 0.5], [sx * 0.92, 0.1, 0.5], [sx * 0.76, 0.1, -0.4], [sx * 0.92, 0.1, -0.4], [sx * 0.76, TRUNNION_Y + 0.18, 0.28], [sx * 0.92, TRUNNION_Y + 0.18, 0.28], [sx * 0.76, TRUNNION_Y + 0.18, -0.08], [sx * 0.92, TRUNNION_Y + 0.18, -0.08]], p.hullDark)));
 
   const gun = part("Thân tháp + nòng (ngóc cùng nhau)", group());
   gun.position.set(0, TRUNNION_Y, TRUNNION_Z);
   // tọa độ dưới đây tính từ trục nâng
   gun.add(
-    part("Thân tháp", facets([[0.96, -0.5, 0.95], [0.96, -0.5, -1.6], [0.9, 0.56, 0.7], [0.9, 0.6, -1.6], [0.64, -0.36, 1.18], [0.64, 0.46, 1.12]], p.hull, true)),
-    part("Nóc tháp (màu phe)", box(1.35, 0.03, 1.5, p.team, 0, 0.61, -0.6)),
-    part("Hộp đạn sau tháp", group(box(1.75, 0.62, 0.45, p.hullDark, 0, 0.0, -1.82), box(1.77, 0.05, 0.47, p.white, 0, 0.33, -1.82))),
-    part("Nắp xe trưởng", group(cyl(0.22, 0.24, 0.12, p.hullDark, 10, 0.45, 0.66, -0.75), box(0.08, 0.06, 0.24, p.metal, 0.45, 0.74, -0.75))),
-    part("Kính ngắm pháo", group(box(0.22, 0.22, 0.26, p.hullDark, -0.55, 0.7, 0.05), box(0.16, 0.1, 0.02, p.glass, -0.55, 0.72, 0.185))),
+    part("Thân tháp", facets([[0.72, -0.5, 0.95], [0.72, -0.5, -1.6], [0.67, 0.56, 0.7], [0.67, 0.6, -1.6], [0.52, -0.36, 1.18], [0.52, 0.46, 1.12]], p.hull, true)),
+    part("Nóc tháp (màu phe)", box(1.05, 0.03, 1.5, p.team, 0, 0.61, -0.6)),
+    part("Hộp đạn sau tháp", group(box(1.35, 0.62, 0.45, p.hullDark, 0, 0.0, -1.82), box(1.37, 0.05, 0.47, p.white, 0, 0.33, -1.82))),
+    part("Nắp xe trưởng", group(cyl(0.2, 0.22, 0.12, p.hullDark, 10, 0.32, 0.66, -0.75), box(0.08, 0.06, 0.22, p.metal, 0.32, 0.74, -0.75))),
+    part("Kính ngắm pháo", group(box(0.22, 0.22, 0.26, p.hullDark, -0.4, 0.7, 0.05), box(0.16, 0.1, 0.02, p.glass, -0.4, 0.72, 0.185))),
     part("Lá chắn nòng", facets([[0.48, -0.4, 1.0], [0.48, 0.42, 1.0], [0.42, -0.34, 1.48], [0.42, 0.36, 1.48]], p.hullDark, true)),
     // ống dẫn nòng (đứng yên, nòng giật lùi bên trong) + 2 ống hãm giật trên / dưới: dáng pháo hạng nặng
     part("Ống dẫn nòng", at3(tubeZ(0.3, 0.32, 1.15, p.hullDark, 12), 0, 0, 2.0)),
     part("Ống hãm giật", group(at3(tubeZ(0.09, 0.09, 1.25, p.metal, 8), 0, 0.36, 2.05), at3(tubeZ(0.09, 0.09, 1.25, p.metal, 8), 0, -0.34, 2.05)))
   );
-  for (const sx of [-1, 1]) gun.add(part("Tấm hông tháp (màu phe)", box(0.03, 0.46, 1.3, p.team, sx * 0.955, 0.0, -0.6)));
+  for (const sx of [-1, 1]) gun.add(part("Tấm hông tháp (màu phe)", box(0.03, 0.46, 1.3, p.team, sx * 0.715, 0.0, -0.6)));
   // Nòng ngoài (giật khi bắn, lùi vào trong ống dẫn) chứa nòng trong (duỗi ra khi cố định): nòng trong là con của nòng ngoài
   const outer = barrel(3.0, 0.2, p.metal, 0, 0, 1.4);
   const fume = part("Bầu hút khói", tubeZ(0.28, 0.28, 0.5, p.metal, 12));
