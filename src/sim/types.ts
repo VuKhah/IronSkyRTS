@@ -64,10 +64,11 @@ export interface Unit {
   moved: boolean;
   /** Đang đuổi theo mục tiêu (đường đi đang trỏ tới mục tiêu, không phải tới đích lệnh). */
   chasing: boolean;
-  /** Đội hình: hướng quay mặt khi tới đích (0, 0 = giữ hướng đang đi) và tốc độ chung của nhóm (m/s, 0 = tự do). */
+  /** Hướng quay mặt khi tới đích / khi về lại chỗ đứng (0, 0 = giữ hướng đang đi). */
   faceX: number;
   faceZ: number;
-  groupSpeed: number;
+  /** Đang hành quân trong đội hình nào (`Squad.id`, 0 = đi riêng). */
+  squad: number;
   // Xe Vận Tải
   hState: HaulState;
   mineId: number;
@@ -327,4 +328,58 @@ export interface SideState {
   oilBurn: number;
   alerts: Record<AlertKind, number>;
   stats: SideStats;
+}
+
+/**
+ * Đội hình hành quân (người dùng 06/11/2026: giữ đội hình khi di chuyển, qua cầu / chỗ hẹp, quay hướng như cánh cửa).
+ * Một "người dẫn đầu ảo" (giữa hàng đầu) đi theo đường A*; mỗi xe giữ một ô phía sau nó. Đi thẳng thì cả đội là một khối;
+ * qua khúc cua thì các hàng nối nhau đi theo đúng vệt của người dẫn đầu (như đoàn tàu); chỗ hẹp thì co bớt số xe mỗi hàng.
+ */
+export interface Squad {
+  id: number;
+  side: Side;
+  kind: "move" | "amove";
+  /** Thứ tự xe trong đội hình (vai trò → hàng → trái sang phải), giữ nguyên suốt lệnh: co / giãn hàng vẫn theo thứ tự này. */
+  ids: number[];
+  /** Ô của từng xe (cùng chỉ số với `ids`): lệch ngang (m, + = bên phải) và lùi sau người dẫn đầu (m). */
+  offLat: number[];
+  offBack: number[];
+  /** Số xe mỗi hàng đang dùng / khi rộng rãi. */
+  cols: number;
+  colsMax: number;
+  width: number;
+  depth: number;
+  /** Bán kính xe lớn nhất trong đội (m). */
+  rMax: number;
+  /** Người dẫn đầu ảo: vị trí, hướng đội hình. */
+  x: number;
+  z: number;
+  hx: number;
+  hz: number;
+  /** Hướng muốn đi (lúc ra lệnh) và đích (tâm khối khi tới nơi). */
+  wantX: number;
+  wantZ: number;
+  goalX: number;
+  goalZ: number;
+  path: number[];
+  pathI: number;
+  /** Vệt người dẫn đầu: mỗi điểm 6 số (x, z, hx, hz, quãng đường, đang quay 1/0). */
+  trail: number[];
+  /** Quãng đường người dẫn đầu đã đi (m). */
+  s: number;
+  phase: "form" | "wheel" | "march" | "settle";
+  phaseT: number;
+  /** Xoay cánh cửa: bản lề và bán kính xa nhất (m). */
+  pivotX: number;
+  pivotZ: number;
+  wheelR: number;
+  /** Có xe đang bắn mục tiêu trong tầm (đi-và-đánh): cả khối dừng lại. Xe đặt trong tick, khối đọc ở tick sau. */
+  hold: boolean;
+  /** Cả khối dạt ngang khỏi đường của người dẫn đầu (m, + = phải) để né vật cản một bên; dạt dần tới `shiftWant`. */
+  shift: number;
+  shiftWant: number;
+  /** Số lần đo liên tiếp thấy đủ rộng để giãn thêm hàng (giãn phải chờ ổn định, co thì co ngay). */
+  wideFor: number;
+  /** Ổn định chỗ khi tới nơi tối đa bao nhiêu tick (theo độ dài cột lúc tới). */
+  settleMax: number;
 }

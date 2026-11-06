@@ -64,20 +64,90 @@ describe("đội hình khi ra lệnh cho cả nhóm", () => {
     expect(Math.min(...of("mid"))).toBeGreaterThan(Math.max(...of("back")));
   });
 
-  it("đi theo nhóm: không xe nào chạy nhanh hơn xe chậm nhất trong lúc hành quân", () => {
+  it("hành quân: cả khối đi theo tốc độ xe chậm nhất, mọi xe bám sát ô của mình suốt đường", () => {
     const w = new World(1, { sandbox: true });
-    const [ax, az] = arenaPoint(-22);
-    const lynx = spawn(w, "lynx", ax, az);
-    const arty = spawn(w, "artillery", ax + 6, az);
-    const [tx, tz] = arenaPoint(22);
-    w.step([{ side: 0, order: { t: "move", ids: [lynx.id, arty.id], x: tx, z: tz } }]);
-    const slow = Math.min(UNITS.lynx.speed, UNITS.artillery.speed);
-    for (let i = 0; i < sec(4); i++) {
-      const x0 = lynx.x;
-      const z0 = lynx.z;
+    const rng = new Rng(3);
+    const [ax, az] = arenaPoint(-24);
+    for (const k of ["lynx", "lynx", "titan", "titan", "artillery"] as UnitId[]) spawn(w, k, ax + (rng.next() - 0.5) * 10, az + (rng.next() - 0.5) * 10);
+    const us = w.units.filter((u) => u.side === 0);
+    const [tx, tz] = arenaPoint(30);
+    w.step([{ side: 0, order: { t: "move", ids: us.map((u) => u.id), x: tx, z: tz } }]);
+    const sq = w.squads[0];
+    const slow = Math.min(...us.map((u) => UNITS[u.kind].speed));
+    let marched = 0;
+    let worst = 0;
+    for (let i = 0; i < sec(60) && w.squads.includes(sq); i++) {
+      const s0 = sq.s;
       w.step([]);
-      expect(Math.sqrt((lynx.x - x0) ** 2 + (lynx.z - z0) ** 2)).toBeLessThanOrEqual(slow * 0.1 * 1.3 + 1e-9);
+      if (sq.phase !== "march") continue;
+      marched++;
+      expect(sq.s - s0).toBeLessThanOrEqual(slow * 0.1 + 1e-9);
+      for (const u of us) {
+        const k = sq.ids.indexOf(u.id);
+        const [sx, sz] = (w as unknown as { squadSlot(q: unknown, i: number): number[] }).squadSlot(sq, k);
+        worst = Math.max(worst, Math.sqrt((u.x - sx) ** 2 + (u.z - sz) ** 2));
+      }
     }
+    expect(marched, "có hành quân").toBeGreaterThan(sec(5));
+    expect(worst, "không xe nào tụt khỏi ô quá 2,5 m").toBeLessThan(2.5);
+    expect(us.every((u) => u.order === "idle")).toBe(true);
+  });
+
+  it("quay đầu 180°: cả khối xoay như cánh cửa, hàng đầu vẫn là hàng đầu", () => {
+    const { w, us, tx, tz } = march(Array<UnitId>(6).fill("titan"));
+    const fx = us[0].hx;
+    const fz = us[0].hz;
+    const front = new Set(us.filter((u) => (u.x - tx) * fx + (u.z - tz) * fz > 0).map((u) => u.id));
+    const [bx, bz] = arenaPoint(-6);
+    w.step([{ side: 0, order: { t: "move", ids: us.map((u) => u.id), x: bx, z: bz } }]);
+    expect(w.squads[0].phase, "đội đã vào hàng: xoay chứ không tập hợp lại").toBe("wheel");
+    for (let i = 0; i < sec(90) && w.squads.length; i++) w.step([]);
+    const gx = us[0].hx;
+    const gz = us[0].hz;
+    expect(gx * fx + gz * fz, "đã quay ngược hướng").toBeLessThan(-0.5);
+    const front2 = new Set(us.filter((u) => (u.x - bx) * gx + (u.z - bz) * gz > 0).map((u) => u.id));
+    expect([...front2].sort()).toEqual([...front].sort());
+  });
+
+  it("qua cầu hẹp: đội hình co thành hàng một / hàng đôi, qua hết rồi giãn lại ở đích", () => {
+    // cầu trên Thung Lũng Sông Sắt: rộng 9 m, vuông góc dòng sông chạy chéo bản đồ
+    const S = Math.SQRT1_2;
+    const bx = -56 * S;
+    const bz = -56 * S;
+    const w = new World(1, { sandbox: true });
+    for (let i = 0; i < 10; i++) spawn(w, "titan", bx - S * 28 + ((i % 5) - 2) * 5 * S, bz + S * 28 + ((i % 5) - 2) * 5 * S + Math.floor(i / 5) * 5);
+    const us = w.units.filter((u) => u.side === 0);
+    w.step([{ side: 0, order: { t: "move", ids: us.map((u) => u.id), x: bx + S * 30, z: bz - S * 30 } }]);
+    const sq = w.squads[0];
+    let narrowest = sq.cols;
+    for (let i = 0; i < sec(90) && w.squads.includes(sq); i++) {
+      w.step([]);
+      narrowest = Math.min(narrowest, sq.cols);
+    }
+    expect(narrowest, "phải co hàng để qua cầu").toBeLessThanOrEqual(2);
+    // mọi xe đã sang bờ bên kia và dàn lại thành hàng ngang (vài mức theo chiều sâu)
+    for (const u of us) expect((u.x - bx) * -S + (u.z - bz) * S, `xe #${u.id} đã qua sông`).toBeLessThan(-5);
+    expect(sq.cols).toBe(sq.colsMax);
+  });
+
+  it("đi-và-đánh: gặp địch trong tầm thì cả khối dừng lại bắn, không xe nào bỏ hàng đi đuổi", () => {
+    const w = new World(1, { sandbox: true });
+    const [ax, az] = arenaPoint(-26);
+    const us = [spawn(w, "titan", ax, az), spawn(w, "titan", ax + 5, az), spawn(w, "titan", ax, az + 5)];
+    const [ex, ez] = arenaPoint(10);
+    spawn(w, "power-pylon" as UnitId, ex, ez, 1);
+    w.step([{ side: 1, order: { t: "sbHold", side: 1, on: true } }]);
+    const [tx, tz] = arenaPoint(30);
+    w.step([{ side: 0, order: { t: "amove", ids: us.map((u) => u.id), x: tx, z: tz } }]);
+    const sq = w.squads[0];
+    let held = false;
+    for (let i = 0; i < sec(40) && w.squads.includes(sq); i++) {
+      const s0 = sq.s;
+      w.step([]);
+      if (sq.phase === "march" && sq.s === s0 && w.buildings.some((b) => b.side === 1 && b.hp > 0)) held = true;
+    }
+    expect(held, "có lúc cả khối đứng lại bắn").toBe(true);
+    expect(w.buildings.some((b) => b.side === 1 && b.kind === "power-pylon" && b.hp > 0), "đã diệt mục tiêu").toBe(false);
   });
 
   it("xe đang chạy lách qua xe đã đứng yên, không xô lệch nó khỏi chỗ", () => {
