@@ -214,7 +214,7 @@ describe("Kỹ năng của binh chủng (không có điểm chỉ huy: kỹ năn
     const rk = spawn(w, "rocket", 0, -34);
     const [x, z] = arenaPoint(0);
     const r = strike(w, rk, x, z);
-    expect(r.shots).toBe(W.burst!.shots);
+    expect(r.shots).toBe(W.burst!.shots * (W.barrels ?? 1));
     expect(r.salvos).toBe(1);
     expect(w.sides[0].stats.salvos).toBe(1);
     // đã chạy vào tầm, và đứng yên đủ thời gian dựng dàn trước quả đầu tiên
@@ -235,7 +235,7 @@ describe("Kỹ năng của binh chủng (không có điểm chỉ huy: kỹ năn
     const far = arenaPoint(-34 + W.range - 1);
     expect(w.cellVisible(0, far[0], far[1])).toBe(false);
     expect(w.strikeError(0, [rk.id], far[0], far[1])).toBeNull();
-    expect(strike(w, rk, far[0], far[1]).shots).toBe(W.burst!.shots);
+    expect(strike(w, rk, far[0], far[1]).shots).toBe(W.burst!.shots * (W.barrels ?? 1));
     // điểm bắn sát bên cạnh xe: phải lùi ra
     run(w, W.cooldown + 1);
     const near: [number, number] = [rk.x + 3, rk.z];

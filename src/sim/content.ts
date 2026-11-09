@@ -604,14 +604,15 @@ export const UNITS: Record<UnitId, UnitSpec> = {
       splash: 2.8,
       breach: true,
       visual: "rocket",
-      burst: { shots: 24, interval: 0.1 },
+      barrels: 2, // nhóm 2 hàng trên và nhóm 2 hàng dưới, mỗi nhịp mỗi nhóm một quả
+      burst: { shots: 12, interval: 0.1 },
       minRange: 8,
       scatter: 5,
       deploy: { time: 1.5, range: 0, dmg: 0, required: true },
       interceptable: true
     },
     features: [
-      "Rải thảm [T]: chọn một vùng tròn; xe tự chạy tới tầm, dựng dàn phóng 1.5 giây rồi xả hết 24 quả trong khoảng 2.4 giây, sau đó nạp lại 15 giây.",
+      "Rải thảm [T]: chọn một vùng tròn; xe tự chạy tới tầm, dựng dàn phóng 1.5 giây rồi xả hết 24 quả trong khoảng 1.2 giây (2 hàng trên và 2 hàng dưới cùng bắn), sau đó nạp lại 15 giây.",
       "Tên lửa rơi tản trong vòng 5 m, nổ lan 2.8 m, đạn Nổ công phá: mạnh với cụm xe giáp mỏng và nhà xưởng, yếu với Titan và tháp phòng thủ.",
       "Rải thảm không cần nhìn thấy điểm bắn: bắn được vào sương mù, ví dụ công trình địch đã phát hiện.",
       "Tầm 24 m, xa hơn tháp phòng thủ một chút; không bắn được mục tiêu gần hơn 8 m.",

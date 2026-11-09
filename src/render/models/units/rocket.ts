@@ -99,7 +99,7 @@ export function buildRocket(p: Palette): Rig {
   const cluster = part("Cụm 4 hộp phóng", group());
   cluster.userData.z0 = 0;
   const muzzles: THREE.Object3D[] = [];
-  // thứ tự bắn: hộp trên trái → trên phải → dưới trái → dưới phải; trong mỗi hộp bắn lần lượt 6 ống
+  // dựng theo thứ tự hộp trên trái → trên phải → dưới trái → dưới phải; thứ tự bắn xếp lại ở `salvoOrder` bên dưới
   for (const [bx, by] of [[-GX, GY], [GX, GY], [-GX, -GY], [GX, -GY]] as const) {
     const pod = part("Hộp phóng 6 ống (2 × 3)", group(box(PW, PH, L, p.hull, 0, 0, 0)));
     pod.position.set(bx, by, L / 2);
@@ -152,11 +152,13 @@ export function buildRocket(p: Palette): Rig {
   gun.add(cluster);
   turret.add(gun);
   add(turret);
+  // mỗi nhịp hai viên cùng lúc (luật `barrels: 2`): một ống của 2 hàng trên, một ống của 2 hàng dưới
+  const salvoOrder = muzzles.slice(0, 12).flatMap((m, i) => [m, muzzles[12 + i]!]);
 
   return vehicleRig(
     "rocket",
     p,
-    { body, wheels, turret, gun, barrels: [cluster], muzzles, flashes: [], spinners: [], aimPitch: 0.62, recoil: 0, missiles: true, bounce: { damp: 0.4, gunHz: 8, gunClimb: 0.018, gunSlide: 0.07, gunTwist: 0.012 } }, // luôn dựng chân chống khi bắn: thân đứng im, chỉ cụm hộp phóng giật
+    { body, wheels, turret, gun, barrels: [cluster], muzzles: salvoOrder, flashes: [], spinners: [], aimPitch: 0.62, recoil: 0, missiles: true, bounce: { damp: 0.4, gunHz: 8, gunClimb: 0.018, gunSlide: 0.07, gunTwist: 0.006 } }, // luôn dựng chân chống khi bắn: thân đứng im, chỉ cụm hộp phóng giật
     3.6,
     [{ id: "deploy", label: "Dựng dàn" }],
     (dt, _t, a) => {

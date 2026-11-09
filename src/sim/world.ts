@@ -3715,10 +3715,13 @@ export class World {
     this.salvoStart(u, w, x, z);
     u.cooldown = Math.max(1, Math.round((this.nextCooldown(u, w) / this.auraFactor(u)) * TICK_RATE));
     u.lastShot = this.tick;
-    const [ox, oz] = this.randDisc();
     const s = w.scatter ?? 0;
     const ticks = Math.max(1, Math.ceil((d / SHOT_SPEED[w.visual]) * TICK_RATE));
-    this.pushShot(u, w, 0, x + ox * s, z + oz * s, 0, deployed ? w.dmgGround * (1 + w.deploy!.dmg) : w.dmgGround, false, ticks);
+    // mỗi nhịp bắn ra `barrels` viên cùng lúc, mỗi viên tản riêng
+    for (let i = 0, n = w.barrels ?? 1; i < n; i++) {
+      const [ox, oz] = this.randDisc();
+      this.pushShot(u, w, 0, x + ox * s, z + oz * s, 0, deployed ? w.dmgGround * (1 + w.deploy!.dmg) : w.dmgGround, false, ticks);
+    }
     // quân cố định giữ nguyên thân, chỉ mâm phóng quay về điểm bắn
     if (d > 1e-6 && !w.deploy) {
       u.hx = (x - u.x) / d;

@@ -104,7 +104,8 @@ export function vehicleRig(
   let rest = 0;
   let yaw = 0;
   let pitch = 0;
-  let muzzleIndex = 0;
+  // bắn nhiều viên một nhịp thì ống đầu tiên phải là ống số 0, không cặp ống bị ghép lệch một vị trí
+  let muzzleIndex = b ? parts.muzzles.length - 1 : 0;
   // bánh xe quay đúng theo tốc độ chạy thật của xe
   const speed = spec.speed;
   let aimOverride: number | null = null;
