@@ -237,6 +237,24 @@ describe("đội hình chỉ đọc mã phân nhóm", () => {
   });
 });
 
+describe("đội bay", () => {
+  it("máy bay cùng một lệnh không dồn cục: mỗi chiếc một điểm đến, bay tới nơi vẫn cách xa nhau", () => {
+    const w = new World(1, { sandbox: true });
+    w.step([{ side: 0, order: { t: "sbFuel", on: true } }]);
+    const [ax, az] = arenaPoint(-30);
+    const [bx, bz] = arenaPoint(30);
+    for (let i = 0; i < 6; i++) w.step([{ side: 0, order: { t: "sbSpawn", kind: "falcon", side: 0, x: ax + i * 2, z: az, gx: ax + i * 2, gz: az + 5, go: "move" } }]);
+    const us = w.units.filter((u) => u.kind === "falcon");
+    w.step([{ side: 0, order: { t: "move", ids: us.map((u) => u.id), x: bx, z: bz } }]);
+    expect(new Set(us.map((u) => `${u.mx},${u.mz}`)).size).toBe(6);
+    for (let i = 0; i < sec(12); i++) w.step([]);
+    let min = Infinity;
+    for (let i = 0; i < us.length; i++)
+      for (let j = i + 1; j < us.length; j++) min = Math.min(min, Math.sqrt((us[i].x - us[j].x) ** 2 + (us[i].z - us[j].z) ** 2));
+    expect(min).toBeGreaterThan(6);
+  });
+});
+
 describe("tốc độ chung của khối", () => {
   const speedOf = (kinds: UnitId[]): number => {
     const w = new World(1, { sandbox: true });

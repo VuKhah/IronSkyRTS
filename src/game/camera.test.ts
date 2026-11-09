@@ -8,8 +8,8 @@ function rig(id: string): RtsCamera {
   return c;
 }
 
-describe("camera: chiến trường 3D và bản đồ giấy", () => {
-  it("gần là chiến trường, xa nhất là bản đồ giấy", () => {
+describe("camera: chiến trường 3D và bàn tác chiến", () => {
+  it("gần là chiến trường, xa nhất là bàn tác chiến, nhìn hơi nghiêng", () => {
     const c = rig("big-test");
     c.dist = 64;
     c.apply();
@@ -17,6 +17,11 @@ describe("camera: chiến trường 3D và bản đồ giấy", () => {
     c.zoomBy(1000);
     c.apply();
     expect(c.strategic).toBe(1);
+    // nhìn nghiêng: cạnh xa ngắn hơn cạnh gần trên màn hình
+    const m = getMap("big-test");
+    const far = c.project(m.halfW, 0, -m.halfH, 1280, 800).x - c.project(-m.halfW, 0, -m.halfH, 1280, 800).x;
+    const near = c.project(m.halfW, 0, m.halfH, 1280, 800).x - c.project(-m.halfW, 0, m.halfH, 1280, 800).x;
+    expect(far).toBeLessThan(near * 0.97);
   });
 
   it("kéo xa nhất thấy trọn bản đồ, kể cả bản đồ 960 m", () => {
@@ -53,7 +58,7 @@ describe("camera: chiến trường 3D và bản đồ giấy", () => {
     expect(c.project(0, 0, m.halfH, 1280, 800).y).toBeLessThan(400 + 800 * 0.15);
   });
 
-  it("trên bản đồ giấy, cạnh dưới nằm ngang dù camera đang xoay, và điểm chạm nằm trên mặt giấy", () => {
+  it("trên bàn tác chiến, cạnh dưới nằm ngang dù camera đang xoay, và điểm chạm nằm trên mặt giấy", () => {
     const c = rig("big-test");
     c.yaw = 1.2;
     c.pitch = 0.7;

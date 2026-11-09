@@ -41,6 +41,8 @@ const SALVAGE_RETRIES = 5;
 const FORMATION_GAP = 1.4;
 /** Xe chậm hơn tốc độ khối được chạy nhanh hơn khối một chút để còn đuổi kịp ô của mình. */
 const SQUAD_CATCHUP = 1.08;
+/** Khoảng cách giữa hai máy bay cạnh nhau trong đội hình mũi tên (m). */
+const AIR_FORMATION_GAP = 18;
 /** Tới nơi mà phải đổi số xe mỗi hàng thì chờ thêm chừng này giây cho xe vào ô mới. */
 const SQUAD_RESHAPE_EXTRA = 8;
 /** Va chạm giữa xe đang chạy và xe đứng yên: phần lực đẩy xe chạy phải chịu (xe đứng chịu phần còn lại). */
@@ -823,6 +825,39 @@ export class World {
     return best;
   }
 
+  /**
+   * Máy bay cùng một lệnh bay theo đội hình mũi tên, mỗi chiếc một điểm đến, thay vì cùng lao vào một điểm rồi dồn cục
+   * (người dùng 09/11/2026: phải thấy được sự hoành tráng của đội bay). Chiếc số nhỏ dẫn đầu, các chiếc sau xòe hai cánh.
+   */
+  private airSlots(units: readonly Unit[], x: number, z: number): Map<number, [number, number]> {
+    const out = new Map<number, [number, number]>();
+    const air = units.filter((u) => u.air !== "none").sort((a, b) => a.id - b.id);
+    if (air.length < 2) return out;
+    let cx = 0;
+    let cz = 0;
+    for (const u of air) {
+      cx += u.x / air.length;
+      cz += u.z / air.length;
+    }
+    let hx = x - cx;
+    let hz = z - cz;
+    const l = Math.sqrt(hx * hx + hz * hz);
+    if (l < 1e-6) {
+      hx = 0;
+      hz = 1;
+    } else {
+      hx /= l;
+      hz /= l;
+    }
+    air.forEach((u, i) => {
+      const wing = Math.ceil(i / 2);
+      const lat = (i % 2 === 1 ? -wing : wing) * AIR_FORMATION_GAP;
+      const back = wing * AIR_FORMATION_GAP * 0.7;
+      out.set(u.id, [x + hz * lat - hx * back, z - hx * lat - hz * back]);
+    });
+    return out;
+  }
+
   private orderMove(side: Side, ids: readonly number[], x: number, z: number, kind: "move" | "amove", formation?: FormationId): void {
     const units = this.ownUnits(side, ids);
     // từ 2 xe chiến đấu trở lên: hành quân thành đội hình (Xe Vận Tải đi riêng, vì còn việc hậu cần)
@@ -832,12 +867,14 @@ export class World {
     if (formation) for (const u of units) u.formation = formation;
     const ground = units.filter((u) => u.air === "none" && !inSquad?.has(u.id));
     const plan = this.formation(ground, x, z);
+    const airSlots = this.airSlots(units, x, z);
     for (const u of units) {
       if (inSquad?.has(u.id)) continue;
       if (u.air !== "none") {
+        const [ax, az] = airSlots.get(u.id) ?? [x, z];
         u.mission = "move";
-        u.mx = clamp(x, -this.map.airX, this.map.airX);
-        u.mz = clamp(z, -this.map.airZ, this.map.airZ);
+        u.mx = clamp(ax, -this.map.airX, this.map.airX);
+        u.mz = clamp(az, -this.map.airZ, this.map.airZ);
         u.targetId = 0;
         u.autoTarget = 0;
         this.cancelRtbIfFuel(u);

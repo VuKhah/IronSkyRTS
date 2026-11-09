@@ -10,45 +10,70 @@ import { Views } from "./views";
 
 const SIDE_COLOR = ["#3ea8ff", "#ff4d4d"];
 
-/** Một ký hiệu trên bản đồ giấy: cả lô chung một ký hiệu, đặt ở trung bình vị trí các xe đang thấy. */
+/** Một xe trên bàn tác chiến, ở vị trí đã giãn ra cho dễ thấy (`x`, `z`). */
 export interface StrategicMark {
   x: number;
   z: number;
-  units: Unit[];
+  unit: Unit;
+  /** Tâm của cụm quân chứa xe này. */
+  cx: number;
+  cz: number;
+  cluster: number;
 }
 
-export function strategicMarks(world: World, viewer: Side | null, alpha: number): StrategicMark[] {
-  const lots = new Map<number, Unit[]>();
-  const marks: Unit[][] = [];
-  for (const u of world.units) {
-    if (viewer !== null && u.side !== viewer && !world.visibleTo(viewer, u)) continue;
-    if (!u.lot) {
-      marks.push([u]);
-      continue;
+/** Hai xe cách nhau dưới chừng này (m) coi như cùng một cụm. */
+const CLUSTER_LINK = { ground: 16, air: 32 };
+/** Mong muốn hai ký hiệu cạnh nhau cách nhau chừng này điểm ảnh. */
+const MARK_SPACING_PX = 21;
+/** Giãn đội hình tối đa chừng này lần: đủ thấy từng xe mà không nhảy khỏi vị trí thật quá xa. */
+const MARK_SPREAD_MAX = 9;
+
+/**
+ * Mỗi xe một ký hiệu. Ở tầm xa vài mét chỉ còn một điểm ảnh, nên từng cụm quân được giãn đều quanh tâm của nó, giữ nguyên
+ * hình đội hình (người dùng 09/11/2026: phải thấy sự hoành tráng của đội quân, không dồn cục). Chỉ giãn lúc vẽ, luật chơi không đổi.
+ */
+export function strategicMarks(world: World, viewer: Side | null, alpha: number, ppm: number): StrategicMark[] {
+  const units = world.units.filter((u) => viewer === null || u.side === viewer || world.visibleTo(viewer, u));
+  const pos = units.map((u) => Views.displayPos(world.map, u, alpha));
+  const parent = units.map((_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  const near = units.map(() => Infinity);
+  const isAir = (u: Unit): boolean => u.air !== "none";
+  for (let i = 0; i < units.length; i++)
+    for (let j = i + 1; j < units.length; j++) {
+      if (units[i].side !== units[j].side || isAir(units[i]) !== isAir(units[j])) continue;
+      const d = Math.hypot(pos[i][0] - pos[j][0], pos[i][2] - pos[j][2]);
+      near[i] = Math.min(near[i], d);
+      near[j] = Math.min(near[j], d);
+      if (d < (isAir(units[i]) ? CLUSTER_LINK.air : CLUSTER_LINK.ground)) parent[find(i)] = find(j);
     }
-    let list = lots.get(u.lot);
-    if (!list) {
-      list = [];
-      lots.set(u.lot, list);
-      marks.push(list);
-    }
-    list.push(u);
-  }
-  return marks.map((units) => {
-    let x = 0;
-    let z = 0;
-    for (const u of units) {
-      const p = Views.displayPos(world.map, u, alpha);
-      x += p[0] / units.length;
-      z += p[2] / units.length;
-    }
-    return { x, z, units };
+  const groups = new Map<number, number[]>();
+  units.forEach((_, i) => {
+    const r = find(i);
+    const list = groups.get(r);
+    if (list) list.push(i);
+    else groups.set(r, [i]);
   });
+  const out: StrategicMark[] = [];
+  for (const [cluster, list] of groups) {
+    let cx = 0;
+    let cz = 0;
+    let gap = 0;
+    for (const i of list) {
+      cx += pos[i][0] / list.length;
+      cz += pos[i][2] / list.length;
+      gap += Math.min(near[i], 40) / list.length;
+    }
+    const k = list.length > 1 ? Math.max(1, Math.min(MARK_SPREAD_MAX, MARK_SPACING_PX / (Math.max(0.5, gap) * ppm))) : 1;
+    for (const i of list) out.push({ x: cx + (pos[i][0] - cx) * k, z: cz + (pos[i][2] - cz) * k, unit: units[i], cx, cz, cluster });
+  }
+  return out;
 }
 
-/** Màu khung ký hiệu theo phe, nhạt như mực tô trên giấy. */
-const MARK_FILL = ["#9fd0f2", "#f0a6a0"];
-const MARK_INK = "#1f1810";
+/** Màu ký hiệu theo phe trên màn hình tối. */
+const MARK_NEON = ["#54c6ff", "#ff6a5f"];
+const MARK_BODY = "rgba(6, 16, 28, 0.86)";
+const MARK_NEUTRAL = "#a9bccd";
 
 export class Overlay {
   private ctx: CanvasRenderingContext2D;
@@ -111,10 +136,10 @@ export class Overlay {
   }
 
   /** Hình vai trò bên trong khung, theo mã phân nhóm: nhìn là biết loại quân, quân mới cùng mã tự có hình. */
-  private glyph(code: GroupCode, x: number, y: number): void {
+  private glyph(code: GroupCode, x: number, y: number, color: string): void {
     const g = this.ctx;
-    g.strokeStyle = MARK_INK;
-    g.fillStyle = MARK_INK;
+    g.strokeStyle = color;
+    g.fillStyle = color;
     g.lineWidth = 1.6;
     g.beginPath();
     switch (code) {
@@ -175,24 +200,25 @@ export class Overlay {
     }
   }
 
-  /** Ký hiệu quân, công trình, mỏ trên bản đồ giấy. Giữ cỡ cố định trên màn hình dù kéo xa tới đâu. */
+  /** Ký hiệu quân, công trình, mỏ trên bàn tác chiến. Giữ cỡ cố định trên màn hình dù kéo xa tới đâu. */
   private drawMarks(world: World, viewer: Side | null, cam: RtsCamera, alpha: number, selected: ReadonlySet<number>, w: number, h: number): void {
     const g = this.ctx;
     g.globalAlpha = cam.strategic;
     const off = (p: { x: number; y: number; visible: boolean }): boolean => !p.visible || p.x < -30 || p.y < -30 || p.x > w + 30 || p.y > h + 30;
+    const ownerColor = (o: number): string => (o === -1 ? MARK_NEUTRAL : MARK_NEON[o]);
 
     for (const m of world.mines) {
       const p = cam.project(m.x, 0, m.z, w, h);
       if (off(p)) continue;
       g.beginPath();
       g.arc(p.x, p.y, 7, 0, Math.PI * 2);
-      g.fillStyle = m.owner === -1 ? "#efe6cc" : MARK_FILL[m.owner];
+      g.fillStyle = MARK_BODY;
       g.fill();
-      g.strokeStyle = MARK_INK;
-      g.lineWidth = 1.3;
+      g.strokeStyle = ownerColor(m.owner);
+      g.lineWidth = 1.4;
       g.stroke();
-      g.fillStyle = MARK_INK;
-      g.font = "bold 9px 'Be Vietnam Pro', sans-serif";
+      g.fillStyle = ownerColor(m.owner);
+      g.font = "bold 9px Consolas, monospace";
       g.textAlign = "center";
       g.textBaseline = "middle";
       g.fillText(m.res === "iron" ? "S" : "D", p.x, p.y + 0.5);
@@ -200,9 +226,9 @@ export class Overlay {
     for (const up of world.uplinks) {
       const p = cam.project(up.x, 0, up.z, w, h);
       if (off(p)) continue;
-      g.fillStyle = up.owner === -1 ? "#efe6cc" : MARK_FILL[up.owner];
-      g.strokeStyle = MARK_INK;
-      g.lineWidth = 1.3;
+      g.fillStyle = MARK_BODY;
+      g.strokeStyle = ownerColor(up.owner);
+      g.lineWidth = 1.4;
       g.beginPath();
       g.moveTo(p.x, p.y - 8);
       g.lineTo(p.x + 8, p.y);
@@ -218,13 +244,14 @@ export class Overlay {
       if (off(p)) continue;
       const hq = b.kind === "hq";
       const size = hq ? 10 : 5;
-      g.fillStyle = MARK_FILL[b.side];
-      g.strokeStyle = selected.has(b.id) ? "#fff3a8" : MARK_INK;
-      g.lineWidth = selected.has(b.id) ? 3 : 1.5;
+      const sel = selected.has(b.id);
+      g.fillStyle = MARK_BODY;
+      g.strokeStyle = sel ? "#ffffff" : MARK_NEON[b.side];
+      g.lineWidth = sel ? 2.4 : 1.4;
       g.fillRect(p.x - size, p.y - size, size * 2, size * 2);
       g.strokeRect(p.x - size, p.y - size, size * 2, size * 2);
       if (hq) {
-        g.fillStyle = MARK_INK;
+        g.fillStyle = MARK_NEON[b.side];
         g.font = "bold 14px 'Be Vietnam Pro', sans-serif";
         g.textAlign = "center";
         g.textBaseline = "middle";
@@ -232,67 +259,63 @@ export class Overlay {
       }
     }
 
-    const W = 13;
-    const H = 9;
-    for (const m of strategicMarks(world, viewer, alpha)) {
-      const u = m.units[0];
+    const marks = strategicMarks(world, viewer, alpha, cam.ppm());
+    // đường lệnh của cụm đang chọn: mỗi cụm một đường từ tâm, thấy ngay nó đang đi đâu
+    const lined = new Set<number>();
+    for (const m of marks) {
+      const u = m.unit;
+      if (lined.has(m.cluster) || !selected.has(u.id) || u.side !== viewer || u.order === "idle") continue;
+      lined.add(m.cluster);
+      const a = cam.project(m.cx, 0, m.cz, w, h);
+      const t = cam.project(u.tx, 0, u.tz, w, h);
+      g.strokeStyle = "rgba(255, 255, 255, 0.6)";
+      g.lineWidth = 1.4;
+      g.setLineDash([6, 5]);
+      g.beginPath();
+      g.moveTo(a.x, a.y);
+      g.lineTo(t.x, t.y);
+      g.stroke();
+      g.setLineDash([]);
+    }
+
+    const W = 8;
+    const H = 5.5;
+    for (const m of marks) {
+      const u = m.unit;
       const p = cam.project(m.x, 0, m.z, w, h);
       if (off(p)) continue;
-      const sel = m.units.some((v) => selected.has(v.id));
+      const sel = selected.has(u.id);
       const spec = UNITS[u.kind];
-      // xe hậu cần đi lại liên tục quanh căn cứ: chỉ là chấm nhỏ, chọn thì mới hiện đầy đủ, để bản đồ khỏi rối
+      const color = MARK_NEON[u.side];
+      // xe hậu cần đi lại liên tục quanh căn cứ: chỉ là chấm nhỏ, chọn thì mới hiện đầy đủ, để bàn tác chiến khỏi rối
       if (spec.group === "HC" && !sel) {
-        g.fillStyle = MARK_FILL[u.side];
-        g.strokeStyle = MARK_INK;
-        g.lineWidth = 1.2;
+        g.fillStyle = color;
         g.beginPath();
-        g.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+        g.arc(p.x, p.y, 2.4, 0, Math.PI * 2);
         g.fill();
-        g.stroke();
         continue;
       }
-      // đường lệnh của lô đang chọn: thấy ngay nó đang đi đâu
-      if (sel && u.side === viewer && u.order !== "idle") {
-        const t = cam.project(u.tx, 0, u.tz, w, h);
-        g.strokeStyle = "rgba(31, 24, 16, 0.75)";
-        g.lineWidth = 1.5;
-        g.setLineDash([6, 5]);
-        g.beginPath();
-        g.moveTo(p.x, p.y);
-        g.lineTo(t.x, t.y);
-        g.stroke();
-        g.setLineDash([]);
-      }
-      g.fillStyle = MARK_FILL[u.side];
-      g.strokeStyle = sel ? "#fff3a8" : MARK_INK;
-      g.lineWidth = sel ? 3 : 1.6;
+      g.fillStyle = MARK_BODY;
+      g.strokeStyle = sel ? "#ffffff" : color;
+      g.lineWidth = sel ? 2.2 : 1.3;
       g.beginPath();
       if (spec.domain === "air") {
         // khung vòm: máy bay
         g.moveTo(p.x - W, p.y + H);
-        g.lineTo(p.x - W, p.y - 2);
-        g.quadraticCurveTo(p.x, p.y - H * 2.2, p.x + W, p.y - 2);
+        g.lineTo(p.x - W, p.y - 1);
+        g.quadraticCurveTo(p.x, p.y - H * 2.2, p.x + W, p.y - 1);
         g.lineTo(p.x + W, p.y + H);
         g.closePath();
       } else g.rect(p.x - W, p.y - H, W * 2, H * 2);
       g.fill();
       g.stroke();
-      this.glyph(spec.group, p.x, p.y);
-      // số xe còn lại của lô, vạch máu trung bình
-      let hp = 0;
-      let max = 0;
-      for (const v of m.units) {
-        hp += v.hp;
-        max += v.maxHp;
-      }
-      this.bar(p.x, p.y + H + 3, W * 2, hp / max, hp / max > 0.6 ? "#3f9a55" : hp / max > 0.3 ? "#d98a1f" : "#c9402f");
-      if (m.units.length > 1) {
-        g.fillStyle = MARK_INK;
-        g.font = "bold 10px 'Be Vietnam Pro', sans-serif";
-        g.textAlign = "center";
-        g.textBaseline = "alphabetic";
-        g.fillText(String(m.units.length), p.x, p.y - H - 3);
-      }
+      g.save();
+      g.translate(p.x, p.y);
+      g.scale(0.58, 0.58);
+      this.glyph(spec.group, 0, 0, sel ? "#ffffff" : color);
+      g.restore();
+      // chỉ xe bị thương mới có vạch máu, bàn tác chiến đỡ rối
+      if (u.hp < u.maxHp) this.bar(p.x, p.y + H + 2, W * 2, u.hp / u.maxHp, u.hp / u.maxHp > 0.6 ? "#6fdc8c" : u.hp / u.maxHp > 0.3 ? "#ffb547" : "#ff6b5e");
     }
     g.globalAlpha = 1;
     g.textBaseline = "alphabetic";
@@ -320,7 +343,7 @@ export class Overlay {
     g.clearRect(0, 0, w, h);
     const hpColor = (k: number): string => (k > 0.6 ? "#6fdc8c" : k > 0.3 ? "#ffb547" : "#ff6b5e");
 
-    // kéo xa: thanh máu của từng xe nhường chỗ cho ký hiệu lô trên bản đồ giấy
+    // kéo xa: thanh máu của từng xe nhường chỗ cho ký hiệu trên bàn tác chiến
     const far = cam.strategic >= 0.5;
     if (cam.strategic > 0) this.drawMarks(world, viewer, cam, alpha, selected, w, h);
     for (const u of far ? [] : world.units) {

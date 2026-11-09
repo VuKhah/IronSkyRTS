@@ -183,7 +183,7 @@ export class Controller implements GestureHandlers {
     return null;
   }
 
-  /** Trên bản đồ giấy, chạm vào ký hiệu: mỗi lô một ký hiệu, ký hiệu giữ cỡ cố định trên màn hình. */
+  /** Trên bàn tác chiến, chạm vào ký hiệu của từng xe (chọn một xe là chọn cả lô). */
   private pickOnPaper(sx: number, sy: number, touch: boolean): Entity | null {
     const { w, h } = this.size();
     const r = touch ? 26 : 16;
@@ -198,7 +198,7 @@ export class Controller implements GestureHandlers {
         best = e;
       }
     };
-    for (const m of strategicMarks(this.world, viewer, this.alpha)) consider(m.units[0], m.x, m.z);
+    for (const m of strategicMarks(this.world, viewer, this.alpha, this.cam.ppm())) consider(m.unit, m.x, m.z);
     if (best) return best;
     for (const b of this.views.visibleBuildings(this.world, viewer)) consider(b, b.x, b.z);
     if (best) return best;

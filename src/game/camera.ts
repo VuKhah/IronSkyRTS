@@ -9,8 +9,8 @@ const clamp = (v: number, a: number, b: number): number => (v < a ? a : v > b ? 
 /** Số điểm ảnh mỗi mét: lớn hơn PPM_NEAR là chiến trường 3D, nhỏ hơn PPM_FAR là bản đồ giấy, ở giữa thì chuyển dần. */
 const PPM_NEAR = 7.2;
 const PPM_FAR = 4.6;
-/** Góc nhìn trên bản đồ giấy: gần như thẳng đứng (đứng hẳn thì lookAt mất hướng). */
-const TOP_DOWN = 1.5707;
+/** Góc nhìn bàn tác chiến: hơi nghiêng như Tư lệnh đứng bên bàn cờ (radian, khoảng 62°). */
+const TABLE_PITCH = 1.08;
 /** Lề giấy cộng bàn gỗ còn thấy khi kéo xa nhất (m). */
 const PAPER_MARGIN = 60;
 /** Kéo dư theo chiều dọc trên bản đồ giấy, tính theo nửa chiều cao khung nhìn (đủ để phần sau bảng lệnh lộ ra). */
@@ -68,7 +68,7 @@ export class RtsCamera {
       this.tz = clamp(this.tz, -limZ, limZ);
     }
     const ty = Math.max(0, this.map.groundY(this.tx, this.tz)) * (1 - this.strategic);
-    const pitch = this.pitch + (TOP_DOWN - this.pitch) * this.strategic;
+    const pitch = this.pitch + (TABLE_PITCH - this.pitch) * this.strategic;
     const yaw = this.viewYaw;
     const cp = Math.cos(pitch);
     const sp = Math.sin(pitch);
@@ -80,11 +80,41 @@ export class RtsCamera {
   setAspect(w: number, h: number): void {
     this.cam.aspect = w / Math.max(1, h);
     this.viewH = Math.max(1, h);
-    // xa nhất vừa đủ thấy trọn tờ bản đồ, cả khi màn hình dọc
-    const tanHalf = Math.tan((this.cam.fov * Math.PI) / 360);
-    this.maxDist = Math.max(150, Math.max(this.map.halfH + PAPER_MARGIN, (this.map.halfW + PAPER_MARGIN) / this.cam.aspect) / tanHalf);
-    this.cam.far = Math.max(700, this.maxDist * 1.6);
+    this.maxDist = this.fitDist();
+    this.cam.far = Math.max(700, this.maxDist * 4);
     this.cam.updateProjectionMatrix();
+  }
+
+  /** Khoảng cách gần nhất mà nhìn nghiêng vẫn thấy trọn bàn tác chiến, tính bằng phép chiếu thật vì nhìn nghiêng thì cạnh xa co lại. */
+  private fitDist(): number {
+    const c = new THREE.PerspectiveCamera(this.cam.fov, this.cam.aspect, 1, 100000);
+    const mx = this.map.halfW + PAPER_MARGIN;
+    const mz = this.map.halfH + PAPER_MARGIN;
+    const v = new THREE.Vector3();
+    const fits = (d: number): boolean => {
+      c.position.set(0, Math.sin(TABLE_PITCH) * d, Math.cos(TABLE_PITCH) * d);
+      c.lookAt(0, 0, 0);
+      c.updateMatrixWorld();
+      for (const [x, z] of [[-mx, -mz], [mx, -mz], [mx, mz], [-mx, mz]]) {
+        v.set(x, 0, z).project(c);
+        if (Math.abs(v.x) > 1 || Math.abs(v.y) > 1) return false;
+      }
+      return true;
+    };
+    let lo = 150;
+    let hi = 20000;
+    if (fits(lo)) return lo;
+    for (let i = 0; i < 28; i++) {
+      const mid = (lo + hi) / 2;
+      if (fits(mid)) hi = mid;
+      else lo = mid;
+    }
+    return hi;
+  }
+
+  /** Số điểm ảnh mỗi mét ở tâm khung nhìn. */
+  ppm(): number {
+    return this.viewH / (2 * this.dist * Math.tan((this.cam.fov * Math.PI) / 360));
   }
 
   focus(x: number, z: number): void {
