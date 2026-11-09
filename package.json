@@ -11,7 +11,9 @@
     "simulate": "tsx src/tools/simulate.ts",
     "balance": "tsx src/tools/balance.ts",
     "perf": "tsx src/tools/perf.ts",
-    "paint-map": "tsx src/tools/paint-map.ts"
+    "paint-map": "tsx src/tools/paint-map.ts",
+    "map-preview": "tsx src/tools/map-preview.ts",
+    "model-report": "tsx src/tools/model-report.ts"
   },
   "author": "",
   "license": "UNLICENSED",

@@ -52,7 +52,7 @@ export function makeGround(scene: THREE.Scene): THREE.Group {
 }
 
 /** Có hiện trên màn hình không: chính nó và mọi nhóm cha cho tới `root` đều đang hiện. */
-function shownIn(o: THREE.Object3D, root: THREE.Object3D): boolean {
+export function shownIn(o: THREE.Object3D, root: THREE.Object3D): boolean {
   for (let x: THREE.Object3D | null = o; x; x = x.parent) {
     if (!x.visible) return false;
     if (x === root) return true;
@@ -61,7 +61,7 @@ function shownIn(o: THREE.Object3D, root: THREE.Object3D): boolean {
 }
 
 /** Khối hiệu ứng (vòng hào quang, chớp lửa, vùng phủ…): vật liệu trong suốt không ghi chiều sâu. Không tính vào kích thước. */
-function isEffect(m: THREE.Mesh): boolean {
+export function isEffect(m: THREE.Mesh): boolean {
   const mats = Array.isArray(m.material) ? m.material : [m.material];
   return mats.some((x) => x.transparent && !x.depthWrite);
 }
@@ -74,7 +74,7 @@ const TMP_B = new THREE.Box3();
  * chỉ gồm khối đang hiện và không phải hiệu ứng. Hộp rỗng nếu không có khối nào.
  * `ownOnly`: bỏ các bộ phận con đã có tên riêng (kích thước "Tháp pháo" không tính "Nòng pháo" gắn trên nó).
  */
-function localBox(obj: THREE.Object3D, root: THREE.Object3D, ownOnly = false): THREE.Box3 {
+export function localBox(obj: THREE.Object3D, root: THREE.Object3D, ownOnly = false): THREE.Box3 {
   root.updateMatrixWorld(true);
   const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
   const out = new THREE.Box3();
@@ -92,7 +92,7 @@ function localBox(obj: THREE.Object3D, root: THREE.Object3D, ownOnly = false): T
 }
 
 /** Bộ phận có tên gần nhất chứa khối `o` (đi ngược lên các nhóm cha tới `root`). */
-function partOf(o: THREE.Object3D, root: THREE.Object3D): THREE.Object3D | null {
+export function partOf(o: THREE.Object3D, root: THREE.Object3D): THREE.Object3D | null {
   for (let x: THREE.Object3D | null = o; x; x = x.parent) {
     if (x.userData.part) return x;
     if (x === root) break;
@@ -380,6 +380,35 @@ export class Stage {
     }
   }
 
+  /** `?sheet=1`: vẽ 4 góc nhìn trong một khung (trên: 3/4, Trước; dưới: Cạnh, Trên) để một ảnh chụp thay cho bốn ảnh. */
+  sheet = false;
+  private sheetCam = new THREE.PerspectiveCamera(38, 1, 0.1, 400);
+
+  private renderSheet(): void {
+    const rig = this.rig;
+    if (!rig) return;
+    const r = this.renderer;
+    const size = r.getSize(new THREE.Vector2());
+    const w = size.x / 2;
+    const h = size.y / 2;
+    const target = new THREE.Vector3(0, rig.radius * 0.42, 0);
+    this.sheetCam.aspect = w / h;
+    this.sheetCam.updateProjectionMatrix();
+    r.setScissorTest(true);
+    (["three", "front", "side", "top"] as const).forEach((name, i) => {
+      const x = (i % 2) * w;
+      const y = i < 2 ? h : 0;
+      r.setViewport(x, y, w, h);
+      r.setScissor(x, y, w, h);
+      r.shadowMap.autoUpdate = i === 0; // bóng đổ chỉ cần tính một lần cho cả 4 góc
+      this.sheetCam.position.copy(target).addScaledVector(VIEW_DIRS[name].clone().normalize(), rig.radius * 3.1);
+      this.sheetCam.lookAt(target);
+      r.render(this.scene, this.sheetCam);
+    });
+    r.shadowMap.autoUpdate = true;
+    r.setScissorTest(false);
+  }
+
   private frame(): void {
     const dt = Math.min(0.05, this.clock.getDelta());
     this.time += dt;
@@ -388,6 +417,7 @@ export class Stage {
     if (this.pickPending) this.pick();
     this.updateHover();
     this.updateMeasure(dt);
+    if (this.sheet) return this.renderSheet();
     this.renderer.render(this.scene, this.camera);
   }
 }

@@ -42,6 +42,12 @@ try {
   stage.autoRotate = state.autoRotate;
   // ?measure=0: tắt thước đo (chụp ảnh sạch)
   if (new URLSearchParams(location.search).get("measure") === "0") stage.measure = false;
+  // ?sheet=1: chỉ còn 4 góc nhìn phủ cả cửa sổ (một ảnh chụp thay cho bốn ảnh, xem Stage.renderSheet)
+  if (new URLSearchParams(location.search).get("sheet") === "1") {
+    stage.measure = false;
+    stage.sheet = true;
+    document.head.insertAdjacentHTML("beforeend", `<style>.viewer{position:fixed!important;inset:0!important;z-index:999;width:100vw!important;height:100vh!important;max-height:none!important;border-radius:0!important;background:#141a24}.viewer>:not(canvas){display:none!important}</style>`);
+  }
   // ?view=front|side|top|three: góc nhìn chuẩn (chụp ảnh để bàn thiết kế); đặt góc thì tắt tự xoay
   const v = new URLSearchParams(location.search).get("view");
   if (v === "front" || v === "side" || v === "top" || v === "three" || v === "back") {
