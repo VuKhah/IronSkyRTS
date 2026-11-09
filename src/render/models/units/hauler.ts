@@ -1,14 +1,15 @@
 /** Mô hình Xe Vận Tải (`hauler`). */
 import * as THREE from "three";
-import { approach, box, cyl, group, part, sphere, wheel, type Palette, type Rig } from "../kit";
+import { approach, box, cyl, group, part, sphere, tubeZ, wheel, type Palette, type Rig } from "../kit";
 import { vehicleRig } from "./ground";
 
-let cargoMats: { ore: THREE.MeshStandardMaterial; barrel: THREE.MeshStandardMaterial; scrap: THREE.MeshStandardMaterial } | null = null;
+let cargoMats: { ore: THREE.MeshStandardMaterial; tank: THREE.MeshStandardMaterial; oil: THREE.MeshStandardMaterial; scrap: THREE.MeshStandardMaterial } | null = null;
 
 export function buildHauler(p: Palette): Rig {
   cargoMats ??= {
     ore: new THREE.MeshStandardMaterial({ color: 0x8796ad, roughness: 0.45, metalness: 0.65, flatShading: true }),
-    barrel: new THREE.MeshStandardMaterial({ color: 0x3d2d52, roughness: 0.5, metalness: 0.3, flatShading: true }),
+    tank: new THREE.MeshStandardMaterial({ color: 0x565d66, roughness: 0.42, metalness: 0.6 }),
+    oil: new THREE.MeshStandardMaterial({ color: 0x8a4fd0, roughness: 0.5, metalness: 0.2 }),
     scrap: new THREE.MeshStandardMaterial({ color: 0x3b3733, roughness: 0.95, metalness: 0.2, flatShading: true })
   };
   const body = group();
@@ -46,11 +47,30 @@ export function buildHauler(p: Palette): Rig {
     m.castShadow = true;
     ore.add(m);
   }
-  // thùng Dầu
-  const barrels = group();
-  for (const [x, z] of [[-0.45, -0.2], [0.45, -0.2], [-0.45, -1.3], [0.45, -1.3]] as const) {
-    barrels.add(cyl(0.36, 0.36, 0.7, cargoMats.barrel, 10, x, 1.4, z), cyl(0.37, 0.37, 0.08, p.warning, 10, x, 1.5, z));
+  // bồn Dầu: bồn thép nằm dọc trên thùng hàng, như xe bồn thật, có đai giữ, sọc màu Dầu và nắp nạp trên đỉnh
+  const TANK_Y = 1.68;
+  const TANK_Z = -0.75;
+  const TANK_R = 0.6;
+  const tankBody = tubeZ(TANK_R, TANK_R, 2.0, cargoMats.tank, 16);
+  tankBody.position.set(0, TANK_Y, TANK_Z);
+  const tank = group(tankBody);
+  for (const end of [-1, 1]) {
+    const cap = sphere(TANK_R, cargoMats.tank, 0, TANK_Y, TANK_Z + end * 1.0, 16);
+    cap.scale.z = 0.36;
+    tank.add(part("Chỏm bồn", cap));
   }
+  for (const z of [-1.0, 0, 1.0]) {
+    const band = tubeZ(TANK_R + 0.025, TANK_R + 0.025, 0.1, p.hullDark, 16);
+    band.position.set(0, TANK_Y, TANK_Z + z);
+    tank.add(part("Đai giữ bồn", band));
+  }
+  const stripe = tubeZ(TANK_R + 0.012, TANK_R + 0.012, 0.42, cargoMats.oil, 16);
+  stripe.position.set(0, TANK_Y, TANK_Z + 0.5);
+  tank.add(
+    part("Sọc màu Dầu", stripe),
+    part("Nắp nạp dầu", group(cyl(0.2, 0.22, 0.12, p.metal, 10, 0, TANK_Y + TANK_R + 0.05, TANK_Z - 0.5), cyl(0.05, 0.05, 0.1, p.warning, 6, 0, TANK_Y + TANK_R + 0.16, TANK_Z - 0.5))),
+    part("Giá đỡ bồn", group(box(1.3, 0.22, 0.28, p.hullDark, 0, 1.13, TANK_Z - 0.75), box(1.3, 0.22, 0.28, p.hullDark, 0, 1.13, TANK_Z + 0.75)))
+  );
   // xác xe đang kéo về: tấm thép cháy đen, bánh xe gãy chất lệch trên thùng
   const scrap = group();
   for (const [x, y, z, w, h, d, rx, rz] of [
@@ -73,11 +93,11 @@ export function buildHauler(p: Palette): Rig {
   crane.rotation.x = CRANE_REST;
   body.add(part("Chân cần cẩu", cyl(0.14, 0.18, 0.5, p.hullDark, 8, 0.72, 1.6, -1.95)));
   part("Quặng Sắt", ore);
-  part("Thùng Dầu", barrels);
+  part("Bồn Dầu", tank);
   part("Xác đang kéo về", scrap);
   part("Cần cẩu trục vớt", crane);
-  ore.visible = barrels.visible = scrap.visible = false;
-  body.add(ore, barrels, scrap, crane);
+  ore.visible = tank.visible = scrap.visible = false;
+  body.add(ore, tank, scrap, crane);
   return vehicleRig(
     "hauler",
     p,
@@ -93,7 +113,7 @@ export function buildHauler(p: Palette): Rig {
       // xác chất trên thùng thì không còn chỗ cho quặng hiện ra (quặng vẫn được chở, chỉ là không thấy)
       scrap.visible = a.has("scrap");
       ore.visible = a.has("load") && !scrap.visible;
-      barrels.visible = a.has("loadOil") && !a.has("load") && !scrap.visible;
+      tank.visible = a.has("loadOil") && !a.has("load") && !scrap.visible;
       crane.rotation.x = approach(crane.rotation.x, a.has("crane") ? 0.45 + Math.sin(t * 2.2) * 0.18 : CRANE_REST, 4, dt);
     },
     [{ id: "move", label: "Di chuyển" }]
