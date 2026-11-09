@@ -357,7 +357,7 @@ export class Overlay {
       const bars = sel || u.hp < u.maxHp || showFuel || reload;
       if (!bars && u.rank === 0) continue;
       const [x, y, z] = Views.displayPos(world.map, u, alpha);
-      const p = cam.project(x, y + (isAir ? 2.2 : 3.4), z, w, h);
+      const p = cam.project(x, y + (spec.barHeight ?? (isAir ? 2.2 : 3.4)), z, w, h);
       if (!p.visible || p.x < -40 || p.y < -40 || p.x > w + 40 || p.y > h + 40) continue;
       if (u.rank > 0) this.chevrons(p.x, p.y - (bars ? 4 : -2), u.rank);
       if (!bars) continue;

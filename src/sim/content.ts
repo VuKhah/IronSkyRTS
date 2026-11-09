@@ -201,6 +201,8 @@ export interface UnitSpec {
   sight: number;
   /** Bán kính va chạm / chọn (m). */
   radius: number;
+  /** Độ cao đặt thanh máu trên quân (m), chỉ dùng cho phần vẽ. Bỏ trống = theo cỡ thường. */
+  barHeight?: number;
   /** Sức chiếm mỏ (0 = không chiếm được). */
   captureWeight: number;
   weapon?: WeaponSpec;
@@ -395,6 +397,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     domain: "ground",
     group: "TL",
     batch: 1,
+    barHeight: 5.8,
     turnRate: 90,
     mvp: true,
     hp: 2025,
