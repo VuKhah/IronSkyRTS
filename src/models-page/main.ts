@@ -4,7 +4,7 @@
  */
 import {
   ARMOR_NAME, BUILDINGS, DMG_NAME, MOBILITY_NAME, PLANNED_BUILDINGS, PLANNED_UNITS, UNITS, getSpec, targetsOf,
-  type BuildingSpec, type Cost, type EntityId, type EntitySpec, type Faction, type UnitSpec, type WeaponSpec
+  type BuildingId, type BuildingSpec, type Cost, type EntityId, type EntitySpec, type Faction, type UnitId, type UnitSpec, type WeaponSpec
 } from "../sim/content";
 import { buildModel, disposeRig } from "../render/models";
 import { bakeStatic } from "../render/models/bake";
@@ -25,8 +25,35 @@ const $ = <T extends Element>(sel: string): T => {
 const UNIT_IDS = Object.keys(UNITS) as EntityId[];
 const BUILDING_IDS = Object.keys(BUILDINGS) as EntityId[];
 
+// Nhóm con trong mỗi tab: mỗi lần chỉ hiện một nhóm cho danh sách gọn. Bảng khai báo đủ mọi mã, thêm quân hay công trình mà quên xếp nhóm thì lỗi biên dịch.
+const CATS: Record<Tab, readonly { id: string; name: string }[]> = {
+  units: [
+    { id: "command", name: "Chỉ huy & Hậu cần" },
+    { id: "armor", name: "Thiết giáp" },
+    { id: "fire", name: "Hỏa lực" },
+    { id: "air", name: "Không quân" },
+    { id: "navy", name: "Hải quân" },
+    { id: "planned", name: "Sắp có" }
+  ],
+  buildings: [
+    { id: "base", name: "Căn cứ & Sản xuất" },
+    { id: "energy", name: "Năng lượng & Hậu cần" },
+    { id: "defense", name: "Phòng thủ" },
+    { id: "front", name: "Tiền tuyến" },
+    { id: "planned", name: "Sắp có" }
+  ]
+};
+const UNIT_CAT: Record<UnitId, string> = { commander: "command", hauler: "command", lynx: "armor", titan: "armor", skyguard: "fire", rocket: "fire", artillery: "fire", falcon: "air", valkyrie: "air" };
+const BUILDING_CAT: Record<BuildingId, string> = {
+  hq: "base", factory: "base", "special-factory": "base", "aircraft-factory": "base", airfield: "base",
+  "power-plant": "energy", "power-pylon": "energy", battery: "energy", "oil-extractor": "energy", "ammo-depot": "energy",
+  turret: "defense", "aa-ciws": "defense", "aa-sam": "defense", "aa-emp": "defense",
+  radar: "front", outpost: "front"
+};
+
 const state = {
   tab: "units" as Tab,
+  cat: "command",
   id: "commander" as EntityId | ShowcaseId,
   faction: "lam" as Faction,
   autoRotate: true
@@ -106,7 +133,7 @@ function renderTabs(): void {
 
 function pickHtml(id: EntityId): string {
   const s = getSpec(id);
-  const sub = s.kind === "unit" ? `${s.code} · [${s.hotkey}]` : s.label;
+  const sub = s.kind === "unit" ? `${s.code} · [${s.hotkey}]` : s.mvp ? s.label : `${s.label} · sau MVP`;
   const img = thumbs.get(`${id}:${state.faction}`);
   return `<button type="button" class="pick" data-id="${id}" aria-current="${id === state.id}">
     ${img ? `<img class="thumb" src="${img}" alt="" />` : `<span class="thumb"></span>`}
@@ -132,19 +159,34 @@ function buildAny(id: EntityId | ShowcaseId, faction: Faction): ReturnType<typeo
   return isShowcase(id) ? SHOWCASE[id].build(faction) : buildModel(id, faction);
 }
 
+function catOf(id: EntityId | ShowcaseId): string {
+  if (isShowcase(id)) return "navy";
+  return id in UNITS ? UNIT_CAT[id as UnitId] : BUILDING_CAT[id as BuildingId];
+}
+
+function itemsIn(tab: Tab, cat: string): (EntityId | ShowcaseId)[] {
+  const all: (EntityId | ShowcaseId)[] = tab === "units" ? [...UNIT_IDS, ...SHOWCASE_IDS] : BUILDING_IDS;
+  return all.filter((id) => catOf(id) === cat);
+}
+
+function plannedHtml(tab: Tab): string {
+  const chips = tab === "units" ? PLANNED_UNITS.map((u) => `<span title="${esc(u.group)}">${esc(u.name)}</span>`) : PLANNED_BUILDINGS.map((n) => `<span>${esc(n)}</span>`);
+  return `<div class="planned">${chips.join("")}</div>`;
+}
+
 function renderRoster(): void {
-  if (state.tab === "units") {
-    const ground = UNIT_IDS.filter((id) => UNITS[id as keyof typeof UNITS].domain === "ground");
-    const air = UNIT_IDS.filter((id) => UNITS[id as keyof typeof UNITS].domain === "air");
-    roster.innerHTML = `<h2>Mặt đất</h2>${ground.map(pickHtml).join("")}<h2>Trên không</h2>${air.map(pickHtml).join("")}
-      <h2>Hải quân (xem trước)</h2>${SHOWCASE_IDS.map(showcasePick).join("")}
-      <h2>Sắp có</h2><div class="planned">${PLANNED_UNITS.map((u) => `<span title="${esc(u.group)}">${esc(u.name)}</span>`).join("")}</div>`;
-  } else {
-    const mvp = BUILDING_IDS.filter((id) => BUILDINGS[id as keyof typeof BUILDINGS].mvp);
-    const later = BUILDING_IDS.filter((id) => !BUILDINGS[id as keyof typeof BUILDINGS].mvp);
-    roster.innerHTML = `<h2>Bản MVP</h2>${mvp.map(pickHtml).join("")}<h2>Sau MVP</h2>${later.map(pickHtml).join("")}
-      <h2>Sắp có</h2><div class="planned">${PLANNED_BUILDINGS.map((n) => `<span>${esc(n)}</span>`).join("")}</div>`;
-  }
+  const plannedCount = state.tab === "units" ? PLANNED_UNITS.length : PLANNED_BUILDINGS.length;
+  const chips = CATS[state.tab].map((c) => {
+    const n = c.id === "planned" ? plannedCount : itemsIn(state.tab, c.id).length;
+    return `<button type="button" class="cat" data-cat="${c.id}" aria-pressed="${c.id === state.cat}">${esc(c.name)}<small>${n}</small></button>`;
+  });
+  const body =
+    state.cat === "planned"
+      ? plannedHtml(state.tab)
+      : itemsIn(state.tab, state.cat)
+          .map((id) => (isShowcase(id) ? showcasePick(id) : pickHtml(id)))
+          .join("");
+  roster.innerHTML = `<div class="cats" role="group" aria-label="Nhóm">${chips.join("")}</div><div class="picks">${body}</div>`;
 }
 
 function unitSheet(s: UnitSpec): string {
@@ -247,6 +289,7 @@ function loadModel(keepView: boolean): void {
 function select(id: EntityId | ShowcaseId, push = true): void {
   state.id = id;
   state.tab = id in UNITS || isShowcase(id) ? "units" : "buildings";
+  state.cat = catOf(id);
   if (push) history.replaceState(null, "", `#${id}`);
   renderTabs();
   renderRoster();
@@ -265,6 +308,16 @@ document.querySelector(".tabs")!.addEventListener("click", (e) => {
 });
 
 roster.addEventListener("click", (e) => {
+  const chip = (e.target as Element).closest<HTMLButtonElement>(".cat");
+  if (chip?.dataset.cat) {
+    const first = itemsIn(state.tab, chip.dataset.cat)[0];
+    if (first) select(first); // chọn nhóm là thấy ngay mô hình đầu nhóm
+    else {
+      state.cat = chip.dataset.cat; // "Sắp có" chưa có mô hình: chỉ đổi danh sách
+      renderRoster();
+    }
+    return;
+  }
   const b = (e.target as Element).closest<HTMLButtonElement>(".pick");
   if (b?.dataset.id) select(b.dataset.id as EntityId | ShowcaseId);
 });

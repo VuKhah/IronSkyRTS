@@ -56,6 +56,15 @@ button { font: inherit; color: inherit; }
 .roster { display: flex; flex-direction: column; gap: 6px; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; padding-right: 2px; }
 .roster h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--dim); margin: 10px 2px 2px; font-weight: 600; }
 .roster h2:first-child { margin-top: 0; }
+.cats { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.cat {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--dim);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; min-height: 30px;
+}
+.cat small { font-size: 11px; font-weight: 500; opacity: 0.75; }
+.cat:hover { color: var(--text); border-color: var(--line-strong); }
+.cat[aria-pressed="true"] { color: var(--text); border-color: var(--accent); background: var(--panel-2); }
+.picks { display: flex; flex-direction: column; gap: 6px; }
 .pick {
   display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer;
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 10px 6px 6px;
@@ -129,8 +138,8 @@ ul.features { padding-left: 18px; display: flex; flex-direction: column; gap: 4p
 /* ------------------------------------------------------------ màn hình nhỏ */
 @media (max-width: 1180px) {
   .layout { grid-template-columns: minmax(0, 1fr) 360px; }
-  .roster { grid-column: 1 / -1; position: static; max-height: none; flex-direction: row; overflow-x: auto; padding-bottom: 4px; }
-  .roster h2, .roster .planned { display: none; }
+  .roster { grid-column: 1 / -1; position: static; max-height: none; }
+  .picks { flex-direction: row; overflow-x: auto; padding-bottom: 4px; }
   .pick { flex: none; }
 }
 @media (max-width: 820px) {
