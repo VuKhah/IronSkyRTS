@@ -32,6 +32,7 @@ const CATS: Record<Tab, readonly { id: string; name: string }[]> = {
     { id: "armor", name: "Thiết giáp" },
     { id: "fire", name: "Hỏa lực" },
     { id: "air", name: "Không quân" },
+    { id: "drone", name: "Drone" },
     { id: "navy", name: "Hải quân" },
     { id: "planned", name: "Sắp có" }
   ],
@@ -160,7 +161,7 @@ function buildAny(id: EntityId | ShowcaseId, faction: Faction): ReturnType<typeo
 }
 
 function catOf(id: EntityId | ShowcaseId): string {
-  if (isShowcase(id)) return "navy";
+  if (isShowcase(id)) return SHOWCASE[id].cat;
   return id in UNITS ? UNIT_CAT[id as UnitId] : BUILDING_CAT[id as BuildingId];
 }
 

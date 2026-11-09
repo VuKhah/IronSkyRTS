@@ -1170,7 +1170,6 @@ export function targetsOf(w: WeaponSpec | undefined): TargetMask {
 export const PLANNED_UNITS: { name: string; group: string }[] = [
   { name: "Pháo Tự Hành", group: "Mặt đất" },
   { name: "Xe Công Binh", group: "Mặt đất" },
-  { name: "Drone Trinh Sát", group: "Trên không" },
   { name: "Trực Thăng Tấn Công", group: "Trên không" },
   { name: "Trực Thăng Vận Tải", group: "Trên không" },
   { name: "Drone Sửa Chữa", group: "Trên không" },
