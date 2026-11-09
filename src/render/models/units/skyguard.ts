@@ -280,7 +280,7 @@ export function buildSkyguard(p: Palette): Rig {
     gun.add(pod);
   }
   turret.add(gun);
-  // bắn xen kẽ hộp trái, hộp phải: giá phóng vặn qua lại theo từng quả
+  // mỗi nhịp hai khẩu cùng bắn (luật `barrels: 2`): thứ tự ống trái, phải, trái, phải… để mỗi nhịp lấy một ống mỗi bên
   const alternating = muzzles.slice(0, 6).flatMap((m, i) => [m, muzzles[6 + i]!]);
 
   // Radar dò tìm mảng pha: cột cao trên đế lục giác sau tháp, tấm radar to ngửa ra sau, mặt phát sáng chia ô,
@@ -311,7 +311,7 @@ export function buildSkyguard(p: Palette): Rig {
   return vehicleRig(
     "skyguard",
     p,
-    { body, wheels: tr.wheels, turret, gun, barrels, muzzles: alternating, flashes: [], spinners: [radar], aimPitch: 0.6, recoil: 0, missiles: true, bounce: { hz: 5, damp: 0.42, hullTilt: 0.012, hullSlide: 0.02, hullSink: 0.018, unbraced: 1.7, gunHz: 8, gunClimb: 0.03, gunSlide: 0.1, gunTwist: 0.03 } },
+    { body, wheels: tr.wheels, turret, gun, barrels, muzzles: alternating, flashes: [], spinners: [radar], aimPitch: 0.6, recoil: 0, missiles: true, bounce: { damp: 0.42, hull: { hz: 10, tilt: 0.014, slide: 0.024, sink: 0.02 }, gunHz: 8, gunClimb: 0.018, gunSlide: 0.06, gunTwist: 0 } },
     3.3,
     [{ id: "deploy", label: "Cố định (bệ lục giác)" }],
     (dt, _t, a) => {

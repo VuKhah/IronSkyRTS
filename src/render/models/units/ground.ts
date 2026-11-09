@@ -6,21 +6,16 @@ import { V, Shots, missileMesh } from "./common";
 
 /** Độ nảy mỗi phát bắn. Các số là độ lệch lớn nhất của MỘT phát; nằm ở `gun` và `body` (vốn đã động) nên không tốn thêm lệnh vẽ. */
 export interface GunBounce {
-  /** Lò xo thân xe: tần số (Hz) và độ tắt (0..1). Xe nặng tần số thấp, muốn từng phát tách bạch thì độ tắt cao. */
-  hz: number;
+  /** Độ tắt của lò xo (0..1): cao thì từng phát tách bạch. */
   damp: number;
-  /** Thân xe chúi ngược hướng bắn (rad), trượt lùi (m), lún xuống (m). */
-  hullTilt: number;
-  hullSlide: number;
-  hullSink: number;
+  /** Thân xe nảy: CHỈ KHI CHƯA HẠ BỆ (hạ bệ là để thân đứng im). Tần số (Hz), chúi ngược hướng bắn (rad), trượt lùi (m), lún (m). */
+  hull?: { hz: number; tilt: number; slide: number; sink: number };
   /** Lò xo giá súng: tần số (Hz); giá súng ngóc thêm (rad), lùi theo trục nòng (m), vặn về bên ống vừa bắn (rad). */
   gunHz: number;
   gunClimb: number;
   gunSlide: number;
   gunTwist: number;
-  /** Thân xe nảy mạnh gấp mấy lần khi chưa hạ bệ. */
-  unbraced?: number;
-  /** Nòng giật: thời gian trôi về chỗ cũ (giây). */
+  /** Nòng giật: lùi rất nhanh rồi trôi về chỗ cũ, không dội lại; đây là hằng số thời gian (giây). */
   recoilTime?: number;
 }
 
@@ -82,7 +77,9 @@ export function vehicleRig(
   const burstGap = burst ? Math.max(1, Math.round(burst.interval * RULES.tickRate)) / RULES.tickRate : 0;
   const clock = new FireClock(burst ? burstGap : (parts.fireEvery ?? Math.max(0.35, spec.weapon?.cooldown ?? 1)));
   const shots = new Shots(root);
-  const hull = b ? new Spring(b.hz, b.damp) : null;
+  // mỗi nhịp bắn ra mấy viên cùng lúc (SkyGuard 2 khẩu)
+  const volley = b ? (spec.weapon?.barrels ?? 1) : 1;
+  const hull = b?.hull ? new Spring(b.hull.hz, b.damp) : null;
   const gunKick = b ? new Spring(b.gunHz, b.damp) : null;
   const twist = b ? new Spring(b.gunHz, b.damp) : null;
   const gunY0 = parts.gun.position.y;
@@ -113,19 +110,23 @@ export function vehicleRig(
   let aimOverride: number | null = null;
   let aimRaise = true;
   const fireOne = (): void => {
-    muzzleIndex = (muzzleIndex + 1) % parts.muzzles.length;
     since = 0;
+    let off = 0; // hai khẩu đối xứng bắn cùng lúc thì lệch triệt tiêu, giá súng không vặn
+    for (let i = 0; i < volley; i++) {
+      muzzleIndex = (muzzleIndex + 1) % parts.muzzles.length;
+      off += offsets[muzzleIndex] ?? 0;
+      // trên chiến trường viên đạn do sim vẽ; chỉ Xưởng Mô Hình mới tự thả tên lửa minh họa
+      if (parts.missiles && !driven) {
+        const muzzle = parts.muzzles[muzzleIndex]!;
+        muzzle.getWorldDirection(V);
+        shots.spawn(missileMesh(p), muzzle, V.clone().multiplyScalar(16), 1.1);
+      }
+    }
     if (b) {
       recoilState = 1;
-      hull!.hit(braced ? 1 : (b.unbraced ?? 1));
+      if (!braced) hull?.hit(1);
       gunKick!.hit(1);
-      twist!.hit(offsets[muzzleIndex] ?? 0);
-    }
-    // trên chiến trường viên đạn do sim vẽ; chỉ Xưởng Mô Hình mới tự thả tên lửa minh họa
-    if (parts.missiles && !driven) {
-      const muzzle = parts.muzzles[muzzleIndex]!;
-      muzzle.getWorldDirection(V);
-      shots.spawn(missileMesh(p), muzzle, V.clone().multiplyScalar(16), 1.1);
+      twist!.hit(off);
     }
   };
   return {
@@ -175,17 +176,19 @@ export function vehicleRig(
       }
       let kick = since < 0.25 ? Math.sin((since / 0.25) * Math.PI) * parts.recoil : 0;
       if (b) {
-        hull!.step(dt);
         gunKick!.step(dt);
         twist!.step(dt);
-        // súng chĩa hướng nào thì phần xe phía đó bị hất lên, cả xe trượt ngược lại
-        const sy = Math.sin(yaw);
-        const cy = Math.cos(yaw);
-        parts.body.rotation.x -= hull!.x * b.hullTilt * cy;
-        parts.body.rotation.z = hull!.x * b.hullTilt * sy;
-        parts.body.position.x = -hull!.x * b.hullSlide * sy;
-        parts.body.position.z = -hull!.x * b.hullSlide * cy;
-        parts.body.position.y -= hull!.x * b.hullSink;
+        if (hull && b.hull) {
+          hull.step(dt);
+          // súng chĩa hướng nào thì phần xe phía đó bị hất lên, cả xe trượt ngược lại
+          const sy = Math.sin(yaw);
+          const cy = Math.cos(yaw);
+          parts.body.rotation.x -= hull.x * b.hull.tilt * cy;
+          parts.body.rotation.z = hull.x * b.hull.tilt * sy;
+          parts.body.position.x = -hull.x * b.hull.slide * sy;
+          parts.body.position.z = -hull.x * b.hull.slide * cy;
+          parts.body.position.y -= hull.x * b.hull.sink;
+        }
         parts.gun.rotation.x -= gunKick!.x * b.gunClimb;
         parts.gun.rotation.y = twist!.x * b.gunTwist;
         parts.gun.position.y = gunY0 - gunKick!.x * b.gunSlide * Math.sin(pitch);

@@ -8,7 +8,7 @@
  *   sọc trắng, tay xách riêng; 2 ĐAI KẸP quấn quanh cả cụm + GIÁ CHỮ THẬP ở đuôi + KHUNG ĐỠ bên dưới = 4 hộp kẹp thành một.
  * - Xe: xe tải 8 bánh nặng, cabin bọc thép vát (`facets`) có kính, lưới tản nhiệt, cản trước + tời, đèn hiệu trên nóc;
  *   chắn bùn + giáp hông che bánh, ống xả đứng sau cabin, bánh dự phòng, thùng đồ; mâm xoay có 2 tay nâng lớn.
- * - Luật hiện bắn loạt 12 quả (số tạm): một loạt xả hết 2 hộp.
+ * - Luật bắn loạt 24 quả (09/11/2026): một loạt xả hết cả 4 hộp, mỗi ống một quả.
  * Bộ phận động: bánh lăn, mâm xoay, cụm phóng ngóc lên, 4 chân chống hạ khi dựng dàn.
  */
 import * as THREE from "three";
@@ -156,7 +156,7 @@ export function buildRocket(p: Palette): Rig {
   return vehicleRig(
     "rocket",
     p,
-    { body, wheels, turret, gun, barrels: [cluster], muzzles, flashes: [], spinners: [], aimPitch: 0.62, recoil: 0, missiles: true, bounce: { hz: 5, damp: 0.4, hullTilt: 0.016, hullSlide: 0.03, hullSink: 0.025, gunHz: 8, gunClimb: 0.03, gunSlide: 0.12, gunTwist: 0.018 } },
+    { body, wheels, turret, gun, barrels: [cluster], muzzles, flashes: [], spinners: [], aimPitch: 0.62, recoil: 0, missiles: true, bounce: { damp: 0.4, gunHz: 8, gunClimb: 0.018, gunSlide: 0.07, gunTwist: 0.012 } }, // luôn dựng chân chống khi bắn: thân đứng im, chỉ cụm hộp phóng giật
     3.6,
     [{ id: "deploy", label: "Dựng dàn" }],
     (dt, _t, a) => {

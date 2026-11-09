@@ -118,17 +118,19 @@ export class Fx {
           this.tracers.push({ mesh, from, to, off, target: e.visual === "bullet" ? 0 : e.target, t: 0, dur: Math.max(0.06, e.ticks * DT), visual: e.visual, arc, smokeT: 0 });
           if (e.visual === "missile") this.spawn(this.geo.sphere, this.mat.smoke, from, 0.35, 0.6, { grow: 1.2 });
           if (e.visual === "rocket") {
-            // khói mù mịt quanh dàn phóng: mỗi quả một cụm khói lớn bay tạt ngang (cả loạt 12 quả thành một đám khói)
+            // khói mù mịt quanh dàn phóng, cả loạt 24 quả thành một đám khói: nửa số quả có cụm khói để không vượt trần số hạt
             this.spawn(this.geo.sphere, this.mat.flash, from, 0.5, 0.12, { grow: 6 });
-            const v = new THREE.Vector3((Math.random() - 0.5) * 2.5, 0.4 + Math.random() * 0.8, (Math.random() - 0.5) * 2.5);
-            this.spawn(this.geo.sphere, this.mat.smoke, from.clone().setY(from.y - 0.8), 0.75, 2.2 + Math.random(), { grow: 1.8, vel: v });
+            if (Math.random() < 0.5) {
+              const v = new THREE.Vector3((Math.random() - 0.5) * 2.5, 0.4 + Math.random() * 0.8, (Math.random() - 0.5) * 2.5);
+              this.spawn(this.geo.sphere, this.mat.smoke, from.clone().setY(from.y - 0.8), 0.75, 2.2 + Math.random(), { grow: 1.8, vel: v });
+            }
           }
           break;
         }
         case "hit": {
           if (!visible(e.x, e.z)) break;
           const pos = new THREE.Vector3(e.x, this.map.groundY(e.x, e.z) + (e.alt > 0.5 ? e.alt : 0.8), e.z);
-          // tên lửa loạt: 12 quả mỗi loạt, mỗi quả nổ gọn (ít khói) để cả loạt không vượt trần số hạt và làm máy giật
+          // tên lửa loạt: 24 quả mỗi loạt, mỗi quả nổ gọn (ít khói) để cả loạt không vượt trần số hạt và làm máy giật
           if (e.splash > 0) this.boom(pos, 0.5 + e.splash * 0.35, e.visual === "rocket" ? 2 : 6);
           else this.spawn(this.geo.sphere, this.mat.flash, pos, 0.25, 0.12, { grow: 3 });
           break;
@@ -213,7 +215,7 @@ export class Fx {
         tr.smokeT -= dt;
         if (tr.smokeT <= 0) {
           // tên lửa loạt: cụm khói thưa nhưng to hơn (một loạt nhiều quả, đừng để số hạt khói làm máy giật)
-          tr.smokeT = tr.visual === "rocket" ? 0.15 : 0.035;
+          tr.smokeT = tr.visual === "rocket" ? 0.3 : 0.09;
           this.spawn(this.geo.sphere, this.mat.smoke, p, tr.visual === "rocket" ? 0.36 : 0.22, tr.visual === "rocket" ? 0.9 : 0.7, { grow: 1.1 });
         }
       }

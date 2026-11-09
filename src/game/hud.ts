@@ -74,7 +74,7 @@ export class Hud {
         spectator
           ? ""
           : `<div class="abilities">
-               <button data-act="ability:barrage" title="Rải thảm (kỹ năng của Xe Tên Lửa Loạt): chọn một vùng; các xe đang chọn (không chọn thì mọi xe) tự chạy tới tầm, dựng dàn rồi xả cả loạt 12 quả"><b>🚀 Rải thảm</b><small data-n="barrage"></small></button>
+               <button data-act="ability:barrage" title="Rải thảm (kỹ năng của Xe Tên Lửa Loạt): chọn một vùng; các xe đang chọn (không chọn thì mọi xe) tự chạy tới tầm, dựng dàn rồi xả cả loạt 24 quả"><b>🚀 Rải thảm</b><small data-n="barrage"></small></button>
                <button data-act="ability:mobilize" title="Tổng động viên (kỹ năng của Xe Tư Lệnh): quân quanh xe chạy nhanh hơn 30%, bắn nhanh hơn 20% trong 10 giây"><b>📯 Động viên</b><small data-n="mobilize"></small></button>
                <div class="up" data-n="uplinks" title="Đài Liên Lạc đang giữ: nhìn xa quanh mỗi đài"></div>
              </div>`
