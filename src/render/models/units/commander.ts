@@ -1,17 +1,18 @@
 /**
  * Mô hình Tư Lệnh (`commander`): robot tướng quân hình người cao khoảng 5 m, dáng hiên ngang, chắp tay sau lưng, đội mũ
  * quân đội, áo choàng sau lưng (người dùng chốt 09/11/2026: đơn vị đặc biệt nên phải dễ nhận ra nhất).
- *
- * Luật không đổi, chỉ khác hình: thân trên xoay từ eo để ngắm (đóng vai tháp pháo), hai súng 40mm gắn trên vai.
+ * Khoanh tay trước ngực, người hơi ngửa ra sau, không mang vũ khí.
  */
 import * as THREE from "three";
-import { approach, box, cyl, facets, group, muzzleFlash, part, sphere, type Palette, type Rig } from "../kit";
-import { barrel, vehicleRig } from "./ground";
+import { approach, box, cyl, facets, group, part, sphere, type Palette, type Rig } from "../kit";
+import { vehicleRig } from "./ground";
 
 /** Phóng cả mô hình để đỉnh mũ cao khoảng 5 m. */
 const SCALE = 1.06;
-/** Độ cao của eo: thân trên quay quanh điểm này (chưa nhân SCALE). */
+/** Độ cao của eo (chưa nhân SCALE). */
 const WAIST = 2.6;
+/** Người hơi ngửa ra sau (radian, âm là ngửa). */
+const LEAN = -0.13;
 /** Nhịp bước khi đi (radian/giây), khớp với tốc độ chạy của Tư Lệnh. */
 const STRIDE = 6.5;
 const CAPE_SEGMENTS = 5;
@@ -59,10 +60,21 @@ function buildLeg(p: Palette, side: number): { hip: THREE.Group; knee: THREE.Gro
 function buildHead(p: Palette): THREE.Group {
   const head = group();
   head.add(
-    part("Đầu", facets([[0.24, 0, 0.26], [0.3, 0.26, 0.3], [0.24, 0.44, 0.22], [0.28, 0.26, -0.26], [0.2, 0, -0.2], [0.2, 0.42, -0.2], [0, 0, 0.34]], p.hull, true)),
-    part("Hàm", facets([[0.18, 0.1, 0.33], [0.2, -0.04, 0.2], [0, -0.06, 0.32]], p.hullDark, true)),
-    part("Mắt phát sáng", box(0.46, 0.07, 0.05, p.teamGlow, 0, 0.27, 0.3))
+    part("Đầu", facets([[0.24, 0, 0.22], [0.3, 0.26, 0.26], [0.24, 0.44, 0.2], [0.28, 0.26, -0.26], [0.2, 0, -0.2], [0.2, 0.42, -0.2]], p.hullDark, true)),
+    // mặt: tấm mặt sáng màu, gò má cao, cằm vuông nhô ra
+    part("Mặt", facets([[0.2, 0.4, 0.2], [0.25, 0.22, 0.28], [0.2, 0.02, 0.27], [0.1, -0.08, 0.34], [0, 0.42, 0.33], [0, -0.1, 0.4], [0.2, 0.02, 0.14], [0.2, 0.4, 0.14]], p.white, true)),
+    part("Cằm", facets([[0.12, 0.03, 0.36], [0.13, -0.11, 0.3], [0, 0.03, 0.42], [0, -0.13, 0.4], [0.12, -0.11, 0.2]], p.hull, true)),
+    part("Sống mũi", facets([[0.035, 0.27, 0.38], [0.055, 0.13, 0.41], [0, 0.11, 0.47], [0, 0.29, 0.4], [0.05, 0.13, 0.34]], p.hull, true)),
+    part("Miệng", box(0.2, 0.022, 0.03, p.metal, 0, 0.05, 0.385))
   );
+  // chân mày nặng cau xuống phía giữa và đôi mắt xếch: vẻ thâm sâu, nghiêm nghị
+  for (const side of [-1, 1]) {
+    head.add(part("Chân mày", facets([[side * 0.03, 0.3, 0.42], [side * 0.26, 0.38, 0.32], [side * 0.26, 0.32, 0.31], [side * 0.03, 0.25, 0.41], [side * 0.03, 0.3, 0.3], [side * 0.26, 0.38, 0.22]], p.metal)));
+    const eye = part("Mắt phát sáng", box(0.13, 0.04, 0.03, p.teamGlow, side * 0.135, 0.245, 0.375));
+    eye.rotation.z = side * 0.3;
+    head.add(eye);
+    head.add(part("Rãnh má", box(0.02, 0.15, 0.03, p.metal, side * 0.17, 0.11, 0.335)));
+  }
   // mũ quân đội: chóp loe cao phía trước, băng vàng, lưỡi trai, huy hiệu
   const crown = part("Mũ tướng", cyl(0.54, 0.36, 0.28, p.teamDark, 12, 0, 0.58, -0.05));
   crown.rotation.x = -0.14;
@@ -124,17 +136,26 @@ export function buildCommander(p: Palette): Rig {
   );
   (upper.children[2] as THREE.Mesh).rotation.x = Math.PI / 2 - 0.3;
 
+  // hai tay khoanh trước ngực: mỗi cẳng tay vắt ngang sang phía bên kia, tay trái nằm ngoài tay phải
   for (const side of [-1, 1]) {
+    const outer = side === -1;
     const shoulder = new THREE.Vector3(side * 1.12, 1.12, -0.02);
-    const elbow = new THREE.Vector3(side * 1.34, 0.32, -0.56);
-    const wrist = new THREE.Vector3(side * 0.22, 0.2, -0.72);
+    const elbow = new THREE.Vector3(side * 1.16, outer ? 0.4 : 0.46, outer ? 0.68 : 0.6);
+    const wrist = new THREE.Vector3(-side * 0.56, outer ? 0.52 : 0.62, outer ? 1.0 : 0.84);
     const pad = part("Giáp vai (màu phe)", box(0.78, 0.36, 0.92, p.team, side * 1.16, 1.24, 0));
     pad.rotation.z = -side * 0.24;
     const epaulet = part("Cầu vai vàng", box(0.8, 0.06, 0.94, p.warning, side * 1.14, 1.44, 0));
     epaulet.rotation.z = -side * 0.24;
-    upper.add(pad, epaulet, part("Bắp tay", limb(shoulder, elbow, 0.26, 0.2, p.hullDark)), part("Khớp khuỷu", sphere(0.22, p.metal, elbow.x, elbow.y, elbow.z, 8)), part("Cẳng tay", limb(elbow, wrist, 0.2, 0.17, p.hull)));
+    upper.add(
+      pad,
+      epaulet,
+      part("Bắp tay", limb(shoulder, elbow, 0.26, 0.2, p.hullDark)),
+      part("Khớp khuỷu", sphere(0.22, p.metal, elbow.x, elbow.y, elbow.z, 8)),
+      part("Cẳng tay", limb(elbow, wrist, 0.21, 0.18, p.hull)),
+      part("Bàn tay", sphere(0.19, p.metal, wrist.x, wrist.y, wrist.z, 8))
+    );
   }
-  upper.add(part("Hai tay chắp sau lưng", group(box(0.62, 0.32, 0.3, p.hullDark, 0, 0.2, -0.76), sphere(0.17, p.metal, -0.16, 0.24, -0.8, 8), sphere(0.17, p.metal, 0.16, 0.2, -0.82, 8))));
+  upper.rotation.x = LEAN;
 
   const head = part("Đầu robot", buildHead(p));
   head.position.set(0, 1.44, 0.02);
@@ -145,18 +166,6 @@ export function buildCommander(p: Palette): Rig {
   part("Áo choàng", cape.root);
   upper.add(cape.root, part("Móc áo choàng", group(sphere(0.12, p.warning, -0.72, 1.3, -0.42, 8), sphere(0.12, p.warning, 0.72, 1.3, -0.42, 8))));
 
-  // hai súng 40mm trên vai
-  const gun = group();
-  gun.position.set(0, 1.62, 0.1);
-  const barrels = [barrel(1.1, 0.075, p.metal, -1.2, 0, 0.1), barrel(1.1, 0.075, p.metal, 1.2, 0, 0.1)];
-  const flashes = barrels.map((b) => {
-    const f = muzzleFlash(0.5, p.flash);
-    f.position.z = 1.35;
-    b.add(f);
-    return f;
-  });
-  gun.add(part("Bệ súng vai", group(box(0.34, 0.26, 0.6, p.hullDark, -1.2, 0, 0), box(0.34, 0.26, 0.6, p.hullDark, 1.2, 0, 0))), ...barrels);
-  upper.add(gun);
   body.add(upper);
 
   // vòng hào quang chỉ huy
@@ -172,7 +181,7 @@ export function buildCommander(p: Palette): Rig {
   body.scale.setScalar(SCALE);
   let gait = 0;
   let phase = 0;
-  const rig = vehicleRig("commander", p, { body, wheels: [], turret: upper, gun, barrels, muzzles: barrels, flashes, spinners: [], aimPitch: 0.12, recoil: 0.18 }, 3.8, [{ id: "aura", label: "Hào quang" }], (dt, t, a) => {
+  const rig = vehicleRig("commander", p, { body, wheels: [], turret: group(), gun: group(), barrels: [], muzzles: [group()], flashes: [], spinners: [], aimPitch: 0, recoil: 0 }, 3.8, [{ id: "aura", label: "Hào quang" }], (dt, t, a) => {
     gait = approach(gait, a.has("move") ? 1 : 0, 6, dt);
     phase += dt * STRIDE;
     const s = Math.sin(phase) * gait;
@@ -188,7 +197,8 @@ export function buildCommander(p: Palette): Rig {
     // áo choàng: đứng yên thì phất nhẹ, đi thì bay ra sau
     cape.joints.forEach((j, i) => {
       const wave = Math.sin(t * (1.5 + gait * 3) - i * 0.8) * (0.035 + i * 0.012 + gait * 0.04);
-      j.rotation.x = (i === 0 ? 0.1 + gait * 0.28 : 0.03 + gait * 0.05) + wave;
+      // tấm trên cùng bù lại phần người ngửa ra sau, để áo vẫn rủ xuống chứ không áp vào chân
+      j.rotation.x = (i === 0 ? 0.1 - LEAN + gait * 0.28 : 0.03 + gait * 0.05) + wave;
     });
     aura.visible = a.has("aura");
     if (aura.visible) {
@@ -196,7 +206,7 @@ export function buildCommander(p: Palette): Rig {
       aura.scale.setScalar(0.85 + k * 0.25);
       (aura.material as THREE.MeshBasicMaterial).opacity = 0.6 * (1 - k);
     }
-  });
+  }, [{ id: "move", label: "Di chuyển" }]);
   rig.root.add(aura);
   rig.defaultOn = ["aura"];
   return rig;

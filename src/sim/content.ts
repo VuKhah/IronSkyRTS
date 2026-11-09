@@ -408,7 +408,6 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     sight: 26,
     radius: 1.9,
     captureWeight: 2.2,
-    weapon: { name: "Pháo kép 40mm", dmgGround: 44, dmgAir: 32, range: 20, cooldown: 1.05, dmgType: "normal", splash: 2, visual: "cannon", traverse: 90 },
     aura: { radius: 13.5, fireRate: 1.18 },
     pointDefense: { charges: 2, recharge: 20 },
     features: [
@@ -418,7 +417,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
       "Có từ đầu trận, không chế tạo thêm được. Bị diệt là thua ngay.",
       "Tổng động viên [R]: quân trong vòng hào quang chạy nhanh hơn 30%, bắn nhanh hơn 20% trong 10 giây; 60 giây dùng lại được."
     ],
-    beats: ["lynx"],
+    beats: [],
     fears: ["titan", "falcon"]
   },
   hauler: {
