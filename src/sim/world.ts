@@ -2741,7 +2741,11 @@ export class World {
     if (!w.burst) return w.cooldown;
     if (src.burst <= 0) src.burst = w.burst.shots;
     src.burst--;
-    return src.burst > 0 ? w.burst.interval : w.cooldown;
+    if (src.burst <= 0) return w.cooldown;
+    if (!w.burst.even) return w.burst.interval;
+    // nhịp lẻ so với tick: quả thứ k bắn ở tick round(k × interval), cả loạt đi đúng tổng thời gian mong muốn
+    const k = w.burst.shots - src.burst;
+    return (Math.round(k * w.burst.interval * TICK_RATE) - Math.round((k - 1) * w.burst.interval * TICK_RATE)) / TICK_RATE;
   }
 
   private auraFactor(u: Unit): number {

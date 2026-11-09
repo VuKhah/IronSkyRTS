@@ -74,7 +74,7 @@ export function vehicleRig(
   const b = parts.bounce;
   // Xưởng Mô Hình bắn theo đúng nhịp loạt của sim (khoảng cách đã làm tròn theo tick)
   const burst = b ? spec.weapon?.burst : undefined;
-  const burstGap = burst ? Math.max(1, Math.round(burst.interval * RULES.tickRate)) / RULES.tickRate : 0;
+  const burstGap = burst ? (burst.even ? burst.interval : Math.max(1, Math.round(burst.interval * RULES.tickRate)) / RULES.tickRate) : 0;
   const clock = new FireClock(burst ? burstGap : (parts.fireEvery ?? Math.max(0.35, spec.weapon?.cooldown ?? 1)));
   const shots = new Shots(root);
   // mỗi nhịp bắn ra mấy viên cùng lúc (SkyGuard 2 khẩu)

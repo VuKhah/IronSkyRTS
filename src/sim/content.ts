@@ -88,7 +88,7 @@ export interface WeaponSpec {
   /** Số nòng bắn cùng lúc (súng đôi hai bên cánh): mỗi lần bắn ra chừng này viên song song, mỗi viên đủ sát thương. */
   barrels?: number;
   /** Bắn theo loạt: `shots` viên cách nhau `interval` giây; bắn hết loạt mới nạp lại `cooldown` giây. */
-  burst?: { shots: number; interval: number };
+  burst?: { shots: number; interval: number; even?: boolean };
   /** Tầm bắn tối thiểu (m): mục tiêu đứng gần hơn thì không bắn được (Pháo). */
   minRange?: number;
   /** Lộ vị trí: bắn xong thì đối phương nhìn thấy xuyên sương mù trong chừng này giây (Pháo). */
@@ -561,7 +561,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     },
     features: [
       "Câu trả lời cho không quân: tầm bắn 26.5m, xa hơn mọi pháo mặt đất.",
-      "Hai khẩu cùng khai hỏa: loạt 12 tên lửa trong 0.6 giây rồi nạp lại 2.4 giây.",
+      "Hai khẩu cùng khai hỏa: loạt 12 tên lửa trong 0.5 giây rồi nạp lại 2.4 giây.",
       "Lockdown: đứng yên 1.2 giây thì hạ chân chống, tầm +25% và sát thương +33%.",
       "Vừa chạy vừa bắn: sát thương -25% và 30% tên lửa bắn trượt.",
       "Không cần lưới điện hay đường ray: phòng không mang theo được ra tiền tuyến.",
@@ -604,15 +604,15 @@ export const UNITS: Record<UnitId, UnitSpec> = {
       splash: 2.8,
       breach: true,
       visual: "rocket",
-      barrels: 2, // nhóm 2 hàng trên và nhóm 2 hàng dưới, mỗi nhịp mỗi nhóm một quả
-      burst: { shots: 12, interval: 0.1 },
+      // từng quả một; `even`: nhịp lẻ so với tick 0,1 giây, cả loạt đi hết khoảng 2,6 giây
+      burst: { shots: 24, interval: 0.115, even: true },
       minRange: 8,
       scatter: 5,
       deploy: { time: 1.5, range: 0, dmg: 0, required: true },
       interceptable: true
     },
     features: [
-      "Rải thảm [T]: chọn một vùng tròn; xe tự chạy tới tầm, dựng dàn phóng 1.5 giây rồi xả hết 24 quả trong khoảng 1.2 giây (2 hàng trên và 2 hàng dưới cùng bắn), sau đó nạp lại 15 giây.",
+      "Rải thảm [T]: chọn một vùng tròn; xe tự chạy tới tầm, dựng dàn phóng 1.5 giây rồi xả lần lượt từng quả, hết 24 quả trong khoảng 2.6 giây, sau đó nạp lại 15 giây.",
       "Tên lửa rơi tản trong vòng 5 m, nổ lan 2.8 m, đạn Nổ công phá: mạnh với cụm xe giáp mỏng và nhà xưởng, yếu với Titan và tháp phòng thủ.",
       "Rải thảm không cần nhìn thấy điểm bắn: bắn được vào sương mù, ví dụ công trình địch đã phát hiện.",
       "Tầm 24 m, xa hơn tháp phòng thủ một chút; không bắn được mục tiêu gần hơn 8 m.",
