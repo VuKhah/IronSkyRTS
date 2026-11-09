@@ -14,6 +14,8 @@ const ZC = -0.85; // lùi về sau, chừa sân ra xe rộng phía trước
 const WALL_TOP = 5.2;
 const DOOR_W = 3.9;
 const DOOR_H = 4.3;
+const COL_H = 4.7; // cột thép chạy từ nền móng tới dưới đai tường
+const COL_Y = BASE_Y + COL_H / 2;
 
 export function buildFactory(p: Palette): Rig {
   const [HX, HZ0] = BUILDINGS.factory.half;
@@ -26,15 +28,14 @@ export function buildFactory(p: Palette): Rig {
   const front = ZC + HALL_HZ;
 
   // ================================================================ 1. THÂN NHÀ XƯỞNG
-  add(part("Bệ tường bê tông", box(HALL_HX * 2 + 0.1, 1.1, HALL_HZ * 2 + 0.1, p.concrete, 0, BASE_Y + 0.55, ZC)));
-  add(part("Vỏ thép nhà xưởng", box(HALL_HX * 2, WALL_TOP - 1.35, HALL_HZ * 2, p.hull, 0, (WALL_TOP + 1.35) / 2, ZC)));
+  add(part("Vỏ thép nhà xưởng", box(HALL_HX * 2, WALL_TOP - BASE_Y, HALL_HZ * 2, p.hull, 0, (WALL_TOP + BASE_Y) / 2, ZC)));
   add(part("Đai tường (màu phe)", box(HALL_HX * 2 + 0.04, 0.24, HALL_HZ * 2 + 0.04, p.team, 0, 5.0, ZC)));
   for (const sx of [-1, 1]) {
-    for (const z of [-2.1, -0.7, 0.7, 2.1]) add(part("Cột thép", box(0.14, 3.7, 0.16, p.hullDark, sx * (HALL_HX + 0.04), 3.1, ZC + z)));
+    for (const z of [-2.1, -0.7, 0.7, 2.1]) add(part("Cột thép", box(0.14, COL_H, 0.16, p.hullDark, sx * (HALL_HX + 0.04), COL_Y, ZC + z)));
     add(part("Dải cửa sổ", box(0.04, 0.5, 3.6, p.glass, sx * (HALL_HX + 0.02), 4.05, ZC)));
-    add(part("Cột thép", box(0.2, 3.7, 0.16, p.hullDark, sx * 2.45, 3.1, front + 0.04)));
+    add(part("Cột thép", box(0.2, COL_H, 0.16, p.hullDark, sx * 2.45, COL_Y, front + 0.04)));
   }
-  for (const x of [-2, -0.7, 0.7, 2]) add(part("Cột thép", box(0.16, 3.7, 0.14, p.hullDark, x, 3.1, ZC - HALL_HZ - 0.04)));
+  for (const x of [-2, -0.7, 0.7, 2]) add(part("Cột thép", box(0.16, COL_H, 0.14, p.hullDark, x, COL_Y, ZC - HALL_HZ - 0.04)));
 
   // ================================================================ 2. MÁI RĂNG CƯA: nhận ra từ trên cao
   const TOOTH_W = 1.8;
