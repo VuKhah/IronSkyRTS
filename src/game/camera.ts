@@ -13,6 +13,8 @@ const PPM_FAR = 4.6;
 const TOP_DOWN = 1.5707;
 /** Lề giấy cộng bàn gỗ còn thấy khi kéo xa nhất (m). */
 const PAPER_MARGIN = 60;
+/** Kéo dư theo chiều dọc trên bản đồ giấy, tính theo nửa chiều cao khung nhìn (đủ để phần sau bảng lệnh lộ ra). */
+const HUD_PAN = 0.8;
 
 /**
  * Hướng nhìn ban đầu của mỗi phe (Docs/design/MAPS_PLAN.md mục 3.4): bản đồ hiện "đúng hướng", cạnh dưới nằm ngang.
@@ -60,7 +62,8 @@ export class RtsCamera {
       const halfH = this.dist * tanHalf;
       const halfW = halfH * this.cam.aspect;
       const limX = Math.max(0, this.map.halfW + PAPER_MARGIN - halfW);
-      const limZ = Math.max(0, this.map.halfH + PAPER_MARGIN - halfH);
+      // cho kéo dư theo chiều dọc: bảng lệnh ở đáy màn hình che mất phần dưới bản đồ
+      const limZ = Math.max(0, this.map.halfH + PAPER_MARGIN - halfH) + halfH * HUD_PAN;
       this.tx = clamp(this.tx, -limX, limX);
       this.tz = clamp(this.tz, -limZ, limZ);
     }

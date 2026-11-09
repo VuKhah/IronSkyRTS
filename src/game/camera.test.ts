@@ -23,7 +23,7 @@ describe("camera: chiến trường 3D và bản đồ giấy", () => {
     for (const id of ["two-crossings", "big-test"]) {
       const c = rig(id);
       const m = getMap(id);
-      c.focus(m.halfW, m.halfH);
+      c.focus(0, 0);
       c.zoomBy(1000);
       c.apply();
       for (const [x, z] of [
@@ -40,6 +40,17 @@ describe("camera: chiến trường 3D và bản đồ giấy", () => {
         expect(p.y).toBeLessThanOrEqual(801);
       }
     }
+  });
+
+  it("kéo xa nhất vẫn kéo được phần dưới bản đồ lên khỏi bảng lệnh", () => {
+    const c = rig("big-test");
+    const m = getMap("big-test");
+    c.zoomBy(1000);
+    c.apply();
+    c.focus(0, m.halfH);
+    c.apply();
+    // cạnh Nam của bản đồ lên quá nửa màn hình
+    expect(c.project(0, 0, m.halfH, 1280, 800).y).toBeLessThan(400 + 800 * 0.15);
   });
 
   it("trên bản đồ giấy, cạnh dưới nằm ngang dù camera đang xoay, và điểm chạm nằm trên mặt giấy", () => {
