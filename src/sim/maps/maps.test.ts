@@ -4,12 +4,32 @@
  * - Chơi được: căn cứ không bị chặn, mọi mỏ đi tới được từ cả hai nhà.
  */
 import { describe, expect, it } from "vitest";
-import { CELL, DEV_MAP_DEFS, getMap, MAP_DEFS } from "./index";
+import { CELL, DEV_MAP_DEFS, GameMap, getMap, MAP_DEFS } from "./index";
 
 describe.each([...MAP_DEFS, ...DEV_MAP_DEFS].map((d) => [d.id]))("bản đồ %s", (id) => {
   const m = getMap(id);
   const cx = (c: number): number => -m.halfW + (c + 0.5) * CELL;
   const cz = (r: number): number => -m.halfH + (r + 0.5) * CELL;
+
+  it("lưới khoang tăng tốc cho đáp số giống hệt cách tính đầy đủ, kể cả ngoài rìa bản đồ", () => {
+    const slow = new GameMap(m.def, { accel: false });
+    const fast = new GameMap(m.def);
+    const margin = 12;
+    const stepZ = Math.max(1.7, m.h / 160); // bản đồ lớn lấy mẫu thưa hơn để kiểm thử không quá lâu
+    const stepX = Math.max(1.3, m.w / 200);
+    for (let z = -m.halfH - margin; z <= m.halfH + margin; z += stepZ)
+      for (let x = -m.halfW - margin; x <= m.halfW + margin; x += stepX) {
+        // so đúng từng bit: sim tất định nên "gần bằng" là chưa đủ
+        expect(fast.terrainHeight(x, z), `độ cao (${x}, ${z})`).toBe(slow.terrainHeight(x, z));
+        expect(fast.deckHeight(x, z), `mặt cầu (${x}, ${z})`).toBe(slow.deckHeight(x, z));
+        expect(fast.staticBlocked(x, z), `chặn (${x}, ${z})`).toBe(slow.staticBlocked(x, z));
+        expect(fast.terrainAt(x, z), `loại (${x}, ${z})`).toBe(slow.terrainAt(x, z));
+        const a = fast.waterAt(x, z, true);
+        const b = slow.waterAt(x, z, true);
+        expect(a === null, `nước (${x}, ${z})`).toBe(b === null);
+        if (a && b) expect(a.dist).toBe(b.dist);
+      }
+  });
 
   it("có 2 căn cứ và kích thước chia hết cho ô lưới", () => {
     expect(m.bases.length).toBeGreaterThanOrEqual(2);

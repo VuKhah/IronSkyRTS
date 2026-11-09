@@ -25,6 +25,31 @@ function smooth01(t: number): number {
   return k * k * (3 - 2 * k);
 }
 
+/**
+ * Lưới khoang để trả lời nhanh trên bản đồ lớn (960 m = 230.400 ô, mỗi ô từng phải dò hơn 500 cạnh cao nguyên và 170 đoạn
+ * sông). Khoảng cách có dấu tới một đa giác đổi không quá 1 m khi đi 1 m, nên đo ở tâm khoang là biết chắc cả khoang nằm
+ * hẳn trong hay hẳn ngoài vùng ảnh hưởng. Chỉ bỏ qua những phép tính biết trước kết quả: đáp số giống hệt cách tính đầy đủ.
+ */
+const BUCKET = 16;
+/** Nửa đường chéo khoang, làm tròn lên. */
+const BUCKET_R = BUCKET * 0.7072;
+/** Dư thêm cho sai số làm tròn số thực. */
+const ACCEL_EPS = 1e-6;
+/** Tầm ảnh hưởng xa nhất của dòng sông mà các câu hỏi nhanh quan tâm, tính từ bờ dốc (m). */
+const RIVER_REACH = 0.5;
+
+interface Accel {
+  cols: number;
+  rows: number;
+  /** Theo từng cao nguyên, từng khoang: 0 = hẳn ngoài, 1 = hẳn trong, 2 = phải tính. */
+  plateau: Uint8Array[];
+  /** Theo từng sông, từng khoang: các đoạn sông đủ gần để có thể ảnh hưởng. */
+  river: Segment[][][];
+}
+
+/** Hộp bao của vùng tô đa giác: x0, z0, x1, z1. */
+type Box = readonly [number, number, number, number];
+
 interface Segment {
   ax: number;
   az: number;
@@ -75,8 +100,11 @@ export class GameMap {
   readonly rocks: readonly Blob[];
   readonly regions: readonly RegionDef[];
   private readonly rivers: River[];
+  private readonly accel: Accel | null;
+  private readonly regionBox: (Box | null)[];
 
-  constructor(def: MapDef) {
+  /** `opts.accel = false`: tắt lưới khoang, chỉ dùng trong kiểm thử để so với cách tính đầy đủ. */
+  constructor(def: MapDef, opts: { accel?: boolean } = {}) {
     this.def = def;
     this.id = def.id;
     this.w = def.size.w;
@@ -111,6 +139,45 @@ export class GameMap {
       for (const c of r.crossings) river.cross.push({ along: this.riverHit(river, c.x, c.z).along, def: c });
       return river;
     });
+    this.regionBox = this.regions.map((g) => (g.poly ? polyBox(g.poly) : null));
+    this.accel = opts.accel === false ? null : this.buildAccel();
+  }
+
+  private buildAccel(): Accel {
+    const cols = Math.ceil(this.w / BUCKET);
+    const rows = Math.ceil(this.h / BUCKET);
+    const n = cols * rows;
+    const plateau = this.plateaus.map((p) => {
+      const state = new Uint8Array(n);
+      const reach = p.edge / 2 + BUCKET_R + ACCEL_EPS;
+      this.eachBucket(cols, rows, (i, x, z) => {
+        const d = polyInset(p.poly, x, z);
+        state[i] = d >= reach ? 1 : d <= -reach ? 0 : 2;
+      });
+      return state;
+    });
+    const river = this.rivers.map((r) => {
+      const lists: Segment[][] = new Array<Segment[]>(n);
+      const limit = Math.max(r.def.bank, r.def.half) + RIVER_REACH + BUCKET_R + ACCEL_EPS;
+      this.eachBucket(cols, rows, (i, x, z) => {
+        lists[i] = r.segs.filter((s) => segDist(s, x, z) <= limit);
+      });
+      return lists;
+    });
+    return { cols, rows, plateau, river };
+  }
+
+  private eachBucket(cols: number, rows: number, fn: (i: number, x: number, z: number) => void): void {
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) fn(r * cols + c, -this.halfW + (c + 0.5) * BUCKET, -this.halfH + (r + 0.5) * BUCKET);
+  }
+
+  /** Số khoang chứa điểm, -1 nếu điểm nằm ngoài bản đồ (phần vẽ có hỏi vùng ngoài rìa). */
+  private bucketOf(x: number, z: number): number {
+    const a = this.accel;
+    if (!a || x < -this.halfW || z < -this.halfH || x >= this.halfW || z >= this.halfH) return -1;
+    const c = Math.floor((x + this.halfW) / BUCKET);
+    const r = Math.floor((z + this.halfH) / BUCKET);
+    return c < a.cols && r < a.rows ? r * a.cols + c : -1;
   }
 
   // ------------------------------------------------------------------ hình dáng vùng chơi
@@ -131,32 +198,17 @@ export class GameMap {
   // ------------------------------------------------------------------ sông
 
   private riverHit(r: River, x: number, z: number): RiverHit {
-    let best = Infinity;
-    let along = 0;
-    for (const s of r.segs) {
-      const px = x - s.ax;
-      const pz = z - s.az;
-      const t = px * s.dx + pz * s.dz;
-      let d: number;
-      let a: number;
-      if (t <= 0) {
-        d = Math.sqrt(px * px + pz * pz);
-        a = s.cum;
-      } else if (t >= s.len) {
-        const qx = x - (s.ax + s.dx * s.len);
-        const qz = z - (s.az + s.dz * s.len);
-        d = Math.sqrt(qx * qx + qz * qz);
-        a = s.cum + s.len;
-      } else {
-        d = Math.abs(px * s.dz - pz * s.dx);
-        a = s.cum + t;
-      }
-      if (d < best) {
-        best = d;
-        along = a;
-      }
-    }
-    return { dist: best, along };
+    return nearestOn(r.segs, x, z);
+  }
+
+  /**
+   * Như `riverHit` nhưng chỉ xét các đoạn sông gần khoang `b`: đáp số đúng khi điểm cách sông dưới `bank + RIVER_REACH`, xa
+   * hơn thì khoảng cách trả về vẫn không nhỏ hơn mức đó (có thể là Infinity). Chỉ dùng cho câu hỏi "có ở gần sông không".
+   */
+  private riverHitNear(ri: number, x: number, z: number, b: number): RiverHit {
+    const r = this.rivers[ri];
+    if (b < 0) return this.riverHit(r, x, z);
+    return nearestOn((this.accel as Accel).river[ri][b], x, z);
   }
 
   private crossingOf(r: River, along: number): CrossingDef | null {
@@ -166,8 +218,10 @@ export class GameMap {
 
   /** Điểm này có nằm trong lòng sông (tính cả bờ dốc nếu `withBank`) không; trả về lối qua nếu có. */
   waterAt(x: number, z: number, withBank = false): { crossing: CrossingDef | null; dist: number } | null {
-    for (const r of this.rivers) {
-      const hit = this.riverHit(r, x, z);
+    const b = this.bucketOf(x, z);
+    for (let ri = 0; ri < this.rivers.length; ri++) {
+      const r = this.rivers[ri];
+      const hit = this.riverHitNear(ri, x, z, b);
       if (hit.dist < (withBank ? r.def.bank : r.def.half)) return { crossing: this.crossingOf(r, hit.along), dist: hit.dist };
     }
     return null;
@@ -217,8 +271,10 @@ export class GameMap {
   /** Ô này xe mặt đất có đi được không (chưa tính công trình). */
   staticBlocked(x: number, z: number): boolean {
     if (this.inset(x, z) < WALL) return true;
-    for (const r of this.rivers) {
-      const hit = this.riverHit(r, x, z);
+    const bucket = this.bucketOf(x, z);
+    for (let ri = 0; ri < this.rivers.length; ri++) {
+      const r = this.rivers[ri];
+      const hit = this.riverHitNear(ri, x, z, bucket);
       if (hit.dist < r.def.half && !this.crossingOf(r, hit.along)) return true;
     }
     for (const b of this.rocks) {
@@ -232,7 +288,15 @@ export class GameMap {
   /** Độ cao địa hình (m): đồi, cao nguyên, đá, lòng sông, vách núi quanh rìa. */
   terrainHeight(x: number, z: number): number {
     let h = 0;
-    for (const p of this.plateaus) {
+    const bucket = this.bucketOf(x, z);
+    for (let pi = 0; pi < this.plateaus.length; pi++) {
+      const p = this.plateaus[pi];
+      const state = bucket < 0 ? 2 : (this.accel as Accel).plateau[pi][bucket];
+      if (state === 0) continue;
+      if (state === 1) {
+        h += p.h * 1;
+        continue;
+      }
       const d = polyInset(p.poly, x, z);
       if (d > -p.edge / 2) h += p.h * smooth01(d / p.edge + 0.5);
     }
@@ -253,8 +317,9 @@ export class GameMap {
       const r2 = (b.r + 1.5) * (b.r + 1.5);
       if (d2 < r2) h += b.h * smooth01((1 - d2 / r2) * 1.6);
     }
-    for (const r of this.rivers) {
-      const hit = this.riverHit(r, x, z);
+    for (let ri = 0; ri < this.rivers.length; ri++) {
+      const r = this.rivers[ri];
+      const hit = this.riverHitNear(ri, x, z, bucket);
       const R = r.def;
       if (hit.dist < R.bank) {
         const s = smooth01((R.bank - hit.dist) / (R.bank - R.half + 1.5));
@@ -273,8 +338,10 @@ export class GameMap {
 
   /** Mặt cầu cho xe chạy trên cầu (null nếu không ở trên cầu). */
   deckHeight(x: number, z: number): number | null {
-    for (const r of this.rivers) {
-      const hit = this.riverHit(r, x, z);
+    const b = this.bucketOf(x, z);
+    for (let ri = 0; ri < this.rivers.length; ri++) {
+      const r = this.rivers[ri];
+      const hit = this.riverHitNear(ri, x, z, b);
       if (hit.dist >= r.def.bank + 0.5) continue;
       const c = this.crossingOf(r, hit.along);
       if (c && c.kind === "bridge") return DECK;
@@ -311,7 +378,10 @@ export class GameMap {
       if (water.crossing.kind === "ford") return "shallow";
     }
     let kind: TerrainKind = DEFAULT_TERRAIN;
-    for (const g of this.regions) {
+    for (let i = 0; i < this.regions.length; i++) {
+      const g = this.regions[i];
+      const box = this.regionBox[i];
+      if (box && (x < box[0] || z < box[1] || x > box[2] || z > box[3])) continue;
       if (g.circle) {
         const dx = x - g.circle.x;
         const dz = z - g.circle.z;
@@ -381,12 +451,64 @@ function mirrorDef(def: MapDef): MapDef {
 }
 
 /** Khoảng cách có dấu (m) từ điểm tới viền đa giác: dương ở trong, âm ở ngoài. */
+/** Điểm gần nhất trên danh sách đoạn sông (giữ đúng thứ tự duyệt, để hai đoạn cách đều vẫn chọn như nhau). */
+function nearestOn(segs: readonly Segment[], x: number, z: number): RiverHit {
+  let best = Infinity;
+  let along = 0;
+  for (const s of segs) {
+    const px = x - s.ax;
+    const pz = z - s.az;
+    const t = px * s.dx + pz * s.dz;
+    let d: number;
+    let a: number;
+    if (t <= 0) {
+      d = Math.sqrt(px * px + pz * pz);
+      a = s.cum;
+    } else if (t >= s.len) {
+      const qx = x - (s.ax + s.dx * s.len);
+      const qz = z - (s.az + s.dz * s.len);
+      d = Math.sqrt(qx * qx + qz * qz);
+      a = s.cum + s.len;
+    } else {
+      d = Math.abs(px * s.dz - pz * s.dx);
+      a = s.cum + t;
+    }
+    if (d < best) {
+      best = d;
+      along = a;
+    }
+  }
+  return { dist: best, along };
+}
+
+function segDist(s: Segment, x: number, z: number): number {
+  return nearestOn([s], x, z).dist;
+}
+
+function polyBox(p: readonly Vec2[]): Box {
+  let x0 = Infinity;
+  let z0 = Infinity;
+  let x1 = -Infinity;
+  let z1 = -Infinity;
+  for (const v of p) {
+    x0 = Math.min(x0, v[0]);
+    z0 = Math.min(z0, v[1]);
+    x1 = Math.max(x1, v[0]);
+    z1 = Math.max(z1, v[1]);
+  }
+  return [x0 - ACCEL_EPS, z0 - ACCEL_EPS, x1 + ACCEL_EPS, z1 + ACCEL_EPS];
+}
+
 function polyInset(b: readonly Vec2[], x: number, z: number): number {
   let inside = false;
   let best = Infinity;
   for (let i = 0, j = b.length - 1; i < b.length; j = i++) {
-    const [xi, zi] = b[i];
-    const [xj, zj] = b[j];
+    const pi = b[i];
+    const pj = b[j];
+    const xi = pi[0];
+    const zi = pi[1];
+    const xj = pj[0];
+    const zj = pj[1];
     if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
     const ex = xj - xi;
     const ez = zj - zi;
@@ -405,8 +527,12 @@ function polyInset(b: readonly Vec2[], x: number, z: number): number {
 function pointInPoly(p: readonly Vec2[], x: number, z: number): boolean {
   let inside = false;
   for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
-    const [xi, zi] = p[i];
-    const [xj, zj] = p[j];
+    const a = p[i];
+    const b = p[j];
+    const xi = a[0];
+    const zi = a[1];
+    const xj = b[0];
+    const zj = b[1];
     if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
   }
   return inside;

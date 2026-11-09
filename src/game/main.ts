@@ -138,7 +138,9 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
   const map = match.world.map;
   let scene: BattleScene;
   try {
+    const sceneT0 = performance.now();
     scene = new BattleScene(canvas, map);
+    if (new URLSearchParams(location.search).has("perf")) console.log(`[perf] dựng cảnh ${map.id}: ${Math.round(performance.now() - sceneT0)} ms`);
   } catch {
     app.innerHTML = `<div class="screen"><div class="card"><h2>Không bật được WebGL</h2><p>Trình duyệt này không hỗ trợ đồ họa 3D (WebGL), nên chưa chơi được Iron Sky. Hãy thử Chrome, Edge hoặc Safari bản mới.</p></div></div>`;
     return;

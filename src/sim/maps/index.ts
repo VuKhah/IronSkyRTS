@@ -2,6 +2,7 @@
  * Danh sách bản đồ. Thêm bản đồ mới: tạo một file dữ liệu `MapDef` trong thư mục này rồi thêm vào MAP_DEFS.
  * Hiệu ứng của từng loại địa hình nằm ở `terrain.ts` (dùng chung cho mọi bản đồ).
  */
+import { BIG_TEST } from "./big-test";
 import { GameMap } from "./game-map";
 import { IRON_VALLEY } from "./iron-valley";
 import { PROVING_GROUND } from "./proving-ground";
@@ -11,7 +12,7 @@ import type { MapDef } from "./types";
 /** Bản đồ chơi được (hiện ở menu chọn bản đồ). */
 export const MAP_DEFS: readonly MapDef[] = [IRON_VALLEY, TWO_CROSSINGS];
 /** Bản đồ kiểm thử: không hiện ở menu, mở bằng `?map=<mã>`, vẫn được maps.test.ts kiểm như mọi bản đồ. */
-export const DEV_MAP_DEFS: readonly MapDef[] = [PROVING_GROUND];
+export const DEV_MAP_DEFS: readonly MapDef[] = [PROVING_GROUND, BIG_TEST];
 export const DEFAULT_MAP_ID = IRON_VALLEY.id;
 
 const CACHE = new Map<string, GameMap>();

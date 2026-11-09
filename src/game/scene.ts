@@ -13,6 +13,10 @@ import type { World } from "../sim/world";
 const SKIRT = 20;
 /** Số mắt lưới địa hình trên mỗi mét. */
 const SEG_PER_M = 1;
+/** Trần số ô lưới địa hình mỗi cạnh: bản đồ lớn thưa lưới đi thay vì tăng tam giác theo diện tích (960 m ở 1 ô/m là 3,7 triệu tam giác kể cả lớp sương mù). */
+const MAX_TERRAIN_SEG = 320;
+/** Trần số cây trang trí: mọi cây nằm chung một lệnh vẽ nên số tam giác tăng theo số cây. */
+const MAX_TREES = 3500;
 const WATER_Y = -0.55;
 /** Các loại địa hình do bản đồ tô (vùng `regions`) được phủ màu riêng lên mặt đất, minimap; độ đậm của lớp phủ. */
 const TINT: Partial<Record<TerrainKind, number>> = { road: 0.9, sand: 0.85, mud: 0.9, snow: 0.95, forest: 0.75 };
@@ -105,7 +109,8 @@ export class BattleScene {
 
   private buildTerrainGeometry(): THREE.BufferGeometry {
     const map = this.map;
-    const geo = new THREE.PlaneGeometry(this.sizeW, this.sizeH, Math.round(this.sizeW * SEG_PER_M), Math.round(this.sizeH * SEG_PER_M));
+    const seg = Math.min(SEG_PER_M, MAX_TERRAIN_SEG / Math.max(this.sizeW, this.sizeH));
+    const geo = new THREE.PlaneGeometry(this.sizeW, this.sizeH, Math.round(this.sizeW * seg), Math.round(this.sizeH * seg));
     geo.rotateX(-Math.PI / 2);
     const pos = geo.getAttribute("position");
     const colors = new Float32Array(pos.count * 3);
@@ -301,6 +306,13 @@ export class BattleScene {
         if (map.terrainAt(px, pz) !== "forest") continue;
         spots.push({ x: px, z: pz, s: 0.55 + rng.next() * 0.3 });
       }
+    // quá trần thì bỏ đều cây (chỉ là trang trí, không ảnh hưởng luật)
+    if (spots.length > MAX_TREES) {
+      const keep = spots.length / MAX_TREES;
+      const thin = Array.from({ length: MAX_TREES }, (_, i) => spots[Math.floor(i * keep)]);
+      spots.length = 0;
+      spots.push(...thin);
+    }
     const foliage = new THREE.InstancedMesh(new THREE.ConeGeometry(1.5, 4.2, 7), new THREE.MeshStandardMaterial({ color: 0x3b5e2b, roughness: 0.9, flatShading: true }), spots.length);
     const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.2, 0.28, 1.4, 5), new THREE.MeshStandardMaterial({ color: 0x5a4330, roughness: 0.9 }), spots.length);
     const m = new THREE.Matrix4();
