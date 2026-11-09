@@ -245,6 +245,8 @@ export interface BuildingSpec {
   sight: number;
   /** Nửa kích thước nền móng theo X và Z (m): ô lưới bị chiếm, không đi xuyên được. */
   half: readonly [number, number];
+  /** Công sự (tháp, tường…): hai công sự được đặt sát nhau để khép tuyến phòng thủ; với công trình khác vẫn phải chừa lối đi. */
+  fort?: boolean;
   produces?: UnitId[];
   /** MW: dương = phát điện, âm = tiêu thụ. */
   power: number;
@@ -896,6 +898,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
   },
   turret: {
     id: "turret",
+    fort: true,
     kind: "building",
     name: "Tháp Phòng Thủ",
     label: "PHÒNG THỦ",
@@ -1045,6 +1048,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
   },
   "aa-ciws": {
     id: "aa-ciws",
+    fort: true,
     kind: "building",
     name: "Pháo Phòng Không CIWS Vulcan",
     label: "AA TỐC BẮN CAO",
@@ -1063,6 +1067,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
   },
   "aa-sam": {
     id: "aa-sam",
+    fort: true,
     kind: "building",
     name: "Tên Lửa Tầm Xa Patriot SAM",
     label: "AA TẦM XA",
@@ -1082,6 +1087,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
   },
   "aa-emp": {
     id: "aa-emp",
+    fort: true,
     kind: "building",
     name: "Tháp Xung Điện Từ SkyShield",
     label: "AA LÀM CHẬM BAY",

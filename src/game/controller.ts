@@ -18,6 +18,7 @@ import type { Hud, Mode, PanelCtx } from "./hud";
 import type { GestureHandlers, TapInfo } from "./input";
 import type { Match } from "./match";
 import { Views } from "./views";
+import { PlacementGrid } from "./placement-grid";
 
 const GHOST_OK = new THREE.MeshBasicMaterial({ color: 0x6fdc8c, transparent: true, opacity: 0.45, depthWrite: false });
 const GHOST_BAD = new THREE.MeshBasicMaterial({ color: 0xff6b5e, transparent: true, opacity: 0.45, depthWrite: false });
@@ -30,6 +31,7 @@ export class Controller implements GestureHandlers {
   mode: Mode = "normal";
   placeKind: BuildingId | null = null;
   placePos: { x: number; z: number } | null = null;
+  private placeGrid: PlacementGrid | null = null;
   placeReason: string | null = null;
   box: { x0: number; y0: number; x1: number; y1: number } | null = null;
   alpha = 0;
@@ -347,6 +349,7 @@ export class Controller implements GestureHandlers {
   }
 
   private clearGhost(): void {
+    this.placeGrid?.hide();
     if (this.ghost) {
       this.scene.remove(this.ghost.root);
       disposeRig(this.ghost);
@@ -839,6 +842,8 @@ export class Controller implements GestureHandlers {
       this.ghost.root.visible = true;
       this.placeReason = this.world.canPlace(this.me, this.placeKind, x, z);
       const valid = this.placeReason === null;
+      const [nx, nz] = this.world.blockCells(this.placeKind);
+      (this.placeGrid ??= new PlacementGrid(this.scene, this.world.map)).show(gx, gz, nx, nz, valid);
       if (valid !== this.ghostValid) {
         this.ghostValid = valid;
         this.ghost.root.traverse((o) => {

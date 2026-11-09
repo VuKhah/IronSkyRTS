@@ -58,6 +58,27 @@ describe("Đặt công trình lên lưới", () => {
         }
   });
 
+  it("công sự được đặt sát nhau để khép tuyến, nhưng cạnh công trình khác vẫn phải chừa lối đi", () => {
+    const w = new World(1, { sandbox: true });
+    const hq = w.buildings.find((b) => b.kind === "hq" && b.side === 0)!;
+    const [hw] = BUILDINGS.hq.half;
+    const lane = RULES.buildGapCells * CELL;
+    const [nx] = w.blockCells("turret");
+    const blockW = nx * CELL;
+    // tháp đầu tiên đứng cách Tổng Hành Dinh đúng một lối đi về phía có đất trống
+    const dir = hq.x > 0 ? -1 : 1;
+    const x1 = hq.x + dir * (hw + lane + blockW / 2);
+    const z1 = hq.z;
+    expect(w.sandboxPlaceError("turret", x1, z1)).toBeNull();
+    w.step([{ side: 0, order: { t: "sbSpawn", kind: "turret", side: 0, x: x1, z: z1 } } as never]);
+    // tháp thứ hai sát ngay tháp đầu: không chừa ô nào
+    expect(w.sandboxPlaceError("turret", x1 + dir * blockW, z1)).toBeNull();
+    // nhà thường sát tháp thì phải chừa lối đi
+    expect(w.sandboxPlaceError("radar", x1 + dir * blockW, z1)).toBe(LANE);
+    // tháp sát Tổng Hành Dinh cũng phải chừa lối đi
+    expect(w.sandboxPlaceError("turret", hq.x + dir * (hw + blockW / 2), z1)).toBe(LANE);
+  });
+
   it("giữa hai công trình phải đủ lối đi", () => {
     const w = new World(1, { sandbox: true });
     const hq = w.buildings.find((b) => b.kind === "hq" && b.side === 0)!;

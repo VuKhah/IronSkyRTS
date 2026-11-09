@@ -385,6 +385,12 @@ export class World {
     return [snapAxis(x, cellsFor(hw), this.map.halfW, z), snapAxis(z, cellsFor(hd), this.map.halfH, x)];
   }
 
+  /** Số ô lưới công trình chiếm theo x và z. */
+  blockCells(kind: BuildingId): [number, number] {
+    const [hw, hd] = BUILDINGS[kind].half;
+    return [cellsFor(hw), cellsFor(hd)];
+  }
+
   /** Nửa kích thước khối ô lưới công trình chiếm (lớn hơn hoặc bằng `half`). */
   private blockHalf(kind: BuildingId): [number, number] {
     const [hw, hd] = BUILDINGS[kind].half;
@@ -395,8 +401,11 @@ export class World {
   private blocksLane(kind: BuildingId, x: number, z: number): boolean {
     const [bw, bd] = this.blockHalf(kind);
     const gap = RULES.buildGapCells * CELL;
+    const fort = BUILDINGS[kind].fort;
     for (const b of this.buildings) {
       if (b.hp <= 0) continue;
+      // hai công sự được đứng sát nhau: chúng sinh ra để chặn đường
+      if (fort && BUILDINGS[b.kind].fort) continue;
       const [ow, od] = this.blockHalf(b.kind);
       if (Math.abs(b.x - x) < bw + ow + gap - 1e-6 && Math.abs(b.z - z) < bd + od + gap - 1e-6) return true;
     }

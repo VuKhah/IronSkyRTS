@@ -235,6 +235,13 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
   ctrl.hud = hud;
   // ?radial=1: mở sẵn bảng nan quạt giữa màn hình để tự kiểm phần hình
   if (new URLSearchParams(location.search).get("radial")) hud.showRadial(innerWidth / 2, innerHeight / 2 - 40, "attack", () => {}, 0);
+  // ?place=<mã công trình>,dx,dz: mở sẵn chế độ đặt nhà cách căn cứ (dx, dz) mét, để tự kiểm lưới ô và bóng mờ
+  const placeArg = new URLSearchParams(location.search).get("place")?.split(",");
+  if (placeArg) {
+    ctrl.startPlace(placeArg[0] as Parameters<typeof ctrl.startPlace>[0]);
+    const [bx, bz] = map.bases[me ?? 0];
+    ctrl.placePos = { x: bx + Number(placeArg[1] ?? 14), z: bz + Number(placeArg[2] ?? 0) };
+  }
   attachGestures(canvas, ctrl);
   const minimap = new Minimap(
     hud.minimapCanvas,
