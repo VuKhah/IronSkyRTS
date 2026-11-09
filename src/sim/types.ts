@@ -19,6 +19,11 @@ export interface Unit {
   cat: "unit";
   kind: UnitId;
   side: Side;
+  /**
+   * Đội hình Tư lệnh đã chọn cho xe này. Nằm trên xe vì đội hành quân (`Squad`) tan ra khi tới nơi: lệnh sau không chọn
+   * gì thì đi tiếp theo kiểu đã chọn. null = chưa từng chọn, dùng DEFAULT_FORMATION.
+   */
+  formation: FormationId | null;
   /** Lô: các xe đúc cùng một lần có cùng số này và được điều chung. 0 = không thuộc lô (quân có sẵn, thả trong sandbox). */
   lot: number;
   x: number;

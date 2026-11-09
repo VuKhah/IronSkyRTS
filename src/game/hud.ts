@@ -39,6 +39,9 @@ export class Hud {
   private key = "";
   private lastNumbers = 0;
 
+  private radialEl: HTMLElement | null = null;
+  private radialTimer = 0;
+
   constructor(
     parent: HTMLElement,
     private match: Match,
@@ -124,11 +127,64 @@ export class Hud {
     return `<span class="cost">${c.iron}${c.oil ? ` · <span class="o">${c.oil}</span>` : ""}</span>`;
   }
 
-  /** Chọn kiểu đội hình cho các lệnh đi tiếp theo; không chọn thì dùng mặc định. */
-  private formationRow(): string {
-    return `<div class="row"><span class="row-label">Đội hình</span>${(Object.keys(FORMATIONS) as FormationId[])
-      .map((id) => `<button class="btn" data-act="formation:${id}" data-formation="${id}"><span>${esc(FORMATIONS[id].name)}</span></button>`)
-      .join("")}</div>`;
+  /**
+   * Bảng nan quạt tại điểm đến: mỗi nan một kiểu đội hình, nan sáng là kiểu đang dùng. Không chọn gì thì tự ẩn và đội giữ
+   * nguyên kiểu; chạm chỗ khác trên bản đồ cũng ẩn. `ms` = 0: không tự ẩn.
+   */
+  showRadial(x: number, y: number, current: FormationId, pick: (f: FormationId) => void, ms = 3500): void {
+    this.hideRadial();
+    const ids = Object.keys(FORMATIONS) as FormationId[];
+    const SIZE = 232;
+    const C = SIZE / 2;
+    const R = 112;
+    const r = 42;
+    const span = (Math.PI * 2) / ids.length;
+    const pad = 0.035;
+    const at = (a: number, d: number): string => `${(C + Math.cos(a) * d).toFixed(1)} ${(C + Math.sin(a) * d).toFixed(1)}`;
+    const wedges = ids.map((id, i) => {
+      const mid = -Math.PI / 2 + i * span;
+      const a = mid - span / 2 + pad;
+      const b = mid + span / 2 - pad;
+      const large = b - a > Math.PI ? 1 : 0;
+      const d = `M${at(a, r)} L${at(a, R)} A${R} ${R} 0 ${large} 1 ${at(b, R)} L${at(b, r)} A${r} ${r} 0 ${large} 0 ${at(a, r)}Z`;
+      const lx = C + Math.cos(mid) * 78;
+      const ly = C + Math.sin(mid) * 78;
+      const words = FORMATIONS[id].name.split(" ");
+      const cut = Math.ceil(words.length / 2);
+      const lines = words.length > 2 ? [words.slice(0, cut).join(" "), words.slice(cut).join(" ")] : [FORMATIONS[id].name];
+      const text = lines.map((t, k) => `<tspan x="${lx.toFixed(1)}" dy="${k ? 15 : lines.length > 1 ? -3 : 4}">${esc(t)}</tspan>`).join("");
+      return `<g class="wedge${id === current ? " on" : ""}" data-f="${id}"><path d="${d}"/><text y="${ly.toFixed(1)}" text-anchor="middle">${text}</text></g>`;
+    });
+    const el = document.createElement("div");
+    el.className = "radial";
+    el.innerHTML = `<svg viewBox="0 0 ${SIZE} ${SIZE}" width="${SIZE}" height="${SIZE}">${wedges.join("")}<g class="hub" data-f=""><circle cx="${C}" cy="${C}" r="${r - 5}"/><text x="${C}" y="${C - 2}" text-anchor="middle">Giữ</text><text x="${C}" y="${C + 12}" text-anchor="middle">nguyên</text></g></svg>`;
+    const w = this.root.clientWidth;
+    const h = this.root.clientHeight;
+    const half = SIZE / 2 + 6;
+    el.style.left = `${Math.max(half, Math.min(w - half, x))}px`;
+    el.style.top = `${Math.max(half, Math.min(h - half, y))}px`;
+    // chạm vào bảng không được lọt xuống bản đồ
+    el.addEventListener("pointerdown", (e) => {
+      if ((e.target as Element).closest("[data-f]")) e.stopPropagation();
+    });
+    el.addEventListener("click", (e) => {
+      const g = (e.target as Element).closest<SVGGElement>("[data-f]");
+      if (!g) return;
+      e.stopPropagation();
+      const f = g.dataset.f as FormationId | "";
+      if (f && f !== current) pick(f);
+      this.hideRadial();
+    });
+    this.root.appendChild(el);
+    this.radialEl = el;
+    if (ms > 0) this.radialTimer = window.setTimeout(() => this.hideRadial(), ms);
+  }
+
+  hideRadial(): void {
+    if (this.radialTimer) window.clearTimeout(this.radialTimer);
+    this.radialTimer = 0;
+    this.radialEl?.remove();
+    this.radialEl = null;
   }
 
   private buildRow(): string {
@@ -180,7 +236,7 @@ export class Hud {
           ${hasHauler ? `<button class="btn" data-act="harvest" data-mode="harvest"><span>⛏</span><span>Khai thác</span><span class="cost">chọn mỏ</span></button>` : ""}
           ${hasHauler ? `<button class="btn" data-act="salvage" data-mode="salvage" title="Chọn một xác quân để Xe Vận Tải kéo về Tổng Hành Dinh (mỗi xe một xác)"><span>🔧</span><span>Trục vớt</span><span class="cost">chọn xác</span></button>` : ""}
           <button class="btn" data-act="deselect"><span class="key">Esc</span><span>✕</span><span>Bỏ chọn</span></button>
-        </div>${ctx.units.filter((u) => u.air === "none" && u.kind !== "hauler").length > 1 ? this.formationRow() : ""}${this.buildRow()}`;
+        </div>${this.buildRow()}`;
         break;
       }
       case "building": {
@@ -352,7 +408,7 @@ export class Hud {
     }
   }
 
-  update(ctx: PanelCtx, mode: Mode, placeKind: BuildingId | null, hint: string | null, formation?: FormationId): void {
+  update(ctx: PanelCtx, mode: Mode, placeKind: BuildingId | null, hint: string | null): void {
     const k = this.contextKey(ctx);
     if (k !== this.key) {
       this.key = k;
@@ -417,7 +473,6 @@ export class Hud {
         b.setAttribute("aria-pressed", String(mode === "place" && placeKind === b.dataset.build));
       });
       this.rows.querySelectorAll<HTMLButtonElement>("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", String(mode === b.dataset.mode)));
-      this.rows.querySelectorAll<HTMLButtonElement>("[data-formation]").forEach((b) => b.setAttribute("aria-pressed", String(formation === b.dataset.formation)));
       if (ctx.t === "building" && ctx.own) {
         const bd = ctx.b;
         this.rows.querySelectorAll<HTMLButtonElement>("[data-unit]").forEach((btn) => {

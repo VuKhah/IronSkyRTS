@@ -41,6 +41,8 @@ const SALVAGE_RETRIES = 5;
 const FORMATION_GAP = 1.4;
 /** Xe chậm hơn tốc độ khối được chạy nhanh hơn khối một chút để còn đuổi kịp ô của mình. */
 const SQUAD_CATCHUP = 1.08;
+/** Tới nơi mà phải đổi số xe mỗi hàng thì chờ thêm chừng này giây cho xe vào ô mới. */
+const SQUAD_RESHAPE_EXTRA = 8;
 /** Va chạm giữa xe đang chạy và xe đứng yên: phần lực đẩy xe chạy phải chịu (xe đứng chịu phần còn lại). */
 const MOVER_SHARE = 0.85;
 /** Đội hình hành quân: bán kính quay nhỏ nhất của người dẫn đầu (m) khi đội hình hẹp (một hai xe mỗi hàng). */
@@ -435,6 +437,7 @@ export class World {
       cat: "unit",
       kind,
       side,
+      formation: null,
       lot: 0,
       x: px,
       z: pz,
@@ -802,12 +805,31 @@ export class World {
     }
   }
 
+  /**
+   * Đội hình hiện tại của một nhóm xe: kiểu được nhiều xe nhất (ghép hai sư đoàn khác kiểu thì theo bên đông hơn, bằng nhau
+   * thì theo thứ tự bảng FORMATIONS để tất định). null = chưa xe nào được chọn kiểu.
+   */
+  formationOf(units: readonly Unit[]): FormationId | null {
+    let best: FormationId | null = null;
+    let most = 0;
+    for (const id of Object.keys(FORMATIONS) as FormationId[]) {
+      let n = 0;
+      for (const u of units) if (u.formation === id) n++;
+      if (n > most) {
+        most = n;
+        best = id;
+      }
+    }
+    return best;
+  }
+
   private orderMove(side: Side, ids: readonly number[], x: number, z: number, kind: "move" | "amove", formation?: FormationId): void {
     const units = this.ownUnits(side, ids);
     // từ 2 xe chiến đấu trở lên: hành quân thành đội hình (Xe Vận Tải đi riêng, vì còn việc hậu cần)
     const fighters = units.filter((u) => u.air === "none" && u.kind !== "hauler");
     const inSquad = fighters.length > 1 ? new Set(fighters.map((u) => u.id)) : null;
     if (inSquad) this.createSquad(side, fighters, x, z, kind, formation);
+    if (formation) for (const u of units) u.formation = formation;
     const ground = units.filter((u) => u.air === "none" && !inSquad?.has(u.id));
     const plan = this.formation(ground, x, z);
     for (const u of units) {
@@ -968,6 +990,10 @@ export class World {
   /** Lập đội hình cho một nhóm xe chiến đấu (từ 2 xe) đi tới (x, z). Xem `Squad` trong types.ts. */
   private createSquad(side: Side, units: readonly Unit[], x: number, z: number, kind: "move" | "amove", chosen?: FormationId): void {
     const n = units.length;
+    // Tư lệnh chọn thì theo lựa chọn đó; không chọn thì đi tiếp kiểu đang dùng; chưa từng chọn thì mặc định
+    const current = this.formationOf(units);
+    const formation = chosen ?? current ?? DEFAULT_FORMATION;
+    if (current) for (const u of units) u.formation = current; // ghép nhóm: mọi xe về một kiểu
     let cx = 0;
     let cz = 0;
     let ax = 0;
@@ -999,7 +1025,7 @@ export class World {
       id: this.nextId++,
       side,
       kind,
-      formation: chosen ?? DEFAULT_FORMATION,
+      formation,
       rankOf: {},
       speed: 0,
       rigid: false,
@@ -1037,10 +1063,11 @@ export class World {
     // Đội vừa cùng nhau tới nơi (cùng nhận một hướng đội hình, ai cũng còn đứng gần ô cuối của mình) là ĐÃ VÀO HÀNG:
     // giữ nguyên hình dạng đang đứng (người dùng chốt 06/11/2026: không ai đổi chỗ), dù nó có giống lưới chuẩn hay không.
     const sameFace = (f0.faceX !== 0 || f0.faceZ !== 0) && units.every((u) => u.faceX * f0.faceX + u.faceZ * f0.faceZ > 0.999);
-    // Người chỉ huy chọn kiểu đội hình thì dựng lại theo kiểu đó. Lệnh tấn công mà phải quay đầu thì cũng dựng lại để giáp
+    // Tư lệnh đổi sang kiểu đội hình khác thì dựng lại theo kiểu đó. Lệnh tấn công mà phải quay đầu thì cũng dựng lại để giáp
     // ra trước, vì đưa Pháo đi đầu vào giao tranh là sai về chiến thuật (người dùng chốt 09/11/2026). Còn lại giữ chỗ đứng.
     const turnsBack = sameFace && wx * f0.faceX + wz * f0.faceZ < 0;
-    const formed = sameFace && !chosen && !(kind === "amove" && turnsBack) && units.every((u) => u.order === "idle" && dist2(u.x, u.z, u.tx, u.tz) < 9);
+    const changed = chosen !== undefined && chosen !== current;
+    const formed = sameFace && !changed && !(kind === "amove" && turnsBack) && units.every((u) => u.order === "idle" && dist2(u.x, u.z, u.tx, u.tz) < 9);
     const colsFull = Math.min(n, Math.ceil(Math.sqrt(n * FORMATIONS[sq.formation].wide)));
     sq.byRank = !formed;
     sq.ids = units.map((u) => u.id);
@@ -1744,7 +1771,10 @@ export class World {
     this.squadLayout(sq);
     place();
     // vừa giãn lại hàng (cột qua chỗ hẹp xong): chia ô ở đích theo phân công tối ưu, không ai chạy chéo
-    if (c !== was) this.squadAssign(sq);
+    if (c !== was) {
+      this.squadAssign(sq);
+      sq.settleMax += sec(SQUAD_RESHAPE_EXTRA); // xe phải đổi chỗ thật sự, cho đủ thời gian trước khi giải tán
+    }
   }
 
   /**
@@ -4022,6 +4052,7 @@ export function hashWorld(w: World): number {
     num(u.faceZ);
     num(u.squad);
     num(u.lot);
+    num(u.formation === null ? -1 : Object.keys(FORMATIONS).indexOf(u.formation));
     num(u.aimX);
     num(u.aimZ);
     num(u.pd);

@@ -187,6 +187,44 @@ describe("đội hình chỉ đọc mã phân nhóm", () => {
     for (const u of us) expect(Math.sqrt((u.x - u.tx) ** 2 + (u.z - u.tz) ** 2), `${u.kind} ${u.id}`).toBeLessThan(1.5);
   });
 
+  it("Tư lệnh không chọn thì mặc định Giữ; đã chọn thì lệnh sau không chọn vẫn giữ kiểu đó", () => {
+    const w = new World(1, { sandbox: true });
+    const us = group(w, ["titan", "titan", "lynx", "lynx", "lynx"]);
+    go(w, us, 12);
+    expect(w.squads[0].formation, "chưa từng chọn").toBe("hold");
+    expect(us[0].formation, "mặc định không ghi đè lựa chọn").toBeNull();
+    finish(w, us);
+    go(w, us, 30, "move", "attack");
+    expect(us.every((u) => u.formation === "attack")).toBe(true);
+    finish(w, us);
+    go(w, us, 15);
+    expect(w.squads[0].formation, "từ B sang C không chọn").toBe("attack");
+    expect(us.every((u) => u.formation === "attack")).toBe(true);
+  });
+
+  it("lệnh sau chọn kiểu khác thì đổi kiểu và dựng lại; chọn đúng kiểu đang dùng thì không xếp lại", () => {
+    const w = new World(1, { sandbox: true });
+    const us = group(w, ["titan", "titan", "titan", "lynx", "lynx", "lynx"]);
+    go(w, us, 12, "move", "attack");
+    finish(w, us);
+    go(w, us, 24, "move", "attack");
+    expect(w.squads[0].rigid, "cùng kiểu: dịch nguyên khối").toBe(true);
+    finish(w, us);
+    go(w, us, 8, "move", "pin");
+    expect(w.squads[0].formation).toBe("pin");
+    expect(w.squads[0].rigid, "đổi kiểu: dựng lại").toBe(false);
+  });
+
+  it("ghép hai nhóm khác kiểu: cả nhóm theo kiểu của bên đông hơn", () => {
+    const w = new World(1, { sandbox: true });
+    const us = group(w, ["lynx", "lynx", "lynx", "titan", "titan"]);
+    us.slice(0, 3).forEach((u) => (u.formation = "march"));
+    us.slice(3).forEach((u) => (u.formation = "pin"));
+    go(w, us, 15);
+    expect(w.squads[0].formation).toBe("march");
+    expect(us.every((u) => u.formation === "march")).toBe(true);
+  });
+
   it("chọn đội hình vẫn tất định", () => {
     const hash = (): number => {
       const w = new World(1, { sandbox: true });

@@ -182,7 +182,7 @@ export class Ai {
     if (free.length >= waveSize && w.tick - this.lastWave > sec(20)) {
       const t = this.attackTarget(w, base, enemyBuildings);
       for (const u of free) this.waveIds.add(u.id);
-      out.push({ t: "amove", ids: free.map((u) => u.id), x: t[0], z: t[1] });
+      out.push({ t: "amove", ids: free.map((u) => u.id), x: t[0], z: t[1], formation: "attack" });
       this.wave++;
       this.waveBonus = this.rng.int(3);
       this.lastWave = w.tick;

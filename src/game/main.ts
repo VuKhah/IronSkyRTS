@@ -231,6 +231,8 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
   const ctrl = new Controller(match, cam, scene.scene, views, fx, sfx, canvas, openPause);
   const hud = new Hud(app, match, thumbs, (a, arg) => ctrl.act(a, arg));
   ctrl.hud = hud;
+  // ?radial=1: mở sẵn bảng nan quạt giữa màn hình để tự kiểm phần hình
+  if (new URLSearchParams(location.search).get("radial")) hud.showRadial(innerWidth / 2, innerHeight / 2 - 40, "attack", () => {}, 0);
   attachGestures(canvas, ctrl);
   const minimap = new Minimap(
     hud.minimapCanvas,
@@ -526,7 +528,7 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
     // khói bốc lên từ xác xe
     if (!noFx) for (const p of views.wreckPositions()) if (Math.random() < dt * 1.4) fx.wreckSmoke(p);
     fx.update(dt, world, targetPos);
-    hud.update(ctrl.panelCtx(), ctrl.mode, ctrl.placeKind, ctrl.hint(), ctrl.formation);
+    hud.update(ctrl.panelCtx(), ctrl.mode, ctrl.placeKind, ctrl.hint());
     const anchor = ctrl.confirmAnchor();
     hud.confirm.hidden = !anchor;
     if (anchor) {

@@ -125,7 +125,7 @@ export interface WeaponSpec {
  */
 export type GroupCode = "MUI" | "GIAP" | "HL" | "PK" | "XA" | "DAN" | "HC" | "TL" | "KQ";
 
-export type FormationId = "march" | "attack" | "escort" | "pin";
+export type FormationId = "hold" | "march" | "attack" | "escort" | "pin";
 
 /** Một kiểu đội hình, hoàn toàn là dữ liệu: thêm kiểu mới không phải sửa luật. */
 export interface FormationDef {
@@ -146,14 +146,16 @@ export const REAR_RANK = 9;
 const ATTACK_RANK: Record<GroupCode, number> = { MUI: 0, GIAP: 0, HL: 1, TL: 1, PK: 1, KQ: 1, XA: 2, HC: 2, DAN: 3 };
 
 export const FORMATIONS: Record<FormationId, FormationDef> = {
+  // giữ trận địa: giáp đứng trước, xe nhanh làm lực lượng dự phòng ngay sau giáp, hỏa lực phía sau, phòng không hai cánh
+  hold: { name: "Giữ", wide: 3, rank: { GIAP: 0, MUI: 1, HL: 1, TL: 1, PK: 1, KQ: 1, XA: 2, HC: 2, DAN: 3 }, flank: "PK" },
   march: { name: "Hành quân", wide: 0.8, rank: { MUI: 0, GIAP: 1, HL: 2, TL: 2, PK: 2, KQ: 2, XA: 3, HC: 3, DAN: 4 }, rearGuard: true },
-  attack: { name: "Tấn công", wide: 2.5, rank: ATTACK_RANK },
+  attack: { name: "Xung kích", wide: 2.5, rank: ATTACK_RANK },
   escort: { name: "Hộ tống Pháo", wide: 1.5, rank: { MUI: 0, GIAP: 0, HL: 1, TL: 1, PK: 1, KQ: 1, XA: 1, HC: 1, DAN: 1 }, rearGuard: true, flank: "PK" },
   pin: { name: "Kìm chân", wide: 8, rank: ATTACK_RANK }
 };
 
-/** Đội hình khi người chỉ huy chưa chọn. */
-export const DEFAULT_FORMATION: FormationId = "attack";
+/** Đội hình của xe chưa từng được Tư lệnh chọn kiểu nào (người dùng chốt 09/11/2026). */
+export const DEFAULT_FORMATION: FormationId = "hold";
 
 export interface UnitSpec {
   id: UnitId;

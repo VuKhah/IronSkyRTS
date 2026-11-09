@@ -117,6 +117,17 @@ button { font: inherit; color: inherit; }
 .abilities button:hover:not([disabled]) { border-color: var(--accent); }
 .abilities button.on { border-color: #ff5a4f; box-shadow: 0 0 0 2px rgba(255, 90, 79, 0.35); }
 .abilities button[disabled] { opacity: 0.45; cursor: default; }
+.radial { position: absolute; transform: translate(-50%, -50%); pointer-events: none; z-index: 30; animation: radial-in 0.12s ease-out; }
+.radial svg { display: block; overflow: visible; }
+.radial .wedge, .radial .hub { pointer-events: auto; cursor: pointer; }
+.radial .wedge path { fill: var(--panel-solid); fill-opacity: 0.92; stroke: var(--line-strong); stroke-width: 1.2; transition: fill 0.1s; }
+.radial .wedge:hover path { fill: #2c3a4f; }
+.radial .wedge.on path { stroke: var(--good); stroke-width: 2.5; }
+.radial text { font-size: 13px; font-weight: 700; fill: #e6edf2; pointer-events: none; user-select: none; }
+.radial .wedge.on text { fill: var(--good); }
+.radial .hub circle { fill: var(--panel-solid); fill-opacity: 0.92; stroke: var(--line-strong); }
+.radial .hub text { font-size: 11px; font-weight: 600; fill: #aab6c5; }
+@keyframes radial-in { from { opacity: 0; transform: translate(-50%, -50%) scale(0.85); } }
 .place-confirm { position: absolute; display: flex; gap: 10px; transform: translate(-50%, 0); pointer-events: auto; }
 .place-confirm button { width: 52px; height: 52px; border-radius: 50%; border: 2px solid var(--line-strong); background: var(--panel-solid); font-size: 22px; font-weight: 800; cursor: pointer; }
 .place-confirm .ok { border-color: var(--good); color: var(--good); }

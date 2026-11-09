@@ -7,7 +7,7 @@
  * Trên máy tính: nhấp trái để chọn, nhấp phải để ra lệnh. Trên điện thoại: chạm đất khi đang chọn quân là ra lệnh đi.
  */
 import * as THREE from "three";
-import { BUILDINGS, canStrike, doorSign, FACTION_OF, RES_NAME, UNITS, type BuildingId, type FormationId, type Side, type UnitId } from "../sim/content";
+import { BUILDINGS, canStrike, DEFAULT_FORMATION, doorSign, FACTION_OF, RES_NAME, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
 import type { Building, Entity, Mine, Order, Unit, Wreck } from "../sim/types";
 import { buildModel, disposeRig, type Rig } from "../render/models";
 import type { Sfx } from "./audio";
@@ -26,8 +26,6 @@ const AIM_BAD = new THREE.MeshBasicMaterial({ color: 0x9aa0a6, transparent: true
 
 export class Controller implements GestureHandlers {
   selected: number[] = [];
-  /** Kiểu đội hình người chỉ huy đang chọn cho các lệnh đi tiếp theo; undefined = để mặc định. */
-  formation: FormationId | undefined = undefined;
   mode: Mode = "normal";
   placeKind: BuildingId | null = null;
   placePos: { x: number; z: number } | null = null;
@@ -72,6 +70,7 @@ export class Controller implements GestureHandlers {
     });
     canvas.addEventListener("pointerleave", () => (this.mouse.inside = false));
     canvas.addEventListener("pointerdown", (e) => {
+      this.hud?.hideRadial();
       this.mouse.used = e.pointerType === "mouse";
       this.sfx.unlock();
     });
@@ -278,9 +277,17 @@ export class Controller implements GestureHandlers {
       }
     }
     if (!g) return;
-    this.issue({ t: mode === "amove" ? "amove" : "move", ids, x: g.x, z: g.z, formation: this.formation });
+    const t = mode === "amove" ? "amove" : "move";
+    this.issue({ t, ids, x: g.x, z: g.z });
     this.fx.marker(g.x, g.z, mode === "amove" ? 0xff6b5e : 0x6fdc8c);
     this.sfx.ui("ack");
+    // Quân đã lăn bánh theo đội hình đang có. Tại điểm đến hiện bảng nan quạt: Tư lệnh bỏ qua thì giữ nguyên, chọn một nan thì đổi kiểu.
+    const fighters = units.filter((u) => u.air === "none" && u.kind !== "hauler");
+    if (fighters.length > 1)
+      this.hud?.showRadial(sx, sy, this.world.formationOf(fighters) ?? DEFAULT_FORMATION, (formation) => {
+        this.issue({ t, ids, x: g.x, z: g.z, formation });
+        this.sfx.ui("ack");
+      });
   }
 
   // ------------------------------------------------------------------ đặt công trình
@@ -478,11 +485,6 @@ export class Controller implements GestureHandlers {
         break;
       case "placeCancel":
         this.cancelPlace();
-        break;
-      case "formation":
-        // bấm lại kiểu đang chọn thì trả về mặc định
-        this.formation = this.formation === arg ? undefined : (arg as FormationId);
-        this.sfx.ui("click");
         break;
       case "produce":
         if (b) {

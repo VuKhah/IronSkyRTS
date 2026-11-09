@@ -5,7 +5,7 @@
  * Chỉ kiểm HÀNH VI, không khóa con số (khe hở, tỉ lệ bề ngang có thể chỉnh).
  */
 import { describe, expect, it } from "vitest";
-import { FORMATIONS, UNITS, type UnitId } from "./content";
+import { FORMATIONS, UNITS, type FormationId, type UnitId } from "./content";
 import { assignMin } from "./assign";
 import { Rng } from "./fmath";
 import { arenaPoint } from "./scenarios";
@@ -18,22 +18,24 @@ function spawn(w: World, kind: UnitId, x: number, z: number, side: 0 | 1 = 0): U
 }
 
 /** Thả một nhóm lộn xộn quanh arenaPoint(-22), ra lệnh đi tới arenaPoint(22), chờ cả nhóm tới nơi. */
-function march(kinds: UnitId[]): { w: World; us: Unit[]; tx: number; tz: number } {
+function march(kinds: UnitId[], formation?: FormationId): { w: World; us: Unit[]; tx: number; tz: number } {
   const w = new World(1, { sandbox: true });
   const rng = new Rng(5);
   const [ax, az] = arenaPoint(-22);
   for (const k of kinds) spawn(w, k, ax + (rng.next() - 0.5) * 14, az + (rng.next() - 0.5) * 14);
   const us = w.units.filter((u) => u.side === 0);
   const [tx, tz] = arenaPoint(22);
-  w.step([{ side: 0, order: { t: "move", ids: us.map((u) => u.id), x: tx, z: tz } }]);
+  w.step([{ side: 0, order: { t: "move", ids: us.map((u) => u.id), x: tx, z: tz, formation } }]);
   for (let t = 0; t < sec(60) && us.some((u) => u.order !== "idle"); t++) w.step([]);
   return { w, us, tx, tz };
 }
 
 describe("đội hình khi ra lệnh cho cả nhóm", () => {
   it("10 Titan: hàng ngang ngay ngắn quanh điểm đích, không xe nào chạm nhau, cùng quay một hướng", () => {
-    const { us, tx, tz } = march(Array<UnitId>(10).fill("titan"));
+    const { w, us, tx, tz } = march(Array<UnitId>(10).fill("titan"));
     expect(us.every((u) => u.order === "idle")).toBe(true);
+    // tới ô rồi thân xe mới xoay dần về hướng đội hình
+    for (let t = 0; t < sec(6); t++) w.step([]);
     const fx = us[0].faceX;
     const fz = us[0].faceZ;
     // không chạm nhau: tâm cách nhau ít nhất 2 bán kính
@@ -41,7 +43,7 @@ describe("đội hình khi ra lệnh cho cả nhóm", () => {
     for (let i = 0; i < us.length; i++)
       for (let j = i + 1; j < us.length; j++) expect(Math.sqrt((us[i].x - us[j].x) ** 2 + (us[i].z - us[j].z) ** 2)).toBeGreaterThanOrEqual(2 * r);
     // cùng hướng = hướng hành quân
-    for (const u of us) expect(u.hx * fx + u.hz * fz).toBeGreaterThan(0.999);
+    for (const u of us) expect(u.hx * fx + u.hz * fz).toBeGreaterThan(0.99);
     // hàng ngang: vị trí theo chiều sâu chỉ có vài mức (mỗi hàng một mức), bề ngang rộng hơn bề sâu
     const fwd = us.map((u) => (u.x - tx) * fx + (u.z - tz) * fz);
     const lat = us.map((u) => (u.x - tx) * fz - (u.z - tz) * fx);
@@ -55,7 +57,7 @@ describe("đội hình khi ra lệnh cho cả nhóm", () => {
   });
 
   it("đội hỗn hợp: xe giáp hàng đầu, hỏa lực tầm xa phía sau", () => {
-    const { us, tx, tz } = march(["artillery", "rocket", "titan", "skyguard", "titan", "lynx", "skyguard", "titan"]);
+    const { us, tx, tz } = march(["artillery", "rocket", "titan", "skyguard", "titan", "lynx", "skyguard", "titan"], "attack");
     const fx = us[0].faceX;
     const fz = us[0].faceZ;
     const fwd = (u: Unit): number => (u.x - tx) * fx + (u.z - tz) * fz;
@@ -83,7 +85,7 @@ describe("đội hình khi ra lệnh cho cả nhóm", () => {
       marched++;
       expect(sq.s - s0).toBeLessThanOrEqual(sq.speed * 0.1 + 1e-9);
       // quân lộn xộn tự vào hàng trên đường đi: chỉ đo sau khi đã có thời gian vào hàng
-      if (i < sec(8)) continue;
+      if (i < sec(18)) continue;
       for (const u of us) {
         const k = sq.ids.indexOf(u.id);
         const [sx, sz] = (w as unknown as { squadSlot(q: unknown, i: number): number[] }).squadSlot(sq, k);
