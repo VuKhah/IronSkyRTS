@@ -22,6 +22,13 @@ const HIP_SWING = 0.36;
 const KNEE_LIFT = 0.55;
 const CAPE_SEGMENTS = 5;
 const CAPE_SEG_LEN = 0.62;
+/** Số nếp gấp dọc của áo choàng. */
+const CAPE_PLEATS = 12;
+/** Tung chiêu: giơ tay, giữ, thu tay (giây); hết một vòng mới được tung lại. */
+const CAST_RAISE = 0.5;
+const CAST_HOLD = 1.0;
+const CAST_LOWER = 0.7;
+const CAST_CYCLE = 3.4;
 
 /** Khối vuốt: mặt trên rộng `wTop × dTop` ở y = 0, mặt dưới `wBot × dBot` ở y = -h. */
 function taper(wTop: number, dTop: number, wBot: number, dBot: number, h: number, mat: THREE.Material, zOff = 0): THREE.Mesh {
@@ -92,7 +99,40 @@ function buildHead(p: Palette): THREE.Group {
   return head;
 }
 
-/** Áo choàng: chuỗi các tấm nối khớp từ vai xuống, mỗi tấm có nếp gấp, gió thổi thì lượn sóng từ trên xuống. */
+/** Một đoạn áo choàng có mặt cắt zig-zag: các nếp gấp chạy dọc, nối liền với đoạn trên và đoạn dưới. Mặt nhìn về `+z` nếu `front`. */
+function pleatedPanel(k0: number, k1: number, zOff: number, front: boolean, mat: THREE.Material): THREE.Mesh {
+  const row = (k: number, y: number): THREE.Vector3[] =>
+    Array.from({ length: CAPE_PLEATS + 1 }, (_, j) => {
+      const width = 2.0 + k * 0.7;
+      const amp = 0.05 + k * 0.07;
+      return new THREE.Vector3((j / CAPE_PLEATS - 0.5) * width, y, (j % 2 ? -amp : amp) + zOff);
+    });
+  const top = row(k0, 0);
+  const bot = row(k1, -CAPE_SEG_LEN);
+  const pos: number[] = [];
+  const tri = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3): void => {
+    pos.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+  };
+  for (let j = 0; j < CAPE_PLEATS; j++) {
+    const [a, b, c, d] = [top[j], top[j + 1], bot[j], bot[j + 1]];
+    if (front) {
+      tri(a, c, d);
+      tri(a, d, b);
+    } else {
+      tri(a, d, c);
+      tri(a, b, d);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.computeVertexNormals();
+  const m = new THREE.Mesh(geo, mat);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
+}
+
+/** Áo choàng: chuỗi các đoạn nối khớp từ vai xuống, nếp gấp chạy dọc suốt chiều dài, gió thổi thì lượn sóng từ trên xuống. */
 function buildCape(p: Palette): { root: THREE.Group; joints: THREE.Group[] } {
   const root = group();
   const joints: THREE.Group[] = [];
@@ -100,20 +140,61 @@ function buildCape(p: Palette): { root: THREE.Group; joints: THREE.Group[] } {
   for (let i = 0; i < CAPE_SEGMENTS; i++) {
     const joint = group();
     if (i > 0) joint.position.y = -CAPE_SEG_LEN;
-    const k = i / (CAPE_SEGMENTS - 1);
-    const width = 2.0 + k * 0.7;
-    const RIBS = 7;
-    const ribW = width / RIBS;
-    for (let r = 0; r < RIBS; r++) {
-      const x = (r - (RIBS - 1) / 2) * ribW;
-      joint.add(part("Áo choàng", box(ribW * 1.04, CAPE_SEG_LEN * 1.03, 0.05, p.team, x, -CAPE_SEG_LEN / 2, r % 2 ? -0.05 : 0)));
-    }
-    joint.add(part("Lót áo choàng", box(width, CAPE_SEG_LEN * 1.02, 0.03, p.teamDark, 0, -CAPE_SEG_LEN / 2, 0.05)));
+    const k0 = i / CAPE_SEGMENTS;
+    const k1 = (i + 1) / CAPE_SEGMENTS;
+    joint.add(part("Áo choàng", pleatedPanel(k0, k1, 0, false, p.team)), part("Lót áo choàng", pleatedPanel(k0, k1, 0.03, true, p.teamDark)));
     parent.add(joint);
     parent = joint;
     joints.push(joint);
   }
   return { root, joints };
+}
+
+/**
+ * Cánh tay phải có hai tư thế: khoanh trước ngực (k = 0) và chỉ về phía trước, hơi chếch lên (k = 1).
+ * Khuỷu và cổ tay đi thẳng giữa hai tư thế; bắp tay, cẳng tay nối theo hai điểm đó.
+ */
+function pointingArm(p: Palette, shoulder: THREE.Vector3, foldElbow: THREE.Vector3, foldWrist: THREE.Vector3): { root: THREE.Group; set(k: number): void } {
+  const dir = new THREE.Vector3(0.16, 0.42, 0.89).normalize();
+  const reachElbow = shoulder.clone().addScaledVector(dir, 1.0);
+  const reachWrist = reachElbow.clone().addScaledVector(dir, 1.35);
+  const unit = new THREE.Vector3(0, 1, 0);
+  const upperArm = part("Bắp tay", limb(new THREE.Vector3(), unit, 0.26, 0.2, p.hullDark));
+  const forearm = part("Cẳng tay", limb(new THREE.Vector3(), unit, 0.21, 0.18, p.hull));
+  const elbowBall = part("Khớp khuỷu", sphere(0.22, p.metal, 0, 0, 0, 8));
+  const hand = part("Bàn tay", sphere(0.19, p.metal, 0, 0, 0, 8));
+  const finger = part("Ngón tay chỉ", box(0.12, 0.12, 0.55, p.metal));
+  const tip = part("Đầu ngón phát sáng", sphere(0.11, p.teamGlow, 0, 0, 0, 8));
+  const root = part("Tay phải", group(upperArm, forearm, elbowBall, hand, finger, tip));
+  const zAxis = new THREE.Vector3(0, 0, 1);
+  const up = new THREE.Vector3(0, 1, 0);
+  const E = new THREE.Vector3();
+  const W = new THREE.Vector3();
+  const D = new THREE.Vector3();
+  const lay = (m: THREE.Object3D, a: THREE.Vector3, b: THREE.Vector3): void => {
+    D.subVectors(b, a);
+    const len = D.length();
+    m.position.copy(a).addScaledVector(D, 0.5);
+    m.quaternion.setFromUnitVectors(up, D.normalize());
+    m.scale.y = len;
+  };
+  const set = (k: number): void => {
+    E.lerpVectors(foldElbow, reachElbow, k);
+    W.lerpVectors(foldWrist, reachWrist, k);
+    lay(upperArm, shoulder, E);
+    lay(forearm, E, W);
+    elbowBall.position.copy(E);
+    hand.position.copy(W);
+    // ngón tay duỗi ra và đầu ngón sáng lên khi giơ tay
+    const s = Math.max(0.01, k);
+    finger.position.copy(W).addScaledVector(dir, 0.3 * s);
+    finger.quaternion.setFromUnitVectors(zAxis, dir);
+    finger.scale.setScalar(s);
+    tip.position.copy(W).addScaledVector(dir, 0.62 * s);
+    tip.scale.setScalar(s);
+  };
+  set(0);
+  return { root, set };
 }
 
 export function buildCommander(p: Palette): Rig {
@@ -141,6 +222,7 @@ export function buildCommander(p: Palette): Rig {
   );
   (upper.children[2] as THREE.Mesh).rotation.x = Math.PI / 2 - 0.3;
 
+  let pointing: ReturnType<typeof pointingArm> | null = null;
   // hai tay khoanh trước ngực: mỗi cẳng tay vắt ngang sang phía bên kia, tay trái nằm ngoài tay phải
   for (const side of [-1, 1]) {
     const outer = side === -1;
@@ -151,6 +233,12 @@ export function buildCommander(p: Palette): Rig {
     pad.rotation.z = -side * 0.24;
     const epaulet = part("Cầu vai vàng", box(0.8, 0.06, 0.94, p.warning, side * 1.14, 1.44, 0));
     epaulet.rotation.z = -side * 0.24;
+    if (outer) {
+      // tay phải (nằm ngoài khi khoanh): giơ lên được khi tung chiêu
+      pointing = pointingArm(p, shoulder, elbow, wrist);
+      upper.add(pad, epaulet, pointing.root);
+      continue;
+    }
     upper.add(
       pad,
       epaulet,
@@ -187,7 +275,12 @@ export function buildCommander(p: Palette): Rig {
   let gait = 0;
   let phase = 0;
   let pace = 1;
-  const rig = vehicleRig("commander", p, { body, wheels: [], turret: group(), gun: group(), barrels: [], muzzles: [group()], flashes: [], spinners: [], aimPitch: 0, recoil: 0 }, 3.8, [{ id: "aura", label: "Hào quang" }, { id: "hurry", label: "Bước nhanh" }], (dt, t, a) => {
+  let castT = -1;
+  const smooth = (v: number): number => {
+    const x = Math.max(0, Math.min(1, v));
+    return x * x * (3 - 2 * x);
+  };
+  const rig = vehicleRig("commander", p, { body, wheels: [], turret: group(), gun: group(), barrels: [], muzzles: [group()], flashes: [], spinners: [], aimPitch: 0, recoil: 0 }, 3.8, [{ id: "aura", label: "Hào quang" }, { id: "hurry", label: "Bước nhanh" }, { id: "cast", label: "Tung chiêu" }], (dt, t, a) => {
     gait = approach(gait, a.has("move") ? 1 : 0, 3.5, dt);
     pace = approach(pace, a.has("hurry") ? HURRY : 1, 4, dt);
     phase += dt * STRIDE * pace;
@@ -209,8 +302,17 @@ export function buildCommander(p: Palette): Rig {
     upper.position.x = Math.cos(phase) * 0.07 * gait;
     upper.rotation.z = -Math.cos(phase) * 0.018 * gait;
     upper.rotation.y = Math.sin(phase) * 0.05 * gait;
-    // đầu ngước lên, thỉnh thoảng chậm rãi đảo nhìn
-    head.rotation.x = -0.16;
+    // tung chiêu: giơ tay chỉ, giữ một nhịp, thu về khoanh tay
+    if (castT < 0 && a.has("cast")) castT = 0;
+    let cast = 0;
+    if (castT >= 0) {
+      cast = castT < CAST_RAISE + CAST_HOLD ? smooth(castT / CAST_RAISE) : 1 - smooth((castT - CAST_RAISE - CAST_HOLD) / CAST_LOWER);
+      castT += dt;
+      if (castT >= CAST_CYCLE) castT = -1;
+    }
+    pointing?.set(cast);
+    // đầu ngước lên, thỉnh thoảng chậm rãi đảo nhìn; khi tung chiêu thì nhìn theo tay
+    head.rotation.x = -0.16 - cast * 0.08;
     head.rotation.y = Math.sin(t * 0.45) * 0.2;
     // áo choàng: đứng yên thì phất nhẹ, đi thì bay ra sau
     cape.joints.forEach((j, i) => {

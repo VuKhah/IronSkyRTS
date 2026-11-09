@@ -105,6 +105,9 @@ function buildUplink(): UplinkView {
 /** Vật liệu cháy đen dùng chung cho mọi xác quân (một vật liệu → mỗi xác gộp được thành một lệnh vẽ). */
 const WRECK_MAT = new THREE.MeshStandardMaterial({ color: 0x3b3733, roughness: 0.95, metalness: 0.15 });
 
+/** Thời gian bật hoạt ảnh tung chiêu khi vừa Tổng động viên (giây). */
+const CAST_WINDOW = 2.2;
+
 export class Views {
   private units = new Map<number, View>();
   private buildings = new Map<number, View>();
@@ -345,6 +348,8 @@ export class Views {
       root.rotation.set(pitch, v.yaw, roll, "YXZ");
       if (u.moved || u.px !== u.x || u.pz !== u.z) a.add("move");
       if (world.mobilized(u)) a.add("hurry");
+      // vài giây đầu của Tổng động viên: quân có hào quang tung chiêu
+      if (UNITS[u.kind].aura && world.sides[u.side].mobilizeUntil - world.tick > (RULES.abilities.mobilize.duration - CAST_WINDOW) * RULES.tickRate) a.add("cast");
       if (u.kind === "hauler") {
         if (u.cargo > 0) a.add(u.cargoRes === "oil" ? "loadOil" : "load");
         if (u.scrap > 0) a.add("scrap");
