@@ -108,9 +108,11 @@ export function buildShieldDrone(p: Palette): Rig {
         for (const s of puffs) {
           const k = (t * 0.22 + (s.userData.phase as number)) % 1;
           const a0 = s.userData.angle as number;
-          const r = 1.5 + k * (FIELD_R - 2);
+          // tâm cụm + bán kính cụm không vượt ranh giới vùng, để khói cùng cỡ với vòm khiên
+          const size = 0.8 + k * 1.4;
+          const r = 1.5 + k * (FIELD_R - 1.5 - 2.2);
           s.position.set(Math.sin(a0) * r, 0.7 + (1 - k) * 2.6, Math.cos(a0) * r);
-          s.scale.setScalar(0.9 + k * 2.2);
+          s.scale.setScalar(size);
         }
     }
   });
