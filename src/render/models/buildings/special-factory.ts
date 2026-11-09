@@ -7,7 +7,7 @@
 import * as THREE from "three";
 import { BUILDINGS } from "../../../sim/content";
 import { approach, box, cyl, facets, group, part, sphere, tubeZ, type Palette, type Rig } from "../kit";
-import { WORK, rig, foundation, blinker, oct, strut, BASE_Y } from "./shared";
+import { WORK, rig, foundation, productionSignals, oct, strut, BASE_Y } from "./shared";
 
 const HALL = 3.0;
 const ZC = -0.6;
@@ -50,8 +50,13 @@ export function buildSpecialFactory(p: Palette): Rig {
   // ================================================================ 3. CỬA CUỐN + SÂN RA XE
   const doorY = BASE_Y + DOOR_H / 2;
   add(part("Lòng xưởng", box(DOOR_W, DOOR_H, 0.05, p.hullDark, 0, doorY, front + 0.01)));
-  const lamp = p.teamGlow.clone() as THREE.MeshStandardMaterial;
-  add(part("Đèn trong xưởng", box(DOOR_W - 0.5, 0.08, 0.03, lamp, 0, BASE_Y + DOOR_H - 0.3, front + 0.05)));
+  const sig = productionSignals(p, 4.4);
+  const lamp = sig.beacon;
+  add(part("Lò đúc (sáng khi đang đúc)", box(DOOR_W - 0.6, DOOR_H * 0.62, 0.03, sig.glow, 0, BASE_Y + DOOR_H * 0.36, front + 0.04)));
+  add(part("Đèn trong xưởng", box(DOOR_W - 0.5, 0.08, 0.03, sig.glow, 0, BASE_Y + DOOR_H - 0.3, front + 0.05)));
+  // thanh tiến độ trên dải mái phía trước, ngay trên cửa
+  sig.bar.position.set(0, ROOF_Y + 0.22, front - 0.5);
+  add(sig.bar);
   const door = part("Cửa cuốn", group(box(DOOR_W, DOOR_H, 0.08, p.teamDark)));
   for (let i = 0; i < 11; i++) door.add(part("Nan cửa", box(DOOR_W - 0.08, 0.04, 0.03, p.metal, 0, -DOOR_H / 2 + 0.3 + i * 0.47, 0.055)));
   door.position.set(0, doorY, front + 0.09);
@@ -98,7 +103,7 @@ export function buildSpecialFactory(p: Palette): Rig {
 
   let doorT = 0;
   let rackT = 0;
-  return rig(root, [WORK], 9.5, [
+  const built = rig(root, [WORK], 9.5, [
     (dt, _t, a) => {
       const on = a.has("work");
       doorT = approach(doorT, on ? 1 : 0, 2.5, dt);
@@ -107,6 +112,8 @@ export function buildSpecialFactory(p: Palette): Rig {
       rackT = approach(rackT, on ? 1 : 0, 1.5, dt);
       rack.rotation.x = -rackT * 0.7; // miệng ống phóng (phía +z) ngóc lên
     },
-    blinker(lamp, 3)
+    sig.update
   ]);
+  built.setLevel = sig.setLevel;
+  return built;
 }

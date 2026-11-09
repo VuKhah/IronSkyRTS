@@ -6,7 +6,7 @@
 import * as THREE from "three";
 import { BUILDINGS } from "../../../sim/content";
 import { approach, box, cyl, facets, group, part, sphere, type Palette, type Rig } from "../kit";
-import { WORK, rig, foundation, blinker, strut, scaledLayout, BASE_Y, type P3 } from "./shared";
+import { WORK, rig, foundation, productionSignals, strut, scaledLayout, BASE_Y, type P3 } from "./shared";
 
 const HALL_HX = 2.7;
 const HALL_HZ = 2.3;
@@ -62,8 +62,10 @@ export function buildFactory(p: Palette): Rig {
   // ================================================================ 3. CỬA CUỐN + SÂN RA XE
   const doorY = BASE_Y + DOOR_H / 2;
   add(part("Lòng xưởng", box(DOOR_W, DOOR_H, 0.05, p.hullDark, 0, doorY, front + 0.01)));
-  const lamp = p.teamGlow.clone() as THREE.MeshStandardMaterial;
-  add(part("Đèn trong xưởng", box(DOOR_W - 0.5, 0.08, 0.03, lamp, 0, BASE_Y + DOOR_H - 0.3, front + 0.05)));
+  const sig = productionSignals(p, 4.4);
+  const lamp = sig.beacon;
+  add(part("Lò đúc (sáng khi đang đúc)", box(DOOR_W - 0.6, DOOR_H * 0.62, 0.03, sig.glow, 0, BASE_Y + DOOR_H * 0.36, front + 0.04)));
+  add(part("Đèn trong xưởng", box(DOOR_W - 0.5, 0.08, 0.03, sig.glow, 0, BASE_Y + DOOR_H - 0.3, front + 0.05)));
   const door = part("Cửa cuốn", group(box(DOOR_W, DOOR_H, 0.08, p.teamDark)));
   for (let i = 0; i < 9; i++) door.add(part("Nan cửa", box(DOOR_W - 0.08, 0.04, 0.03, p.metal, 0, -DOOR_H / 2 + 0.3 + i * 0.47, 0.055)));
   door.position.set(0, doorY, front + 0.09);
@@ -83,6 +85,10 @@ export function buildFactory(p: Palette): Rig {
   const crane = part("Dầm cầu trục", group(box(0.2, 0.22, HALL_HZ * 2 - 0.1, p.warning), box(0.46, 0.3, 0.5, p.hullDark, 0, -0.24, 0.3), box(0.04, 0.34, 0.04, p.rubber, 0, -0.54, 0.3), box(0.18, 0.1, 0.18, p.metal, 0, -0.72, 0.3)));
   crane.position.set(0, RAIL_Y + 0.18, ZC);
   add(crane);
+  // thanh tiến độ gác cao trên cầu trục: nhìn từ trên cao không bị gì che
+  sig.bar.position.set(0, RAIL_Y + 0.55, ZC);
+  add(sig.bar);
+  for (const sx of [-1, 1]) add(part("Giá thanh tiến độ", box(0.12, 1.4, 0.12, p.metal, sx * 2.5, RAIL_Y - 0.15, ZC)));
 
   // ================================================================ 5. ỐNG KHÓI, BÌNH KHÍ, ỐNG THÔNG GIÓ, ĐÈN CỬA
   const CH_X = 3.03;
@@ -111,7 +117,7 @@ export function buildFactory(p: Palette): Rig {
   }
 
   let doorT = 0;
-  return rig(root, [WORK], 7 * S, [
+  const built = rig(root, [WORK], 7 * S, [
     (dt, t, a) => {
       const on = a.has("work");
       doorT = approach(doorT, on ? 1 : 0, 2.5, dt);
@@ -125,6 +131,8 @@ export function buildFactory(p: Palette): Rig {
         s.scale.setScalar(0.5 + k * 1.4);
       }
     },
-    blinker(lamp, 4)
+    sig.update
   ]);
+  built.setLevel = sig.setLevel;
+  return built;
 }

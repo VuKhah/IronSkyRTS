@@ -6,8 +6,8 @@
  */
 import * as THREE from "three";
 import { BUILDINGS } from "../../../sim/content";
-import { approach, box, cyl, facets, group, part, type Palette, type Rig } from "../kit";
-import { WORK, rig, foundation, strut, BASE_Y, type P3 } from "./shared";
+import { approach, box, cyl, facets, group, part, sphere, type Palette, type Rig } from "../kit";
+import { WORK, rig, foundation, productionSignals, strut, BASE_Y, type P3 } from "./shared";
 
 const R = 3.6;
 const KNEE = 0.95;
@@ -77,6 +77,13 @@ export function buildAircraftFactory(p: Palette): Rig {
       add(g);
     }
   add(part("Ray cửa", box(R * 2 + 0.1, 0.06, 0.5, p.metal, 0, BASE_Y + 0.03, front + 0.25)));
+  // tín hiệu đang đúc: thanh tiến độ dọc sống mái vòm, đèn lắp ráp sáng trong lòng nhà chứa, đèn chớp hai bên cửa
+  const sig = productionSignals(p, L - 1);
+  sig.bar.rotation.y = -Math.PI / 2;
+  sig.bar.position.set(0, VAULT_Y + R + 0.14, ZC);
+  add(sig.bar);
+  add(part("Đèn lắp ráp (sáng khi đang đúc)", box(4.8, 3.0, 0.03, sig.glow, 0, BASE_Y + 1.6, front + 0.03)));
+  for (const sx of [-1, 1]) add(part("Đèn cửa", sphere(0.16, sig.beacon, sx * (R + 0.08), BASE_Y + KNEE + 0.25, front + 0.1, 8)));
 
   // ================================================================ 3. SÂN ĐỖ
   const apronZ0 = front + 0.5;
@@ -113,7 +120,7 @@ export function buildAircraftFactory(p: Palette): Rig {
   add(beacon);
 
   let doorT = 0;
-  return rig(root, [WORK], 7.5, [
+  const built = rig(root, [WORK], 7.5, [
     (dt, t, a) => {
       const on = a.has("work");
       doorT = approach(doorT, on ? 1 : 0, 2, dt);
@@ -124,6 +131,9 @@ export function buildAircraftFactory(p: Palette): Rig {
       }
       if (on) beacon.rotation.y += dt * 3;
       sock.rotation.y = Math.sin(t * 0.7) * 0.4;
-    }
+    },
+    sig.update
   ]);
+  built.setLevel = sig.setLevel;
+  return built;
 }

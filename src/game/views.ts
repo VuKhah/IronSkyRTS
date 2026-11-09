@@ -5,7 +5,8 @@
  * - Hoạt ảnh lấy từ trạng thái sim: đang chạy → "move", vừa bắn → "fire", tháp pháo quay về mục tiêu thật.
  */
 import * as THREE from "three";
-import { BUILDINGS, doorSign, FACTION_OF, RULES, UNITS, type Side } from "../sim/content";
+import { sec } from "../sim/world";
+import { BUILDINGS, doorSign, FACTION_OF, RULES, UNITS, type Side, lotTime } from "../sim/content";
 import type { GameMap } from "../sim/maps";
 import type { Building, Mine, Target, Unit, Uplink, Wreck } from "../sim/types";
 import { AIRBORNE_ALT, DT, type World } from "../sim/world";
@@ -433,6 +434,8 @@ export class Views {
         if ((world.tick - b.lastShot) * DT < Math.max(0.45, spec.weapon.cooldown * 0.9)) a.add("fire");
       }
     }
+    // thanh tiến độ trên nóc xưởng: theo lô đang đúc, không có hàng chờ thì trống
+    if (b.built && spec.produces && b.kind !== "hq") v.rig.setLevel?.(b.queue.length ? b.prog / sec(lotTime(b.queue[0]!)) : 0);
     v.rig.update(dt, time, a);
     const mat = viewer === null ? (b.side === 0 ? RING_MAT.own : RING_MAT.enemy) : b.side === viewer ? RING_MAT.own : RING_MAT.enemy;
     this.setRing(v, root, selected, Math.max(spec.half[0], spec.half[1]), mat, 0.14);

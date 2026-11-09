@@ -4,6 +4,8 @@ import { approach, approachAngle, box, cyl, FireClock, group, part, type Palette
 
 export type P3 = [number, number, number];
 
+export type Update = (dt: number, t: number, a: ReadonlySet<string>) => void;
+
 /** Mặt nền móng: chiều cao `foundation` mặc định, mọi công trình đứng trên mặt này. */
 export const BASE_Y = 0.25;
 
@@ -35,12 +37,57 @@ export function scaledLayout(root: THREE.Object3D, s: number): THREE.Group {
   return g;
 }
 
+/**
+ * Tín hiệu "xưởng đang đúc", giống nhau ở mọi xưởng để nhìn một lần là nhớ; nghỉ thì tắt hẳn:
+ * thanh tiến độ trên nóc (đầy dần theo lô đang đúc), lò sáng trong lòng xưởng, đèn cửa chớp.
+ * Mất điện: thanh vẫn giữ tiến độ nhưng lò và đèn tắt. Trục thanh là +x cục bộ, muốn dọc z thì xoay `bar`.
+ */
+export function productionSignals(p: Palette, len: number): {
+  bar: THREE.Group;
+  glow: THREE.MeshStandardMaterial;
+  beacon: THREE.MeshStandardMaterial;
+  update: Update;
+  setLevel: (k: number) => void;
+} {
+  const amber = (): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color: 0x3a2a18, emissive: 0xff9a2e, emissiveIntensity: 0, roughness: 0.6 });
+  const glow = amber();
+  const beacon = amber();
+  const fillMat = new THREE.MeshStandardMaterial({ color: 0x4a3010, emissive: 0xffb03a, emissiveIntensity: 2.6 });
+  const geo = new THREE.BoxGeometry(1, 0.08, 0.36);
+  geo.translate(0.5, 0, 0);
+  const fill = part("Thanh tiến độ", new THREE.Mesh(geo, fillMat));
+  fill.position.set(-len / 2, 0.1, 0);
+  fill.visible = false;
+  const bar = part("Khung thanh tiến độ", group(box(len + 0.24, 0.1, 0.56, p.hullDark), fill));
+  let external = false;
+  let heat = 0;
+  const show = (k: number): void => {
+    fill.visible = k > 0.005;
+    fill.scale.x = Math.max(0.001, Math.min(1, k)) * len;
+  };
+  return {
+    bar,
+    glow,
+    beacon,
+    setLevel(k) {
+      external = true;
+      show(k);
+    },
+    update(dt, t, a) {
+      const on = a.has("work");
+      heat = approach(heat, on ? 1 : 0, 6, dt);
+      glow.emissiveIntensity = heat * (2.4 + Math.sin(t * 11) * 0.5 + Math.sin(t * 29) * 0.3);
+      beacon.emissiveIntensity = on && Math.sin(t * 9) > 0 ? 4 : 0;
+      // Xưởng Mô Hình không có sim: cho thanh chạy minh họa
+      if (!external) show(on ? (t * 0.2) % 1 : 0);
+    }
+  };
+}
+
 export const WORK: RigAction = { id: "work", label: "Vận hành" };
 export const AIM: RigAction = { id: "aim", label: "Ngắm" };
 export const FIRE: RigAction = { id: "fire", label: "Khai hỏa" };
 export const POWER: RigAction = { id: "power", label: "Vùng phủ điện" };
-
-export type Update = (dt: number, t: number, a: ReadonlySet<string>) => void;
 
 /** Góc ngắm do chiến trường đặt (null = để hoạt ảnh tự quét). */
 export interface AimRef {
