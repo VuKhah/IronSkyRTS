@@ -18,6 +18,11 @@ describe("Đặt công trình lên lưới", () => {
     expect(BUILDINGS["power-plant"].half.map(cellsOf)).toEqual([3, 4]);
   });
 
+  it("công trình chỉ có 3 cỡ chuẩn ngoài Sân Đáp: 8 × 8 m, 4,8 × 6,4 m và 4 × 4 m", () => {
+    const sizes = new Set(KINDS.filter((k) => k !== "airfield").map((k) => BUILDINGS[k].half.join("x")));
+    expect([...sizes].sort()).toEqual(["2.4x3.2", "2x2", "4x4"]);
+  });
+
   it("mọi kích cỡ công trình là bội số của 4 dm", () => {
     for (const k of KINDS)
       for (const h of BUILDINGS[k].half) {

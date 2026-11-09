@@ -5,8 +5,8 @@
 import * as THREE from "three";
 import { CELL, type GameMap } from "../sim/maps";
 
-/** Lưới lan ra quanh khối ô bao nhiêu ô (đủ thấy lối đi 2 ô, ô ngoài cùng mờ hẳn). */
-const MARGIN = 3;
+/** Lưới lan ra quanh khối ô bao nhiêu ô, ô ngoài cùng mờ hẳn. */
+const MARGIN = 8;
 const LIFT = 0.14;
 const LINE_ALPHA = 0.8;
 const OK = 0x6fdc8c;

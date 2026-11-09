@@ -18,7 +18,11 @@ const WELL_Z = 2.68;
 export function buildOilExtractor(p: Palette): Rig {
   const [HX, HZ] = BUILDINGS["oil-extractor"].half;
   const root = group(foundation(p, HX * 2, HZ * 2));
-  const add = (...o: THREE.Object3D[]) => root.add(...o);
+  // chân đế dài theo z (cỡ chuẩn 4,8 × 6,4 m): dựng dọc trục x rồi xoay cả cụm
+  const layout = group();
+  layout.rotation.y = -Math.PI / 2;
+  root.add(layout);
+  const add = (...o: THREE.Object3D[]) => layout.add(...o);
 
   // ================================================================ 1. CẦN BƠM: dựng trong khung riêng, trục dọc là +z cục bộ
   const jack = group();
