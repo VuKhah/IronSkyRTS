@@ -108,6 +108,24 @@ const STEER_RAMP = 0.25;
 /** Tên lửa treo dưới cánh cách trục thân chừng này (m). */
 const MISSILE_PYLON = 1.35;
 /** Khoảng cách giữa hai nòng súng đôi (m), ví dụ súng ở hai bên cánh. */
+/** Số ô lưới một công trình chiếm theo một chiều: nhà nhỏ hơn bội số ô thì nằm chính giữa khối ô (chừa viền đều hai bên). */
+function cellsFor(half: number): number {
+  return Math.ceil((half * 2) / CELL - 1e-9);
+}
+
+/**
+ * Đưa tọa độ về tâm khối `n` ô: `n` chẵn thì tâm nằm trên đường lưới, `n` lẻ thì nằm giữa ô.
+ * Làm tròn theo trị tuyệt đối để hai điểm đối xứng qua tâm bản đồ cho kết quả đối xứng (công bằng giữa hai phe).
+ */
+function snapAxis(v: number, n: number, halfExtent: number, tie: number): number {
+  const a = v < 0 ? -v : v;
+  // đúng trên trục giữa bản đồ thì hai phía cách đều: để tọa độ kia quyết định, kết quả vẫn soi gương
+  const flip = v < 0 || (v === 0 && tie < 0);
+  const first = -halfExtent + (n % 2 === 0 ? 0 : CELL / 2);
+  const r = first + Math.round((a - first) / CELL) * CELL;
+  return flip ? -r : r;
+}
+
 const BARREL_GAP = 1.6;
 /** Bom rơi từ độ cao bay tới đất mất chừng này giây (bom trôi theo đà máy bay). */
 const BOMB_FALL = 1.2;
@@ -361,12 +379,37 @@ export class World {
     return [b.x + ox, b.z + oz];
   }
 
+  /** Tọa độ thật của công trình nếu đặt ở (x, z): tâm khối ô lưới mà nó chiếm. */
+  snapBuilding(kind: BuildingId, x: number, z: number): [number, number] {
+    const [hw, hd] = BUILDINGS[kind].half;
+    return [snapAxis(x, cellsFor(hw), this.map.halfW, z), snapAxis(z, cellsFor(hd), this.map.halfH, x)];
+  }
+
+  /** Nửa kích thước khối ô lưới công trình chiếm (lớn hơn hoặc bằng `half`). */
+  private blockHalf(kind: BuildingId): [number, number] {
+    const [hw, hd] = BUILDINGS[kind].half;
+    return [(cellsFor(hw) * CELL) / 2, (cellsFor(hd) * CELL) / 2];
+  }
+
+  /** Đặt ở đây có làm mất lối đi giữa hai công trình không (tính cả công trình phe khác)? */
+  private blocksLane(kind: BuildingId, x: number, z: number): boolean {
+    const [bw, bd] = this.blockHalf(kind);
+    const gap = RULES.buildGapCells * CELL;
+    for (const b of this.buildings) {
+      if (b.hp <= 0) continue;
+      const [ow, od] = this.blockHalf(b.kind);
+      if (Math.abs(b.x - x) < bw + ow + gap - 1e-6 && Math.abs(b.z - z) < bd + od + gap - 1e-6) return true;
+    }
+    return false;
+  }
+
   /** null = được phép xây; ngược lại là lý do (tiếng Việt) để hiện cho người chơi. */
   canPlace(side: Side, kind: BuildingId, x: number, z: number): string | null {
-    const spec = BUILDINGS[kind];
-    const [hw, hd] = spec.half;
+    [x, z] = this.snapBuilding(kind, x, z);
+    const [hw, hd] = this.blockHalf(kind);
     if (!this.map.fits(x, z, hw, hd)) return "Ngoài bản đồ";
     for (const i of this.grid.cellsInRect(x, z, hw, hd)) if (this.grid.blockedIdx(i)) return "Vướng sông, đá hoặc công trình";
+    if (this.blocksLane(kind, x, z)) return "Phải chừa lối đi cho xe giữa các công trình";
     const big = Math.max(hw, hd);
     for (const m of this.mines) if (dist2(m.x, m.z, x, z) < (5 + big) * (5 + big)) return "Quá gần mỏ";
     for (const u of this.units) {
@@ -514,7 +557,9 @@ export class World {
 
   private addBuilding(kind: BuildingId, side: Side, x: number, z: number, built: boolean): Building {
     const spec = BUILDINGS[kind];
-    const cells = this.grid.cellsInRect(x, z, spec.half[0], spec.half[1]);
+    [x, z] = this.snapBuilding(kind, x, z);
+    const [blockW, blockD] = this.blockHalf(kind);
+    const cells = this.grid.cellsInRect(x, z, blockW, blockD);
     this.grid.block(cells, 1);
     const [dx, dz] = dirToCenter(x, z);
     const reach = Math.max(spec.half[0], spec.half[1]) + 6;
@@ -710,9 +755,11 @@ export class World {
 
   /** null = thả được công trình ở đây (Phòng Thử Nghiệm bỏ qua luật vùng xây và giá tiền). */
   sandboxPlaceError(kind: BuildingId, x: number, z: number): string | null {
-    const [hw, hd] = BUILDINGS[kind].half;
+    [x, z] = this.snapBuilding(kind, x, z);
+    const [hw, hd] = this.blockHalf(kind);
     if (!this.map.fits(x, z, hw, hd)) return "Ngoài bản đồ";
     for (const i of this.grid.cellsInRect(x, z, hw, hd)) if (this.grid.blockedIdx(i)) return "Vướng sông, đá, mỏ hoặc công trình";
+    if (this.blocksLane(kind, x, z)) return "Phải chừa lối đi cho xe giữa các công trình";
     return null;
   }
 

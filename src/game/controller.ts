@@ -832,7 +832,9 @@ export class Controller implements GestureHandlers {
     // bóng mờ công trình đang đặt: xanh = đặt được, đỏ = không
     if (this.mode === "place" && this.ghost && this.placePos && this.placeKind && this.me !== null) {
       const { x, z } = this.placePos;
-      this.ghost.root.position.set(x, this.match.world.map.groundY(x, z) + 0.05, z);
+      // bóng mờ nhảy theo lưới: đúng chỗ công trình sẽ đứng
+      const [gx, gz] = this.world.snapBuilding(this.placeKind, x, z);
+      this.ghost.root.position.set(gx, this.match.world.map.groundY(gx, gz) + 0.05, gz);
       this.ghost.root.rotation.y = this.placeKind && doorSign(this.placeKind, z) < 0 ? Math.PI : 0;
       this.ghost.root.visible = true;
       this.placeReason = this.world.canPlace(this.me, this.placeKind, x, z);

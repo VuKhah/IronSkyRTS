@@ -6,19 +6,23 @@
 import * as THREE from "three";
 import { BUILDINGS } from "../../../sim/content";
 import { approach, box, cyl, facets, group, part, sphere, type Palette, type Rig } from "../kit";
-import { WORK, rig, foundation, blinker, strut, BASE_Y, type P3 } from "./shared";
+import { WORK, rig, foundation, blinker, strut, scaledLayout, BASE_Y, type P3 } from "./shared";
 
 const HALL_HX = 2.7;
 const HALL_HZ = 2.3;
-const ZC = -0.35;
+const ZC = -0.85; // lùi về sau, chừa sân ra xe rộng phía trước
 const WALL_TOP = 5.2;
 const DOOR_W = 3.9;
 const DOOR_H = 4.3;
 
 export function buildFactory(p: Palette): Rig {
-  const [HX, HZ] = BUILDINGS.factory.half;
-  const root = group(foundation(p, HX * 2, HZ * 2));
-  const add = (...o: THREE.Object3D[]) => root.add(...o);
+  const [HX, HZ0] = BUILDINGS.factory.half;
+  const root = group(foundation(p, HX * 2, HZ0 * 2));
+  // dựng theo chân đế thiết kế rộng 6,8 m rồi phóng to đều cho vừa chân đế thật
+  const S = HX / 3.4;
+  const HZ = HZ0 / S;
+  const layout = scaledLayout(root, S);
+  const add = (...o: THREE.Object3D[]) => layout.add(...o);
   const front = ZC + HALL_HZ;
 
   // ================================================================ 1. THÂN NHÀ XƯỞNG
@@ -81,17 +85,19 @@ export function buildFactory(p: Palette): Rig {
 
   // ================================================================ 5. ỐNG KHÓI, BÌNH KHÍ, ỐNG THÔNG GIÓ, ĐÈN CỬA
   const CH_X = 3.03;
-  const CH_Z = -2.3;
+  const CH_Z = ZC - 1.95;
   const CH_TOP = 8.2;
   add(part("Ống khói", cyl(0.27, 0.36, CH_TOP - BASE_Y, p.hullDark, 12, CH_X, (CH_TOP + BASE_Y) / 2, CH_Z)));
   add(part("Đai ống khói (màu phe)", cyl(0.31, 0.31, 0.26, p.team, 12, CH_X, CH_TOP - 0.45, CH_Z)));
   add(part("Miệng ống khói", cyl(0.31, 0.29, 0.14, p.metal, 12, CH_X, CH_TOP, CH_Z)));
   for (const y of [2.5, 4.6]) add(part("Giằng ống khói", strut([HALL_HX, y, CH_Z], [CH_X, y, CH_Z], 0.05, p.metal)));
-  for (const z of [-1.4, -0.85, -0.3, 0.25])
+  for (const dz of [-1.05, -0.5, 0.05, 0.6]) {
+    const z = ZC + dz;
     add(part("Bình khí hàn", group(cyl(0.2, 0.2, 1.2, p.hull, 10, -3.08, BASE_Y + 0.6, z), cyl(0.21, 0.16, 0.12, p.white, 10, -3.08, BASE_Y + 1.26, z))));
-  add(part("Giá bình khí", box(0.08, 0.08, 2.2, p.metal, -3.3, 1.1, -0.55)));
-  add(part("Ống thông gió", box(0.34, 3.4, 0.5, p.metal, 2.87, 3.2, 0.5)));
-  add(part("Miệng thông gió", box(0.5, 0.3, 0.66, p.hullDark, 2.92, 5.0, 0.5)));
+  }
+  add(part("Giá bình khí", box(0.08, 0.08, 2.2, p.metal, -3.3, 1.1, ZC - 0.2)));
+  add(part("Ống thông gió", box(0.34, 3.4, 0.5, p.metal, 2.87, 3.2, ZC + 0.85)));
+  add(part("Miệng thông gió", box(0.5, 0.3, 0.66, p.hullDark, 2.92, 5.0, ZC + 0.85)));
   for (const sx of [-1, 1]) add(part("Đèn cửa", sphere(0.13, lamp, sx * (DOOR_W / 2 + 0.15), BASE_Y + DOOR_H + 0.5, front + 0.12, 6)));
 
   const puffs: THREE.Mesh[] = [];
@@ -104,7 +110,7 @@ export function buildFactory(p: Palette): Rig {
   }
 
   let doorT = 0;
-  return rig(root, [WORK], 7, [
+  return rig(root, [WORK], 7 * S, [
     (dt, t, a) => {
       const on = a.has("work");
       doorT = approach(doorT, on ? 1 : 0, 2.5, dt);

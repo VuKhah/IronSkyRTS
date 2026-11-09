@@ -26,6 +26,15 @@ export const strut = (a: P3, b: P3, r: number, mat: THREE.Material): THREE.Mesh 
   return m;
 };
 
+/** Khung phóng to đều mô hình dựng theo kích thước thiết kế; đáy vẫn đặt đúng mặt nền móng. */
+export function scaledLayout(root: THREE.Object3D, s: number): THREE.Group {
+  const g = group();
+  g.scale.setScalar(s);
+  g.position.y = BASE_Y * (1 - s);
+  root.add(g);
+  return g;
+}
+
 export const WORK: RigAction = { id: "work", label: "Vận hành" };
 export const AIM: RigAction = { id: "aim", label: "Ngắm" };
 export const FIRE: RigAction = { id: "fire", label: "Khai hỏa" };

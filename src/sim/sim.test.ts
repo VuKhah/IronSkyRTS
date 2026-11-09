@@ -274,7 +274,7 @@ describe("lõi mô phỏng", () => {
     const w = new World(5);
     w.sides[0].iron = 9000;
     const hq = w.hqOf(0)!;
-    const far: [number, number] = [hq.x + 46, hq.z - 6];
+    const far: [number, number] = [hq.x + 50, hq.z - 6]; // cách cột cuối đủ xa để chừa lối đi
     expect(w.canPlace(0, "turret", far[0], far[1])).not.toBeNull();
     // chuỗi cột điện từ căn cứ hướng ra điểm xa
     let x = hq.x;

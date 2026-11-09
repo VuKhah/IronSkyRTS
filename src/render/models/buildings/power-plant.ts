@@ -8,16 +8,20 @@ import { BUILDINGS } from "../../../sim/content";
 import { box, cyl, facets, group, part, sphere, type Palette, type Rig } from "../kit";
 import { WORK, POWER, rig, foundation, groundRing, oct, strut, BASE_Y, type P3 } from "./shared";
 
-const TOWER_X = -1.4;
+const TOWER_X = -1.6;
 const TOWER_Y0 = 0.72;
 const TOWER_H = 5.9;
-const HALL_X = 1.55;
+const HALL_X = 1.75;
 const ROOF_Y = 3.92;
 
 export function buildPowerPlant(p: Palette): Rig {
   const [HX, HZ] = BUILDINGS["power-plant"].half;
   const root = group(foundation(p, HX * 2, HZ * 2));
-  const add = (...o: THREE.Object3D[]) => root.add(...o);
+  // chân đế dài theo z (4,8 × 6,4 m): dựng dọc trục x rồi xoay cả cụm, nhà tua-bin ra phía trước, tháp giải nhiệt ở sau
+  const layout = group();
+  layout.rotation.y = -Math.PI / 2;
+  root.add(layout);
+  const add = (...o: THREE.Object3D[]) => layout.add(...o);
 
   // ================================================================ 1. THÁP GIẢI NHIỆT (LatheGeometry: xoay một đường cong quanh trục Y)
   const profile: THREE.Vector2[] = [];
@@ -52,14 +56,14 @@ export function buildPowerPlant(p: Palette): Rig {
   for (let i = 0; i < 3; i++) add(part("Sọc cảnh báo", box(0.34, 0.14, 0.05, i % 2 ? p.hullDark : p.warning, HALL_X - 0.34 + i * 0.34, BASE_Y + 2.0, 2.08)));
 
   // vỏ tua-bin nằm dọc trên mái + ống xả đốt Dầu
-  const HUMP_X = 1.0;
+  const HUMP_X = 1.2;
   add(part("Vỏ tua-bin", cyl(0.5, 0.5, 2.6, p.hull, 14, HUMP_X, ROOF_Y + 0.05, -0.2).rotateX(Math.PI / 2)));
   for (const z of [-1.05, -0.2, 0.65]) add(part("Đai tua-bin (màu phe)", cyl(0.52, 0.52, 0.1, p.team, 14, HUMP_X, ROOF_Y + 0.05, z).rotateX(Math.PI / 2)));
   add(part("Ống xả đốt Dầu", cyl(0.16, 0.2, 1.6, p.hullDark, 10, HUMP_X, ROOF_Y + 0.8, -1.72)));
   add(part("Miệng ống xả", cyl(0.2, 0.18, 0.1, p.metal, 10, HUMP_X, ROOF_Y + 1.62, -1.72)));
 
   // cuộn cảm sáng theo tải, sứ cách điện phía trên
-  const LANE_X = 2.15;
+  const LANE_X = 2.35;
   const coil = p.teamGlow.clone() as THREE.MeshStandardMaterial;
   for (const z of [1.3, 0.8, 0.3]) {
     add(part("Cuộn cảm", cyl(0.2, 0.2, 0.6, coil, 8, LANE_X, ROOF_Y + 0.3, z)));
@@ -75,13 +79,13 @@ export function buildPowerPlant(p: Palette): Rig {
   }
 
   // ================================================================ 3. BỒN DẦU VÀ ỐNG DẪN, CỘT ĐIỆN Ở CÁC GÓC QUANH THÁP
-  const TANK: [number, number] = [-2.5, -1.72];
+  const TANK: [number, number] = [-2.7, -1.8];
   add(part("Bồn Dầu", cyl(0.5, 0.5, 1.9, p.hull, 14, TANK[0], BASE_Y + 0.95, TANK[1])));
   add(part("Nắp bồn (màu phe)", cyl(0.52, 0.46, 0.12, p.team, 14, TANK[0], BASE_Y + 1.96, TANK[1])));
   add(part("Đai bồn", cyl(0.52, 0.52, 0.1, p.hullDark, 14, TANK[0], BASE_Y + 1.2, TANK[1])));
-  add(part("Ống dẫn Dầu", strut([TANK[0] + 0.45, 0.72, -2.1], [0.3, 0.72, -2.1], 0.07, p.metal)));
-  for (const x of [-1.5, -0.4]) add(part("Giá ống", box(0.1, 0.46, 0.1, p.hullDark, x, 0.48, -2.1)));
-  const PY: [number, number] = [-2.55, 1.75];
+  add(part("Ống dẫn Dầu", strut([TANK[0] + 0.45, 0.72, -2.2], [0.5, 0.72, -2.2], 0.07, p.metal)));
+  for (const x of [-1.7, -0.5]) add(part("Giá ống", box(0.1, 0.46, 0.1, p.hullDark, x, 0.48, -2.2)));
+  const PY: [number, number] = [-2.75, 1.85];
   const PY_TOP = 4.6;
   for (const sx of [-1, 1])
     for (const sz of [-1, 1]) add(part("Cột điện ra", strut([PY[0] + sx * 0.32, BASE_Y, PY[1] + sz * 0.32], [PY[0] + sx * 0.08, PY_TOP, PY[1] + sz * 0.08], 0.04, p.metal)));
@@ -97,7 +101,7 @@ export function buildPowerPlant(p: Palette): Rig {
     add(s);
   }
   const ring = groundRing(p, 5.5, "power");
-  add(ring.mesh);
+  root.add(ring.mesh);
   return rig(root, [WORK, POWER], 5.8, [
     (dt, t, a) => {
       const on = a.has("work");

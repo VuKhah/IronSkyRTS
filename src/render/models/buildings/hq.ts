@@ -11,7 +11,7 @@
 import * as THREE from "three";
 import { BUILDINGS } from "../../../sim/content";
 import { box, cyl, facets, group, muzzleFlash, part, sphere, tubeZ, type Palette, type Rig } from "../kit";
-import { WORK, AIM, FIRE, POWER, rig, foundation, groundRing, blinker, turretUpdate, oct, strut, BASE_Y, type AimRef, type P3 } from "./shared";
+import { WORK, AIM, FIRE, POWER, rig, foundation, groundRing, blinker, turretUpdate, oct, strut, scaledLayout, BASE_Y, type AimRef, type P3 } from "./shared";
 
 const BUNKER_TOP = 3.2;
 const ROOF_Y = 3.42; // mặt mái hầm
@@ -19,9 +19,13 @@ const BUNKER_Z = 0.2;
 const TOWER_Z = -0.45;
 
 export function buildHQ(p: Palette): Rig {
-  const [HX, HZ] = BUILDINGS.hq.half;
-  const root = group(foundation(p, HX * 2, HZ * 2));
-  const add = (...o: THREE.Object3D[]) => root.add(...o);
+  const [HX, HZ0] = BUILDINGS.hq.half;
+  const root = group(foundation(p, HX * 2, HZ0 * 2));
+  // mọi kích thước bên dưới dựng theo chân đế thiết kế 6,8 m rồi phóng to đều cho vừa chân đế thật
+  const S = HX / 3.4;
+  const HZ = HZ0 / S;
+  const layout = scaledLayout(root, S);
+  const add = (...o: THREE.Object3D[]) => layout.add(...o);
 
   // ================================================================ 1. KHỐI HẦM BÊ TÔNG
   add(part("Khối hầm bê tông", facets([...oct(2.75, 2.45, 0.55, BASE_Y, BUNKER_Z), ...oct(2.35, 2.05, 0.45, BUNKER_TOP, BUNKER_Z)], p.concrete)));
@@ -142,13 +146,13 @@ export function buildHQ(p: Palette): Rig {
   add(turret);
 
   const ring = groundRing(p, 6.2, "power");
-  add(ring.mesh);
+  root.add(ring.mesh);
   const w = BUILDINGS.hq.weapon!;
   const aim: AimRef = { yaw: null };
   return rig(
     root,
     [WORK, AIM, FIRE, POWER],
-    7.2,
+    7.2 * S,
     [(dt, _t, a) => a.has("work") && (radar.rotation.y += dt * 1.4), blinker(lamp, 5), turretUpdate(turret, gun, flashes, w.cooldown, 0.1, 1.2, aim), ring.update],
     ["work"],
     aim

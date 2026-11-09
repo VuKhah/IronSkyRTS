@@ -350,6 +350,8 @@ export const RULES = {
   salvage: { share: 0.3, seconds: 90, load: 3, reach: 3.2, autoMax: 2, mineArea: 18, threat: 22 },
   /** Đài Liên Lạc (điểm chiếm, Bản cập nhật vui): chiếm như mỏ; phe giữ đài nhìn xa quanh đài (cột ăng-ten cao, không bị đồi che). */
   uplink: { sight: 24 },
+  /** Khoảng trống tối thiểu giữa hai công trình (số ô lưới 2 m): 2 ô = 4 m, vừa Titan rộng 3,58 m đi qua. */
+  buildGapCells: 2,
   /**
    * Kỹ năng: MỌI kỹ năng thuộc về một binh chủng có thật, phải đúc ra và có hình thù (quyết định 05/11/2026):
    * không có "điểm chỉ huy" để gọi đòn từ trên trời như game tham chiếu. Rải thảm là của Xe Tên Lửa Loạt (vũ khí
@@ -383,7 +385,7 @@ export const RULES = {
     /** 1 Dầu trong kho = 1 lít nhiên liệu. */
     oilPerLiter: 1,
     /** Số bãi đậu mỗi Sân Đáp (vị trí: `PAD_OFFSETS` cuối file này). */
-    pads: 6
+    pads: 5
   }
 } as const;
 
@@ -795,7 +797,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     hp: 3600,
     armorClass: "struct",
     sight: 28,
-    half: [3.4, 3.4],
+    half: [4, 4],
     produces: ["hauler"],
     power: 20,
     zone: 24,
@@ -819,7 +821,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     hp: 1000,
     armorClass: "struct",
     sight: 16,
-    half: [3.4, 3],
+    half: [4, 4],
     produces: ["lynx", "titan", "skyguard"],
     power: -10,
     priority: 3,
@@ -838,7 +840,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     hp: 1000,
     armorClass: "struct",
     sight: 16,
-    half: [3.8, 3.4],
+    half: [4, 4],
     produces: ["rocket", "artillery"],
     power: -10,
     priority: 3,
@@ -861,7 +863,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     hp: 1000,
     armorClass: "struct",
     sight: 16,
-    half: [4.4, 4],
+    half: [4, 4],
     produces: ["falcon", "valkyrie"],
     power: -10,
     priority: 3,
@@ -875,7 +877,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     id: "airfield",
     kind: "building",
     name: "Sân Đáp Không Quân",
-    label: "6 BÃI ĐÁP",
+    label: "5 BÃI ĐÁP",
     role: "Nơi máy bay cất, hạ cánh, nạp Dầu và sửa chữa (máy bay đúc ở Nhà Máy Máy Bay).",
     mvp: true,
     cost: { iron: 250, oil: 0 },
@@ -883,11 +885,11 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     hp: 1150,
     armorClass: "struct",
     sight: 18,
-    half: [7.6, 8.6],
+    half: [6, 8],
     power: -15,
     priority: 2,
     features: [
-      "6 bãi đậu hai bên đường băng: mỗi sân nuôi được tối đa 6 máy bay.",
+      "5 bãi đậu và 1 trạm điều khiển: mỗi sân nuôi được tối đa 5 máy bay.",
       "Máy bay đậu được nạp 10L dầu mỗi giây (trừ vào kho Dầu) và sửa 25 HP mỗi giây.",
       "Sân bị phá thì máy bay của nó phải tìm bãi trống ở sân khác."
     ]
@@ -904,7 +906,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     hp: 700,
     armorClass: "fort",
     sight: 24,
-    half: [1.5, 1.5],
+    half: [1.6, 1.6],
     power: -5,
     priority: 1,
     weapon: { name: "Pháo kép tự động 30mm", dmgGround: 30, dmgAir: 30, range: 20, cooldown: 0.6, dmgType: "normal", splash: 0, visual: "bullet", traverse: 90 },
@@ -937,7 +939,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     hp: 850,
     armorClass: "struct",
     sight: 14,
-    half: [3, 2.3],
+    half: [2.4, 3.2],
     power: 40,
     oilBurn: 0.4,
     zone: 18,
@@ -959,7 +961,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     hp: 380,
     armorClass: "light",
     sight: 12,
-    half: [0.9, 0.9],
+    half: [1, 1],
     power: 0,
     zone: 16,
     features: [
@@ -1037,7 +1039,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     hp: 950,
     armorClass: "struct",
     sight: 12,
-    half: [2.7, 2.2],
+    half: [2.8, 2.2],
     power: -10,
     features: ["Trữ tối đa 160 đạn phòng không.", "Xe goòng chở đạn chạy dọc đường ray tới các tháp."]
   },
@@ -1101,17 +1103,19 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
 
 /** Công trình người chơi được xây trong bản MVP, theo thứ tự trên thanh xây. */
 /**
- * Vị trí 6 bãi đậu so với tâm Sân Đáp (dùng chung cho sim và mô hình `buildAirfield`): 2 dãy × 3 ô kẹp đường băng dọc trục z
- * ở giữa; máy bay đậu quay mũi về +z (hướng cất cánh). Số phần tử = `RULES.air.pads`.
+ * Vị trí 5 bãi đậu so với tâm Sân Đáp (dùng chung cho sim và mô hình `buildAirfield`): lưới 2 cột × 3 hàng ô 5,6 × 5,2 m vừa khít
+ * sân 12 × 16 m, ô thứ sáu là trạm điều khiển (`CONTROL_CELL`); máy bay đậu quay mũi về +z. Số phần tử = `RULES.air.pads`.
  */
 export const PAD_OFFSETS: readonly (readonly [number, number])[] = [
-  [-4.45, -5.6],
-  [4.45, -5.6],
-  [-4.45, 0],
-  [4.45, 0],
-  [-4.45, 5.6],
-  [4.45, 5.6]
+  [3, -5.4],
+  [-3, 0],
+  [3, 0],
+  [-3, 5.4],
+  [3, 5.4]
 ];
+
+/** Ô thứ sáu của lưới Sân Đáp: trạm điều khiển, nằm hàng sau để không chắn mũi máy bay. */
+export const CONTROL_CELL: readonly [number, number] = [-3, -5.4];
 
 /**
  * Nhà xưởng quay cửa (phía +z của mô hình) về phía giữa bản đồ theo trục z: xưởng nằm ở nửa +z thì xoay 180°.
