@@ -54,6 +54,8 @@ export interface Rig {
   setLevel?(k: number): void;
   /** Số đạn vũ khí phụ còn treo trên thân (ví dụ tên lửa dưới cánh Falcon): bắn rồi thì ẩn đi. */
   setAmmo?(n: number): void;
+  /** Sim vừa bắn một phát thật (`lastShot` đổi): mô hình nảy theo đúng phát đó. Chỉ có ở mô hình khai báo `bounce`. */
+  shot?(): void;
 }
 
 export interface Palette {
@@ -258,6 +260,37 @@ export function group(...children: THREE.Object3D[]): THREE.Group {
 }
 
 /** Đồng hồ bắn theo chu kỳ: trả về số giây kể từ phát bắn gần nhất (hoặc Infinity khi tắt). */
+/**
+ * Lò xo có giảm chấn, tính bằng nghiệm chính xác nên khung hình dài cũng không nổ số.
+ * `hit(p)`: một cú hích làm lò xo lệch tối đa đúng `p` nếu đang đứng yên; hích liên tiếp thì cộng dồn tự nhiên.
+ */
+export class Spring {
+  x = 0;
+  private v = 0;
+  private readonly w: number;
+  private readonly wd: number;
+  private readonly gain: number;
+  constructor(hz: number, private readonly damp: number) {
+    this.w = 2 * Math.PI * hz;
+    const s = Math.sqrt(1 - damp * damp);
+    this.wd = this.w * s;
+    this.gain = this.w / Math.exp((-damp * Math.acos(damp)) / s);
+  }
+  hit(peak: number): void {
+    this.v += peak * this.gain;
+  }
+  step(dt: number): void {
+    const a = this.damp * this.w;
+    const e = Math.exp(-a * dt);
+    const c = Math.cos(this.wd * dt);
+    const s = Math.sin(this.wd * dt);
+    const b = (this.v + a * this.x) / this.wd;
+    const x = e * (this.x * c + b * s);
+    this.v = e * (this.v * c + (-a * b - this.wd * this.x) * s);
+    this.x = x;
+  }
+}
+
 export class FireClock {
   private t = Infinity;
   private next = 0;

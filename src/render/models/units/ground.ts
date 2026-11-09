@@ -1,8 +1,31 @@
 /** Khung xe mặt đất: tháp pháo xoay, nòng giật, bánh lăn, xích. Mọi xe dùng vehicleRig. */
 import * as THREE from "three";
-import { UNITS, type UnitId } from "../../../sim/content";
-import { approach, approachAngle, box, FireClock, group, part, partIfUnnamed, tubeZ, wheel, type Palette, type Rig, type RigAction } from "../kit";
+import { RULES, UNITS, type UnitId } from "../../../sim/content";
+import { approach, approachAngle, box, FireClock, group, part, partIfUnnamed, Spring, tubeZ, wheel, type Palette, type Rig, type RigAction } from "../kit";
 import { V, Shots, missileMesh } from "./common";
+
+/** Độ nảy mỗi phát bắn. Các số là độ lệch lớn nhất của MỘT phát; nằm ở `gun` và `body` (vốn đã động) nên không tốn thêm lệnh vẽ. */
+export interface GunBounce {
+  /** Lò xo thân xe: tần số (Hz) và độ tắt (0..1). Xe nặng tần số thấp, muốn từng phát tách bạch thì độ tắt cao. */
+  hz: number;
+  damp: number;
+  /** Thân xe chúi ngược hướng bắn (rad), trượt lùi (m), lún xuống (m). */
+  hullTilt: number;
+  hullSlide: number;
+  hullSink: number;
+  /** Lò xo giá súng: tần số (Hz); giá súng ngóc thêm (rad), lùi theo trục nòng (m), vặn về bên ống vừa bắn (rad). */
+  gunHz: number;
+  gunClimb: number;
+  gunSlide: number;
+  gunTwist: number;
+  /** Thân xe nảy mạnh gấp mấy lần khi chưa hạ bệ. */
+  unbraced?: number;
+  /** Nòng giật: thời gian trôi về chỗ cũ (giây). */
+  recoilTime?: number;
+}
+
+/** Xưởng Mô Hình: nghỉ giữa hai loạt (giây), thay cho thời gian nạp thật để đỡ phải chờ. */
+const BURST_REST = 1.2;
 
 export interface VehicleParts {
   body: THREE.Group;
@@ -26,6 +49,8 @@ export interface VehicleParts {
   missiles?: boolean;
   /** Nhịp bắn khi bật "Khai hỏa" ở Xưởng Mô Hình (giây); mặc định theo thời gian nạp của vũ khí. */
   fireEvery?: number;
+  /** Có trường này thì mô hình nảy theo từng phát thật của sim (`Rig.shot`). */
+  bounce?: GunBounce;
 }
 
 export const GROUND_ACTIONS: RigAction[] = [
@@ -51,8 +76,35 @@ export function vehicleRig(
   for (const w of parts.wheels) partIfUnnamed("Bánh xe", w.g);
   const root = group(parts.body);
   const spec = UNITS[id];
-  const clock = new FireClock(parts.fireEvery ?? Math.max(0.35, spec.weapon?.cooldown ?? 1));
+  const b = parts.bounce;
+  // Xưởng Mô Hình bắn theo đúng nhịp loạt của sim (khoảng cách đã làm tròn theo tick)
+  const burst = b ? spec.weapon?.burst : undefined;
+  const burstGap = burst ? Math.max(1, Math.round(burst.interval * RULES.tickRate)) / RULES.tickRate : 0;
+  const clock = new FireClock(burst ? burstGap : (parts.fireEvery ?? Math.max(0.35, spec.weapon?.cooldown ?? 1)));
   const shots = new Shots(root);
+  const hull = b ? new Spring(b.hz, b.damp) : null;
+  const gunKick = b ? new Spring(b.gunHz, b.damp) : null;
+  const twist = b ? new Spring(b.gunHz, b.damp) : null;
+  const gunY0 = parts.gun.position.y;
+  const gunZ0 = parts.gun.position.z;
+  // ống bắn lệch sang bên nào so với trục giá súng (-1..1): phát đó vặn giá súng về bên ấy
+  const offsets = b
+    ? (() => {
+        const xs = parts.muzzles.map((m) => parts.gun.worldToLocal(m.getWorldPosition(V)).x);
+        const max = Math.max(1e-6, ...xs.map(Math.abs));
+        return xs.map((x) => x / max);
+      })()
+    : [];
+  // nòng giật là chuyển động duy nhất của nó và bakeStatic không chạy thử "fire": phải báo trước, không nó bị gộp vào tháp
+  if (b && parts.recoil > 0) for (const barrel of parts.barrels) barrel.userData.animated = true;
+  let since = Infinity;
+  let driven = false; // đã nhận phát bắn thật từ sim: bỏ đồng hồ giả của Xưởng Mô Hình
+  let braced = false;
+  let recoilState = 0;
+  let recoilShown = 0;
+  let baseY = 0;
+  let fired = 0;
+  let rest = 0;
   let yaw = 0;
   let pitch = 0;
   let muzzleIndex = 0;
@@ -60,9 +112,33 @@ export function vehicleRig(
   const speed = spec.speed;
   let aimOverride: number | null = null;
   let aimRaise = true;
+  const fireOne = (): void => {
+    muzzleIndex = (muzzleIndex + 1) % parts.muzzles.length;
+    since = 0;
+    if (b) {
+      recoilState = 1;
+      hull!.hit(braced ? 1 : (b.unbraced ?? 1));
+      gunKick!.hit(1);
+      twist!.hit(offsets[muzzleIndex] ?? 0);
+    }
+    // trên chiến trường viên đạn do sim vẽ; chỉ Xưởng Mô Hình mới tự thả tên lửa minh họa
+    if (parts.missiles && !driven) {
+      const muzzle = parts.muzzles[muzzleIndex]!;
+      muzzle.getWorldDirection(V);
+      shots.spawn(missileMesh(p), muzzle, V.clone().multiplyScalar(16), 1.1);
+    }
+  };
   return {
     root,
     actions: [...baseActions, ...extra],
+    ...(b
+      ? {
+          shot() {
+            driven = true;
+            fireOne();
+          }
+        }
+      : {}),
     defaultOn: [],
     radius,
     setAim(y, raise = true) {
@@ -72,7 +148,9 @@ export function vehicleRig(
     update(dt, t, a) {
       const moving = a.has("move");
       for (const w of parts.wheels) if (moving) w.g.rotation.x += (speed / w.r) * dt;
-      parts.body.position.y = moving ? Math.sin(t * 14) * 0.025 : approach(parts.body.position.y, 0, 10, dt);
+      baseY = moving ? Math.sin(t * 14) * 0.025 : approach(baseY, 0, 10, dt);
+      parts.body.position.y = baseY;
+      braced = a.has("deploy");
       parts.body.rotation.x = moving ? Math.sin(t * 7) * 0.008 : 0;
 
       // Chiến trường đặt góc ngắm thật (setAim); Xưởng Mô Hình thì cho tháp pháo quét qua lại.
@@ -86,16 +164,37 @@ export function vehicleRig(
 
       for (const s of parts.spinners) s.rotation.y += dt * 2.2;
 
-      if (clock.tick(dt, a.has("fire"))) {
-        muzzleIndex = (muzzleIndex + 1) % parts.muzzles.length;
-        const muzzle = parts.muzzles[muzzleIndex]!;
-        if (parts.missiles) {
-          muzzle.getWorldDirection(V);
-          shots.spawn(missileMesh(p), muzzle, V.clone().multiplyScalar(16), 1.1);
+      since += dt;
+      rest = Math.max(0, rest - dt);
+      if (!driven && clock.tick(dt, a.has("fire") && rest <= 0)) {
+        fireOne();
+        if (burst && ++fired >= burst.shots) {
+          fired = 0;
+          rest = BURST_REST;
         }
       }
-      const since = clock.since;
-      const kick = since < 0.25 ? Math.sin((since / 0.25) * Math.PI) * parts.recoil : 0;
+      let kick = since < 0.25 ? Math.sin((since / 0.25) * Math.PI) * parts.recoil : 0;
+      if (b) {
+        hull!.step(dt);
+        gunKick!.step(dt);
+        twist!.step(dt);
+        // súng chĩa hướng nào thì phần xe phía đó bị hất lên, cả xe trượt ngược lại
+        const sy = Math.sin(yaw);
+        const cy = Math.cos(yaw);
+        parts.body.rotation.x -= hull!.x * b.hullTilt * cy;
+        parts.body.rotation.z = hull!.x * b.hullTilt * sy;
+        parts.body.position.x = -hull!.x * b.hullSlide * sy;
+        parts.body.position.z = -hull!.x * b.hullSlide * cy;
+        parts.body.position.y -= hull!.x * b.hullSink;
+        parts.gun.rotation.x -= gunKick!.x * b.gunClimb;
+        parts.gun.rotation.y = twist!.x * b.gunTwist;
+        parts.gun.position.y = gunY0 - gunKick!.x * b.gunSlide * Math.sin(pitch);
+        parts.gun.position.z = gunZ0 - gunKick!.x * b.gunSlide * Math.cos(pitch);
+        // nòng lùi rất nhanh rồi trôi từ từ về chỗ cũ
+        recoilState *= Math.exp(-dt / (b.recoilTime ?? 0.2));
+        recoilShown = approach(recoilShown, recoilState, 45, dt);
+        kick = recoilShown * parts.recoil;
+      }
       parts.barrels.forEach((b, i) => (b.position.z = (b.userData.z0 as number) - (parts.missiles || i % parts.muzzles.length === muzzleIndex ? kick : 0)));
       parts.flashes.forEach((f, i) => {
         f.visible = since < 0.07 && i === muzzleIndex;

@@ -156,7 +156,7 @@ export function buildRocket(p: Palette): Rig {
   return vehicleRig(
     "rocket",
     p,
-    { body, wheels, turret, gun, barrels: [cluster], muzzles, flashes: [], spinners: [], aimPitch: 0.62, recoil: 0.04, missiles: true, fireEvery: 0.2 },
+    { body, wheels, turret, gun, barrels: [cluster], muzzles, flashes: [], spinners: [], aimPitch: 0.62, recoil: 0, missiles: true, bounce: { hz: 5, damp: 0.4, hullTilt: 0.016, hullSlide: 0.03, hullSink: 0.025, gunHz: 8, gunClimb: 0.03, gunSlide: 0.12, gunTwist: 0.018 } },
     3.6,
     [{ id: "deploy", label: "Dựng dàn" }],
     (dt, _t, a) => {

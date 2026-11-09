@@ -28,6 +28,8 @@ interface View {
   ring: THREE.Mesh | null;
   active: Set<string>;
   seen: number;
+  /** Tick của phát bắn đã báo cho mô hình: `lastShot` đổi nghĩa là sim vừa bắn thêm một phát. */
+  lastShot: number;
 }
 
 interface MineView {
@@ -139,7 +141,7 @@ export class Views {
         const rig = buildModel(u.kind, FACTION_OF[u.side], false);
         bakeStatic(rig);
         const yaw = Math.atan2(u.hx, u.hz);
-        v = { rig, yaw, prevYaw: yaw, roll: 0, pitch: 0, ring: null, active: new Set(), seen: f };
+        v = { rig, yaw, prevYaw: yaw, roll: 0, pitch: 0, ring: null, active: new Set(), seen: f, lastShot: u.lastShot };
         this.scene.add(rig.root);
         this.units.set(u.id, v);
       }
@@ -153,7 +155,7 @@ export class Views {
         bakeStatic(rig);
         rig.root.position.set(b.x, this.map.groundY(b.x, b.z), b.z);
         rig.root.rotation.y = doorSign(b.kind, b.z) < 0 ? Math.PI : 0; // nhà xưởng quay cửa về phía giữa bản đồ
-        v = { rig, yaw: 0, prevYaw: 0, roll: 0, pitch: 0, ring: null, active: new Set(), seen: f };
+        v = { rig, yaw: 0, prevYaw: 0, roll: 0, pitch: 0, ring: null, active: new Set(), seen: f, lastShot: b.lastShot };
         this.scene.add(rig.root);
         this.buildings.set(b.id, v);
       }
@@ -380,6 +382,10 @@ export class Views {
         if (tgt && "alt" in tgt && tgt.alt > AIRBORNE_ALT) a.add("aimAir");
         if (w && (w.visual === "bullet" || w.visual === "cannon") && (world.tick - u.lastShot) * DT < Math.max(0.45, w.cooldown * 0.9)) a.add("fire");
       }
+    }
+    if (u.lastShot !== v.lastShot) {
+      v.lastShot = u.lastShot;
+      v.rig.shot?.();
     }
     v.rig.update(dt, time, a);
     const mat = viewer === null ? (u.side === 0 ? RING_MAT.own : RING_MAT.enemy) : u.side === viewer ? RING_MAT.own : RING_MAT.enemy;

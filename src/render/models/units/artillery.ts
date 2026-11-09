@@ -229,7 +229,7 @@ export function buildArtillery(p: Palette): Rig {
   return vehicleRig(
     "artillery",
     p,
-    { body, wheels, turret, gun, barrels: [outer], muzzles: [inner], flashes: [flash], spinners: [], aimPitch: 0.62, recoil: 0.6 },
+    { body, wheels, turret, gun, barrels: [outer], muzzles: [inner], flashes: [flash], spinners: [], aimPitch: 0.62, recoil: 0.6, bounce: { hz: 3.2, damp: 0.3, hullTilt: 0.03, hullSlide: 0.1, hullSink: 0.07, gunHz: 5, gunClimb: 0.06, gunSlide: 0, gunTwist: 0, recoilTime: 0.45 } },
     4.3 * SCALE,
     [{ id: "deploy", label: "Hạ bệ chữ X" }],
     (dt, _t, a) => {

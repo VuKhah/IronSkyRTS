@@ -60,6 +60,8 @@ export function bakeObject(root: THREE.Object3D, probe: (check: () => void) => v
     if ((o as THREE.Mesh).isMesh) before++;
   });
   const moving = new Set<THREE.Object3D>();
+  // userData.animated: chỉ chuyển động trong hoạt ảnh không chạy thử được (nòng giật khi "fire")
+  for (const o of snaps.keys()) if (o.userData.animated) moving.add(o);
   probe(() => {
     for (const [o, s] of snaps) {
       if (moving.has(o) || o.userData.cosmetic) continue;
