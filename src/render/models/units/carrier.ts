@@ -8,6 +8,7 @@ import * as THREE from "three";
 import { box, cyl, facets, FireClock, group, muzzleFlash, palette, part, sphere, type Palette, type Rig } from "../kit";
 import type { Faction } from "../../../sim/content";
 import { bakeStatic } from "../bake";
+import { addCarrierDetails, addIslandDetails, carrierPaint } from "./carrier-details";
 import { buildFalcon } from "./falcon";
 import { barrel } from "./ground";
 
@@ -152,7 +153,7 @@ function parkingSpots(): { x: number; z: number; yaw: number }[] {
 function buildHull(p: Palette, root: THREE.Group): void {
   // thân cao, mũi loe rộng dần lên boong, sống mũi nghiêng ra trước
   root.add(
-    part("Thân tàu", facets(slim3([[7, 0, -41], [10, 0, -22], [10, 0, 10], [4.5, 0, 33], [0, 0, 41], [10.5, DECK_Y - 0.4, -44], [12.2, DECK_Y - 0.4, -20], [12.2, DECK_Y - 0.4, 14], [7.8, DECK_Y - 0.4, 38], [5.3, DECK_Y - 0.4, 48], [0, DECK_Y - 0.4, 48.6]]), p.metal, true)),
+    part("Thân tàu", facets(slim3([[7, 0, -41], [10, 0, -22], [10, 0, 10], [4.5, 0, 33], [0, 0, 41], [10.5, DECK_Y - 0.4, -44], [12.2, DECK_Y - 0.4, -20], [12.2, DECK_Y - 0.4, 14], [7.8, DECK_Y - 0.4, 38], [5.3, DECK_Y - 0.4, 48], [0, DECK_Y - 0.4, 48.6]]), carrierPaint().hull, true)),
     part("Khung boong", deckSlab(DECK_Y - 0.5, DECK_Y, p.hull)),
     part("Mặt boong", deckSlab(DECK_Y, DECK_Y + 0.04, p.hullDark))
   );
@@ -209,6 +210,7 @@ function buildIsland(p: Palette): { root: THREE.Group; radar: THREE.Group } {
   );
   for (const side of [-1, 1]) g.add(part("Kính đài chỉ huy", box(0.05, 0.7, 7.2, p.glass, side * 1.84, 5.9, 0.3)));
   g.add(part("Kính đài chỉ huy", box(3.5, 0.7, 0.05, p.glass, 0, 5.9, 4.12)));
+  addIslandDetails(g, p);
   const radar = group(box(2.6, 0.5, 0.16, p.hullDark), box(2.4, 0.14, 0.05, p.teamGlow, 0, 0, 0.1));
   radar.position.set(0, 13.6, 0);
   part("Radar quay", radar);
@@ -275,13 +277,16 @@ export function buildCarrier(faction: Faction): Rig {
   bakeStatic(template);
   template.setFlight?.(false, 0);
   template.update(0.016, 0, none);
-  for (const spot of parkingSpots()) {
+  const spots = parkingSpots();
+  for (const spot of spots) {
     const parked = template.root.clone(true);
     parked.scale.setScalar(PLANE_SCALE);
     parked.position.set(spot.x, DECK_Y + 0.05, spot.z);
     parked.rotation.y = spot.yaw;
     root.add(part("Máy bay đậu (thu nhỏ)", parked));
   }
+
+  addCarrierDetails(root, p, { deck: DECK, deckY: DECK_Y, wx: WX, lz: LZ, lanes: LANES, laneWidth: LANE_WIDTH, island: ISLAND_AREA, parked: spots, elevators: ELEVATORS, guns: GUN_MOUNTS, onDeck });
 
   // mỗi đường băng một máy bay trên máy phóng, tấm chắn khí nóng dựng lên khi nổ máy
   const lanes = LANES.map((def, i) => {
