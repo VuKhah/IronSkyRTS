@@ -177,6 +177,16 @@ describe("đội hình chỉ đọc mã phân nhóm", () => {
     expect(run("move"), "đi thường: giữ chỗ, Pháo thành hàng đầu").toBeLessThan(0);
   });
 
+  it("đội đã vào hàng quay về chỗ cũ: không xe nào bị xe nhanh hơn chắn đường bỏ lại", () => {
+    const w = new World(1, { sandbox: true });
+    const us = group(w, ["titan", "titan", "titan", "titan", "artillery", "artillery", "skyguard", "skyguard"]);
+    go(w, us, 15);
+    finish(w, us);
+    go(w, us, -15);
+    finish(w, us);
+    for (const u of us) expect(Math.sqrt((u.x - u.tx) ** 2 + (u.z - u.tz) ** 2), `${u.kind} ${u.id}`).toBeLessThan(1.5);
+  });
+
   it("chọn đội hình vẫn tất định", () => {
     const hash = (): number => {
       const w = new World(1, { sandbox: true });

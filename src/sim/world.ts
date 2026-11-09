@@ -1002,6 +1002,8 @@ export class World {
       formation: chosen ?? DEFAULT_FORMATION,
       rankOf: {},
       speed: 0,
+      rigid: false,
+      rolling: false,
       ids: [],
       offLat: [],
       offBack: [],
@@ -1051,6 +1053,7 @@ export class World {
     }
     let direct = false;
     if (wl <= SQUAD_DIRECT) direct = this.squadDirect(sq, units, wx, wz, cx, cz, colsFull, formed);
+    sq.rigid = direct && formed;
     if (!direct) {
       if (formed) {
         this.squadAdopt(sq, f0.faceX, f0.faceZ);
@@ -1432,7 +1435,10 @@ export class World {
     const v = UNITS[u.kind].speed;
     if (!u.squad) return v;
     const sq = this.squadById(u.squad);
-    return sq && sq.speed > v ? sq.speed * SQUAD_CATCHUP : v;
+    if (!sq) return v;
+    // dịch nguyên khối: tất cả đúng một tốc độ, xe nhanh không vượt lên chiếm làn của xe chậm
+    if (sq.phase === "direct" && sq.rigid) return sq.speed;
+    return sq.speed > v ? sq.speed * SQUAD_CATCHUP : v;
   }
 
   /** Ô của xe thứ i: [x, z, hướng x, hướng z]. Đang hành quân thì bám vệt người dẫn đầu, còn lại theo khối cứng. */
@@ -1528,6 +1534,18 @@ export class World {
     return undefined;
   }
 
+  /** Mọi xe đã thu bệ và quay thân gần đúng hướng tới ô của mình. */
+  private squadReady(sq: Squad): boolean {
+    return sq.ids.every((id, i) => {
+      const u = this.byId.get(id) as Unit;
+      const [sx, sz] = this.squadSlot(sq, i);
+      const d = Math.sqrt(dist2(u.x, u.z, sx, sz));
+      if (d <= 0.4) return true;
+      if (UNITS[u.kind].weapon?.deploy && u.still > 0) return false;
+      return d < 3 || (u.hx * (sx - u.x) + u.hz * (sz - u.z)) / d >= PIVOT_COS;
+    });
+  }
+
   /** Xe rời đội hình (lệnh mới, bị hạ): các xe còn lại dồn hàng, giữ thứ tự. */
   private leaveSquad(u: Unit): void {
     const sq = this.squadById(u.squad);
@@ -1608,6 +1626,14 @@ export class World {
         if (lag < 0.8 || sq.phaseT > sq.settleMax) this.disbandSquad(sq);
         return;
       case "direct":
+        if (sq.rigid && !sq.rolling) {
+          // quân cố định thu bệ, xe chậm xoay thân lâu hơn: chờ đủ mặt rồi mới cùng đi, không thì xe nhanh vượt lên rồi đỗ chắn làn của xe chậm
+          if (this.squadReady(sq) || sq.phaseT > sec(SQUAD_PIVOT_MAX)) {
+            sq.rolling = true;
+            sq.phaseT = 0;
+          }
+          return;
+        }
         // mỗi xe tự đi thẳng tới ô; xong khi ai cũng tới ô (hoặc quá lâu)
         if (lag < 0.8 || sq.phaseT > sec(SQUAD_FORM_MAX + SQUAD_DIRECT / speed)) this.disbandSquad(sq);
         return;
@@ -1831,6 +1857,15 @@ export class World {
     if (sq.phase === "direct" && sq.kind === "amove" && sq.holding) return fireAt;
     const [, shx, shz, sx, sz] = this.squadLag(sq, i, u);
     const d = Math.sqrt(dist2(u.x, u.z, sx, sz));
+    if (sq.phase === "direct" && sq.rigid && !sq.rolling) {
+      // chưa lăn bánh: chỉ thu bệ và xoay thân về hướng sắp đi
+      const dep = UNITS[u.kind].weapon?.deploy;
+      if (dep && u.still > 0 && d > 0.4) {
+        u.still = Math.min(u.still, sec(dep.time)) - 1;
+        u.packing = true;
+      } else if (d >= 3) this.turnHull(u, (sx - u.x) / d, (sz - u.z) / d);
+      return fireAt;
+    }
     if (d > SQUAD_FAR || (d > 2 && !this.grid.los(u.x, u.z, sx, sz))) {
       // xa ô hoặc bị che: tìm đường tới ô (mỗi giây tìm lại một lần, ô còn đang di chuyển)
       if (u.path.length === 0 || this.tick >= u.repathAt) {
@@ -4008,6 +4043,7 @@ export function hashWorld(w: World): number {
     num(sq.hz);
     num(sq.s);
     num(sq.phaseT);
+    num(sq.rolling ? 1 : 0);
   }
   for (const b of w.buildings) {
     num(b.id);

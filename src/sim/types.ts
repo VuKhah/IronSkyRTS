@@ -347,6 +347,10 @@ export interface Squad {
   rankOf: Record<number, number>;
   /** Tốc độ chung của cả khối (m/s), xem `RULES.escortBoost`. */
   speed: number;
+  /** Đội đã vào hàng dịch nguyên khối quãng ngắn: mọi xe chờ nhau thu bệ, xoay thân xong rồi mới cùng lăn bánh, cùng một tốc độ. */
+  rigid: boolean;
+  /** Đội `rigid` đã bắt đầu lăn bánh. */
+  rolling: boolean;
   /** Thứ tự xe trong đội hình (vai trò → hàng → trái sang phải), giữ nguyên suốt lệnh: co / giãn hàng vẫn theo thứ tự này. */
   ids: number[];
   /** Ô của từng xe (cùng chỉ số với `ids`): lệch ngang (m, + = bên phải) và lùi sau người dẫn đầu (m). */
