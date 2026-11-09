@@ -2,12 +2,53 @@
  * Lớp vẽ 2D phủ lên cảnh 3D: thanh máu, thanh dầu máy bay, vòng tiến độ chiếm mỏ,
  * khung quét chọn và đường tới điểm tập kết. Vẽ bằng canvas 2D cho nét và rẻ.
  */
-import { BUILDINGS, canStrike, RULES, UNITS, type Side } from "../sim/content";
+import { BUILDINGS, canStrike, RULES, UNITS, type GroupCode, type Side } from "../sim/content";
+import type { Unit } from "../sim/types";
 import type { World } from "../sim/world";
 import type { RtsCamera } from "./camera";
 import { Views } from "./views";
 
 const SIDE_COLOR = ["#3ea8ff", "#ff4d4d"];
+
+/** Một ký hiệu trên bản đồ giấy: cả lô chung một ký hiệu, đặt ở trung bình vị trí các xe đang thấy. */
+export interface StrategicMark {
+  x: number;
+  z: number;
+  units: Unit[];
+}
+
+export function strategicMarks(world: World, viewer: Side | null, alpha: number): StrategicMark[] {
+  const lots = new Map<number, Unit[]>();
+  const marks: Unit[][] = [];
+  for (const u of world.units) {
+    if (viewer !== null && u.side !== viewer && !world.visibleTo(viewer, u)) continue;
+    if (!u.lot) {
+      marks.push([u]);
+      continue;
+    }
+    let list = lots.get(u.lot);
+    if (!list) {
+      list = [];
+      lots.set(u.lot, list);
+      marks.push(list);
+    }
+    list.push(u);
+  }
+  return marks.map((units) => {
+    let x = 0;
+    let z = 0;
+    for (const u of units) {
+      const p = Views.displayPos(world.map, u, alpha);
+      x += p[0] / units.length;
+      z += p[2] / units.length;
+    }
+    return { x, z, units };
+  });
+}
+
+/** Màu khung ký hiệu theo phe, nhạt như mực tô trên giấy. */
+const MARK_FILL = ["#9fd0f2", "#f0a6a0"];
+const MARK_INK = "#1f1810";
 
 export class Overlay {
   private ctx: CanvasRenderingContext2D;
@@ -69,6 +110,194 @@ export class Overlay {
     }
   }
 
+  /** Hình vai trò bên trong khung, theo mã phân nhóm: nhìn là biết loại quân, quân mới cùng mã tự có hình. */
+  private glyph(code: GroupCode, x: number, y: number): void {
+    const g = this.ctx;
+    g.strokeStyle = MARK_INK;
+    g.fillStyle = MARK_INK;
+    g.lineWidth = 1.6;
+    g.beginPath();
+    switch (code) {
+      case "GIAP": // bầu dục xích: xe tăng
+        g.ellipse(x, y, 8, 4, 0, 0, Math.PI * 2);
+        g.stroke();
+        break;
+      case "MUI": // gạch chéo: trinh sát, quấy rối
+        g.moveTo(x - 12, y + 8);
+        g.lineTo(x + 12, y - 8);
+        g.stroke();
+        break;
+      case "HL": // tia gấp khúc: hỏa lực trực tiếp
+        g.moveTo(x - 7, y - 5);
+        g.lineTo(x + 2, y - 1);
+        g.lineTo(x - 2, y + 1);
+        g.lineTo(x + 7, y + 5);
+        g.stroke();
+        break;
+      case "PK": // vòm: phòng không
+        g.arc(x, y + 6, 9, Math.PI, 0);
+        g.stroke();
+        break;
+      case "XA": // chấm: hỏa lực gián tiếp
+        g.arc(x, y, 3.6, 0, Math.PI * 2);
+        g.fill();
+        break;
+      case "DAN": // mũi tên lên: đạn đạo
+        g.moveTo(x, y + 6);
+        g.lineTo(x, y - 6);
+        g.moveTo(x - 5, y - 1);
+        g.lineTo(x, y - 6);
+        g.lineTo(x + 5, y - 1);
+        g.stroke();
+        break;
+      case "HC": // bánh xe: hậu cần
+        g.moveTo(x - 8, y - 1);
+        g.lineTo(x + 8, y - 1);
+        g.stroke();
+        g.beginPath();
+        g.arc(x - 5, y + 3, 2.2, 0, Math.PI * 2);
+        g.arc(x + 5, y + 3, 2.2, 0, Math.PI * 2);
+        g.fill();
+        break;
+      case "TL": // cờ: chỉ huy
+        g.moveTo(x - 4, y + 6);
+        g.lineTo(x - 4, y - 6);
+        g.lineTo(x + 6, y - 3);
+        g.lineTo(x - 4, y);
+        g.stroke();
+        break;
+      case "KQ": // cánh: máy bay
+        g.moveTo(x - 9, y + 3);
+        g.lineTo(x, y - 3);
+        g.lineTo(x + 9, y + 3);
+        g.stroke();
+        break;
+    }
+  }
+
+  /** Ký hiệu quân, công trình, mỏ trên bản đồ giấy. Giữ cỡ cố định trên màn hình dù kéo xa tới đâu. */
+  private drawMarks(world: World, viewer: Side | null, cam: RtsCamera, alpha: number, selected: ReadonlySet<number>, w: number, h: number): void {
+    const g = this.ctx;
+    g.globalAlpha = cam.strategic;
+    const off = (p: { x: number; y: number; visible: boolean }): boolean => !p.visible || p.x < -30 || p.y < -30 || p.x > w + 30 || p.y > h + 30;
+
+    for (const m of world.mines) {
+      const p = cam.project(m.x, 0, m.z, w, h);
+      if (off(p)) continue;
+      g.beginPath();
+      g.arc(p.x, p.y, 7, 0, Math.PI * 2);
+      g.fillStyle = m.owner === -1 ? "#efe6cc" : MARK_FILL[m.owner];
+      g.fill();
+      g.strokeStyle = MARK_INK;
+      g.lineWidth = 1.3;
+      g.stroke();
+      g.fillStyle = MARK_INK;
+      g.font = "bold 9px 'Be Vietnam Pro', sans-serif";
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      g.fillText(m.res === "iron" ? "S" : "D", p.x, p.y + 0.5);
+    }
+    for (const up of world.uplinks) {
+      const p = cam.project(up.x, 0, up.z, w, h);
+      if (off(p)) continue;
+      g.fillStyle = up.owner === -1 ? "#efe6cc" : MARK_FILL[up.owner];
+      g.strokeStyle = MARK_INK;
+      g.lineWidth = 1.3;
+      g.beginPath();
+      g.moveTo(p.x, p.y - 8);
+      g.lineTo(p.x + 8, p.y);
+      g.lineTo(p.x, p.y + 8);
+      g.lineTo(p.x - 8, p.y);
+      g.closePath();
+      g.fill();
+      g.stroke();
+    }
+    for (const b of world.buildings) {
+      if (viewer !== null && b.side !== viewer && !world.sides[viewer].known.has(b.id)) continue;
+      const p = cam.project(b.x, 0, b.z, w, h);
+      if (off(p)) continue;
+      const hq = b.kind === "hq";
+      const size = hq ? 10 : 5;
+      g.fillStyle = MARK_FILL[b.side];
+      g.strokeStyle = selected.has(b.id) ? "#fff3a8" : MARK_INK;
+      g.lineWidth = selected.has(b.id) ? 3 : 1.5;
+      g.fillRect(p.x - size, p.y - size, size * 2, size * 2);
+      g.strokeRect(p.x - size, p.y - size, size * 2, size * 2);
+      if (hq) {
+        g.fillStyle = MARK_INK;
+        g.font = "bold 14px 'Be Vietnam Pro', sans-serif";
+        g.textAlign = "center";
+        g.textBaseline = "middle";
+        g.fillText("★", p.x, p.y + 1);
+      }
+    }
+
+    const W = 13;
+    const H = 9;
+    for (const m of strategicMarks(world, viewer, alpha)) {
+      const u = m.units[0];
+      const p = cam.project(m.x, 0, m.z, w, h);
+      if (off(p)) continue;
+      const sel = m.units.some((v) => selected.has(v.id));
+      const spec = UNITS[u.kind];
+      // xe hậu cần đi lại liên tục quanh căn cứ: chỉ là chấm nhỏ, chọn thì mới hiện đầy đủ, để bản đồ khỏi rối
+      if (spec.group === "HC" && !sel) {
+        g.fillStyle = MARK_FILL[u.side];
+        g.strokeStyle = MARK_INK;
+        g.lineWidth = 1.2;
+        g.beginPath();
+        g.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+        g.fill();
+        g.stroke();
+        continue;
+      }
+      // đường lệnh của lô đang chọn: thấy ngay nó đang đi đâu
+      if (sel && u.side === viewer && u.order !== "idle") {
+        const t = cam.project(u.tx, 0, u.tz, w, h);
+        g.strokeStyle = "rgba(31, 24, 16, 0.75)";
+        g.lineWidth = 1.5;
+        g.setLineDash([6, 5]);
+        g.beginPath();
+        g.moveTo(p.x, p.y);
+        g.lineTo(t.x, t.y);
+        g.stroke();
+        g.setLineDash([]);
+      }
+      g.fillStyle = MARK_FILL[u.side];
+      g.strokeStyle = sel ? "#fff3a8" : MARK_INK;
+      g.lineWidth = sel ? 3 : 1.6;
+      g.beginPath();
+      if (spec.domain === "air") {
+        // khung vòm: máy bay
+        g.moveTo(p.x - W, p.y + H);
+        g.lineTo(p.x - W, p.y - 2);
+        g.quadraticCurveTo(p.x, p.y - H * 2.2, p.x + W, p.y - 2);
+        g.lineTo(p.x + W, p.y + H);
+        g.closePath();
+      } else g.rect(p.x - W, p.y - H, W * 2, H * 2);
+      g.fill();
+      g.stroke();
+      this.glyph(spec.group, p.x, p.y);
+      // số xe còn lại của lô, vạch máu trung bình
+      let hp = 0;
+      let max = 0;
+      for (const v of m.units) {
+        hp += v.hp;
+        max += v.maxHp;
+      }
+      this.bar(p.x, p.y + H + 3, W * 2, hp / max, hp / max > 0.6 ? "#3f9a55" : hp / max > 0.3 ? "#d98a1f" : "#c9402f");
+      if (m.units.length > 1) {
+        g.fillStyle = MARK_INK;
+        g.font = "bold 10px 'Be Vietnam Pro', sans-serif";
+        g.textAlign = "center";
+        g.textBaseline = "alphabetic";
+        g.fillText(String(m.units.length), p.x, p.y - H - 3);
+      }
+    }
+    g.globalAlpha = 1;
+    g.textBaseline = "alphabetic";
+  }
+
   private bar(x: number, y: number, w: number, k: number, color: string): void {
     const g = this.ctx;
     g.fillStyle = "rgba(0,0,0,0.6)";
@@ -91,7 +320,10 @@ export class Overlay {
     g.clearRect(0, 0, w, h);
     const hpColor = (k: number): string => (k > 0.6 ? "#6fdc8c" : k > 0.3 ? "#ffb547" : "#ff6b5e");
 
-    for (const u of world.units) {
+    // kéo xa: thanh máu của từng xe nhường chỗ cho ký hiệu lô trên bản đồ giấy
+    const far = cam.strategic >= 0.5;
+    if (cam.strategic > 0) this.drawMarks(world, viewer, cam, alpha, selected, w, h);
+    for (const u of far ? [] : world.units) {
       if (viewer !== null && u.side !== viewer && !world.visibleTo(viewer, u)) continue;
       const sel = selected.has(u.id);
       const spec = UNITS[u.kind];
@@ -122,7 +354,7 @@ export class Overlay {
       }
     }
 
-    for (const b of world.buildings) {
+    for (const b of far ? [] : world.buildings) {
       if (viewer !== null && b.side !== viewer && !world.sides[viewer].known.has(b.id)) continue;
       const sel = selected.has(b.id);
       const spec = BUILDINGS[b.kind];
@@ -167,7 +399,7 @@ export class Overlay {
     }
 
     // vòng tiến độ chiếm mỏ
-    for (const m of world.mines) {
+    for (const m of far ? [] : world.mines) {
       const contested = m.cap > 0 && m.cap < 1;
       if (!contested && !selected.has(m.id)) continue;
       const p = cam.project(m.x, world.map.groundY(m.x, m.z) + 5, m.z, w, h);
@@ -189,7 +421,7 @@ export class Overlay {
     }
 
     // vòng tiến độ chiếm Đài Liên Lạc (khi đang giằng co / chiếm dở)
-    for (const up of world.uplinks) {
+    for (const up of far ? [] : world.uplinks) {
       if (!(up.cap > 0 && up.cap < 1)) continue;
       const p = cam.project(up.x, world.map.groundY(up.x, up.z) + 8.5, up.z, w, h);
       if (!p.visible) continue;

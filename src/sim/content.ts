@@ -271,7 +271,7 @@ export const RULES = {
   startOil: 100,
   /** Thu nhập gốc của Tổng Hành Dinh (Sắt/giây). */
   hqTrickle: 2,
-  unitCap: 40,
+  unitCap: 80,
   /** Cả khối đi cùng tốc độ = min(tốc độ trung bình, xe chậm nhất × hệ số này): xe chậm được hộ tống thì đi nhanh hơn. Số tạm. */
   escortBoost: 1.3,
   /** Thời gian đúc một lô = thời gian một chiếc × (1 + hệ số × (cỡ lô − 1)). Số tạm. */

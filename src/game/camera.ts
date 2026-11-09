@@ -6,6 +6,13 @@ import * as THREE from "three";
 import type { GameMap } from "../sim/maps";
 
 const clamp = (v: number, a: number, b: number): number => (v < a ? a : v > b ? b : v);
+/** Số điểm ảnh mỗi mét: lớn hơn PPM_NEAR là chiến trường 3D, nhỏ hơn PPM_FAR là bản đồ giấy, ở giữa thì chuyển dần. */
+const PPM_NEAR = 7.2;
+const PPM_FAR = 4.6;
+/** Góc nhìn trên bản đồ giấy: gần như thẳng đứng (đứng hẳn thì lookAt mất hướng). */
+const TOP_DOWN = 1.5707;
+/** Lề giấy cộng bàn gỗ còn thấy khi kéo xa nhất (m). */
+const PAPER_MARGIN = 60;
 
 /**
  * Hướng nhìn ban đầu của mỗi phe (Docs/design/MAPS_PLAN.md mục 3.4): bản đồ hiện "đúng hướng", cạnh dưới nằm ngang.
@@ -23,6 +30,12 @@ export class RtsCamera {
   dist = 64;
   yaw = 0;
   pitch = 0.95;
+  /** Hướng "cạnh dưới nằm ngang" của phe đang chơi: bản đồ giấy luôn đặt theo hướng này. */
+  home = 0;
+  /** Mức chuyển sang bản đồ giấy: 0 = chiến trường 3D, 1 = bản đồ giấy. */
+  strategic = 0;
+  private maxDist = 150;
+  private viewH = 800;
   readonly cam = new THREE.PerspectiveCamera(40, 1, 0.5, 700);
   private ray = new THREE.Raycaster();
   private ndc = new THREE.Vector2();
@@ -30,17 +43,44 @@ export class RtsCamera {
 
   constructor(private map: GameMap) {}
 
+  /** Góc quay đang hiển thị: càng xa càng về hướng chuẩn của bản đồ giấy. */
+  private get viewYaw(): number {
+    const turn = Math.atan2(Math.sin(this.home - this.yaw), Math.cos(this.home - this.yaw));
+    return this.yaw + turn * this.strategic;
+  }
+
   apply(): void {
-    const ty = Math.max(0, this.map.groundY(this.tx, this.tz));
-    const cp = Math.cos(this.pitch);
-    const sp = Math.sin(this.pitch);
-    this.cam.position.set(this.tx + Math.sin(this.yaw) * cp * this.dist, ty + sp * this.dist, this.tz + Math.cos(this.yaw) * cp * this.dist);
+    // ngưỡng tính theo số điểm ảnh mỗi mét, để đúng cho mọi cỡ màn hình
+    const tanHalf = Math.tan((this.cam.fov * Math.PI) / 360);
+    const ppm = this.viewH / (2 * this.dist * tanHalf);
+    const t = clamp((PPM_NEAR - ppm) / (PPM_NEAR - PPM_FAR), 0, 1);
+    this.strategic = t * t * (3 - 2 * t);
+    if (this.strategic > 0) {
+      // nhìn được bao nhiêu thì tâm chỉ cần đi bấy nhiêu, không để lộ cả khoảng bàn trống khi kéo xa
+      const halfH = this.dist * tanHalf;
+      const halfW = halfH * this.cam.aspect;
+      const limX = Math.max(0, this.map.halfW + PAPER_MARGIN - halfW);
+      const limZ = Math.max(0, this.map.halfH + PAPER_MARGIN - halfH);
+      this.tx = clamp(this.tx, -limX, limX);
+      this.tz = clamp(this.tz, -limZ, limZ);
+    }
+    const ty = Math.max(0, this.map.groundY(this.tx, this.tz)) * (1 - this.strategic);
+    const pitch = this.pitch + (TOP_DOWN - this.pitch) * this.strategic;
+    const yaw = this.viewYaw;
+    const cp = Math.cos(pitch);
+    const sp = Math.sin(pitch);
+    this.cam.position.set(this.tx + Math.sin(yaw) * cp * this.dist, ty + sp * this.dist, this.tz + Math.cos(yaw) * cp * this.dist);
     this.cam.lookAt(this.tx, ty, this.tz);
     this.cam.updateMatrixWorld();
   }
 
   setAspect(w: number, h: number): void {
     this.cam.aspect = w / Math.max(1, h);
+    this.viewH = Math.max(1, h);
+    // xa nhất vừa đủ thấy trọn tờ bản đồ, cả khi màn hình dọc
+    const tanHalf = Math.tan((this.cam.fov * Math.PI) / 360);
+    this.maxDist = Math.max(150, Math.max(this.map.halfH + PAPER_MARGIN, (this.map.halfW + PAPER_MARGIN) / this.cam.aspect) / tanHalf);
+    this.cam.far = Math.max(700, this.maxDist * 1.6);
     this.cam.updateProjectionMatrix();
   }
 
@@ -56,15 +96,16 @@ export class RtsCamera {
   /** Kéo theo hướng màn hình (phím mũi tên, đưa chuột sát mép): dx sang phải, dy lên trên. */
   panScreen(dx: number, dy: number): void {
     const s = this.dist * 0.9;
-    const fx = -Math.sin(this.yaw);
-    const fz = -Math.cos(this.yaw);
-    const rx = Math.cos(this.yaw);
-    const rz = -Math.sin(this.yaw);
+    const yaw = this.viewYaw;
+    const fx = -Math.sin(yaw);
+    const fz = -Math.cos(yaw);
+    const rx = Math.cos(yaw);
+    const rz = -Math.sin(yaw);
     this.panWorld((rx * dx + fx * dy) * s, (rz * dx + fz * dy) * s);
   }
 
   zoomBy(f: number): void {
-    this.dist = clamp(this.dist * f, 16, 150);
+    this.dist = clamp(this.dist * f, 16, this.maxDist);
   }
 
   rotate(d: number): void {
@@ -82,6 +123,11 @@ export class RtsCamera {
     const o = this.ray.ray.origin;
     const d = this.ray.ray.direction;
     if (d.y > -1e-4) return null;
+    // trên bản đồ giấy, điểm chạm nằm ngay trên mặt giấy phẳng
+    if (this.strategic >= 0.5) {
+      const t0 = -o.y / d.y;
+      return new THREE.Vector3(o.x + d.x * t0, 0, o.z + d.z * t0);
+    }
     let y = 0;
     const p = new THREE.Vector3();
     for (let i = 0; i < 6; i++) {

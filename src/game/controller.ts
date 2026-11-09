@@ -7,6 +7,7 @@
  * Trên máy tính: nhấp trái để chọn, nhấp phải để ra lệnh. Trên điện thoại: chạm đất khi đang chọn quân là ra lệnh đi.
  */
 import * as THREE from "three";
+import { strategicMarks } from "./overlay";
 import { BUILDINGS, canStrike, DEFAULT_FORMATION, doorSign, FACTION_OF, RES_NAME, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
 import type { Building, Entity, Mine, Order, Unit, Wreck } from "../sim/types";
 import { buildModel, disposeRig, type Rig } from "../render/models";
@@ -156,6 +157,7 @@ export class Controller implements GestureHandlers {
     const viewer = this.viewer;
     let best: Entity | null = null;
     let bestD = Infinity;
+    if (this.cam.strategic >= 0.5) return this.pickOnPaper(sx, sy, touch);
     const tanHalf = Math.tan(((this.cam.cam.fov / 2) * Math.PI) / 180);
     for (const u of this.views.visibleUnits(this.world, viewer)) {
       const [x, y, z] = Views.displayPos(this.match.world.map, u, this.alpha);
@@ -179,6 +181,29 @@ export class Controller implements GestureHandlers {
     }
     for (const m of this.world.mines) if (Math.hypot(g.x - m.x, g.z - m.z) < 4.6) return m;
     return null;
+  }
+
+  /** Trên bản đồ giấy, chạm vào ký hiệu: mỗi lô một ký hiệu, ký hiệu giữ cỡ cố định trên màn hình. */
+  private pickOnPaper(sx: number, sy: number, touch: boolean): Entity | null {
+    const { w, h } = this.size();
+    const r = touch ? 26 : 16;
+    const viewer = this.viewer;
+    let best: Entity | null = null;
+    let bestD = r;
+    const consider = (e: Entity, x: number, z: number): void => {
+      const p = this.cam.project(x, 0, z, w, h);
+      const d = Math.hypot(p.x - sx, p.y - sy);
+      if (d < bestD) {
+        bestD = d;
+        best = e;
+      }
+    };
+    for (const m of strategicMarks(this.world, viewer, this.alpha)) consider(m.units[0], m.x, m.z);
+    if (best) return best;
+    for (const b of this.views.visibleBuildings(this.world, viewer)) consider(b, b.x, b.z);
+    if (best) return best;
+    for (const m of this.world.mines) consider(m, m.x, m.z);
+    return best;
   }
 
   /** Xác quân gần điểm (x, z) trên mặt đất mà phe đang xem nhìn thấy (trong bán kính 3 m). */

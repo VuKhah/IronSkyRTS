@@ -160,7 +160,7 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
   // Bản đồ hiện đúng hướng (cạnh dưới nằm ngang); phe Đỏ xoay 180° để nhà mình cũng ở góc dưới trái.
   // Phòng Thử Nghiệm luôn nhìn như phe Lam (đổi phe giữa chừng không xoay camera).
   const homeSide = sandboxMode ? 0 : me;
-  cam.yaw = homeYaw(homeSide);
+  cam.yaw = cam.home = homeYaw(homeSide);
   if (sandboxMode) {
     cam.focus(DUEL_CENTER[0], DUEL_CENTER[1]);
     cam.dist = 70;
@@ -556,7 +556,7 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
       minimap.draw(world, viewer, corners);
     }
     sandbox?.update(now);
-    scene.render(cam.cam);
+    scene.render(cam.cam, cam.strategic);
     // Tự hạ chất lượng nếu máy chậm (đo mỗi 2 giây, chỉ khi tab đang hiện). ?hq=1 để giữ nguyên.
     // Chỉ hạ khi chậm HAI lần đo liên tiếp: một cú giật ngắn (một loạt tên lửa, nổ lớn) không được làm xấu hình cả trận.
     fpsFrames++;

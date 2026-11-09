@@ -251,6 +251,11 @@ export class GameMap {
     return { d, bank };
   }
 
+  /** Mọi dòng sông, đã đủ cả hai nửa bản đồ (cho phần vẽ). */
+  get riverDefs(): readonly RiverDef[] {
+    return this.rivers.map((r) => r.def);
+  }
+
   /** Tất cả lối qua sông (cho phần vẽ cầu). */
   crossings(): { def: CrossingDef; river: RiverDef; dirX: number; dirZ: number }[] {
     const out: { def: CrossingDef; river: RiverDef; dirX: number; dirZ: number }[] = [];

@@ -4,6 +4,7 @@
  * Phần này chỉ để VẼ — được phép dùng Math.sin/Math.random vì không ảnh hưởng tới trận đấu.
  */
 import * as THREE from "three";
+import { PaperMap } from "./paper-map";
 import type { Side } from "../sim/content";
 import { Rng } from "../sim/fmath";
 import { TERRAIN, type GameMap, type TerrainKind } from "../sim/maps";
@@ -28,6 +29,7 @@ export class BattleScene {
   private fogTex: THREE.DataTexture;
   private fogData: Uint8Array;
   private fogMesh: THREE.Mesh;
+  private paper: PaperMap | undefined;
   private water: THREE.Mesh;
   readonly mobile: boolean;
   /** Mức chất lượng tự hạ khi máy chậm: 0 = đầy đủ, 1 = giảm độ phân giải, 2 = tắt bóng đổ, 3 = độ phân giải thấp. */
@@ -379,7 +381,16 @@ export class BattleScene {
     this.renderer.setSize(w, h, false);
   }
 
-  render(cam: THREE.Camera): void {
-    this.renderer.render(this.scene, cam);
+  /**
+   * `strategic`: 0 = chỉ cảnh 3D, giữa 0 và 1 = bản đồ giấy phủ mờ dần lên cảnh 3D, 1 = chỉ bản đồ giấy (không vẽ cảnh 3D, máy rất nhẹ).
+   */
+  render(cam: THREE.Camera, strategic = 0): void {
+    if (strategic < 1) this.renderer.render(this.scene, cam);
+    if (strategic <= 0) return;
+    this.paper ??= new PaperMap(this.map, this.fogTex, this.renderer.capabilities.getMaxAnisotropy());
+    this.paper.set(strategic, this.fogMesh.visible);
+    this.renderer.autoClear = strategic >= 1;
+    this.renderer.render(this.paper.scene, cam);
+    this.renderer.autoClear = true;
   }
 }
