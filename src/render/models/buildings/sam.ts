@@ -36,7 +36,7 @@ export function buildSAM(p: Palette): Rig {
   let next = 0;
   const pA = new THREE.Vector3();
   const pB = new THREE.Vector3();
-  return rig(root, [WORK, AIM, FIRE], 3.4, [
+  const built = rig(root, [WORK, AIM, FIRE], 3.4, [
     (dt, _t, a) => a.has("work") && (radar.rotation.y += dt * 1.6),
     turretUpdate(turret, gun, [], 1, 0.62, 0.9),
     () => {
@@ -76,4 +76,6 @@ export function buildSAM(p: Palette): Rig {
       }
     }
   ]);
+  built.muzzlePoints = tubes;
+  return built;
 }

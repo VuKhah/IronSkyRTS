@@ -133,6 +133,7 @@ export function vehicleRig(
   return {
     root,
     actions: [...baseActions, ...extra],
+    ...(parts.missiles ? { muzzlePoints: parts.muzzles } : {}),
     ...(b
       ? {
           shot() {

@@ -2792,7 +2792,7 @@ export class World {
     src.cooldown = Math.max(1, Math.round(cd * TICK_RATE));
     src.lastShot = this.tick;
     const talt = t.cat === "unit" ? t.alt : 0;
-    const ticks = Math.max(1, Math.ceil((d / SHOT_SPEED[w.visual]) * TICK_RATE));
+    const ticks = Math.max(1, Math.ceil((d / (w.shotSpeed ?? SHOT_SPEED[w.visual])) * TICK_RATE));
     // Nhiều nòng: các viên bắn song song, xuất phát lệch sang hai bên theo hướng vuông góc với đường ngắm
     const n = w.barrels ?? 1;
     // trục đặt nòng: máy bay thì theo trục cánh (vuông góc hướng bay), còn lại vuông góc đường ngắm
@@ -2878,7 +2878,7 @@ export class World {
     u.ammo2--;
     u.cd2 = Math.max(1, Math.round(w.cooldown * TICK_RATE));
     const side = (u.ammo2 % 2 === 0 ? 1 : -1) * MISSILE_PYLON;
-    const ticks = Math.max(1, Math.ceil((d / SHOT_SPEED[w.visual]) * TICK_RATE));
+    const ticks = Math.max(1, Math.ceil((d / (w.shotSpeed ?? SHOT_SPEED[w.visual])) * TICK_RATE));
     this.pushShot(u, w, t.id, t.x, t.z, t.cat === "unit" ? t.alt : 0, dmg, air, ticks, -u.hz * side, u.hx * side);
   }
 
@@ -3720,7 +3720,7 @@ export class World {
     u.cooldown = Math.max(1, Math.round((this.nextCooldown(u, w) / this.auraFactor(u)) * TICK_RATE));
     u.lastShot = this.tick;
     const s = w.scatter ?? 0;
-    const ticks = Math.max(1, Math.ceil((d / SHOT_SPEED[w.visual]) * TICK_RATE));
+    const ticks = Math.max(1, Math.ceil((d / (w.shotSpeed ?? SHOT_SPEED[w.visual])) * TICK_RATE));
     // mỗi nhịp bắn ra `barrels` viên cùng lúc, mỗi viên tản riêng
     for (let i = 0, n = w.barrels ?? 1; i < n; i++) {
       const [ox, oz] = this.randDisc();

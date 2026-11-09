@@ -89,6 +89,8 @@ export interface WeaponSpec {
   barrels?: number;
   /** Bắn theo loạt: `shots` viên cách nhau `interval` giây; bắn hết loạt mới nạp lại `cooldown` giây. */
   burst?: { shots: number; interval: number; even?: boolean };
+  /** Tốc độ bay của đạn (m/s) nếu khác mặc định của loại đạn. */
+  shotSpeed?: number;
   /** Tầm bắn tối thiểu (m): mục tiêu đứng gần hơn thì không bắn được (Pháo). */
   minRange?: number;
   /** Lộ vị trí: bắn xong thì đối phương nhìn thấy xuyên sương mù trong chừng này giây (Pháo). */
@@ -556,6 +558,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
       visual: "missile",
       barrels: 2,
       burst: { shots: 6, interval: 0.1 },
+      shotSpeed: 90, // đánh máy bay nên tên lửa phải nhanh (tên lửa thường 40 m/s)
       movePenalty: { dmg: 0.25, miss: 0.3 },
       deploy: { time: 1.2, range: 0.25, dmg: 0.33 }
     },
@@ -604,15 +607,15 @@ export const UNITS: Record<UnitId, UnitSpec> = {
       splash: 2.8,
       breach: true,
       visual: "rocket",
-      // từng quả một; `even`: nhịp lẻ so với tick 0,1 giây, cả loạt đi hết khoảng 2,6 giây
-      burst: { shots: 24, interval: 0.115, even: true },
+      // từng quả một, dằng dai để gây sức ép; `even`: nhịp lẻ so với tick 0,1 giây, cả loạt đi hết khoảng 3,5 giây
+      burst: { shots: 24, interval: 0.15, even: true },
       minRange: 8,
       scatter: 5,
       deploy: { time: 1.5, range: 0, dmg: 0, required: true },
       interceptable: true
     },
     features: [
-      "Rải thảm [T]: chọn một vùng tròn; xe tự chạy tới tầm, dựng dàn phóng 1.5 giây rồi xả lần lượt từng quả, hết 24 quả trong khoảng 2.6 giây, sau đó nạp lại 15 giây.",
+      "Rải thảm [T]: chọn một vùng tròn; xe tự chạy tới tầm, dựng dàn phóng 1.5 giây rồi xả lần lượt từng quả, hết 24 quả trong khoảng 3.5 giây, sau đó nạp lại 15 giây.",
       "Tên lửa rơi tản trong vòng 5 m, nổ lan 2.8 m, đạn Nổ công phá: mạnh với cụm xe giáp mỏng và nhà xưởng, yếu với Titan và tháp phòng thủ.",
       "Rải thảm không cần nhìn thấy điểm bắn: bắn được vào sương mù, ví dụ công trình địch đã phát hiện.",
       "Tầm 24 m, xa hơn tháp phòng thủ một chút; không bắn được mục tiêu gần hơn 8 m.",

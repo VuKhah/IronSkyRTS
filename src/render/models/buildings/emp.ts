@@ -22,7 +22,11 @@ export function buildEMP(p: Palette): Rig {
   pulse.position.y = 5.5;
   root.add(pulse);
   const clock = new FireClock(BUILDINGS["aa-emp"].weapon!.cooldown);
-  return rig(root, [WORK, FIRE], 3.6, [
+  // mốc riêng cho điểm phát xung: quả cầu đứng yên nên bị gộp khi vào trận, không dùng làm mốc được
+  const tip = group();
+  tip.position.y = 5.5;
+  root.add(tip);
+  const built = rig(root, [WORK, FIRE], 3.6, [
     (dt, t, a) => {
       const on = a.has("work") || a.has("fire");
       rings.forEach((r, i) => {
@@ -39,4 +43,6 @@ export function buildEMP(p: Palette): Rig {
       }
     }
   ]);
+  built.muzzlePoints = [tip];
+  return built;
 }

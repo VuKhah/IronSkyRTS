@@ -30,6 +30,18 @@ interface View {
   seen: number;
   /** Tick của phát bắn đã báo cho mô hình: `lastShot` đổi nghĩa là sim vừa bắn thêm một phát. */
   lastShot: number;
+  /** Các miệng nòng và ống vừa dùng, để đường đạn xuất phát đúng chỗ. */
+  muzzles: THREE.Object3D[];
+  muzzleCursor: number;
+}
+
+function muzzlesOf(rig: Rig): THREE.Object3D[] {
+  if (rig.muzzlePoints) return rig.muzzlePoints;
+  const found: THREE.Object3D[] = [];
+  rig.root.traverse((o) => {
+    if (o.userData.muzzle) found.push(o);
+  });
+  return found;
 }
 
 interface MineView {
@@ -141,7 +153,7 @@ export class Views {
         const rig = buildModel(u.kind, FACTION_OF[u.side], false);
         bakeStatic(rig);
         const yaw = Math.atan2(u.hx, u.hz);
-        v = { rig, yaw, prevYaw: yaw, roll: 0, pitch: 0, ring: null, active: new Set(), seen: f, lastShot: u.lastShot };
+        v = { rig, yaw, prevYaw: yaw, roll: 0, pitch: 0, ring: null, active: new Set(), seen: f, lastShot: u.lastShot, muzzles: muzzlesOf(rig), muzzleCursor: -1 };
         this.scene.add(rig.root);
         this.units.set(u.id, v);
       }
@@ -155,7 +167,7 @@ export class Views {
         bakeStatic(rig);
         rig.root.position.set(b.x, this.map.groundY(b.x, b.z), b.z);
         rig.root.rotation.y = doorSign(b.kind, b.z) < 0 ? Math.PI : 0; // nhà xưởng quay cửa về phía giữa bản đồ
-        v = { rig, yaw: 0, prevYaw: 0, roll: 0, pitch: 0, ring: null, active: new Set(), seen: f, lastShot: b.lastShot };
+        v = { rig, yaw: 0, prevYaw: 0, roll: 0, pitch: 0, ring: null, active: new Set(), seen: f, lastShot: b.lastShot, muzzles: muzzlesOf(rig), muzzleCursor: -1 };
         this.scene.add(rig.root);
         this.buildings.set(b.id, v);
       }
@@ -391,6 +403,15 @@ export class Views {
     const mat = viewer === null ? (u.side === 0 ? RING_MAT.own : RING_MAT.enemy) : u.side === viewer ? RING_MAT.own : RING_MAT.enemy;
     this.setRing(v, root, selected, spec.radius, mat, u.alt > AIRBORNE_ALT ? -alt + 0.12 : 0.12);
     if (v.ring && u.alt > AIRBORNE_ALT) v.ring.position.y = this.map.groundY(x, z) - root.position.y + 0.12;
+  }
+
+  /** Vị trí miệng nòng sẽ bắn tiếp theo của quân / công trình `id`. Trả false nếu nó chưa có hình hoặc không có nòng. */
+  muzzle(id: number, out: THREE.Vector3): boolean {
+    const v = this.units.get(id) ?? this.buildings.get(id);
+    if (!v || v.muzzles.length === 0) return false;
+    v.muzzleCursor = (v.muzzleCursor + 1) % v.muzzles.length;
+    v.muzzles[v.muzzleCursor]!.getWorldPosition(out);
+    return true;
   }
 
   private updateBuilding(world: World, b: Building, v: View, dt: number, time: number, selected: boolean, viewer: Side | null): void {

@@ -54,6 +54,8 @@ export interface Rig {
   setLevel?(k: number): void;
   /** Số đạn vũ khí phụ còn treo trên thân (ví dụ tên lửa dưới cánh Falcon): bắn rồi thì ẩn đi. */
   setAmmo?(n: number): void;
+  /** Miệng ống theo đúng thứ tự bắn, để đường đạn xuất phát từ đó. Không khai báo thì chiến trường dùng các tia lửa đầu nòng (`muzzleFlash`). */
+  muzzlePoints?: THREE.Object3D[];
   /** Sim vừa bắn một phát thật (`lastShot` đổi): mô hình nảy theo đúng phát đó. Chỉ có ở mô hình khai báo `bounce`. */
   shot?(): void;
 }
@@ -250,6 +252,7 @@ export function muzzleFlash(size: number, mat: THREE.Material): THREE.Mesh {
   const m = new THREE.Mesh(new THREE.ConeGeometry(size * 0.45, size, 7), mat);
   m.rotation.x = Math.PI / 2;
   m.visible = false;
+  m.userData.muzzle = true; // tia lửa nằm đúng miệng nòng: đường đạn xuất phát từ đây
   return m;
 }
 

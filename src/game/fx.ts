@@ -94,12 +94,14 @@ export class Fx {
   }
 
   /** Nhận sự kiện của tick vừa chạy. visible(x,z) = phe đang xem có thấy chỗ đó không. */
-  handle(events: readonly SimEvent[], world: World, visible: (x: number, z: number) => boolean): void {
+  handle(events: readonly SimEvent[], world: World, visible: (x: number, z: number) => boolean, muzzle: (id: number, out: THREE.Vector3) => boolean): void {
     for (const e of events) {
       switch (e.t) {
         case "shot": {
           if (!visible(e.x, e.z) && !visible(e.tx, e.tz)) break;
-          const from = new THREE.Vector3(e.x, this.map.groundY(e.x, e.z) + (e.alt > 0.5 ? e.alt : 1.6), e.z);
+          // xuất phát từ đúng miệng nòng của mô hình; chưa có hình hoặc không có nòng (bom) thì lấy theo vị trí trong sim
+          const from = new THREE.Vector3();
+          if (!muzzle(e.src, from)) from.set(e.x, this.map.groundY(e.x, e.z) + (e.alt > 0.5 ? e.alt : 1.6), e.z);
           // súng nhiều nòng: mỗi viên giữ độ lệch nòng tới tận mục tiêu, thành các vệt đạn song song
           const off = new THREE.Vector3(e.ox * 0.6, 0, e.oz * 0.6);
           const to = new THREE.Vector3(e.tx, this.map.groundY(e.tx, e.tz) + (e.talt > 0.5 ? e.talt : 1.0), e.tz).add(off);

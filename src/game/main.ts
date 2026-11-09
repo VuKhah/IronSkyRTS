@@ -335,7 +335,7 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
 
   const noFx = new URLSearchParams(location.search).has("nofx");
   const onEvents = (evs: SimEvent[]): void => {
-    if (!noFx) fx.handle(evs, world, visible);
+    if (!noFx) fx.handle(evs, world, visible, (id, out) => views.muzzle(id, out));
     const now = performance.now();
     for (const e of evs) {
       switch (e.t) {
