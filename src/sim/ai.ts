@@ -6,7 +6,7 @@
  * chủ sở hữu các mỏ (thông tin công khai trên HUD) và vị trí 2 Tổng Hành Dinh (bản đồ cố định).
  * AI chạy bên trong vòng tick nên cũng phải tất định: không Math.random, không thời gian thật.
  */
-import { BUILDINGS, UNITS, valueOf, type BuildingId, type Side, type UnitId } from "./content";
+import { BUILDINGS, lotCost, UNITS, valueOf, type BuildingId, type Side, type UnitId } from "./content";
 import { dcos, dist2, dsin, Rng, TAU } from "./fmath";
 import type { Building, Mine, Order, Unit, Uplink } from "./types";
 import { dirToCenter, sec, type World } from "./world";
@@ -106,7 +106,7 @@ export class Ai {
     for (const f of shops) {
       const plan = this.plans[f.kind];
       if (!plan) continue;
-      const c = UNITS[plan.k].cost!;
+      const c = lotCost(plan.k);
       if (iron - reserve < c.iron || oil < c.oil) break; // để dành cho đúng xe đã chọn
       out.push({ t: "produce", building: f.id, kind: plan.k });
       iron -= c.iron;
@@ -115,8 +115,8 @@ export class Ai {
     }
     // máy bay: chỉ đúc khi còn bãi đậu trống (máy bay mới phải có chỗ đậu)
     for (const a of myB) {
-      if (a.kind !== "aircraft-factory" || !a.built || a.queue.length > 0 || !w.hasFreePad(me)) continue;
-      const c = UNITS.falcon.cost!;
+      if (a.kind !== "aircraft-factory" || !a.built || a.queue.length > 0 || w.freePads(me) < UNITS.falcon.batch) continue;
+      const c = lotCost("falcon");
       if (iron - reserve >= c.iron && oil >= c.oil + 60) {
         out.push({ t: "produce", building: a.id, kind: "falcon" });
         iron -= c.iron;
@@ -286,8 +286,8 @@ export class Ai {
   private pickSpecial(mine: Unit[], oil: number, armored: number): UnitId | null {
     const n = (k: UnitId): number => mine.filter((u) => u.kind === k).length;
     const combat = n("lynx") + n("titan");
-    const rocket = n("rocket") * 4 < combat && oil >= UNITS.rocket.cost!.oil + 80;
-    const arty = armored >= 0.5 && n("artillery") * 5 < combat && oil >= UNITS.artillery.cost!.oil + 80;
+    const rocket = n("rocket") * 4 < combat && oil >= lotCost("rocket").oil + 80;
+    const arty = armored >= 0.5 && n("artillery") * 5 < combat && oil >= lotCost("artillery").oil + 80;
     if (rocket && arty) return this.rng.next() < 0.5 ? "rocket" : "artillery";
     return rocket ? "rocket" : arty ? "artillery" : null;
   }

@@ -5,7 +5,7 @@
  * Chỉ kiểm HÀNH VI, không khóa con số (khe hở, tỉ lệ bề ngang có thể chỉnh).
  */
 import { describe, expect, it } from "vitest";
-import { UNITS, type UnitId } from "./content";
+import { FORMATIONS, UNITS, type UnitId } from "./content";
 import { assignMin } from "./assign";
 import { Rng } from "./fmath";
 import { arenaPoint } from "./scenarios";
@@ -59,13 +59,13 @@ describe("đội hình khi ra lệnh cho cả nhóm", () => {
     const fx = us[0].faceX;
     const fz = us[0].faceZ;
     const fwd = (u: Unit): number => (u.x - tx) * fx + (u.z - tz) * fz;
-    const of = (f: "front" | "mid" | "back"): number[] => us.filter((u) => UNITS[u.kind].formation === f).map(fwd);
-    for (const f of ["front", "mid", "back"] as const) expect(of(f).length, f).toBeGreaterThan(0);
-    expect(Math.min(...of("front"))).toBeGreaterThan(Math.max(...of("mid")));
-    expect(Math.min(...of("mid"))).toBeGreaterThan(Math.max(...of("back")));
+    const of = (rank: number): number[] => us.filter((u) => FORMATIONS.attack.rank[UNITS[u.kind].group] === rank).map(fwd);
+    for (const rank of [0, 1, 2]) expect(of(rank).length, String(rank)).toBeGreaterThan(0);
+    expect(Math.min(...of(0))).toBeGreaterThan(Math.max(...of(1)));
+    expect(Math.min(...of(1))).toBeGreaterThan(Math.max(...of(2)));
   });
 
-  it("hành quân: cả khối đi theo tốc độ xe chậm nhất, mọi xe bám sát ô của mình suốt đường", () => {
+  it("hành quân: cả khối đi cùng tốc độ khối, vào hàng xong thì mọi xe bám sát ô của mình suốt đường", () => {
     const w = new World(1, { sandbox: true });
     const rng = new Rng(3);
     const [ax, az] = arenaPoint(-24);
@@ -74,7 +74,6 @@ describe("đội hình khi ra lệnh cho cả nhóm", () => {
     const [tx, tz] = arenaPoint(30);
     w.step([{ side: 0, order: { t: "move", ids: us.map((u) => u.id), x: tx, z: tz } }]);
     const sq = w.squads[0];
-    const slow = Math.min(...us.map((u) => UNITS[u.kind].speed));
     let marched = 0;
     let worst = 0;
     for (let i = 0; i < sec(60) && w.squads.includes(sq); i++) {
@@ -82,7 +81,9 @@ describe("đội hình khi ra lệnh cho cả nhóm", () => {
       w.step([]);
       if (sq.phase !== "march") continue;
       marched++;
-      expect(sq.s - s0).toBeLessThanOrEqual(slow * 0.1 + 1e-9);
+      expect(sq.s - s0).toBeLessThanOrEqual(sq.speed * 0.1 + 1e-9);
+      // quân lộn xộn tự vào hàng trên đường đi: chỉ đo sau khi đã có thời gian vào hàng
+      if (i < sec(8)) continue;
       for (const u of us) {
         const k = sq.ids.indexOf(u.id);
         const [sx, sz] = (w as unknown as { squadSlot(q: unknown, i: number): number[] }).squadSlot(sq, k);

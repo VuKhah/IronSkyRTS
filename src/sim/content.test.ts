@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ARMOR_NAME, BUILDINGS, DMG_NAME, PAD_OFFSETS, RULES, UNITS, getSpec, type ArmorClass, type DmgType, type EntityId } from "./content";
+import { ARMOR_NAME, BUILDINGS, DMG_NAME, FORMATIONS, PAD_OFFSETS, RULES, UNITS, getSpec, type ArmorClass, type DmgType, type EntityId } from "./content";
 
 const ALL = [...Object.keys(UNITS), ...Object.keys(BUILDINGS)] as EntityId[];
 
@@ -15,6 +15,13 @@ describe("content", () => {
         expect(ref).not.toBe(u.id);
       }
       expect(u.beats.filter((b) => u.fears.includes(b)), `${u.id} vừa khắc chế vừa sợ cùng một quân`).toEqual([]);
+    }
+  });
+
+  it("mọi quân có mã phân nhóm được mọi kiểu đội hình biết tới và cỡ lô hợp lệ", () => {
+    for (const u of Object.values(UNITS)) {
+      expect(Number.isInteger(u.batch) && u.batch >= 1, `${u.id}: cỡ lô`).toBe(true);
+      for (const f of Object.values(FORMATIONS)) expect(f.rank[u.group], `${u.id}: mã ${u.group} trong ${f.name}`).toBeTypeOf("number");
     }
   });
 

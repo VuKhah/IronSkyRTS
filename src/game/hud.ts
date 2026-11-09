@@ -3,7 +3,7 @@
  * Bảng lệnh chỉ dựng lại khi NGỮ CẢNH đổi (chọn thứ khác); còn số liệu (máu, tiền, hàng chờ)
  * được cập nhật tại chỗ — dựng lại nút liên tục sẽ làm hỏng cú chạm đang bấm dở trên điện thoại.
  */
-import { BUILDINGS, canStrike, MVP_BUILDABLE, RES_NAME, RULES, SIDE_NAME, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
+import { BUILDINGS, canStrike, FORMATIONS, lotCost, lotTime, MVP_BUILDABLE, RES_NAME, RULES, SIDE_NAME, UNITS, type BuildingId, type FormationId, type Side, type UnitId } from "../sim/content";
 import { TERRAIN } from "../sim/maps";
 import type { Building, Mine, Unit } from "../sim/types";
 import { sec, TICK_RATE } from "../sim/world";
@@ -124,6 +124,13 @@ export class Hud {
     return `<span class="cost">${c.iron}${c.oil ? ` · <span class="o">${c.oil}</span>` : ""}</span>`;
   }
 
+  /** Chọn kiểu đội hình cho các lệnh đi tiếp theo; không chọn thì dùng mặc định. */
+  private formationRow(): string {
+    return `<div class="row"><span class="row-label">Đội hình</span>${(Object.keys(FORMATIONS) as FormationId[])
+      .map((id) => `<button class="btn" data-act="formation:${id}" data-formation="${id}"><span>${esc(FORMATIONS[id].name)}</span></button>`)
+      .join("")}</div>`;
+  }
+
   private buildRow(): string {
     if (this.match.player === null) return "";
     return `<div class="row"><span class="row-label">Xây</span>${MVP_BUILDABLE.map((k) => {
@@ -173,7 +180,7 @@ export class Hud {
           ${hasHauler ? `<button class="btn" data-act="harvest" data-mode="harvest"><span>⛏</span><span>Khai thác</span><span class="cost">chọn mỏ</span></button>` : ""}
           ${hasHauler ? `<button class="btn" data-act="salvage" data-mode="salvage" title="Chọn một xác quân để Xe Vận Tải kéo về Tổng Hành Dinh (mỗi xe một xác)"><span>🔧</span><span>Trục vớt</span><span class="cost">chọn xác</span></button>` : ""}
           <button class="btn" data-act="deselect"><span class="key">Esc</span><span>✕</span><span>Bỏ chọn</span></button>
-        </div>${this.buildRow()}`;
+        </div>${ctx.units.filter((u) => u.air === "none" && u.kind !== "hauler").length > 1 ? this.formationRow() : ""}${this.buildRow()}`;
         break;
       }
       case "building": {
@@ -184,7 +191,7 @@ export class Hud {
             .filter((k) => UNITS[k].mvp)
             .map((k) => {
               const u = UNITS[k];
-              return `<button class="btn" data-act="produce:${k}" data-unit="${k}" title="${esc(u.role)}"><span class="key">${u.hotkey}</span>${this.img(k)}<span>${esc(u.short)}</span>${this.costHtml(u.cost!)}<i class="prog" style="width:0"></i></button>`;
+              return `<button class="btn" data-act="produce:${k}" data-unit="${k}" title="${esc(u.role)}"><span class="key">${u.hotkey}</span>${this.img(k)}<span>${esc(u.short)}${u.batch > 1 ? ` ×${u.batch}` : ""}</span>${this.costHtml(lotCost(k))}<i class="prog" style="width:0"></i></button>`;
             })
             .join("")}</div>`;
         }
@@ -314,9 +321,9 @@ export class Hud {
         if (!b.built) status = `Đang xây ${Math.floor(b.progress * 100)}%`;
         else if (b.queue.length) {
           const u = UNITS[b.queue[0]];
-          const k = b.prog / sec(u.buildTime ?? 5);
+          const k = b.prog / sec(lotTime(b.queue[0]));
           status = `Đang đúc ${u.short} ${Math.floor(k * 100)}%${b.queue.length > 1 ? ` · chờ ${b.queue.length - 1}` : ""}`;
-          if (u.domain === "air" && !w.hasFreePad(b.side)) status = "Tạm dừng: không còn bãi đậu trống, xây thêm Sân Đáp";
+          if (u.domain === "air" && w.freePads(b.side) < u.batch) status = "Tạm dừng: không đủ bãi đậu trống cho cả lô, xây thêm Sân Đáp";
         } else if (b.kind === "aircraft-factory" && !w.hasFreePad(b.side)) status = "Cần Sân Đáp còn bãi trống để đúc máy bay";
         else if (b.kind === "airfield") status = `Bãi đậu ${b.pads.filter((p) => p).length}/${RULES.air.pads}`;
         if (b.built && s.oilBurn)
@@ -345,7 +352,7 @@ export class Hud {
     }
   }
 
-  update(ctx: PanelCtx, mode: Mode, placeKind: BuildingId | null, hint: string | null): void {
+  update(ctx: PanelCtx, mode: Mode, placeKind: BuildingId | null, hint: string | null, formation?: FormationId): void {
     const k = this.contextKey(ctx);
     if (k !== this.key) {
       this.key = k;
@@ -410,14 +417,15 @@ export class Hud {
         b.setAttribute("aria-pressed", String(mode === "place" && placeKind === b.dataset.build));
       });
       this.rows.querySelectorAll<HTMLButtonElement>("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", String(mode === b.dataset.mode)));
+      this.rows.querySelectorAll<HTMLButtonElement>("[data-formation]").forEach((b) => b.setAttribute("aria-pressed", String(formation === b.dataset.formation)));
       if (ctx.t === "building" && ctx.own) {
         const bd = ctx.b;
         this.rows.querySelectorAll<HTMLButtonElement>("[data-unit]").forEach((btn) => {
           const kind = btn.dataset.unit as UnitId;
           const u = UNITS[kind];
-          const c = u.cost!;
+          const c = lotCost(kind);
           const n = bd.queue.filter((q) => q === kind).length;
-          btn.disabled = st.iron < c.iron || st.oil < c.oil || bd.queue.length >= RULES.queueMax || w.unitCount(me) >= RULES.unitCap;
+          btn.disabled = st.iron < c.iron || st.oil < c.oil || bd.queue.length >= RULES.queueMax || w.unitCount(me) + u.batch > RULES.unitCap;
           let badge = btn.querySelector<HTMLElement>(".count");
           if (n > 0) {
             if (!badge) {
@@ -428,7 +436,7 @@ export class Hud {
             badge.textContent = String(n);
           } else badge?.remove();
           const prog = btn.querySelector<HTMLElement>(".prog");
-          if (prog) prog.style.width = bd.queue[0] === kind ? `${Math.min(100, (bd.prog / sec(u.buildTime ?? 5)) * 100)}%` : "0";
+          if (prog) prog.style.width = bd.queue[0] === kind ? `${Math.min(100, (bd.prog / sec(lotTime(kind))) * 100)}%` : "0";
         });
       }
     }

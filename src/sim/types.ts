@@ -5,7 +5,7 @@
  * đều gửi cùng một loại lệnh. Nhờ vậy, chỉ cần lưu seed + danh sách lệnh là chiếu lại được cả trận.
  * Sự kiện thì chạy theo chiều ngược lại: sim báo cho phần vẽ / âm thanh biết chuyện gì vừa xảy ra.
  */
-import type { BuildingId, DmgType, Res, Side, UnitId, WeaponVisual } from "./content";
+import type { BuildingId, DmgType, FormationId, Res, Side, UnitId, WeaponVisual } from "./content";
 
 /** "strike": rải thảm vào điểm (tx, tz): chạy tới tầm, dựng dàn, xả hết loạt rồi về "idle" (Xe Tên Lửa Loạt). */
 export type UnitOrder = "idle" | "move" | "amove" | "attack" | "strike";
@@ -19,6 +19,8 @@ export interface Unit {
   cat: "unit";
   kind: UnitId;
   side: Side;
+  /** Lô: các xe đúc cùng một lần có cùng số này và được điều chung. 0 = không thuộc lô (quân có sẵn, thả trong sandbox). */
+  lot: number;
   x: number;
   z: number;
   /** Vị trí ở tick trước, để phần vẽ nội suy mượt giữa 2 tick. */
@@ -221,8 +223,8 @@ export interface Shot {
 }
 
 export type Order =
-  | { t: "move"; ids: number[]; x: number; z: number }
-  | { t: "amove"; ids: number[]; x: number; z: number }
+  | { t: "move"; ids: number[]; x: number; z: number; formation?: FormationId }
+  | { t: "amove"; ids: number[]; x: number; z: number; formation?: FormationId }
   | { t: "attack"; ids: number[]; target: number }
   | { t: "stop"; ids: number[] }
   | { t: "harvest"; ids: number[]; mine: number }
@@ -339,6 +341,12 @@ export interface Squad {
   id: number;
   side: Side;
   kind: "move" | "amove";
+  /** Kiểu đội hình đang dùng (bảng FORMATIONS trong content.ts). */
+  formation: FormationId;
+  /** Tuyến của từng xe theo id, tính lúc dựng đội hình (đoạn hậu là tuyến riêng). */
+  rankOf: Record<number, number>;
+  /** Tốc độ chung của cả khối (m/s), xem `RULES.escortBoost`. */
+  speed: number;
   /** Thứ tự xe trong đội hình (vai trò → hàng → trái sang phải), giữ nguyên suốt lệnh: co / giãn hàng vẫn theo thứ tự này. */
   ids: number[];
   /** Ô của từng xe (cùng chỉ số với `ids`): lệch ngang (m, + = bên phải) và lùi sau người dẫn đầu (m). */

@@ -118,6 +118,43 @@ export interface WeaponSpec {
   interceptable?: boolean;
 }
 
+/**
+ * Mã phân nhóm cho đội hình: MUI mũi nhanh · GIAP xung kích giáp · HL hỏa lực trực tiếp tầm trung · PK phòng không ·
+ * XA hỏa lực gián tiếp · DAN đạn đạo · HC hậu cần · TL chỉ huy · KQ máy bay cánh bằng (không vào đội hình mặt đất).
+ * Trực thăng và tàu dùng cùng các mã này, phân biệt bằng `domain`.
+ */
+export type GroupCode = "MUI" | "GIAP" | "HL" | "PK" | "XA" | "DAN" | "HC" | "TL" | "KQ";
+
+export type FormationId = "march" | "attack" | "escort" | "pin";
+
+/** Một kiểu đội hình, hoàn toàn là dữ liệu: thêm kiểu mới không phải sửa luật. */
+export interface FormationDef {
+  name: string;
+  /** Bề ngang ≈ √(số xe × wide) xe mỗi hàng: nhỏ là cột dọc, lớn là tuyến mỏng. */
+  wide: number;
+  /** Tuyến của từng mã: số nhỏ đứng trước; mỗi tuyến bắt đầu hàng mới. */
+  rank: Record<GroupCode, number>;
+  /** Một phần ba xe GIAP phía sau tách ra làm tuyến đoạn hậu. */
+  rearGuard?: boolean;
+  /** Mã này đứng dọc hai bên tuyến giữa thay vì xếp hàng (khi đội đang giãn hết cỡ). */
+  flank?: GroupCode;
+}
+
+/** Tuyến cuối cùng, dành cho đoạn hậu của các đội hình có `rearGuard`. */
+export const REAR_RANK = 9;
+
+const ATTACK_RANK: Record<GroupCode, number> = { MUI: 0, GIAP: 0, HL: 1, TL: 1, PK: 1, KQ: 1, XA: 2, HC: 2, DAN: 3 };
+
+export const FORMATIONS: Record<FormationId, FormationDef> = {
+  march: { name: "Hành quân", wide: 0.8, rank: { MUI: 0, GIAP: 1, HL: 2, TL: 2, PK: 2, KQ: 2, XA: 3, HC: 3, DAN: 4 }, rearGuard: true },
+  attack: { name: "Tấn công", wide: 2.5, rank: ATTACK_RANK },
+  escort: { name: "Hộ tống Pháo", wide: 1.5, rank: { MUI: 0, GIAP: 0, HL: 1, TL: 1, PK: 1, KQ: 1, XA: 1, HC: 1, DAN: 1 }, rearGuard: true, flank: "PK" },
+  pin: { name: "Kìm chân", wide: 8, rank: ATTACK_RANK }
+};
+
+/** Đội hình khi người chỉ huy chưa chọn. */
+export const DEFAULT_FORMATION: FormationId = "attack";
+
 export interface UnitSpec {
   id: UnitId;
   kind: "unit";
@@ -129,10 +166,15 @@ export interface UnitSpec {
   role: string;
   domain: Domain;
   /**
-   * Vị trí trong đội hình khi ra lệnh cho cả nhóm (quân mặt đất): hàng đầu (xe giáp), giữa (chỉ huy, phòng không),
-   * sau (hỏa lực tầm xa, xe hậu cần). Bỏ trống = giữa.
+   * Mã phân nhóm, BẮT BUỘC (content.test kiểm). Đội hình chỉ đọc mã này, không đọc tên quân, nên quân mới
+   * (hải quân, trực thăng, đạn đạo, laser…) chỉ cần khai báo mã là tự vào đúng chỗ.
    */
-  formation?: "front" | "mid" | "back";
+  group: GroupCode;
+  /**
+   * Cỡ lô, BẮT BUỘC: mỗi lần đúc ra chừng này chiếc và điều chung (người dùng chốt 09/11/2026: thiên về phòng thủ cứng
+   * cáp 2, trinh sát quấy rối 3, đạn đạo loại lớn 1). `cost` và `buildTime` vẫn tính cho một chiếc, xem `lotCost`, `lotTime`.
+   */
+  batch: number;
   /**
    * Tốc độ quay thân xe (độ/giây), mọi xe mặt đất BẮT BUỘC có (người dùng chốt 06/11/2026: mọi xe xoay tại chỗ; quay
    * đầu cũng mất thời gian). Lệch hướng quá 30° thì xe đứng lại xoay tại chỗ rồi mới chạy. Máy bay bỏ trống.
@@ -228,6 +270,10 @@ export const RULES = {
   /** Thu nhập gốc của Tổng Hành Dinh (Sắt/giây). */
   hqTrickle: 2,
   unitCap: 40,
+  /** Cả khối đi cùng tốc độ = min(tốc độ trung bình, xe chậm nhất × hệ số này): xe chậm được hộ tống thì đi nhanh hơn. Số tạm. */
+  escortBoost: 1.3,
+  /** Thời gian đúc một lô = thời gian một chiếc × (1 + hệ số × (cỡ lô − 1)). Số tạm. */
+  lotTimeExtra: 0.5,
   /** Điện: hiệu suất = phát / tiêu thụ. Radar cần ít nhất mức này để chạy. */
   power: {
     radarMin: 0.5,
@@ -345,7 +391,8 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     hotkey: "F1",
     role: "Trái tim của binh đoàn. Mất Xe Tư Lệnh là thua trận.",
     domain: "ground",
-    formation: "mid",
+    group: "TL",
+    batch: 1,
     turnRate: 90,
     mvp: true,
     hp: 2025,
@@ -378,7 +425,8 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     hotkey: "V",
     role: "Đào Sắt hoặc Dầu ở mỏ phe mình rồi chở về Tổng Hành Dinh.",
     domain: "ground",
-    formation: "back",
+    group: "HC",
+    batch: 1,
     turnRate: 90,
     mvp: true,
     cost: { iron: 150, oil: 0 },
@@ -410,7 +458,8 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     hotkey: "Z",
     role: "Xe nhanh nhất mặt đất. Trinh sát, chiếm mỏ, săn xe vận tải.",
     domain: "ground",
-    formation: "front",
+    group: "MUI",
+    batch: 3,
     turnRate: 120,
     mvp: true,
     cost: { iron: 150, oil: 0 },
@@ -442,7 +491,8 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     hotkey: "X",
     role: "Giáp dày, pháo 120mm nổ lan. Mũi nhọn công phá.",
     domain: "ground",
-    formation: "front",
+    group: "GIAP",
+    batch: 2,
     turnRate: 45,
     mvp: true,
     cost: { iron: 350, oil: 0 },
@@ -476,7 +526,8 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     hotkey: "C",
     role: "Tên lửa phòng không tự hành, hộ tống đoàn xe tăng.",
     domain: "ground",
-    formation: "mid",
+    group: "PK",
+    batch: 2,
     turnRate: 60,
     mvp: true,
     cost: { iron: 250, oil: 0 },
@@ -523,7 +574,8 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     hotkey: "G",
     role: "Dàn phóng tên lửa loạt: chọn một vùng, xe dựng dàn rồi xả cả loạt 12 quả. San phẳng cụm xe giáp mỏng và nhà xưởng.",
     domain: "ground",
-    formation: "back",
+    group: "XA",
+    batch: 2,
     turnRate: 60,
     mvp: true,
     cost: { iron: 300, oil: 40 },
@@ -573,6 +625,8 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     hotkey: "N",
     role: "Đòn đánh mạnh nhất trận, nhưng chỉ bay được ít giây rồi phải về nạp Dầu.",
     domain: "air",
+    group: "KQ",
+    batch: 2,
     mvp: true,
     cost: { iron: 300, oil: 50 },
     buildTime: 6.5,
@@ -633,7 +687,8 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     hotkey: "F",
     role: "Pháo nòng lớn tầm cực xa: hạ bệ chữ X, duỗi nòng rồi mới bắn. Một viên xuyên giáp phá công sự.",
     domain: "ground",
-    formation: "back",
+    group: "XA",
+    batch: 1,
     turnRate: 30,
     mvp: true,
     // MỌI SỐ LÀ SỐ TẠM (Docs/design/ARMY_DESIGN.md mục 8), chờ buổi cân bằng
@@ -682,6 +737,8 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     hotkey: "M",
     role: "Pháo đài bay. Rải chuỗi bom phá hủy căn cứ. (Sau MVP)",
     domain: "air",
+    group: "KQ",
+    batch: 2,
     mvp: false,
     cost: { iron: 230, oil: 90 },
     buildTime: 9,
@@ -1105,3 +1162,15 @@ export const PLANNED_UNITS: { name: string; group: string }[] = [
 ];
 
 export const PLANNED_BUILDINGS: string[] = ["Trại Bộ Binh", "Trung Tâm Nghiên Cứu"];
+
+/** Giá của cả lô (một lần bấm đúc). */
+export function lotCost(kind: UnitId): Cost {
+  const u = UNITS[kind];
+  return { iron: (u.cost?.iron ?? 0) * u.batch, oil: (u.cost?.oil ?? 0) * u.batch };
+}
+
+/** Thời gian đúc cả lô (giây). Đúc cùng lúc nên rẻ hơn đúc lần lượt từng chiếc. */
+export function lotTime(kind: UnitId): number {
+  const u = UNITS[kind];
+  return (u.buildTime ?? 5) * (1 + RULES.lotTimeExtra * (u.batch - 1));
+}

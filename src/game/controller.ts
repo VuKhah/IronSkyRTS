@@ -7,7 +7,7 @@
  * Trên máy tính: nhấp trái để chọn, nhấp phải để ra lệnh. Trên điện thoại: chạm đất khi đang chọn quân là ra lệnh đi.
  */
 import * as THREE from "three";
-import { BUILDINGS, canStrike, doorSign, FACTION_OF, RES_NAME, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
+import { BUILDINGS, canStrike, doorSign, FACTION_OF, RES_NAME, UNITS, type BuildingId, type FormationId, type Side, type UnitId } from "../sim/content";
 import type { Building, Entity, Mine, Order, Unit, Wreck } from "../sim/types";
 import { buildModel, disposeRig, type Rig } from "../render/models";
 import type { Sfx } from "./audio";
@@ -26,6 +26,8 @@ const AIM_BAD = new THREE.MeshBasicMaterial({ color: 0x9aa0a6, transparent: true
 
 export class Controller implements GestureHandlers {
   selected: number[] = [];
+  /** Kiểu đội hình người chỉ huy đang chọn cho các lệnh đi tiếp theo; undefined = để mặc định. */
+  formation: FormationId | undefined = undefined;
   mode: Mode = "normal";
   placeKind: BuildingId | null = null;
   placePos: { x: number; z: number } | null = null;
@@ -111,7 +113,21 @@ export class Controller implements GestureHandlers {
     return e.length === 1 && e[0].cat === "building" && e[0].side === this.me ? e[0] : null;
   }
 
-  select(ids: number[], add = false): void {
+  /** Điều khiển theo lô: chọn một xe là chọn cả các xe cùng lô của phe mình. */
+  private withLots(ids: number[]): number[] {
+    const lots = new Set<number>();
+    for (const id of ids) {
+      const e = this.world.byId.get(id);
+      if (e?.cat === "unit" && e.side === this.me && e.lot) lots.add(e.lot);
+    }
+    if (!lots.size) return ids;
+    const out = new Set(ids);
+    for (const u of this.world.units) if (u.lot && lots.has(u.lot) && u.hp > 0) out.add(u.id);
+    return [...out];
+  }
+
+  select(picked: number[], add = false): void {
+    const ids = this.withLots(picked);
     if (add) {
       const set = new Set(this.selected);
       for (const id of ids) {
@@ -262,7 +278,7 @@ export class Controller implements GestureHandlers {
       }
     }
     if (!g) return;
-    this.issue({ t: mode === "amove" ? "amove" : "move", ids, x: g.x, z: g.z });
+    this.issue({ t: mode === "amove" ? "amove" : "move", ids, x: g.x, z: g.z, formation: this.formation });
     this.fx.marker(g.x, g.z, mode === "amove" ? 0xff6b5e : 0x6fdc8c);
     this.sfx.ui("ack");
   }
@@ -462,6 +478,11 @@ export class Controller implements GestureHandlers {
         break;
       case "placeCancel":
         this.cancelPlace();
+        break;
+      case "formation":
+        // bấm lại kiểu đang chọn thì trả về mặc định
+        this.formation = this.formation === arg ? undefined : (arg as FormationId);
+        this.sfx.ui("click");
         break;
       case "produce":
         if (b) {

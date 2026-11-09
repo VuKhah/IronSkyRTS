@@ -7,7 +7,7 @@
  *   8. đạn tới đích → trừ máu   9. dọn xác   10. sương mù   11. kiểm tra thắng thua
  * Không có gì phụ thuộc thời gian thật hay số ngẫu nhiên không seed, nên cùng seed + cùng lệnh thì ra cùng trận.
  */
-import { BUILDINGS, canStrike, doorSign, PAD_OFFSETS, RULES, UNITS, valueOf, type BuildingId, type Mobility, type Res, type Side, type UnitId, type UnitSpec, type WeaponSpec, type WeaponVisual } from "./content";
+import { BUILDINGS, canStrike, DEFAULT_FORMATION, doorSign, FORMATIONS, lotCost, lotTime, PAD_OFFSETS, REAR_RANK, RULES, UNITS, valueOf, type BuildingId, type FormationId, type Mobility, type Res, type Side, type UnitId, type UnitSpec, type WeaponSpec, type WeaponVisual } from "./content";
 import { assignMin } from "./assign";
 import { clamp, dcos, DEG, dist2, dsin, Rng, TAU, turnStep, turnToward, type TurnStep } from "./fmath";
 import { Grid } from "./grid";
@@ -37,10 +37,10 @@ const SALVAGE_POOL = 14;
 /** Đường tới xác bị chặn quá chừng này lần thì bỏ, không tìm đường lại mãi. */
 const SALVAGE_RETRIES = 5;
 
-/** Đội hình: khe hở giữa hai thân xe cạnh nhau (m), và tỉ lệ bề ngang / bề sâu (hàng ngang rộng hơn sâu). */
+/** Đội hình: khe hở giữa hai thân xe cạnh nhau (m). Hình dạng từng kiểu đội hình nằm ở `FORMATIONS` trong content.ts. */
 const FORMATION_GAP = 1.4;
-const FORMATION_WIDE = 2.5;
-const FORMATION_RANK = { front: 0, mid: 1, back: 2 } as const;
+/** Xe chậm hơn tốc độ khối được chạy nhanh hơn khối một chút để còn đuổi kịp ô của mình. */
+const SQUAD_CATCHUP = 1.08;
 /** Va chạm giữa xe đang chạy và xe đứng yên: phần lực đẩy xe chạy phải chịu (xe đứng chịu phần còn lại). */
 const MOVER_SHARE = 0.85;
 /** Đội hình hành quân: bán kính quay nhỏ nhất của người dẫn đầu (m) khi đội hình hẹp (một hai xe mỗi hàng). */
@@ -344,7 +344,7 @@ export class World {
   unitCount(side: Side): number {
     let n = 0;
     for (const u of this.units) if (u.side === side && u.kind !== "commander") n++;
-    for (const b of this.buildings) if (b.side === side) n += b.queue.length;
+    for (const b of this.buildings) if (b.side === side) for (const k of b.queue) n += UNITS[k].batch;
     return n;
   }
 
@@ -435,6 +435,7 @@ export class World {
       cat: "unit",
       kind,
       side,
+      lot: 0,
       x: px,
       z: pz,
       px,
@@ -572,7 +573,7 @@ export class World {
     switch (o.t) {
       case "move":
       case "amove":
-        this.orderMove(side, o.ids, o.x, o.z, o.t);
+        this.orderMove(side, o.ids, o.x, o.z, o.t, o.formation);
         break;
       case "barrage":
         this.orderStrike(side, o.ids, o.x, o.z);
@@ -648,8 +649,8 @@ export class World {
         const b = this.ownBuilding(side, o.building);
         if (!b || !b.built || !BUILDINGS[b.kind].produces?.includes(o.kind)) break;
         const us = UNITS[o.kind];
-        const cost = us.cost;
-        if (!cost || !us.mvp || b.queue.length >= RULES.queueMax || this.unitCount(side) >= RULES.unitCap) break;
+        if (!us.cost || !us.mvp || b.queue.length >= RULES.queueMax || this.unitCount(side) + us.batch > RULES.unitCap) break;
+        const cost = lotCost(o.kind);
         const st = this.sides[side];
         if (st.iron < cost.iron || st.oil < cost.oil) break;
         st.iron -= cost.iron;
@@ -661,7 +662,7 @@ export class World {
         const b = this.ownBuilding(side, o.building);
         if (!b || b.queue.length === 0) break;
         const k = b.queue.pop()!;
-        const cost = UNITS[k].cost!;
+        const cost = lotCost(k);
         this.sides[side].iron += cost.iron;
         this.sides[side].oil += cost.oil;
         if (b.queue.length === 0) b.prog = 0;
@@ -685,7 +686,7 @@ export class World {
           this.sides[side].oil += cost.oil * k;
         }
         for (const q of b.queue) {
-          const c = UNITS[q].cost!;
+          const c = lotCost(q);
           this.sides[side].iron += c.iron;
           this.sides[side].oil += c.oil;
         }
@@ -801,12 +802,12 @@ export class World {
     }
   }
 
-  private orderMove(side: Side, ids: readonly number[], x: number, z: number, kind: "move" | "amove"): void {
+  private orderMove(side: Side, ids: readonly number[], x: number, z: number, kind: "move" | "amove", formation?: FormationId): void {
     const units = this.ownUnits(side, ids);
     // từ 2 xe chiến đấu trở lên: hành quân thành đội hình (Xe Vận Tải đi riêng, vì còn việc hậu cần)
     const fighters = units.filter((u) => u.air === "none" && u.kind !== "hauler");
     const inSquad = fighters.length > 1 ? new Set(fighters.map((u) => u.id)) : null;
-    if (inSquad) this.createSquad(side, fighters, x, z, kind);
+    if (inSquad) this.createSquad(side, fighters, x, z, kind, formation);
     const ground = units.filter((u) => u.air === "none" && !inSquad?.has(u.id));
     const plan = this.formation(ground, x, z);
     for (const u of units) {
@@ -886,9 +887,9 @@ export class World {
     const rz = -fx;
     const fwd = (u: Unit): number => (u.x - cx) * fx + (u.z - cz) * fz;
     const lat = (u: Unit): number => (u.x - cx) * rx + (u.z - cz) * rz;
-    const rank = (u: Unit): number => FORMATION_RANK[UNITS[u.kind].formation ?? "mid"];
+    const rank = (u: Unit): number => FORMATIONS[DEFAULT_FORMATION].rank[UNITS[u.kind].group];
     const order = [...units].sort((a, b) => rank(a) - rank(b) || fwd(b) - fwd(a) || a.id - b.id);
-    const cols = Math.min(n, Math.ceil(Math.sqrt(n * FORMATION_WIDE)));
+    const cols = Math.min(n, Math.ceil(Math.sqrt(n * FORMATIONS[DEFAULT_FORMATION].wide)));
     const rows: Unit[][] = [];
     for (const u of order) {
       const row = rows[rows.length - 1];
@@ -965,7 +966,7 @@ export class World {
   // ------------------------------------------------------------------ đội hình hành quân (squad)
 
   /** Lập đội hình cho một nhóm xe chiến đấu (từ 2 xe) đi tới (x, z). Xem `Squad` trong types.ts. */
-  private createSquad(side: Side, units: readonly Unit[], x: number, z: number, kind: "move" | "amove"): void {
+  private createSquad(side: Side, units: readonly Unit[], x: number, z: number, kind: "move" | "amove", chosen?: FormationId): void {
     const n = units.length;
     let cx = 0;
     let cz = 0;
@@ -998,6 +999,9 @@ export class World {
       id: this.nextId++,
       side,
       kind,
+      formation: chosen ?? DEFAULT_FORMATION,
+      rankOf: {},
+      speed: 0,
       ids: [],
       offLat: [],
       offBack: [],
@@ -1031,10 +1035,15 @@ export class World {
     // Đội vừa cùng nhau tới nơi (cùng nhận một hướng đội hình, ai cũng còn đứng gần ô cuối của mình) là ĐÃ VÀO HÀNG:
     // giữ nguyên hình dạng đang đứng (người dùng chốt 06/11/2026: không ai đổi chỗ), dù nó có giống lưới chuẩn hay không.
     const sameFace = (f0.faceX !== 0 || f0.faceZ !== 0) && units.every((u) => u.faceX * f0.faceX + u.faceZ * f0.faceZ > 0.999);
-    const formed = sameFace && units.every((u) => u.order === "idle" && dist2(u.x, u.z, u.tx, u.tz) < 9);
-    const colsFull = Math.min(n, Math.ceil(Math.sqrt(n * FORMATION_WIDE)));
+    // Người chỉ huy chọn kiểu đội hình thì dựng lại theo kiểu đó. Lệnh tấn công mà phải quay đầu thì cũng dựng lại để giáp
+    // ra trước, vì đưa Pháo đi đầu vào giao tranh là sai về chiến thuật (người dùng chốt 09/11/2026). Còn lại giữ chỗ đứng.
+    const turnsBack = sameFace && wx * f0.faceX + wz * f0.faceZ < 0;
+    const formed = sameFace && !chosen && !(kind === "amove" && turnsBack) && units.every((u) => u.order === "idle" && dist2(u.x, u.z, u.tx, u.tz) < 9);
+    const colsFull = Math.min(n, Math.ceil(Math.sqrt(n * FORMATIONS[sq.formation].wide)));
     sq.byRank = !formed;
     sq.ids = units.map((u) => u.id);
+    this.squadRanks(sq, units, wx, wz, cx, cz);
+    sq.speed = this.squadSpeed(units);
     if (formed) {
       // hình dạng hiện tại, đo theo hướng đội hình đang quay
       this.squadAdopt(sq, f0.faceX, f0.faceZ);
@@ -1079,10 +1088,8 @@ export class World {
       sq.phase = "pivot";
       sq.phaseT = 0;
     } else if (formed) this.squadMarch(sq);
-    else {
-      sq.phase = "form";
-      sq.phaseT = 0;
-    }
+    // quân lộn xộn cũng lăn bánh ngay, tự vào hàng trên đường đi (cả khối chậm lại chờ xe đang tụt), không đứng tập hợp tại chỗ
+    else this.squadMarch(sq);
     this.squads.push(sq);
   }
 
@@ -1186,15 +1193,18 @@ export class World {
     const n = sq.ids.length;
     if (n < 2) return;
     const units = sq.ids.map((id) => this.byId.get(id) as Unit);
-    const rank = (u: Unit): number => FORMATION_RANK[UNITS[u.kind].formation ?? "mid"];
+    // mỗi ô thuộc về tuyến + lô của xe đang giữ nó: đổi chỗ trong cùng lô, xe cùng lô luôn đứng cạnh nhau
+    // (xe "hai cánh" chỉ đổi chỗ với xe hai cánh, không thì phân công đẩy chúng vào giữa đội hình)
+    const flankCode = FORMATIONS[sq.formation].flank;
+    const key = (u: Unit): string => `${sq.rankOf[u.id]}:${u.lot}:${UNITS[u.kind].group === flankCode ? 1 : 0}`;
     const cost: number[][] = [];
     for (let i = 0; i < n; i++) {
       const [sx, sz] = this.squadSlot(sq, i);
-      const want = rank(units[i]); // vai trò của hàng chứa ô này (theo bố cục vừa dựng)
+      const want = key(units[i]);
       const row: number[] = [];
       for (let j = 0; j < n; j++) {
         const u = units[j];
-        row.push(sq.byRank && rank(u) !== want ? 1e9 : Math.sqrt(dist2(u.x, u.z, sx, sz)));
+        row.push(sq.byRank && key(u) !== want ? 1e9 : Math.sqrt(dist2(u.x, u.z, sx, sz)));
       }
       cost.push(row);
     }
@@ -1266,8 +1276,12 @@ export class World {
     const rz = -hx;
     const fwd = (u: Unit): number => (u.x - cx) * hx + (u.z - cz) * hz;
     const lat = (u: Unit): number => (u.x - cx) * rx + (u.z - cz) * rz;
-    const rank = (u: Unit): number => (sq.byRank ? FORMATION_RANK[UNITS[u.kind].formation ?? "mid"] : 0);
-    const order = [...units].sort((a, b) => rank(a) - rank(b) || fwd(b) - fwd(a) || a.id - b.id);
+    const rank = (u: Unit): number => (sq.byRank ? sq.rankOf[u.id] : 0);
+    // xe cùng lô đi liền nhau trên "sợi dây": lô nào đang ở trước vào trước
+    const lotFwd = new Map<number, number>();
+    for (const u of units) if (u.lot && (!lotFwd.has(u.lot) || fwd(u) > (lotFwd.get(u.lot) as number))) lotFwd.set(u.lot, fwd(u));
+    const lead = (u: Unit): number => (u.lot ? (lotFwd.get(u.lot) as number) : fwd(u));
+    const order = [...units].sort((a, b) => rank(a) - rank(b) || lead(b) - lead(a) || a.lot - b.lot || fwd(b) - fwd(a) || a.id - b.id);
     const rows: Unit[][] = [];
     for (const u of order) {
       const row = rows[rows.length - 1];
@@ -1277,7 +1291,20 @@ export class World {
     // thứ tự "gấp dây": hàng chẵn trái → phải, hàng lẻ phải → trái (khớp squadLayout)
     sq.ids = [];
     rows.forEach((row, ri) => {
-      row.sort((a, b) => lat(a) - lat(b) || a.id - b.id);
+      // trong một hàng, lô nào đứng bên trái thì vào trước, không để hai lô xen kẽ nhau
+      const lotSum = new Map<number, [number, number]>();
+      for (const u of row) {
+        const e = lotSum.get(u.lot) ?? [0, 0];
+        e[0] += lat(u);
+        e[1]++;
+        lotSum.set(u.lot, e);
+      }
+      const lotLat = (u: Unit): number => {
+        if (!u.lot) return lat(u);
+        const e = lotSum.get(u.lot) as [number, number];
+        return e[0] / e[1];
+      };
+      row.sort((a, b) => lotLat(a) - lotLat(b) || a.lot - b.lot || lat(a) - lat(b) || a.id - b.id);
       if (ri % 2 === 1) row.reverse();
       for (const u of row) sq.ids.push(u.id);
     });
@@ -1297,9 +1324,17 @@ export class World {
    */
   private squadLayout(sq: Squad): void {
     const unit = (id: number): Unit => this.byId.get(id) as Unit;
-    const rank = (id: number): number => (sq.byRank ? FORMATION_RANK[UNITS[unit(id).kind].formation ?? "mid"] : 0);
+    const rank = (id: number): number => (sq.byRank ? sq.rankOf[id] : 0);
+    const def = FORMATIONS[sq.formation];
+    // mã "hai cánh" (phòng không của đội hình hộ tống) đứng dọc hai bên tuyến giữa, chỉ khi đội đang giãn hết cỡ; đội co hàng qua chỗ hẹp thì xếp hàng như thường
+    const flanking = sq.byRank && def.flank !== undefined && sq.cols >= sq.colsMax;
+    const flank: number[] = [];
     const rows: number[][] = [];
     sq.ids.forEach((id, i) => {
+      if (flanking && UNITS[unit(id).kind].group === def.flank) {
+        flank.push(i);
+        return;
+      }
       const row = rows[rows.length - 1];
       if (!row || row.length >= sq.cols || rank(sq.ids[row[0]]) !== rank(id)) rows.push([i]);
       else row.push(i);
@@ -1327,6 +1362,77 @@ export class World {
       sq.rMax = Math.max(sq.rMax, r);
     });
     sq.depth = back;
+    if (flank.length) this.squadFlanks(sq, flank, rows);
+  }
+
+  /** Đặt các xe "hai cánh" dọc hai bên tuyến giữa, chia đều hai phía, từ trước ra sau. Chưa có hàng nào thì xếp một hàng. */
+  private squadFlanks(sq: Squad, flank: readonly number[], rows: readonly number[][]): void {
+    const rankOfRow = (row: readonly number[]): number => sq.rankOf[sq.ids[row[0]]];
+    const center = rows.filter((row) => rankOfRow(row) !== 0 && rankOfRow(row) !== REAR_RANK);
+    const pool = center.length ? center : rows;
+    let from = Infinity;
+    let to = -Infinity;
+    let halfW = 0;
+    for (const row of pool)
+      for (const i of row) {
+        from = Math.min(from, sq.offBack[i]);
+        to = Math.max(to, sq.offBack[i]);
+        halfW = Math.max(halfW, Math.abs(sq.offLat[i]));
+      }
+    if (from === Infinity) {
+      from = to = 0;
+    }
+    let r = 0;
+    for (const i of flank) r = Math.max(r, UNITS[(this.byId.get(sq.ids[i]) as Unit).kind].radius);
+    const lat = halfW + sq.rMax + r + FORMATION_GAP;
+    const perSide = Math.ceil(flank.length / 2);
+    flank.forEach((i, k) => {
+      const s = Math.floor(k / 2);
+      sq.offLat[i] = k % 2 === 0 ? -lat : lat;
+      sq.offBack[i] = perSide > 1 ? from + ((to - from) * s) / (perSide - 1) : (from + to) / 2;
+    });
+    sq.width = Math.max(sq.width, 2 * (lat + r));
+    sq.rMax = Math.max(sq.rMax, r);
+  }
+
+  /** Tính tuyến của từng xe theo mã phân nhóm; đội hình có đoạn hậu thì 1/3 số xe GIAP ở phía sau, tính cả lô, thành tuyến cuối. */
+  private squadRanks(sq: Squad, units: readonly Unit[], hx: number, hz: number, cx: number, cz: number): void {
+    const def = FORMATIONS[sq.formation];
+    sq.rankOf = {};
+    for (const u of units) sq.rankOf[u.id] = def.rank[UNITS[u.kind].group];
+    if (!def.rearGuard) return;
+    const fwd = (u: Unit): number => (u.x - cx) * hx + (u.z - cz) * hz;
+    const armor = units.filter((u) => UNITS[u.kind].group === "GIAP").sort((a, b) => fwd(a) - fwd(b) || a.id - b.id);
+    const want = Math.floor(armor.length / 3);
+    if (want === 0) return;
+    let taken = 0;
+    const lots = new Set<number>();
+    for (const u of armor) {
+      if (taken >= want && !(u.lot && lots.has(u.lot))) break;
+      sq.rankOf[u.id] = REAR_RANK;
+      taken++;
+      if (u.lot) lots.add(u.lot);
+    }
+  }
+
+  /** Tốc độ chung của khối: xe chậm được hộ tống nên đi nhanh hơn chính nó, tới mức trần. Chỉ toàn xe chậm thì không đổi. */
+  private squadSpeed(units: readonly Unit[]): number {
+    let min = Infinity;
+    let sum = 0;
+    for (const u of units) {
+      const v = UNITS[u.kind].speed;
+      min = Math.min(min, v);
+      sum += v;
+    }
+    return Math.min(sum / units.length, min * RULES.escortBoost);
+  }
+
+  /** Tốc độ riêng của một xe lúc này: trong đội thì không thấp hơn tốc độ khối (cộng phần đuổi kịp). */
+  private speedOf(u: Unit): number {
+    const v = UNITS[u.kind].speed;
+    if (!u.squad) return v;
+    const sq = this.squadById(u.squad);
+    return sq && sq.speed > v ? sq.speed * SQUAD_CATCHUP : v;
   }
 
   /** Ô của xe thứ i: [x, z, hướng x, hướng z]. Đang hành quân thì bám vệt người dẫn đầu, còn lại theo khối cứng. */
@@ -1471,13 +1577,10 @@ export class World {
     const hold = sq.hold;
     sq.hold = false;
     sq.holding = hold;
-    let speed = Infinity;
+    sq.speed = this.squadSpeed(sq.ids.map((id) => this.byId.get(id) as Unit));
+    const speed = sq.speed;
     let lag = 0;
-    for (let i = 0; i < sq.ids.length; i++) {
-      const u = this.byId.get(sq.ids[i]) as Unit;
-      speed = Math.min(speed, UNITS[u.kind].speed);
-      lag = Math.max(lag, this.squadLag(sq, i, u)[0]);
-    }
+    for (let i = 0; i < sq.ids.length; i++) lag = Math.max(lag, this.squadLag(sq, i, this.byId.get(sq.ids[i]) as Unit)[0]);
     // xe tụt khỏi ô thì cả khối chậm lại chờ; lúc hành quân không dừng hẳn (tối thiểu 25%) để không bao giờ kẹt chết
     const wait = clamp(1 - (lag - SQUAD_LAG) / SQUAD_LAG, sq.phase === "march" ? 0.25 : 0, 1);
     switch (sq.phase) {
@@ -1784,7 +1887,7 @@ export class World {
     // đi xa (từ 3 m): quay thân về hướng đi trước, lệch nhiều thì xoay tại chỗ; nhích chỉnh hàng thì khỏi quay thân
     if (d >= 3 && !this.turnHull(u, dx, dz)) return;
     const rally = this.mobilized(u) ? 1 + RULES.abilities.mobilize.speed : 1;
-    const step = Math.min(spec.speed * DT * rally * this.moveFactor(u, dx, dz), d);
+    const step = Math.min(this.speedOf(u) * DT * rally * this.moveFactor(u, dx, dz), d);
     const ox = u.x;
     const oz = u.z;
     this.tryMove(u, u.x + dx * step, u.z + dz * step);
@@ -2030,20 +2133,25 @@ export class World {
     const us = UNITS[kind];
     let live = 0;
     for (const u of this.units) if (u.side === b.side && u.kind !== "commander") live++;
-    if (live >= RULES.unitCap) return;
-    // máy bay mới cần chỗ đậu: không còn Sân Đáp nào còn bãi trống thì nhà máy tạm dừng
-    if (us.domain === "air" && !this.nearestFreePad(b.side, b.x, b.z)) return;
+    if (live + us.batch > RULES.unitCap) return;
+    // máy bay mới cần chỗ đậu cho cả lô: không đủ bãi trống thì nhà máy tạm dừng
+    if (us.domain === "air" && this.freePads(b.side) < us.batch) return;
     // thiếu điện thì đúc chậm (Tổng Hành Dinh tự có điện nên không bị ảnh hưởng)
     b.prog += BUILDINGS[b.kind].power < 0 ? b.powerFrac : 1;
-    if (b.prog < sec(us.buildTime ?? 5)) return;
+    if (b.prog < sec(lotTime(kind))) return;
     b.prog = 0;
     b.queue.shift();
+    const lot = this.nextId++;
+    const ids: number[] = [];
+    for (let k = 0; k < us.batch; k++) {
+    const offset = (k - (us.batch - 1) / 2) * (2 * us.radius + FORMATION_GAP);
     if (us.domain === "air") {
       // Nhà Máy Máy Bay: lăn ra cửa xưởng (cửa quay về phía giữa bản đồ, doorSign), cất cánh thẳng ra trước, rồi tự
       // bay về bãi trống gần nhất (giữ chỗ ngay từ lúc xuất xưởng để hai máy bay không tranh một bãi)
       const slot = this.nearestFreePad(b.side, b.x, b.z)!;
       const door = doorSign(b.kind, b.z);
-      const u = this.spawnUnit(kind, b.side, b.x, b.z + door * (BUILDINGS[b.kind].half[1] + 1));
+      const u = this.spawnUnit(kind, b.side, b.x + offset, b.z + door * (BUILDINGS[b.kind].half[1] + 1));
+      u.lot = lot;
       u.hx = u.phx = 0;
       u.hz = u.phz = door;
       slot.b.pads[slot.i] = u.id;
@@ -2056,10 +2164,13 @@ export class World {
       const spec = BUILDINGS[b.kind];
       const [dx, dz] = dirToCenter(b.x, b.z);
       const reach = Math.max(spec.half[0], spec.half[1]) + 2.5;
-      const u = this.spawnUnit(kind, b.side, b.x + dx * reach, b.z + dz * reach);
-      if (kind !== "hauler" && b.rallySet) this.orderMove(b.side, [u.id], b.rallyX, b.rallyZ, "move");
+      const u = this.spawnUnit(kind, b.side, b.x + dx * reach - dz * offset, b.z + dz * reach + dx * offset);
+      u.lot = lot;
+      ids.push(u.id);
     }
     this.sides[b.side].stats.unitsBuilt++;
+    }
+    if (ids.length && kind !== "hauler" && b.rallySet) this.orderMove(b.side, ids, b.rallyX, b.rallyZ, "move");
   }
 
   // ------------------------------------------------------------------ mỏ
@@ -2234,7 +2345,7 @@ export class World {
     // lệch hướng nhiều: đứng lại xoay tại chỗ (chưa chạy, không tính là kẹt)
     if (fd > 1e-6 && !this.turnHull(u, fdx / fd, fdz / fd)) return false;
     const rally = this.mobilized(u) ? 1 + RULES.abilities.mobilize.speed : 1;
-    const full = spec.speed * DT * rally * (fd > 1e-6 ? this.moveFactor(u, fdx / fd, fdz / fd) : this.moveFactor(u, 0, 0));
+    const full = this.speedOf(u) * DT * rally * (fd > 1e-6 ? this.moveFactor(u, fdx / fd, fdz / fd) : this.moveFactor(u, 0, 0));
     let step = full;
     const ox = u.x;
     const oz = u.z;
@@ -3014,6 +3125,13 @@ export class World {
   }
 
   /** Phe này còn bãi đậu trống không (Nhà Máy Máy Bay chỉ đúc khi có; HUD và AI cũng hỏi). */
+  /** Số bãi đậu còn trống của phe trên các Sân Đáp đã xây xong. */
+  freePads(side: Side): number {
+    let n = 0;
+    for (const b of this.buildings) if (b.side === side && b.kind === "airfield" && b.built && b.hp > 0) for (const p of b.pads) if (p === 0) n++;
+    return n;
+  }
+
   hasFreePad(side: Side): boolean {
     return this.nearestFreePad(side, 0, 0) !== null;
   }
@@ -3868,6 +3986,7 @@ export function hashWorld(w: World): number {
     num(u.faceX);
     num(u.faceZ);
     num(u.squad);
+    num(u.lot);
     num(u.aimX);
     num(u.aimZ);
     num(u.pd);

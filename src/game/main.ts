@@ -526,7 +526,7 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
     // khói bốc lên từ xác xe
     if (!noFx) for (const p of views.wreckPositions()) if (Math.random() < dt * 1.4) fx.wreckSmoke(p);
     fx.update(dt, world, targetPos);
-    hud.update(ctrl.panelCtx(), ctrl.mode, ctrl.placeKind, ctrl.hint());
+    hud.update(ctrl.panelCtx(), ctrl.mode, ctrl.placeKind, ctrl.hint(), ctrl.formation);
     const anchor = ctrl.confirmAnchor();
     hud.confirm.hidden = !anchor;
     if (anchor) {
