@@ -344,6 +344,7 @@ export class Views {
       root.position.set(x, y, z);
       root.rotation.set(pitch, v.yaw, roll, "YXZ");
       if (u.moved || u.px !== u.x || u.pz !== u.z) a.add("move");
+      if (world.mobilized(u)) a.add("hurry");
       if (u.kind === "hauler") {
         if (u.cargo > 0) a.add(u.cargoRes === "oil" ? "loadOil" : "load");
         if (u.scrap > 0) a.add("scrap");

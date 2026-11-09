@@ -13,8 +13,13 @@ const SCALE = 1.06;
 const WAIST = 2.6;
 /** Người hơi ngửa ra sau (radian, âm là ngửa). */
 const LEAN = -0.13;
-/** Nhịp bước khi đi (radian/giây), khớp với tốc độ chạy của Tư Lệnh. */
-const STRIDE = 6.5;
+/** Nhịp bước từ tốn (radian/giây): khoảng 0,7 bước đôi mỗi giây. */
+const STRIDE = 4.4;
+/** Khi Tổng động viên: chỉ bước nhanh hơn chừng này lần, dáng đi giữ nguyên, không chạy. */
+const HURRY = 1.3;
+/** Biên độ vung đùi và độ gập gối lúc nhấc chân (radian). */
+const HIP_SWING = 0.36;
+const KNEE_LIFT = 0.55;
 const CAPE_SEGMENTS = 5;
 const CAPE_SEG_LEN = 0.62;
 
@@ -38,7 +43,7 @@ function limb(a: THREE.Vector3, b: THREE.Vector3, rA: number, rB: number, mat: T
   return m;
 }
 
-function buildLeg(p: Palette, side: number): { hip: THREE.Group; knee: THREE.Group } {
+function buildLeg(p: Palette, side: number): { hip: THREE.Group; knee: THREE.Group; foot: THREE.Mesh } {
   const hip = group();
   hip.position.set(side * 0.44, 2.25, 0);
   hip.rotation.z = side * 0.07;
@@ -54,7 +59,7 @@ function buildLeg(p: Palette, side: number): { hip: THREE.Group; knee: THREE.Gro
   foot.position.y = -0.98;
   knee.add(foot);
   hip.add(knee);
-  return { hip, knee };
+  return { hip, knee, foot };
 }
 
 function buildHead(p: Palette): THREE.Group {
@@ -181,24 +186,37 @@ export function buildCommander(p: Palette): Rig {
   body.scale.setScalar(SCALE);
   let gait = 0;
   let phase = 0;
-  const rig = vehicleRig("commander", p, { body, wheels: [], turret: group(), gun: group(), barrels: [], muzzles: [group()], flashes: [], spinners: [], aimPitch: 0, recoil: 0 }, 3.8, [{ id: "aura", label: "Hào quang" }], (dt, t, a) => {
-    gait = approach(gait, a.has("move") ? 1 : 0, 6, dt);
-    phase += dt * STRIDE;
-    const s = Math.sin(phase) * gait;
-    // chân bước, gối chỉ gập khi chân đang đưa ra sau
-    left.hip.rotation.x = s * 0.5;
-    right.hip.rotation.x = -s * 0.5;
-    left.knee.rotation.x = Math.max(0, s) * 0.85;
-    right.knee.rotation.x = Math.max(0, -s) * 0.85;
-    upper.position.y = WAIST + Math.abs(Math.sin(phase)) * gait * 0.06;
+  let pace = 1;
+  const rig = vehicleRig("commander", p, { body, wheels: [], turret: group(), gun: group(), barrels: [], muzzles: [group()], flashes: [], spinners: [], aimPitch: 0, recoil: 0 }, 3.8, [{ id: "aura", label: "Hào quang" }, { id: "hurry", label: "Bước nhanh" }], (dt, t, a) => {
+    gait = approach(gait, a.has("move") ? 1 : 0, 3.5, dt);
+    pace = approach(pace, a.has("hurry") ? HURRY : 1, 4, dt);
+    phase += dt * STRIDE * pace;
+    // Mỗi chân: nửa chu kỳ trụ (gối thẳng, đỡ cả thân) và nửa chu kỳ nhấc lên đưa tới. Bàn chân luôn song song mặt đất nên đặt xuống phẳng và chắc.
+    const stride = (leg: typeof left, ph: number): void => {
+      const hip = -Math.sin(ph) * HIP_SWING * gait;
+      const swing = Math.max(0, Math.cos(ph));
+      const knee = swing * swing * KNEE_LIFT * gait;
+      leg.hip.rotation.x = hip;
+      leg.knee.rotation.x = knee;
+      leg.foot.rotation.x = -(hip + knee);
+    };
+    stride(left, phase);
+    stride(right, phase + Math.PI);
+    // Trọng tâm: cao nhất khi đứng trên một chân, thấp nhất lúc hai chân chạm đất; dồn sang chân trụ; vai xoay nhẹ ngược chiều bước.
+    // Hạ thân đúng bằng phần chân duỗi chéo bị nhấc lên, để bàn chân trụ luôn nằm trên mặt đất.
+    body.position.y = -(1 - Math.cos(phase * 2)) * 0.07 * gait;
+    body.rotation.x = 0;
+    upper.position.x = Math.cos(phase) * 0.07 * gait;
+    upper.rotation.z = -Math.cos(phase) * 0.018 * gait;
+    upper.rotation.y = Math.sin(phase) * 0.05 * gait;
     // đầu ngước lên, thỉnh thoảng chậm rãi đảo nhìn
     head.rotation.x = -0.16;
     head.rotation.y = Math.sin(t * 0.45) * 0.2;
     // áo choàng: đứng yên thì phất nhẹ, đi thì bay ra sau
     cape.joints.forEach((j, i) => {
-      const wave = Math.sin(t * (1.5 + gait * 3) - i * 0.8) * (0.035 + i * 0.012 + gait * 0.04);
+      const wave = Math.sin(t * (1.5 + gait * 1.1) - i * 0.8) * (0.035 + i * 0.012 + gait * 0.02);
       // tấm trên cùng bù lại phần người ngửa ra sau, để áo vẫn rủ xuống chứ không áp vào chân
-      j.rotation.x = (i === 0 ? 0.1 - LEAN + gait * 0.28 : 0.03 + gait * 0.05) + wave;
+      j.rotation.x = (i === 0 ? 0.1 - LEAN + gait * 0.14 : 0.03 + gait * 0.03) + wave;
     });
     aura.visible = a.has("aura");
     if (aura.visible) {
