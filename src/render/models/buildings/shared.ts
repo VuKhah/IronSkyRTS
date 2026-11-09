@@ -1,6 +1,30 @@
 /** Phần dùng chung của các mô hình công trình: hoạt ảnh chuẩn, khung Rig, móng, vòng phủ, đèn nháy, tháp súng. */
 import * as THREE from "three";
-import { approach, approachAngle, box, FireClock, group, part, type Palette, type Rig, type RigAction } from "../kit";
+import { approach, approachAngle, box, cyl, FireClock, group, part, type Palette, type Rig, type RigAction } from "../kit";
+
+export type P3 = [number, number, number];
+
+/** Mặt nền móng: chiều cao `foundation` mặc định, mọi công trình đứng trên mặt này. */
+export const BASE_Y = 0.25;
+
+/** Mặt cắt chữ nhật vát 4 góc (nhìn từ trên) ở độ cao y; hai mặt cắt đưa vào `facets` thành khối vát. */
+export const oct = (hx: number, hz: number, c: number, y: number, cz = 0, cx = 0): P3[] => {
+  const pts: P3[] = [];
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1]) pts.push([cx + sx * (hx - c), y, cz + sz * hz], [cx + sx * hx, y, cz + sz * (hz - c)]);
+  return pts;
+};
+
+/** Thanh nối hai điểm (ống dẫn, thanh giằng, ăng-ten). */
+export const strut = (a: P3, b: P3, r: number, mat: THREE.Material): THREE.Mesh => {
+  const m = cyl(r, r, 1, mat, 6);
+  const A = new THREE.Vector3(...a);
+  const B = new THREE.Vector3(...b);
+  m.position.copy(A).add(B).multiplyScalar(0.5);
+  m.scale.y = A.distanceTo(B);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.sub(A).normalize());
+  return m;
+};
 
 export const WORK: RigAction = { id: "work", label: "Vận hành" };
 export const AIM: RigAction = { id: "aim", label: "Ngắm" };

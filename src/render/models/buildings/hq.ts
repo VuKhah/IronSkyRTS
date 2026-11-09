@@ -11,30 +11,8 @@
 import * as THREE from "three";
 import { BUILDINGS } from "../../../sim/content";
 import { box, cyl, facets, group, muzzleFlash, part, sphere, tubeZ, type Palette, type Rig } from "../kit";
-import { WORK, AIM, FIRE, POWER, rig, foundation, groundRing, blinker, turretUpdate, type AimRef } from "./shared";
+import { WORK, AIM, FIRE, POWER, rig, foundation, groundRing, blinker, turretUpdate, oct, strut, BASE_Y, type AimRef, type P3 } from "./shared";
 
-type P3 = [number, number, number];
-
-/** Mặt cắt chữ nhật vát 4 góc (nhìn từ trên) ở độ cao y. */
-const oct = (hx: number, hz: number, c: number, y: number, cz = 0): P3[] => {
-  const pts: P3[] = [];
-  for (const sx of [-1, 1])
-    for (const sz of [-1, 1]) pts.push([sx * (hx - c), y, cz + sz * hz], [sx * hx, y, cz + sz * (hz - c)]);
-  return pts;
-};
-
-/** Thanh nối hai điểm (ống dẫn, thanh giằng, ăng-ten). */
-const strut = (a: P3, b: P3, r: number, mat: THREE.Material): THREE.Mesh => {
-  const m = cyl(r, r, 1, mat, 6);
-  const A = new THREE.Vector3(...a);
-  const B = new THREE.Vector3(...b);
-  m.position.copy(A).add(B).multiplyScalar(0.5);
-  m.scale.y = A.distanceTo(B);
-  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.sub(A).normalize());
-  return m;
-};
-
-const BASE_Y = 0.25; // mặt nền móng
 const BUNKER_TOP = 3.2;
 const ROOF_Y = 3.42; // mặt mái hầm
 const BUNKER_Z = 0.2;
