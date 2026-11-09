@@ -10,6 +10,7 @@ import type { Faction } from "../../../sim/content";
 import { bakeStatic } from "../bake";
 import { addCarrierDetails, addIslandDetails, carrierPaint } from "./carrier-details";
 import { buildFalcon } from "./falcon";
+import { buildValkyrie } from "./valkyrie";
 import { barrel } from "./ground";
 
 const DECK_Y = 7;
@@ -277,7 +278,20 @@ export function buildCarrier(faction: Faction): Rig {
   bakeStatic(template);
   template.setFlight?.(false, 0);
   template.update(0.016, 0, none);
-  const spots = parkingSpots();
+  // phần boong phình ở mạn trái là chỗ duy nhất đủ rộng cho Valkyrie (sải cánh 7,3 m): dành riêng cho chúng
+  const spots = parkingSpots().filter((s) => !(s.x < -11 && s.z > 0 && s.z < 28));
+  const bombers = [3.5, 11.9, 20.3].map((z) => ({ x: -12.6, z, yaw: Math.PI / 2, half: 4 }));
+  const bomber = buildValkyrie(p);
+  bakeStatic(bomber);
+  bomber.setFlight?.(false, 0);
+  bomber.update(0.016, 0, none);
+  for (const spot of bombers) {
+    const parked = bomber.root.clone(true);
+    parked.scale.setScalar(PLANE_SCALE);
+    parked.position.set(spot.x, DECK_Y + 0.05, spot.z);
+    parked.rotation.y = spot.yaw;
+    root.add(part("Valkyrie đậu", parked));
+  }
   for (const spot of spots) {
     const parked = template.root.clone(true);
     parked.scale.setScalar(PLANE_SCALE);
@@ -286,7 +300,7 @@ export function buildCarrier(faction: Faction): Rig {
     root.add(part("Máy bay đậu (thu nhỏ)", parked));
   }
 
-  addCarrierDetails(root, p, { deck: DECK, deckY: DECK_Y, wx: WX, lz: LZ, lanes: LANES, laneWidth: LANE_WIDTH, island: ISLAND_AREA, parked: spots, elevators: ELEVATORS, guns: GUN_MOUNTS, onDeck });
+  addCarrierDetails(root, p, { deck: DECK, deckY: DECK_Y, wx: WX, lz: LZ, lanes: LANES, laneWidth: LANE_WIDTH, island: ISLAND_AREA, parked: [...spots, ...bombers], elevators: ELEVATORS, guns: GUN_MOUNTS, onDeck });
 
   // mỗi đường băng một máy bay trên máy phóng, tấm chắn khí nóng dựng lên khi nổ máy
   const lanes = LANES.map((def, i) => {

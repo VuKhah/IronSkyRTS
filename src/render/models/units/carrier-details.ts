@@ -17,7 +17,8 @@ export interface CarrierLayout {
   lanes: readonly { x: number; z: number; yaw: number; len: number }[];
   laneWidth: number;
   island: readonly [number, number, number, number];
-  parked: readonly { x: number; z: number; yaw: number }[];
+  /** Chỗ đậu; `half`: nửa bề ngang ô đỗ (mặc định 3 m, máy bay lớn hơn thì rộng hơn). */
+  parked: readonly { x: number; z: number; yaw: number; half?: number }[];
   elevators: readonly Vec[];
   guns: readonly Vec[];
   onDeck(x: number, z: number): boolean;
@@ -237,12 +238,13 @@ function addDeck(root: THREE.Object3D, p: Palette, L: CarrierLayout): void {
     const sin = Math.sin(s.yaw);
     const cos = Math.cos(s.yaw);
     const P = (a: number, b: number): Vec => [s.x + sin * a + cos * b, s.z + cos * a - sin * b];
-    const corners: Vec[] = [P(3.5, 3), P(3.5, -3), P(-2.6, -3), P(-2.6, 3)];
+    const half = s.half ?? 3;
+    const corners: Vec[] = [P(3.5, half), P(3.5, -half), P(-2.6, -half), P(-2.6, half)];
     corners.forEach((c, i) => {
       const d = corners[(i + 1) % 4];
       if (L.onDeck(c[0], c[1]) && L.onDeck(d[0], d[1])) frames.line(c[0], c[1], d[0], d[1], y + 0.07, 0.07, 0.02);
     });
-    const [fx, fz] = P(-2, 3.4);
+    const [fx, fz] = P(-2, half + 0.4);
     if (L.onDeck(fx, fz)) {
       fuelBase.cyl(0.2, 0.75, fx, y + 0.4, fz);
       fuelCap.cyl(0.24, 0.1, fx, y + 0.82, fz);
