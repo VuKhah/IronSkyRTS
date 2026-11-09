@@ -182,6 +182,8 @@ export function buildHauler(p: Palette): Rig {
   part("Xác đang kéo về", scrap);
   part("Cần cẩu trục vớt", crane);
   ore.visible = tank.visible = scrap.visible = false;
+  // bakeStatic chạy thử mọi hoạt ảnh cùng lúc nên "Chở xác" che mất hai loại hàng kia: phải báo trước thì khối bên trong mới được gộp
+  ore.userData.animated = tank.userData.animated = scrap.userData.animated = true;
   body.add(ore, tank, scrap, crane);
   return vehicleRig(
     "hauler",

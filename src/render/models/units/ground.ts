@@ -93,7 +93,7 @@ export function vehicleRig(
       })()
     : [];
   // nòng giật là chuyển động duy nhất của nó và bakeStatic không chạy thử "fire": phải báo trước, không nó bị gộp vào tháp
-  if (b && parts.recoil > 0) for (const barrel of parts.barrels) barrel.userData.animated = true;
+  if (parts.recoil > 0) for (const barrel of parts.barrels) barrel.userData.animated = true;
   let since = Infinity;
   let driven = false; // đã nhận phát bắn thật từ sim: bỏ đồng hồ giả của Xưởng Mô Hình
   let braced = false;
