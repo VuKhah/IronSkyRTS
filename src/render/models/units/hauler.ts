@@ -104,19 +104,27 @@ export function buildHauler(p: Palette): Rig {
     stripe.rotation.z = 0.6;
     body.add(stripe);
   }
-  // quặng Sắt
-  const ore = group();
-  for (const [x, z, s] of [[-0.4, -0.3, 0.42], [0.35, -0.9, 0.48], [-0.2, -1.4, 0.38], [0.3, -0.1, 0.33], [0, -0.8, 0.5]] as const) {
-    const m = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), cargoMats.ore);
-    m.position.set(x, 1.15 + s * 0.4, z);
-    m.rotation.set(x * 3, z * 2, s * 5);
+  // quặng Sắt: chất đầy thùng thành đống, nền kín bên dưới, nhô cao ở giữa
+  let seed = 41;
+  const jitter = (a: number): number => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return (seed / 4294967296 - 0.5) * 2 * a;
+  };
+  const ore = group(box(1.74, 0.5, 2.44, cargoMats.scrap, 0, 1.3, -0.75));
+  const rock = (x: number, y: number, z: number, size: number): void => {
+    const m = new THREE.Mesh(new THREE.DodecahedronGeometry(size, 0), cargoMats!.ore);
+    m.position.set(x + jitter(0.05), y + jitter(0.04), z + jitter(0.05));
+    m.rotation.set(jitter(3), jitter(3), jitter(3));
     m.castShadow = true;
     ore.add(m);
-  }
+  };
+  for (const z of [-1.72, -1.24, -0.76, -0.28, 0.2]) for (const x of [-0.58, 0, 0.58]) rock(x, 1.56, z, 0.33 + jitter(0.04));
+  for (const z of [-1.46, -1.0, -0.52, -0.04]) for (const x of [-0.3, 0.3]) rock(x, 1.92, z, 0.34 + jitter(0.04));
+  for (const z of [-1.18, -0.75, -0.32]) rock(0, 2.2, z, 0.3 + jitter(0.03));
   // bồn Dầu: bồn thép nằm dọc trên thùng hàng, như xe bồn thật, có đai giữ, sọc màu Dầu và nắp nạp trên đỉnh
-  const TANK_Y = 1.68;
+  const TANK_Y = 1.78;
   const TANK_Z = -0.75;
-  const TANK_R = 0.6;
+  const TANK_R = 0.72;
   const tankBody = tubeZ(TANK_R, TANK_R, 2.0, cargoMats.tank, 16);
   tankBody.position.set(0, TANK_Y, TANK_Z);
   const tank = group(tankBody);
@@ -137,19 +145,30 @@ export function buildHauler(p: Palette): Rig {
     part("Nắp nạp dầu", group(cyl(0.2, 0.22, 0.12, p.metal, 10, 0, TANK_Y + TANK_R + 0.05, TANK_Z - 0.5), cyl(0.05, 0.05, 0.1, p.warning, 6, 0, TANK_Y + TANK_R + 0.16, TANK_Z - 0.5))),
     part("Giá đỡ bồn", group(box(1.3, 0.22, 0.28, p.hullDark, 0, 1.13, TANK_Z - 0.75), box(1.3, 0.22, 0.28, p.hullDark, 0, 1.13, TANK_Z + 0.75)))
   );
-  // xác xe đang kéo về: tấm thép cháy đen, bánh xe gãy chất lệch trên thùng
-  const scrap = group();
+  // xác xe đang kéo về: tấm thép cháy đen, tháp pháo vỡ, nòng cong, bánh gãy chất đống tràn khỏi thành thùng
+  const scrap = group(box(1.74, 0.55, 2.44, cargoMats.scrap, 0, 1.32, -0.75));
   for (const [x, y, z, w, h, d, rx, rz] of [
-    [0, 1.3, -0.9, 1.5, 0.45, 1.7, 0.18, -0.12],
-    [-0.35, 1.7, -1.3, 0.9, 0.35, 0.8, -0.3, 0.4],
-    [0.4, 1.62, -0.35, 0.6, 0.5, 0.6, 0.5, 0.2]
+    [-0.42, 1.78, -1.55, 0.95, 0.3, 0.9, 0.22, 0.2],
+    [0.4, 1.74, -1.45, 0.85, 0.34, 1.0, -0.18, -0.28],
+    [-0.45, 1.8, -0.45, 0.8, 0.36, 1.0, -0.3, 0.16],
+    [0.42, 1.76, -0.3, 0.9, 0.3, 0.85, 0.26, -0.2],
+    [0, 2.02, -1.1, 1.1, 0.3, 0.95, 0.14, 0.32],
+    [-0.1, 2.0, -0.2, 0.85, 0.28, 0.75, -0.24, -0.3],
+    [0.3, 2.3, -0.75, 0.6, 0.24, 0.7, 0.42, 0.25]
   ] as const) {
     const m = box(w, h, d, cargoMats.scrap, x, y, z);
     m.rotation.set(rx, rx * 2, rz);
     scrap.add(m);
   }
+  const wreckTurret = cyl(0.42, 0.5, 0.3, p.hullDark, 8, -0.28, 2.34, -1.25);
+  wreckTurret.rotation.set(0.32, 0.4, -0.3);
+  const bentGun = tubeZ(0.07, 0.09, 1.25, p.metal, 6);
+  bentGun.position.set(-0.05, 2.5, -0.85);
+  bentGun.rotation.x = Math.PI / 2 - 0.42;
+  bentGun.rotation.z = 0.35;
+  scrap.add(part("Tháp pháo vỡ", wreckTurret), part("Nòng pháo cong", bentGun));
   const brokenWheel = wheel(0.4, 0.3, cargoMats.scrap, cargoMats.scrap);
-  brokenWheel.position.set(-0.45, 1.55, -0.2);
+  brokenWheel.position.set(0.5, 2.0, 0.12);
   brokenWheel.rotation.z = 1.1;
   scrap.add(brokenWheel);
   // cần cẩu nhỏ phía sau thùng: gập nằm dọc thành thùng khi không dùng, vươn ra sau và nhấp nhô khi đang cẩu xác
