@@ -22,9 +22,9 @@ export const SHOWCASE = {
     role: "Sân bay nổi của hạm đội: chở cả một phi đoàn, tự bảo vệ bằng các đài pháo quanh mạn.",
     notes: [
       "Chỉ xem trước trong Xưởng Mô Hình, chưa có trong trận đấu.",
-      "Dài khoảng 125 m tính cả mũi rẽ sóng, boong rộng 43 m, phình sang mạn trái.",
+      "Dài khoảng 125 m tính cả mũi rẽ sóng, boong rộng gần 50 m, viền lõm răng cưa.",
       "Máy bay đậu trên boong thu nhỏ 3 lần, cất cánh xong trở lại cỡ thật.",
-      "Hai đường băng chạy xiên có máy phóng đàn hồi, đài chỉ huy bên mạn phải, 6 đài pháo phòng thủ."
+      "Hai đường băng chạy xiên có máy phóng đàn hồi, đài chỉ huy bên mạn phải, 7 đài pháo phòng thủ."
     ],
     build(faction: Faction): Rig {
       const rig = buildCarrier(faction);

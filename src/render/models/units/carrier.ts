@@ -3,7 +3,8 @@
  * Người dùng chốt 09/11/2026: thật sự lớn, phong cách tương lai góc cạnh, có đài chỉ huy, vài đài pháo phòng thủ, đường băng
  * chạy xiên có máy phóng. Máy bay đậu trên tàu thu nhỏ 3 lần, cất cánh xong trở lại cỡ thật.
  *
- * Mũi tàu là +z, boong phình sang mạn trái (-x) để hai đường băng chạy xiên qua tàu. Máy bay là mô hình Falcon thật.
+ * Mũi tàu là +z. Boong có viền lõm răng cưa: các mảng nhô ra xen với khe chữ V cắt sâu vào hai mạn, mũi tách thành hai ngạnh.
+ * Hai đường băng chạy xiên qua tàu, khe chỉ cắt tới sát đường băng. Máy bay là mô hình Falcon thật.
  */
 import * as THREE from "three";
 import { box, cyl, facets, FireClock, group, muzzleFlash, palette, part, type Palette, type Rig } from "../kit";
@@ -28,27 +29,49 @@ const SPOOL = 1.3;
 const RUN = 1.3;
 const CLIMB = 2.6;
 const LAUNCH_CYCLE = 7;
-/** Đường viền boong (đi quanh theo một chiều), phình sang mạn trái. */
+/** Đường viền boong, đa giác lõm (người dùng 09/11/2026: boong lồi nhàm chán). */
 const DECK: readonly (readonly [number, number])[] = [
-  [13, -52],
-  [16, -20],
-  [15, 18],
-  [9, 44],
-  [1, 60],
-  [-14, 54],
-  [-26, 36],
-  [-27, 8],
-  [-13, -52]
+  [14, -53],
+  [16, -34],
+  [16.5, -8],
+  [9.5, 3],
+  [16, 14],
+  [16, 38],
+  [11, 47],
+  [6, 64],
+  [-4, 50],
+  [-21, 62],
+  [-33, 40],
+  [-25, 27],
+  [-33, 12],
+  [-18, -3],
+  [-25, -22],
+  [-14, -34],
+  [-20, -53],
+  [-9, -44],
+  [-3, -53]
 ];
 /** Vị trí đài pháo phòng thủ quanh mạn. */
 const GUN_MOUNTS: readonly (readonly [number, number])[] = [
-  [-22, 37],
-  [-24.5, 4],
-  [-11.5, -47],
-  [12.8, -44],
-  [13.2, -2],
-  [7.5, 41]
+  [-26.5, 42],
+  [-28, 13],
+  [-20.5, -21],
+  [-14, -44],
+  [12.5, -50.5],
+  [4.7, 57],
+  [12.5, 40.5]
 ];
+
+/** Điểm (x, z) có nằm trong đường viền boong không. */
+function onDeck(x: number, z: number): boolean {
+  let inside = false;
+  for (let i = 0, j = DECK.length - 1; i < DECK.length; j = i++) {
+    const [xi, zi] = DECK[i];
+    const [xj, zj] = DECK[j];
+    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+  }
+  return inside;
+}
 
 /** Dải nằm trên một đường (x1, z1) → (x2, z2). */
 function strip(x1: number, z1: number, x2: number, z2: number, y: number, w: number, h: number, mat: THREE.Material): THREE.Mesh {
@@ -59,12 +82,18 @@ function strip(x1: number, z1: number, x2: number, z2: number, y: number, w: num
   return m;
 }
 
-/** Tấm phẳng theo đường viền, từ độ cao `y0` tới `y1`, co vào `inset` mét so với viền boong. */
-function deckPlate(y0: number, y1: number, inset: number, mat: THREE.Material): THREE.Mesh {
-  const k = 1 - inset / 26;
-  const pts: [number, number, number][] = [];
-  for (const [x, z] of DECK) pts.push([x * k, y0, z * k], [x * k, y1, z * k]);
-  return facets(pts, mat);
+/** Tấm phẳng theo đúng đường viền lõm của boong, từ độ cao `y0` tới `y1`. Khối `facets` chỉ dựng được hình lồi nên ở đây dùng hình đùn. */
+function deckSlab(y0: number, y1: number, mat: THREE.Material): THREE.Mesh {
+  const shape = new THREE.Shape();
+  DECK.forEach(([x, z], i) => (i ? shape.lineTo(x, -z) : shape.moveTo(x, -z)));
+  shape.closePath();
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: y1 - y0, bevelEnabled: false });
+  geo.rotateX(-Math.PI / 2);
+  geo.translate(0, y0, 0);
+  const m = new THREE.Mesh(geo, mat);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
 }
 
 function buildHull(p: Palette, root: THREE.Group): void {
@@ -72,13 +101,13 @@ function buildHull(p: Palette, root: THREE.Group): void {
   root.add(
     part("Thân tàu", facets([[6.5, 0, -50], [9.5, 0, -20], [9.5, 0, 14], [4, 0, 42], [0, 0, 62], [12, 7.2, -50], [14.5, 7.2, -18], [14.5, 7.2, 14], [8.5, 7.2, 42], [0, 7.2, 58]], p.metal, true)),
     part("Mũi rẽ sóng", facets([[0, 0, 72], [0, 5.4, 64], [1.9, 3.4, 54], [1.9, 0, 54], [-1.9, 3.4, 54], [-1.9, 0, 54]], p.hullDark)),
-    part("Khung boong", deckPlate(7.1, DECK_Y, 0, p.hull)),
-    part("Mặt boong", deckPlate(DECK_Y, DECK_Y + 0.05, 0.5, p.hullDark))
+    part("Khung boong", deckSlab(7.1, DECK_Y, p.hull)),
+    part("Mặt boong", deckSlab(DECK_Y, DECK_Y + 0.05, p.hullDark))
   );
 
-  // trụ vát đỡ phần boong phình ra mạn trái
-  for (const [z, w] of [[-14, 8], [10, 10], [30, 8]] as const)
-    root.add(part("Trụ đỡ boong", facets([[-13, 4.2, z - w], [-13, 4.2, z + w], [-13, 7.2, z - w * 1.2], [-13, 7.2, z + w * 1.2], [-25.5, 7.2, z - w * 0.7], [-25.5, 7.2, z + w * 0.7]], p.hullDark)));
+  // trụ vát đỡ từng mảng boong nhô ra khỏi thân tàu
+  for (const [z, w, inner, outer] of [[-47, 4, -6, -18], [-22, 6, -13, -24], [12, 8, -13, -32], [40, 7, -8, -32], [56, 4, -1, -20]] as const)
+    root.add(part("Trụ đỡ boong", facets([[inner, 4.2, z - w], [inner, 4.2, z + w], [inner, 7.2, z - w * 1.2], [inner, 7.2, z + w * 1.2], [outer, 7.2, z - w * 0.5], [outer, 7.2, z + w * 0.5]], p.hullDark)));
 
   // các mảng giáp vát hình bình hành dọc hai mạn, xen kẽ màu phe và màu tối
   for (const side of [-1, 1])
@@ -104,7 +133,7 @@ function buildHull(p: Palette, root: THREE.Group): void {
   }
 
   // mảng boong gấp khúc ở mũi tàu và các vạch chữ V chỉ hướng cất cánh
-  root.add(part("Mảng boong mũi", facets([[9, DECK_Y + 0.06, 40], [1, DECK_Y + 0.06, 56], [-5, DECK_Y + 0.06, 51], [3, DECK_Y + 0.06, 36], [9, DECK_Y + 0.1, 40], [1, DECK_Y + 0.1, 56], [-5, DECK_Y + 0.1, 51], [3, DECK_Y + 0.1, 36]], p.concreteDark)));
+  root.add(part("Mảng boong mũi", facets([[9, DECK_Y + 0.06, 42], [5, DECK_Y + 0.06, 58], [1, DECK_Y + 0.06, 53], [3, DECK_Y + 0.06, 38], [9, DECK_Y + 0.1, 42], [5, DECK_Y + 0.1, 58], [1, DECK_Y + 0.1, 53], [3, DECK_Y + 0.1, 38]], p.concreteDark)));
 
   // bốn khe động cơ phát sáng ở đuôi
   for (const x of [-9.5, -3.2, 3.2, 9.5]) {
@@ -219,7 +248,8 @@ export function buildCarrier(faction: Faction): Rig {
   const laneXAt = (z: number): number => LANES[0].x + (z - LANES[0].z) * Math.tan(LANE_YAW);
   let parked = 0;
   for (let z = -45; z <= -3 && parked < 18; z += 5.2)
-    for (let x = laneXAt(z) + 4.4; x < 14 && parked < 18; x += 3) {
+    for (let x = laneXAt(z) + 4.4; x < 15 && parked < 18; x += 3) {
+      if (![[-1.3, -1.3], [1.3, -1.3], [-1.3, 1.3], [1.3, 1.3]].every(([ox, oz]) => onDeck(x + ox, z + oz))) continue;
       const plane = buildFalcon(p);
       plane.root.scale.setScalar(PLANE_SCALE);
       plane.root.position.set(x, DECK_Y + 0.06, z);
@@ -290,7 +320,7 @@ export function buildCarrier(faction: Faction): Rig {
       { id: "fire", label: "Khai hỏa" }
     ],
     defaultOn: ["radar", "launch"],
-    radius: 60,
+    radius: 64,
     update(dt, t, a) {
       if (a.has("radar")) island.radar.rotation.y += dt * 1.4;
       for (const l of lanes) place(l, (t + l.offset) % LAUNCH_CYCLE, a.has("launch"), dt, t);
