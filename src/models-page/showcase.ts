@@ -62,8 +62,8 @@ export const SHOWCASE = {
     role: "Tạo vùng khiên chặn sát thương hoặc vùng khói che quân; chọn loại lúc đúc.",
     notes: [
       "Chỉ xem trước trong Xưởng Mô Hình, chưa có trong trận đấu.",
-      "Thân vòng benzen: khung lục giác, 6 cánh quạt ở 6 đỉnh, 3 vạch màu phe xen kẽ, vòng tròn sáng ở giữa. Sải khoảng 6 m.",
-      "Bật khiên: vòm lục giác bán kính 7 m (số tạm). Bật khói: khói lan ra quanh drone."
+      "Thân vòng benzen bọc giáp: vành lục giác dày liền khối, 6 quạt trong vỏ bọc ở 6 đỉnh, 3 tấm màu phe xen kẽ, vòng tròn sáng quanh lõi giáp.",
+      "Phạm vi 12 m. Bật khiên: vòm lục giác trùm quân bên dưới. Bật khói: khói lan ra trong cùng phạm vi."
     ],
     build(faction: Faction): Rig {
       const rig = buildShieldDrone(palette(faction));
