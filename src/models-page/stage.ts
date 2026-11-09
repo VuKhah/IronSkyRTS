@@ -134,6 +134,7 @@ export class Stage {
   readonly camera = new THREE.PerspectiveCamera(38, 1, 0.1, 400);
   readonly controls: OrbitControls;
   private rig: Rig | null = null;
+  private sun!: THREE.DirectionalLight;
   private clock = new THREE.Clock();
   private time = 0;
   active = new Set<string>();
@@ -165,7 +166,7 @@ export class Stage {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     host.prepend(this.renderer.domElement);
 
-    makeLights(this.scene, 12);
+    this.sun = makeLights(this.scene, 12);
     makeGround(this.scene);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -239,11 +240,27 @@ export class Stage {
     }
     this.setHover(null);
     this.rig = rig;
+    this.fitTo(rig.radius);
     this.scene.add(rig.root);
     rig.root.add(this.hoverHelper);
     this.measureT = 0;
     if (!keepView) this.frameRig(rig);
     return old;
+  }
+
+  /** Mô hình rất lớn (tàu sân bay): cho camera lùi đủ xa, nới tầm nhìn và vùng đổ bóng theo cỡ mô hình. */
+  private fitTo(radius: number): void {
+    this.controls.maxDistance = Math.max(60, radius * 5);
+    this.camera.far = this.sheetCam.far = Math.max(400, radius * 14);
+    this.camera.updateProjectionMatrix();
+    this.sheetCam.updateProjectionMatrix();
+    const R = Math.max(12, radius * 1.1);
+    this.sun.position.set(R * 0.8, R * 1.6, R * 0.6);
+    const c = this.sun.shadow.camera;
+    c.left = c.bottom = -R;
+    c.right = c.top = R;
+    c.far = R * 5;
+    c.updateProjectionMatrix();
   }
 
   private frameRig(rig: Rig): void {

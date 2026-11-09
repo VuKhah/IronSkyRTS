@@ -8,6 +8,7 @@ import {
 } from "../sim/content";
 import { buildModel, disposeRig } from "../render/models";
 import { bakeStatic } from "../render/models/bake";
+import { isShowcase, SHOWCASE, SHOWCASE_IDS, type ShowcaseId } from "./showcase";
 import { Stage, Thumbnailer, type ViewName } from "./stage";
 
 const VIEW_LABEL: Record<ViewName, string> = { three: "3/4", front: "Trước", side: "Cạnh", top: "Trên", back: "Sau" };
@@ -26,7 +27,7 @@ const BUILDING_IDS = Object.keys(BUILDINGS) as EntityId[];
 
 const state = {
   tab: "units" as Tab,
-  id: "commander" as EntityId,
+  id: "commander" as EntityId | ShowcaseId,
   faction: "lam" as Faction,
   autoRotate: true
 };
@@ -112,11 +113,31 @@ function pickHtml(id: EntityId): string {
     <span><b>${esc(s.name)}</b><small>${esc(sub)}</small></span></button>`;
 }
 
+function showcasePick(id: ShowcaseId): string {
+  const s = SHOWCASE[id];
+  const img = thumbs.get(`${id}:${state.faction}`);
+  return `<button type="button" class="pick" data-id="${id}" aria-current="${id === state.id}">
+    ${img ? `<img class="thumb" src="${img}" alt="" />` : `<span class="thumb"></span>`}
+    <span><b>${esc(s.name)}</b><small>${esc(s.sub)}</small></span></button>`;
+}
+
+function showcaseSheet(id: ShowcaseId): string {
+  const s = SHOWCASE[id];
+  return `<header><h2>${esc(s.name)}</h2><p class="role">${esc(s.role)}</p><div class="tags"><span class="tag warn">Chỉ xem trước</span><span class="tag">${esc(s.sub)}</span></div></header>
+    <section><h3>Đặc điểm</h3><ul class="features">${s.notes.map((f) => `<li>${esc(f)}</li>`).join("")}</ul></section>`;
+}
+
+/** Dựng mô hình theo mã, kể cả mô hình chỉ để xem trước. */
+function buildAny(id: EntityId | ShowcaseId, faction: Faction): ReturnType<typeof buildModel> {
+  return isShowcase(id) ? SHOWCASE[id].build(faction) : buildModel(id, faction);
+}
+
 function renderRoster(): void {
   if (state.tab === "units") {
     const ground = UNIT_IDS.filter((id) => UNITS[id as keyof typeof UNITS].domain === "ground");
     const air = UNIT_IDS.filter((id) => UNITS[id as keyof typeof UNITS].domain === "air");
     roster.innerHTML = `<h2>Mặt đất</h2>${ground.map(pickHtml).join("")}<h2>Trên không</h2>${air.map(pickHtml).join("")}
+      <h2>Hải quân (xem trước)</h2>${SHOWCASE_IDS.map(showcasePick).join("")}
       <h2>Sắp có</h2><div class="planned">${PLANNED_UNITS.map((u) => `<span title="${esc(u.group)}">${esc(u.name)}</span>`).join("")}</div>`;
   } else {
     const mvp = BUILDING_IDS.filter((id) => BUILDINGS[id as keyof typeof BUILDINGS].mvp);
@@ -212,7 +233,7 @@ function renderControls(actions: { id: string; label: string }[]): void {
 /** Dựng lại mô hình đang chọn. keepView: chỉ đổi phe thì giữ nguyên góc camera và hoạt ảnh đang bật. */
 function loadModel(keepView: boolean): void {
   if (!stage) return;
-  const rig = buildModel(state.id, state.faction);
+  const rig = buildAny(state.id, state.faction);
   if (!keepView) stage.active = new Set(rig.defaultOn);
   // ?bake=1: xem mô hình đã "nướng" đúng như trên chiến trường (gộp khối đứng yên)
   if (new URLSearchParams(location.search).has("bake")) bakeStatic(rig);
@@ -223,13 +244,14 @@ function loadModel(keepView: boolean): void {
   renderControls(rig.actions);
 }
 
-function select(id: EntityId, push = true): void {
+function select(id: EntityId | ShowcaseId, push = true): void {
   state.id = id;
-  state.tab = id in UNITS ? "units" : "buildings";
+  state.tab = id in UNITS || isShowcase(id) ? "units" : "buildings";
   if (push) history.replaceState(null, "", `#${id}`);
   renderTabs();
   renderRoster();
-  renderSheet(getSpec(id));
+  if (isShowcase(id)) sheet.innerHTML = showcaseSheet(id);
+  else renderSheet(getSpec(id));
   loadModel(false);
 }
 
@@ -244,7 +266,7 @@ document.querySelector(".tabs")!.addEventListener("click", (e) => {
 
 roster.addEventListener("click", (e) => {
   const b = (e.target as Element).closest<HTMLButtonElement>(".pick");
-  if (b?.dataset.id) select(b.dataset.id as EntityId);
+  if (b?.dataset.id) select(b.dataset.id as EntityId | ShowcaseId);
 });
 
 sheet.addEventListener("click", (e) => {
@@ -286,7 +308,7 @@ controls.addEventListener("click", (e) => {
 
 window.addEventListener("hashchange", () => {
   const id = location.hash.slice(1);
-  if (id && id !== state.id && (id in UNITS || id in BUILDINGS)) select(id as EntityId, false);
+  if (id && id !== state.id && (id in UNITS || id in BUILDINGS || isShowcase(id))) select(id as EntityId | ShowcaseId, false);
 });
 
 // Chọn thẳng bằng phím tắt của binh chủng (Z, X, C, N, M, F1) — giống trong trận.
@@ -302,7 +324,7 @@ window.addEventListener("keydown", (e) => {
 // ------------------------------------------------------------------ khởi động
 
 const first = location.hash.slice(1);
-select(first in UNITS || first in BUILDINGS ? (first as EntityId) : "commander");
+select(first in UNITS || first in BUILDINGS || isShowcase(first) ? (first as EntityId | ShowcaseId) : "commander");
 
 // ?act=fly,fire bật sẵn hoạt ảnh, ?f=do chọn phe Đỏ — tiện để gửi link xem đúng cảnh.
 {
@@ -324,8 +346,8 @@ async function makeThumbnails(): Promise<void> {
   if (!stage) return;
   const shooter = new Thumbnailer();
   for (const faction of ["lam", "do"] as const) {
-    for (const id of [...UNIT_IDS, ...BUILDING_IDS]) {
-      const rig = buildModel(id, faction);
+    for (const id of [...UNIT_IDS, ...BUILDING_IDS, ...SHOWCASE_IDS]) {
+      const rig = buildAny(id, faction);
       thumbs.set(`${id}:${faction}`, shooter.shoot(rig));
       disposeRig(rig);
       if (faction === state.faction) {
@@ -337,4 +359,5 @@ async function makeThumbnails(): Promise<void> {
   }
   shooter.dispose();
 }
-void makeThumbnails();
+// ?nothumb=1: bỏ ảnh đại diện (chụp kiểm tra bằng Chrome không giao diện, vẽ bằng CPU rất chậm)
+if (!new URLSearchParams(location.search).has("nothumb")) void makeThumbnails();
