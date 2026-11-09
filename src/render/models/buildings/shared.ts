@@ -119,6 +119,14 @@ export function foundation(p: Palette, w: number, d: number, h = 0.25): THREE.Gr
   return part("Nền móng", group(box(w, h, d, p.concrete, 0, h / 2, 0), box(w + 0.08, 0.08, 0.3, p.team, 0, h, d / 2 - 0.15), box(w + 0.08, 0.08, 0.3, p.team, 0, h, -d / 2 + 0.15)));
 }
 
+/** Nền công sự 4 × 4 m: phủ kín 2 × 2 ô, nên các công sự đặt sát nhau thì nền liền thành một tuyến; màu phe ở 4 góc. */
+export function fortBase(p: Palette): THREE.Group {
+  const g = part("Nền công sự", group(box(4, BASE_Y, 4, p.concrete, 0, BASE_Y / 2, 0)));
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1]) g.add(part("Góc nền (màu phe)", group(box(0.7, 0.03, 0.16, p.team, sx * 1.6, BASE_Y + 0.01, sz * 1.87), box(0.16, 0.03, 0.7, p.team, sx * 1.87, BASE_Y + 0.01, sz * 1.6))));
+  return g;
+}
+
 /** Vòng tròn nhấp nháy trên mặt đất (vùng phủ điện, vùng chiếm đóng). */
 export function groundRing(p: Palette, radius: number, actionId: string): { mesh: THREE.Mesh; update: Update } {
   const mat = new THREE.MeshBasicMaterial({ color: (p.teamGlow.color as THREE.Color).getHex(), transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false });
