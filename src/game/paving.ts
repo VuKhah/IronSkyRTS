@@ -4,7 +4,8 @@
  * Người dùng chốt 10/11/2026 sau mấy bản thử (lát kín lối đi, vành bao quanh nhà, đường giữa mọi cặp nhà): "chỉ muốn có
  * đường cho xe đi, không xây quá nhiều đường; có những con đường chẳng dùng", và các đoạn đường phải tự nối vào nhau.
  * Nên đường bây giờ suy ra từ chỗ xe thật sự đi:
- *  - mỗi nhà có xe chạy ra (Tổng Hành Dinh, xưởng xe mặt đất) có một ô cửa ra (`World.exitRect`);
+ *  - mỗi nhà có xe chạy ra có một ô cửa ra (`World.exitRect`); xưởng có lối ra trong nền móng (`bay`) thì KHÔNG mọc đường
+ *    (người dùng 10/11/2026 bỏ đoạn nối cửa xưởng ra đường lớn), nên hiện chỉ Tổng Hành Dinh mở trục chính;
  *  - cửa ra đầu tiên của mỗi cụm căn cứ mở một TRỤC CHÍNH đi ra bãi trống về phía giữa bản đồ (tiền tuyến);
  *  - mỗi cửa ra khác tìm đường ngắn nhất, ít khúc rẽ, tới mạng đường đã có, nên mạng đường luôn liền một khối;
  *  - mỗi phe một mạng riêng (xem AI đấu AI thấy nhà cả hai phe, đường không được nối hai căn cứ).
@@ -124,6 +125,8 @@ export class Paving {
   private plan(world: World, buildings: readonly Building[], cn: Corners): { pts: Set<number>; stubs: Rect[] } {
     const exits: { start: number; x: number; z: number; side: number; stub: Rect }[] = [];
     for (const b of buildings) {
+      // người dùng 10/11/2026: bỏ hẳn đường nối từ cửa xưởng (nhà có lối ra trong nền móng) ra đường lớn
+      if (BUILDINGS[b.kind].bay) continue;
       const e = world.exitRect(b.kind, b.x, b.z, b.rot);
       if (!e) continue;
       const [dx, dz] = doorDir(b.rot);
@@ -137,8 +140,7 @@ export class Paving {
       const hw = dz !== 0 ? ROAD / 2 : 0;
       const hd = dx !== 0 ? ROAD / 2 : 0;
       const stub: Rect = [Math.min(ix, ox) - hw, Math.min(iz, oz) - hd, Math.max(ix, ox) + hw, Math.max(iz, oz) + hd];
-      // xưởng có lối ra trong nền móng (bay): sàn lối ra do mô hình vẽ, không cần đoạn nối
-      exits.push({ start, x: ox, z: oz, side: b.side, stub: BUILDINGS[b.kind].bay ? [0, 0, 0, 0] : stub });
+      exits.push({ start, x: ox, z: oz, side: b.side, stub });
     }
     // gần Tổng Hành Dinh trước (cửa của nó mở trục chính), rồi xa dần: đường mọc từ trong ra
     const hqs = buildings.filter((b) => b.kind === "hq");

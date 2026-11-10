@@ -15,11 +15,11 @@ const put = (w: World, side: 0 | 1, kind: BuildingId, x: number, z: number): str
 };
 
 describe("Đặt công trình lên lưới", () => {
-  it("Tổng Hành Dinh 4 × 4 ô, ba xưởng 9 × 9 ô (có 3 cửa trong nền móng), Sân Đáp 6 × 8 ô, Nhà Máy Điện 3 × 4 ô", () => {
+  it("Tổng Hành Dinh 4 × 4 ô, ba xưởng 9 × 9 ô (có cửa trong nền móng: 3, Xưởng Xe Chuyên Dụng 2 bệ), Sân Đáp 6 × 8 ô, Nhà Máy Điện 3 × 4 ô", () => {
     expect(BUILDINGS.hq.half.map(cellsOf)).toEqual([4, 4]);
     for (const k of ["factory", "special-factory", "aircraft-factory"] as const) {
       expect(BUILDINGS[k].half.map(cellsOf), k).toEqual([9, 9]);
-      expect(BUILDINGS[k].doors, k).toBe(3);
+      expect(BUILDINGS[k].doors, k).toBe(k === "special-factory" ? 2 : 3);
     }
     expect(BUILDINGS.airfield.half.map(cellsOf)).toEqual([6, 8]);
     expect(BUILDINGS["power-plant"].half.map(cellsOf)).toEqual([3, 4]);

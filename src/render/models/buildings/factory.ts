@@ -5,8 +5,8 @@
  * ở trên thì khu ráp nằm góc trước bên phải; trong khung mô hình là phía −x):
  *  - NHÀ XƯỞNG chữ L (phần gạch chéo): khối sau 18 × 10 m + cánh 6 × 8 m ở góc trước còn lại. Mặt trước khối sau có 3 cửa
  *    cuốn nhìn thẳng ra 3 sân ráp.
- *  - 3 SÂN RÁP 2 × 3 ô (4 × 6 m) ngoài trời, có giàn cầu trục phía trên: đang đúc xe gì thì trên sân là xe đó, nhô dần từ
- *    hầm nâng theo tiến độ; xong lô thì xe thật xuất hiện đúng chỗ đó (sim: `World.doorPos`). Sân không có xe thì bày máy móc.
+ *  - 3 SÂN RÁP 2 × 3 ô (4 × 6 m) ngoài trời, có giàn cầu trục phía trên: đang đúc xe gì thì trên sân là xe đó (hiện thẳng,
+ *    không nâng dần); xong lô thì xe thật xuất hiện đúng chỗ đó (sim: `World.doorPos`). Sân không có xe thì bày máy móc.
  *  - DẢI ĐƯỜNG 1 × 6 ô trước 3 sân để xe chạy ra.
  * Mọi số đọc từ `BUILDINGS.factory` (half, bay, doors, stall) và `RULES.buildMarginCells` để mô hình khớp ô sim chặn.
  */
@@ -30,7 +30,6 @@ const WALL_TOP = 7; // đỉnh tường nhà xưởng
 const DOOR_W = 3.7; // cửa cuốn (Titan rộng 3,58 m, cao 3,35 m)
 const DOOR_H = 4.6;
 const WING_TOP = 5.6; // cánh văn phòng 2 tầng
-const LIFT = 3.8; // độ sâu hầm nâng: xe lúc mới ráp chìm hẳn dưới sân
 const RAIL_Y = 6.3; // ray cầu trục trên sân ráp
 
 export function buildFactory(p: Palette, faction: Faction): Rig {
@@ -199,19 +198,19 @@ export function buildFactory(p: Palette, faction: Faction): Rig {
   for (let k = 0; k < DOORS; k++) {
     const cx = BAY[0] + (k + 0.5) * STALL_W;
     add(part("Sân ráp", box(STALL_W - 0.12, 0.05, STALL - 0.12, p.concreteDark, cx, BASE_Y + 0.025, STALL_Z)));
-    add(part("Sàn nâng", box(STALL_W - 0.9, 0.03, STALL - 1.4, p.hullDark, cx, BASE_Y + 0.06, STALL_Z)));
+    add(part("Sàn nâng", box(STALL_W - 0.9, 0.03, STALL - 1.4, p.white, cx, BASE_Y + 0.06, STALL_Z)));
     for (const sx of [-1, 1]) add(part("Vạch sân ráp", box(0.12, 0.02, STALL - 0.3, p.warning, cx + sx * (STALL_W / 2 - 0.18), BASE_Y + 0.07, STALL_Z)));
     add(part("Số sân", box(0.9, 0.02, 0.5, p.white, cx, BASE_Y + 0.07, BAY[1] + 0.5)));
   }
   const roadZ = (BAY[1] + STALL + BAY[3]) / 2;
   const roadD = BAY[3] - (BAY[1] + STALL);
-  add(part("Dải đường ra xe", box(BAY[2] - BAY[0], 0.05, roadD, p.rubber, (BAY[0] + BAY[2]) / 2, BASE_Y + 0.025, roadZ)));
+  add(part("Dải đường ra xe", box(BAY[2] - BAY[0], 0.05, roadD, p.white, (BAY[0] + BAY[2]) / 2, BASE_Y + 0.025, roadZ)));
   for (let k = 0; k < DOORS; k++) {
     const cx = BAY[0] + (k + 0.5) * STALL_W;
     // mũi tên trắng chỉ hướng xe ra
     const arrow: P3[] = [];
     for (const y of [BASE_Y + 0.06, BASE_Y + 0.08]) arrow.push([cx - 0.7, y, roadZ - 0.4], [cx + 0.7, y, roadZ - 0.4], [cx, y, roadZ + 0.6]);
-    add(part("Mũi tên ra xe", facets(arrow, p.white)));
+    add(part("Mũi tên ra xe", facets(arrow, p.hullDark))); // đường trắng nên mũi tên tối
   }
 
   // giàn cầu trục trên 3 sân: cột ở mép sân, dầm chạy dọc x khi đang đúc
@@ -300,7 +299,6 @@ export function buildFactory(p: Palette, faction: Faction): Rig {
   let external = false;
   let asmKind: UnitId | null = null;
   let asmCount = 0;
-  let asmK = 0;
   let doorT = 0;
   let craneK = 0;
   const built = rig(root, [WORK], 16, [
@@ -308,8 +306,6 @@ export function buildFactory(p: Palette, faction: Faction): Rig {
       const on = a.has("work");
       const kind = external ? asmKind : on ? (kinds.includes("titan") ? "titan" : kinds[0]) ?? null : null;
       const count = external ? asmCount : 2;
-      // xem thử: nhô lên trong ~3 giây rồi đứng yên trên sân ~4 giây, lặp lại
-      const prog = external ? asmK : Math.min(1, ((t / 7 + 0.6) % 1) * 2.3); // bắt đầu ở trạng thái đã ráp xong
       doorT = approach(doorT, on ? 1 : 0, 2.5, dt);
       doors.position.y = doorY + doorT * DOOR_H * 0.425;
       doors.scale.y = 1 - doorT * 0.85;
@@ -317,13 +313,12 @@ export function buildFactory(p: Palette, faction: Faction): Rig {
       stalls.forEach((s, k) => {
         const used = kind !== null && k < count;
         for (const [ck, g] of s.cars) {
+          // người dùng 10/11/2026: xưởng đang đúc thì xe hiện thẳng trên sân ráp, không nâng dần từ hầm
           g.visible = used && ck === kind;
-          // nhô dần từ hầm nâng theo tiến độ lô; đủ 100% thì vừa lên hết, đúng lúc xe thật xuất hiện
-          if (g.visible) g.position.y = BASE_Y - LIFT * (1 - Math.min(1, prog));
         }
         s.tools.visible = !used;
         s.spark.visible = used && on && Math.sin(t * 23 + k * 2.1) > 0.2;
-          if (used) busy++;
+        if (used) busy++;
       });
       // dầm cầu trục đi qua lại trên các sân đang ráp
       const span = Math.max(1, busy) * STALL_W - STALL_W;
@@ -339,11 +334,10 @@ export function buildFactory(p: Palette, faction: Faction): Rig {
     sig.update
   ]);
   built.setLevel = sig.setLevel;
-  built.setAssembly = (kind, count, k) => {
+  built.setAssembly = (kind, count) => {
     external = true;
     asmKind = kind;
     asmCount = count;
-    asmK = k;
   };
   return built;
 }

@@ -267,6 +267,14 @@ export interface BuildingSpec {
   doors?: number;
   /** Chiều sâu ô ráp xe (m), tính từ cạnh sau của `bay`; phần còn lại phía trước là dải đường cho xe chạy ra. */
   stall?: number;
+  /**
+   * Bệ ráp khai báo thẳng (khung mô hình, m: [x0, z0, x1, z1] mỗi bệ, bệ đầu tiên là bệ gần cửa nhất), thay cho cách chia đều
+   * `bay` theo `doors` / `stall`. Dùng khi các bệ không nằm hàng ngang trước cửa (Xưởng Xe Chuyên Dụng: 2 bệ nối nhau từ
+   * trước ra sau, xe đứng ngang, lăn sang hầm kiểm chuẩn rồi chạy ra).
+   */
+  pads?: readonly (readonly [number, number, number, number])[];
+  /** Hướng đầu xe đứng trên bệ, theo khung mô hình (nấc như `rot`: 0 = +z, 1 = +x, 2 = −z, 3 = −x). Mặc định 0 (nhìn ra cửa). */
+  padFace?: number;
   /** Trạm Radar: tầm nhìn xuyên sương mù khi đủ điện (m). */
   radarSight?: number;
   /** Công trình tiêu thụ điện: thứ tự được cấp điện khi thiếu (1 = trước nhất). Hậu cần tự phân. */
@@ -866,9 +874,15 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     armorClass: "struct",
     sight: 16,
     half: [9, 9], // thân 9 × 9 ô (người dùng 10/11/2026, bản vẽ xưởng): + viền 1 ô trong mô hình = nền móng 11 × 11 ô
-    bay: [-9, 1, 3, 9], // góc trước bên phải nhìn theo bản vẽ (cửa ở trên): 3 ô ráp xe 2 × 3 + dải đường 1 × 6 trước chúng
-    doors: 3,
-    stall: 6,
+    // bản vẽ của người dùng 10/11/2026 (xoay +90°): góc trước bên phải 6 × 6 ô gồm 2 bệ ráp 5 × 3 ô nối nhau từ trước ra sau
+    // và hầm kiểm chuẩn 1 × 6 ô dọc mép ngoài (phía −x) chạy tới cạnh cửa; xe đứng ngang trên bệ, đầu quay về phía hầm
+    bay: [-9, -3, 3, 9],
+    doors: 2,
+    pads: [
+      [-7, 3, 3, 9],
+      [-7, -3, 3, 3]
+    ],
+    padFace: 3,
     produces: ["rocket", "artillery"],
     power: -10,
     priority: 3,

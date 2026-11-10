@@ -173,7 +173,7 @@ function drawBuilding(id: BuildingId): void {
     `<b>${spec.name}</b> <code>${id}</code>`,
     `Thân ${fmt(hw * 2)} × ${fmt(hd * 2)} m → <b>${nx} × ${nz} ô</b> · viền ${Math.round(m / CELL)} ô → nền móng <b>${nx + 2 * Math.round(m / CELL)} × ${nz + 2 * Math.round(m / CELL)} ô</b> · + ${RULES.buildPadCells} ô cấm xây`
   ];
-  if (spec.bay) parts.push(`${spec.doors} ô ráp xe + dải đường cho xe chạy ra (trong thân nhà)`);
+  if (spec.bay) parts.push(spec.pads ? `${spec.pads.length} bệ ráp + hầm kiểm chuẩn cho xe chạy ra (trong thân nhà)` : `${spec.doors} ô ráp xe + dải đường cho xe chạy ra (trong thân nhà)`);
   else if (exit) parts.push("Có cửa ra 4 × 2 m (xe chạy ra)");
   if (spec.fort) parts.push("Công sự");
   figure(document.getElementById("buildings")!, cv, parts.join("<br>"));

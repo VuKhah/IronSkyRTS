@@ -450,9 +450,14 @@ export class World {
     return new Set(this.grid.cellsInRect(e[0], e[1], e[2], e[3]));
   }
 
-  /** Tâm cửa thứ k của nhà có `bay` (giữa chiều sâu lối ra), theo khung thế giới. */
+  /** Tâm cửa / bệ ráp thứ k của nhà có `bay` (giữa ô ráp xe, hoặc tâm bệ `pads`), theo khung thế giới. */
   private doorPos(b: Building, k: number): [number, number] {
     const spec = BUILDINGS[b.kind];
+    if (spec.pads) {
+      const r = spec.pads[k % spec.pads.length];
+      const [px, pz] = rotOffset((r[0] + r[2]) / 2, (r[1] + r[3]) / 2, b.rot);
+      return [b.x + px, b.z + pz];
+    }
     const bay = spec.bay!;
     const n = spec.doors ?? 1;
     const lx = bay[0] + ((k % n) + 0.5) * ((bay[2] - bay[0]) / n);
@@ -2480,8 +2485,10 @@ export class World {
           : [b.x + ddx * out - ddz * offset, b.z + ddz * out + ddx * offset];
       const [sx, sz] = this.grid.nearestFree(fx, fz, 6) ?? [fx, fz];
       const u = this.spawnUnit(kind, b.side, sx, sz);
-      u.hx = u.phx = ddx;
-      u.hz = u.phz = ddz;
+      // xe trên bệ ráp quay đầu theo `padFace` (khung mô hình), xoay cùng nhà
+      const [fhx, fhz] = BUILDINGS[b.kind].pads ? doorDir(b.rot + (BUILDINGS[b.kind].padFace ?? 0)) : [ddx, ddz];
+      u.hx = u.phx = fhx;
+      u.hz = u.phz = fhz;
       u.lot = lot;
       ids.push(u.id);
     }
