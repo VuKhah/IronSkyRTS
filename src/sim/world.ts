@@ -7,7 +7,7 @@
  *   8. đạn tới đích → trừ máu   9. dọn xác   10. sương mù   11. kiểm tra thắng thua
  * Không có gì phụ thuộc thời gian thật hay số ngẫu nhiên không seed, nên cùng seed + cùng lệnh thì ra cùng trận.
  */
-import { BUILDINGS, canStrike, DEFAULT_FORMATION, doorSign, FORMATIONS, lotCost, lotTime, PAD_OFFSETS, REAR_RANK, RULES, UNITS, valueOf, type BuildingId, type FormationId, type Mobility, type Res, type Side, type UnitId, type UnitSpec, type WeaponSpec, type WeaponVisual } from "./content";
+import { BUILDINGS, canStrike, defaultRot, DEFAULT_FORMATION, doorDir, normRot, rotHalf, rotOffset, FORMATIONS, lotCost, lotTime, PAD_OFFSETS, REAR_RANK, RULES, UNITS, valueOf, type BuildingId, type FormationId, type Mobility, type Res, type Side, type UnitId, type UnitSpec, type WeaponSpec, type WeaponVisual } from "./content";
 import { assignMin } from "./assign";
 import { clamp, dcos, DEG, dist2, dsin, Rng, TAU, turnStep, turnToward, type TurnStep } from "./fmath";
 import { Grid } from "./grid";
@@ -387,37 +387,38 @@ export class World {
   }
 
   padPos(b: Building, i: number): [number, number] {
-    const [ox, oz] = PAD_OFFSETS[i];
+    const [ox, oz] = rotOffset(PAD_OFFSETS[i][0], PAD_OFFSETS[i][1], b.rot);
     return [b.x + ox, b.z + oz];
   }
 
   /** Tọa độ thật của công trình nếu đặt ở (x, z): tâm khối ô lưới mà nó chiếm. */
-  snapBuilding(kind: BuildingId, x: number, z: number): [number, number] {
-    const [hw, hd] = BUILDINGS[kind].half;
+  snapBuilding(kind: BuildingId, x: number, z: number, rot = 0): [number, number] {
+    const [hw, hd] = rotHalf(kind, rot);
     return [snapAxis(x, cellsFor(hw), this.map.halfW, z), snapAxis(z, cellsFor(hd), this.map.halfH, x)];
   }
 
   /** Số ô lưới công trình chiếm theo x và z. */
-  blockCells(kind: BuildingId): [number, number] {
-    const [hw, hd] = BUILDINGS[kind].half;
+  blockCells(kind: BuildingId, rot = 0): [number, number] {
+    const [hw, hd] = rotHalf(kind, rot);
     return [cellsFor(hw), cellsFor(hd)];
   }
 
   /** Nửa kích thước khối ô lưới công trình chiếm (lớn hơn hoặc bằng `half`). */
-  blockHalf(kind: BuildingId): [number, number] {
-    const [hw, hd] = BUILDINGS[kind].half;
+  blockHalf(kind: BuildingId, rot = 0): [number, number] {
+    const [hw, hd] = rotHalf(kind, rot);
     return [(cellsFor(hw) * CELL) / 2, (cellsFor(hd) * CELL) / 2];
   }
 
   /**
    * Ô cửa ra của công trình có xe mặt đất chạy ra (Tổng Hành Dinh, Xưởng Xe Tăng, Xưởng Xe Chuyên Dụng): hình chữ nhật
-   * `EXIT_W` × `EXIT_D` m ngay trước cửa (phía `doorSign`). Trả về [tâm x, tâm z, nửa rộng, nửa sâu], hoặc null nếu nhà
+   * `EXIT_W` × `EXIT_D` m ngay trước cửa (phía `doorDir(rot)`). Trả về [tâm x, tâm z, nửa rộng, nửa sâu], hoặc null nếu nhà
    * không có xe chạy ra. Người dùng 10/11/2026: nhà được đặt sát nhau, miễn là xe vẫn ra được.
    */
-  exitRect(kind: BuildingId, x: number, z: number): [number, number, number, number] | null {
+  exitRect(kind: BuildingId, x: number, z: number, rot: number): [number, number, number, number] | null {
     if (!BUILDINGS[kind].produces?.some((u) => UNITS[u].domain === "ground")) return null;
-    const [, bd] = this.blockHalf(kind);
-    return [x, z + doorSign(kind, z) * (bd + EXIT_D / 2), EXIT_W / 2, EXIT_D / 2];
+    const [bw, bd] = this.blockHalf(kind, rot);
+    const [dx, dz] = doorDir(rot);
+    return dz !== 0 ? [x, z + dz * (bd + EXIT_D / 2), EXIT_W / 2, EXIT_D / 2] : [x + dx * (bw + EXIT_D / 2), z, EXIT_D / 2, EXIT_W / 2];
   }
 
   /**
@@ -458,8 +459,8 @@ export class World {
    * Luật bố trí khi đặt nhà ở (x, z) (đã nằm trên lưới, nền móng đã trống): không đè lên cửa ra của nhà nào, cửa ra của
    * chính nó phải trống, và mọi cửa ra gần đó (kể cả của nó) vẫn thông ra bãi trống. Thay cho luật cũ "chừa lối 2 ô".
    */
-  private layoutError(kind: BuildingId, x: number, z: number): string | null {
-    const [hw, hd] = this.blockHalf(kind);
+  private layoutError(kind: BuildingId, x: number, z: number, rot: number): string | null {
+    const [hw, hd] = this.blockHalf(kind, rot);
     const exits: { name: string; e: [number, number, number, number] }[] = [];
     const myClear = (BUILDINGS[kind].clearCells ?? 0) * CELL;
     for (const b of this.buildings) {
@@ -467,19 +468,19 @@ export class World {
       // đệm cho xe vận tải ra vào (Tổng Hành Dinh…): lấy đệm lớn hơn của hai nhà
       const pad = Math.max(myClear, (BUILDINGS[b.kind].clearCells ?? 0) * CELL);
       if (pad > 0) {
-        const [ow, od] = this.blockHalf(b.kind);
+        const [ow, od] = this.blockHalf(b.kind, b.rot);
         if (Math.abs(b.x - x) < hw + ow + pad - 1e-6 && Math.abs(b.z - z) < hd + od + pad - 1e-6) {
           const who = BUILDINGS[b.kind].clearCells ? BUILDINGS[b.kind].name : BUILDINGS[kind].name;
           return `Phải chừa ${pad / CELL} ô quanh ${who} cho xe vận tải ra vào`;
         }
       }
-      const e = this.exitRect(b.kind, b.x, b.z);
+      const e = this.exitRect(b.kind, b.x, b.z, b.rot);
       if (!e) continue;
       if (Math.abs(e[0] - x) < e[2] + hw - 1e-6 && Math.abs(e[1] - z) < e[3] + hd - 1e-6) return `Không được chắn cửa ra của ${BUILDINGS[b.kind].name}`;
       if (Math.abs(e[0] - x) <= hw + EXIT_ESCAPE * CELL && Math.abs(e[1] - z) <= hd + EXIT_ESCAPE * CELL) exits.push({ name: BUILDINGS[b.kind].name, e });
     }
     const foot = new Set(this.grid.cellsInRect(x, z, hw, hd));
-    const own = this.exitRect(kind, x, z);
+    const own = this.exitRect(kind, x, z, rot);
     if (own) {
       if (!this.map.fits(own[0], own[1], own[2], own[3])) return "Cửa ra nằm ngoài bản đồ";
       for (const i of this.grid.cellsInRect(own[0], own[1], own[2], own[3])) if (this.grid.blockedIdx(i)) return "Cửa ra bị chắn, xe không ra được";
@@ -489,13 +490,38 @@ export class World {
     return null;
   }
 
+  /**
+   * Ô lưới có tâm (x, z) có bị cấm xây với mọi công trình không (chỉ để hiện lưới đỏ khi Tư lệnh đang chọn chỗ đặt; người
+   * dùng 10/11/2026). Cùng luật với `canPlace`: ngoài vùng xây, vướng sông / đá / nhà / mỏ, sát mỏ, là ô cửa ra, hoặc nằm
+   * trong đệm `clearCells` của nhà khác. Không thay đổi trạng thái.
+   */
+  cellForbidden(side: Side, x: number, z: number): boolean {
+    if (this.grid.blockedAt(x, z)) return true;
+    for (const m of this.mines) if (dist2(m.x, m.z, x, z) < 5 * 5) return true;
+    let inZone = false;
+    for (const b of this.buildings) {
+      if (b.hp <= 0) continue;
+      const e = this.exitRect(b.kind, b.x, b.z, b.rot);
+      if (e && Math.abs(x - e[0]) < e[2] && Math.abs(z - e[1]) < e[3]) return true;
+      const pad = (BUILDINGS[b.kind].clearCells ?? 0) * CELL;
+      if (pad > 0) {
+        const [ow, od] = this.blockHalf(b.kind, b.rot);
+        if (Math.abs(x - b.x) < ow + pad && Math.abs(z - b.z) < od + pad) return true;
+      }
+      const zone = BUILDINGS[b.kind].zone;
+      if (!inZone && zone && b.side === side && b.built && dist2(b.x, b.z, x, z) <= zone * zone) inZone = true;
+    }
+    return !inZone;
+  }
+
   /** null = được phép xây; ngược lại là lý do (tiếng Việt) để hiện cho người chơi. */
-  canPlace(side: Side, kind: BuildingId, x: number, z: number): string | null {
-    [x, z] = this.snapBuilding(kind, x, z);
-    const [hw, hd] = this.blockHalf(kind);
+  canPlace(side: Side, kind: BuildingId, x: number, z: number, rotIn?: number): string | null {
+    const rot = normRot(rotIn) ?? defaultRot(kind, z);
+    [x, z] = this.snapBuilding(kind, x, z, rot);
+    const [hw, hd] = this.blockHalf(kind, rot);
     if (!this.map.fits(x, z, hw, hd)) return "Ngoài bản đồ";
     for (const i of this.grid.cellsInRect(x, z, hw, hd)) if (this.grid.blockedIdx(i)) return "Vướng sông, đá hoặc công trình";
-    const lay = this.layoutError(kind, x, z);
+    const lay = this.layoutError(kind, x, z, rot);
     if (lay) return lay;
     const big = Math.max(hw, hd);
     for (const m of this.mines) if (dist2(m.x, m.z, x, z) < (5 + big) * (5 + big)) return "Quá gần mỏ";
@@ -642,10 +668,11 @@ export class World {
     return u;
   }
 
-  private addBuilding(kind: BuildingId, side: Side, x: number, z: number, built: boolean): Building {
+  private addBuilding(kind: BuildingId, side: Side, x: number, z: number, built: boolean, rotIn?: number): Building {
     const spec = BUILDINGS[kind];
-    [x, z] = this.snapBuilding(kind, x, z);
-    const [blockW, blockD] = this.blockHalf(kind);
+    const rot = normRot(rotIn) ?? defaultRot(kind, z);
+    [x, z] = this.snapBuilding(kind, x, z, rot);
+    const [blockW, blockD] = this.blockHalf(kind, rot);
     const cells = this.grid.cellsInRect(x, z, blockW, blockD);
     this.grid.block(cells, 1);
     const [dx, dz] = dirToCenter(x, z);
@@ -657,6 +684,7 @@ export class World {
       side,
       x,
       z,
+      rot,
       hp: built ? spec.hp : spec.hp * 0.1,
       maxHp: spec.hp,
       progress: built ? 1 : 0,
@@ -780,7 +808,7 @@ export class World {
         }
         break;
       case "build":
-        this.orderBuild(side, o.kind, o.x, o.z);
+        this.orderBuild(side, o.kind, o.x, o.z, o.rot);
         break;
       case "produce": {
         const b = this.ownBuilding(side, o.building);
@@ -841,12 +869,13 @@ export class World {
   // ------------------------------------------------------------------ Phòng Thử Nghiệm
 
   /** null = thả được công trình ở đây (Phòng Thử Nghiệm bỏ qua luật vùng xây và giá tiền). */
-  sandboxPlaceError(kind: BuildingId, x: number, z: number): string | null {
-    [x, z] = this.snapBuilding(kind, x, z);
-    const [hw, hd] = this.blockHalf(kind);
+  sandboxPlaceError(kind: BuildingId, x: number, z: number, rotIn?: number): string | null {
+    const rot = normRot(rotIn) ?? defaultRot(kind, z);
+    [x, z] = this.snapBuilding(kind, x, z, rot);
+    const [hw, hd] = this.blockHalf(kind, rot);
     if (!this.map.fits(x, z, hw, hd)) return "Ngoài bản đồ";
     for (const i of this.grid.cellsInRect(x, z, hw, hd)) if (this.grid.blockedIdx(i)) return "Vướng sông, đá, mỏ hoặc công trình";
-    const lay = this.layoutError(kind, x, z);
+    const lay = this.layoutError(kind, x, z, rot);
     if (lay) return lay;
     return null;
   }
@@ -858,7 +887,7 @@ export class World {
           const kind = o.kind as BuildingId;
           const x = Math.round(o.x);
           const z = Math.round(o.z);
-          if (this.sandboxPlaceError(kind, x, z) === null) this.addBuilding(kind, o.side, x, z, true);
+          if (this.sandboxPlaceError(kind, x, z, o.rot) === null) this.addBuilding(kind, o.side, x, z, true, o.rot);
           break;
         }
         const kind = o.kind as UnitId;
@@ -2183,18 +2212,18 @@ export class World {
     }
   }
 
-  private orderBuild(side: Side, kind: BuildingId, rx: number, rz: number): void {
+  private orderBuild(side: Side, kind: BuildingId, rx: number, rz: number, rot?: number): void {
     const spec = BUILDINGS[kind];
     const cost = spec.cost;
     if (!spec.mvp || !cost || kind === "hq") return;
     const x = Math.round(rx);
     const z = Math.round(rz);
-    if (this.canPlace(side, kind, x, z) !== null) return;
+    if (this.canPlace(side, kind, x, z, rot) !== null) return;
     const st = this.sides[side];
     if (st.iron < cost.iron || st.oil < cost.oil) return;
     st.iron -= cost.iron;
     st.oil -= cost.oil;
-    const b = this.addBuilding(kind, side, x, z, false);
+    const b = this.addBuilding(kind, side, x, z, false, rot);
     this.events.push({ t: "placed", id: b.id, kind, side });
     // báo trước: xây xong công trình này thì căn cứ có đủ điện không?
     if (spec.power < 0) {
@@ -2383,14 +2412,15 @@ export class World {
     for (let k = 0; k < us.batch; k++) {
     const offset = (k - (us.batch - 1) / 2) * (2 * us.radius + FORMATION_GAP);
     if (us.domain === "air") {
-      // Nhà Máy Máy Bay: lăn ra cửa xưởng (cửa quay về phía giữa bản đồ, doorSign), cất cánh thẳng ra trước, rồi tự
+      // Nhà Máy Máy Bay: lăn ra cửa xưởng (phía cửa theo nấc xoay `doorDir`), cất cánh thẳng ra trước, rồi tự
       // bay về bãi trống gần nhất (giữ chỗ ngay từ lúc xuất xưởng để hai máy bay không tranh một bãi)
       const slot = this.nearestFreePad(b.side, b.x, b.z)!;
-      const door = doorSign(b.kind, b.z);
-      const u = this.spawnUnit(kind, b.side, b.x + offset, b.z + door * (BUILDINGS[b.kind].half[1] + 1));
+      const [ddx, ddz] = doorDir(b.rot);
+      const reach = BUILDINGS[b.kind].half[1] + 1; // nửa chiều sâu theo khung mô hình (cửa ở +z của mô hình)
+      const u = this.spawnUnit(kind, b.side, b.x + ddx * reach - ddz * offset, b.z + ddz * reach + ddx * offset);
       u.lot = lot;
-      u.hx = u.phx = 0;
-      u.hz = u.phz = door;
+      u.hx = u.phx = ddx;
+      u.hz = u.phz = ddz;
       slot.b.pads[slot.i] = u.id;
       u.padB = slot.b.id;
       u.padI = slot.i;
@@ -2398,14 +2428,18 @@ export class World {
       u.air = "takeoff";
       u.airT = 0;
     } else {
-      // xe ra ở ô cửa ra (trước cửa, phía doorSign), cả lô xếp ngang theo bề rộng cửa; chỗ bị xe khác đứng thì lấy ô trống gần nhất
-      const e = this.exitRect(b.kind, b.x, b.z);
-      const door = doorSign(b.kind, b.z);
-      const [fx, fz] = e ? [e[0] + offset, e[1] + door * e[3]] : [b.x + offset, b.z + door * (BUILDINGS[b.kind].half[1] + 2.5)];
+      // xe ra ở ô cửa ra (trước cửa, phía `doorDir`), cả lô xếp ngang theo bề rộng cửa; chỗ bị xe khác đứng thì lấy ô trống gần nhất
+      const e = this.exitRect(b.kind, b.x, b.z, b.rot);
+      const [ddx, ddz] = doorDir(b.rot);
+      const out = BUILDINGS[b.kind].half[1] + 2.5;
+      // mép ngoài ô cửa ra, cả lô xếp ngang (vuông góc hướng cửa)
+      const [fx, fz] = e
+        ? [e[0] + ddx * e[2] - ddz * offset, e[1] + ddz * e[3] + ddx * offset]
+        : [b.x + ddx * out - ddz * offset, b.z + ddz * out + ddx * offset];
       const [sx, sz] = this.grid.nearestFree(fx, fz, 6) ?? [fx, fz];
       const u = this.spawnUnit(kind, b.side, sx, sz);
-      u.hx = u.phx = 0;
-      u.hz = u.phz = door;
+      u.hx = u.phx = ddx;
+      u.hz = u.phz = ddz;
       u.lot = lot;
       ids.push(u.id);
     }
@@ -3585,8 +3619,11 @@ export class World {
           u.rtb = false;
           u.targetId = 0;
           u.autoTarget = 0;
-          u.hx = 0;
-          u.hz = 1;
+          // đậu quay mũi theo hướng Sân Đáp (mô hình: +z), xoay theo nấc xoay của công trình
+          const ab = this.byId.get(u.padB);
+          const [phx, phz] = doorDir(ab && ab.cat === "building" ? ab.rot : 0);
+          u.hx = phx;
+          u.hz = phz;
           u.yawRate = 0;
         }
         return;
@@ -4320,6 +4357,7 @@ export function hashWorld(w: World): number {
   }
   for (const b of w.buildings) {
     num(b.id);
+    num(b.rot);
     num(b.hp);
     num(b.progress);
     num(b.queue.length);

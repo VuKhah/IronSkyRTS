@@ -3,7 +3,7 @@
  * Góc xoay cố định theo phe: Lam 0°, Đỏ 180° (nhà mình luôn ở góc dưới trái). Khung có tỉ lệ của bản đồ.
  * Chạm / nhấp để đưa camera tới đó; chuột phải để ra lệnh di chuyển cho quân đang chọn.
  */
-import { BUILDINGS, type Side } from "../sim/content";
+import { rotHalf, type Side } from "../sim/content";
 import { TERRAIN, type GameMap, type TerrainKind } from "../sim/maps";
 
 /** Loại địa hình do bản đồ tô được hiện màu riêng trên minimap (độ đậm). */
@@ -157,7 +157,7 @@ export class Minimap {
     }
     for (const b of world.buildings) {
       if (viewer !== null && b.side !== viewer && !world.sides[viewer].known.has(b.id)) continue;
-      const [hw, hd] = BUILDINGS[b.kind].half;
+      const [hw, hd] = rotHalf(b.kind, b.rot);
       g.fillStyle = SIDE_COLOR[b.side];
       g.fillRect((b.x - hw) * s, (b.z - hd) * s, Math.max(3, hw * 2 * s), Math.max(3, hd * 2 * s));
     }

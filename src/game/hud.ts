@@ -79,7 +79,7 @@ export class Hud {
                <div class="up" data-n="uplinks" title="Đài Liên Lạc đang giữ: nhìn xa quanh mỗi đài"></div>
              </div>`
       }
-      <div class="place-confirm" hidden><button class="no" data-act="placeCancel" aria-label="Hủy">✕</button><button class="ok" data-act="placeOk" aria-label="Xây">✓</button></div>
+      <div class="place-confirm" hidden><button class="no" data-act="placeCancel" aria-label="Hủy">✕</button><button class="rot" data-act="placeRotate" aria-label="Xoay">⟳</button><button class="ok" data-act="placeOk" aria-label="Xây">✓</button></div>
       <div class="bottom">
         <canvas class="minimap"></canvas>
         <div class="panel"><div class="sel-head"></div><div class="rows"></div></div>

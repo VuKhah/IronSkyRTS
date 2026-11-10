@@ -9,7 +9,7 @@
 import * as THREE from "three";
 import { ExitArrows } from "./exit-arrows";
 import { strategicMarks } from "./overlay";
-import { BUILDINGS, canStrike, DEFAULT_FORMATION, doorSign, FACTION_OF, RES_NAME, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
+import { BUILDINGS, canStrike, DEFAULT_FORMATION, defaultRot, doorDir, FACTION_OF, rotHalf, RES_NAME, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
 import type { Building, Entity, Mine, Order, Unit, Wreck } from "../sim/types";
 import { buildModel, disposeRig, type Rig } from "../render/models";
 import type { Sfx } from "./audio";
@@ -54,6 +54,8 @@ export class Controller implements GestureHandlers {
   private ghostValid = true;
   /** Ba mũi tên chỉ hướng cửa ra trên bóng công trình đang đặt (chỉ nhà có xe chạy ra). */
   private ghostArrows: ExitArrows | null = null;
+  /** Nấc xoay Tư lệnh chọn cho công trình đang đặt (R / nút ⟳); null = mặc định, cửa quay về giữa bản đồ. */
+  private placeRot: number | null = null;
   private sellArmed = { id: 0, t: 0 };
   /** Vòng ngắm rải thảm (bán kính = độ tản của dàn phóng: vùng tên lửa rơi). */
   private aim: THREE.Mesh | null = null;
@@ -181,7 +183,7 @@ export class Controller implements GestureHandlers {
     const g = this.cam.ground(sx, sy, w, h);
     if (!g) return null;
     for (const b of this.views.visibleBuildings(this.world, viewer)) {
-      const [hw, hd] = BUILDINGS[b.kind].half;
+      const [hw, hd] = rotHalf(b.kind, b.rot);
       if (Math.abs(g.x - b.x) <= hw + 0.6 && Math.abs(g.z - b.z) <= hd + 0.6) return b;
     }
     for (const m of this.world.mines) if (Math.hypot(g.x - m.x, g.z - m.z) < 4.6) return m;
@@ -332,6 +334,7 @@ export class Controller implements GestureHandlers {
       return;
     }
     this.mode = "place";
+    if (this.placeKind !== kind) this.placeRot = null;
     this.placeKind = kind;
     if (this.ghostKind !== kind) {
       this.clearGhost();
@@ -440,10 +443,23 @@ export class Controller implements GestureHandlers {
     this.issue({ t: "mobilize" });
   }
 
+  /** Nấc xoay đang dùng cho công trình đang đặt ở (x, z). */
+  private rotAt(z: number): number {
+    return this.placeRot ?? (this.placeKind ? defaultRot(this.placeKind, z) : 0);
+  }
+
+  /** Xoay công trình đang đặt thêm 90° (theo chiều kim đồng hồ khi nhìn từ trên). */
+  rotatePlace(): void {
+    if (this.mode !== "place" || !this.placeKind) return;
+    this.placeRot = (this.rotAt(this.placePos?.z ?? 0) + 1) % 4;
+    this.sfx.ui("click");
+  }
+
   private tryPlace(keep: boolean): void {
     if (this.me === null || !this.placeKind || !this.placePos) return;
     const { x, z } = this.placePos;
-    const reason = this.world.canPlace(this.me, this.placeKind, x, z);
+    const rot = this.rotAt(z);
+    const reason = this.world.canPlace(this.me, this.placeKind, x, z, rot);
     const st = this.world.sides[this.me];
     const c = BUILDINGS[this.placeKind].cost!;
     if (reason || st.iron < c.iron || st.oil < c.oil) {
@@ -451,7 +467,7 @@ export class Controller implements GestureHandlers {
       this.hud?.alert(reason ?? "Không đủ tài nguyên", "bad");
       return;
     }
-    this.issue({ t: "build", kind: this.placeKind, x, z });
+    this.issue({ t: "build", kind: this.placeKind, x, z, rot });
     this.sfx.ui("build");
     if (!keep) this.cancelPlace();
   }
@@ -477,7 +493,7 @@ export class Controller implements GestureHandlers {
           if (sp.power !== 0) power = ` · Điện sau khi xây: ${Math.round(use)}/${Math.round(cap)} MW${use > cap ? ` ⚠ thiếu ${Math.ceil(use - cap)} MW` : ""}`;
         }
         return (
-          (this.mouse.used ? "Nhấp để đặt · Shift đặt nhiều · chuột phải hủy" : "Chạm để chọn chỗ, rồi bấm ✓") + power + (this.placeReason ? ` — ${this.placeReason}` : "")
+          (this.mouse.used ? "Nhấp để đặt · R xoay · Shift đặt nhiều · chuột phải hủy" : "Chạm để chọn chỗ, ⟳ xoay, rồi bấm ✓") + power + (this.placeReason ? ` — ${this.placeReason}` : "")
         );
       }
       case "barrage": {
@@ -505,6 +521,9 @@ export class Controller implements GestureHandlers {
     switch (action) {
       case "build":
         this.startPlace(arg as BuildingId);
+        break;
+      case "placeRotate":
+        this.rotatePlace();
         break;
       case "placeOk":
         if (this.mode === "barrage") this.tryStrike();
@@ -784,7 +803,11 @@ export class Controller implements GestureHandlers {
       else if (this.lastAlert) this.cam.focus(this.lastAlert.x, this.lastAlert.z);
     } else if (k === "p" || k === "pause") this.match.paused = !this.match.paused;
     else if (k === "t") this.act("ability", "barrage");
-    else if (k === "r") this.act("ability", "mobilize");
+    else if (k === "r") {
+      // đang đặt công trình thì R là xoay nhà; lúc khác là Tổng động viên
+      if (this.mode === "place") this.rotatePlace();
+      else this.act("ability", "mobilize");
+    }
     else if (/^[1-5]$/.test(k)) {
       const n = Number(k);
       if (e.ctrlKey || e.metaKey) {
@@ -839,18 +862,21 @@ export class Controller implements GestureHandlers {
     if (this.mode === "place" && this.ghost && this.placePos && this.placeKind && this.me !== null) {
       const { x, z } = this.placePos;
       // bóng mờ nhảy theo lưới: đúng chỗ công trình sẽ đứng
-      const [gx, gz] = this.world.snapBuilding(this.placeKind, x, z);
+      const rot = this.rotAt(z);
+      const [gx, gz] = this.world.snapBuilding(this.placeKind, x, z, rot);
       this.ghost.root.position.set(gx, this.match.world.map.groundY(gx, gz) + 0.05, gz);
-      this.ghost.root.rotation.y = this.placeKind && doorSign(this.placeKind, z) < 0 ? Math.PI : 0;
+      this.ghost.root.rotation.y = (rot * Math.PI) / 2;
       this.ghost.root.visible = true;
-      this.placeReason = this.world.canPlace(this.me, this.placeKind, x, z);
+      this.placeReason = this.world.canPlace(this.me, this.placeKind, x, z, rot);
       const valid = this.placeReason === null;
-      const [nx, nz] = this.world.blockCells(this.placeKind);
-      (this.placeGrid ??= new PlacementGrid(this.scene, this.world.map)).show(gx, gz, nx, nz, valid);
-      const ex = this.world.exitRect(this.placeKind, gx, gz);
+      const [nx, nz] = this.world.blockCells(this.placeKind, rot);
+      const me = this.me;
+      const rev = `${this.world.buildings.length}:${this.world.buildings.reduce((n, b) => n + (b.built ? 1 : 0), 0)}`;
+      (this.placeGrid ??= new PlacementGrid(this.scene, this.world.map)).show(gx, gz, nx, nz, valid, (cx, cz) => this.world.cellForbidden(me, cx, cz), rev);
+      const ex = this.world.exitRect(this.placeKind, gx, gz, rot);
       if (ex) {
-        const dir = Math.sign(ex[1] - gz);
-        (this.ghostArrows ??= new ExitArrows(this.scene, this.world.map)).show(gx, ex[1] - dir * ex[3], dir, performance.now() / 1000);
+        const [dx, dz] = doorDir(rot);
+        (this.ghostArrows ??= new ExitArrows(this.scene, this.world.map)).show(ex[0] - dx * ex[2], ex[1] - dz * ex[3], dx, dz, performance.now() / 1000);
       } else this.ghostArrows?.hide();
       if (valid !== this.ghostValid) {
         this.ghostValid = valid;

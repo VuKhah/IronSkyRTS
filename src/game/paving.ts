@@ -6,15 +6,20 @@
  * Nên đường bây giờ suy ra từ chỗ xe thật sự đi:
  *  - mỗi nhà có xe chạy ra (Tổng Hành Dinh, xưởng xe mặt đất) có một ô cửa ra (`World.exitRect`);
  *  - cửa ra đầu tiên của mỗi cụm căn cứ mở một TRỤC CHÍNH đi ra bãi trống về phía giữa bản đồ (tiền tuyến);
- *  - mỗi cửa ra khác tìm đường ngắn nhất, ít khúc rẽ, tới mạng đường đã có, nên mạng đường luôn liền một khối.
- * Tìm đường trên lưới 2 m của sim (`World.grid`): đường chỉ đi qua chỗ xe đi được, không xuyên nhà, sông, đá.
+ *  - mỗi cửa ra khác tìm đường ngắn nhất, ít khúc rẽ, tới mạng đường đã có, nên mạng đường luôn liền một khối;
+ *  - mỗi phe một mạng riêng (xem AI đấu AI thấy nhà cả hai phe, đường không được nối hai căn cứ).
  *
- * Mỗi ô đường là một tấm 3 m vuông đặt giữa ô 2 m, tô lên lưới vẽ 0,5 m chung (không vẽ tấm riêng chồng nhau nên không
- * chớp hình). Cả mạng đường là MỘT mesh, chỉ dựng lại khi danh sách công trình nhìn thấy thay đổi; chỉ lấy nhà người xem
- * thấy / còn nhớ nên không làm lộ nhà địch trong sương mù.
+ * Tim đường chạy theo ĐƯỜNG KẺ LƯỚI 2 m của sim (góc ô), không theo tâm ô: nhà có cửa ra rộng 8 m nên tâm cửa nằm đúng trên
+ * một đường kẻ, đường bắt đầu chính giữa cửa (người dùng: "đường nên bắt đầu từ đoạn giữa thay vì một nửa"). Một góc ô chỉ
+ * có đường khi cả 4 ô quanh nó đi được, nên đường rộng 3 m không lấn vào chân tường, sông, đá.
+ *
+ * Mỗi điểm đường là một tấm 3 m vuông, tô lên lưới vẽ 0,5 m chung (không vẽ tấm riêng chồng nhau nên không chớp hình).
+ * Cả mạng đường là MỘT mesh, chỉ dựng lại khi danh sách công trình nhìn thấy thay đổi; chỉ lấy nhà người xem thấy / còn
+ * nhớ nên không làm lộ nhà địch trong sương mù.
  */
 import * as THREE from "three";
-import type { GameMap } from "../sim/maps";
+import { doorDir } from "../sim/content";
+import { CELL, type GameMap } from "../sim/maps";
 import type { Building } from "../sim/types";
 import { dirToCenter, type World } from "../sim/world";
 import { groundRipple } from "./scene";
@@ -27,9 +32,9 @@ const RES = 0.5;
 const ROAD = 3;
 /** Bề rộng vạch sơn mép đường (m). */
 const EDGE = 0.12;
-/** Trục chính dừng ở ô cách mọi công trình ít nhất bấy nhiêu mét (đã ra tới bãi trống). */
+/** Trục chính dừng ở điểm cách mọi công trình ít nhất bấy nhiêu mét (đã ra tới bãi trống). */
 const TRUNK_CLEAR = 10;
-/** Chi phí tìm đường: mỗi lần rẽ, và mỗi ô sát tường nhà (ưu tiên đi giữa lối). */
+/** Chi phí tìm đường: mỗi lần rẽ, và mỗi điểm sát tường nhà (ưu tiên đi giữa lối). */
 const TURN_COST = 3;
 const WALL_COST = 0.6;
 /** Giới hạn số trạng thái xét mỗi lần tìm đường (mạng đường của một căn cứ không bao giờ cần nhiều hơn). */
@@ -38,6 +43,50 @@ const MAX_EXPAND = 20000;
 const CLUSTER_COST = 100;
 
 const DIRS: readonly (readonly [number, number])[] = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+
+type Rect = readonly [number, number, number, number];
+
+/** Lưới góc ô: (cols + 1) × (rows + 1) điểm, điểm (cx, cz) ở tọa độ (−halfW + cx·2, −halfH + cz·2). */
+class Corners {
+  readonly w: number;
+  readonly h: number;
+  constructor(
+    private g: World["grid"],
+    private halfW: number,
+    private halfH: number
+  ) {
+    this.w = g.cols + 1;
+    this.h = g.rows + 1;
+  }
+  x(i: number): number {
+    return -this.halfW + (i % this.w) * CELL;
+  }
+  z(i: number): number {
+    return -this.halfH + Math.floor(i / this.w) * CELL;
+  }
+  at(x: number, z: number): number {
+    const cx = Math.round((x + this.halfW) / CELL);
+    const cz = Math.round((z + this.halfH) / CELL);
+    return cx < 0 || cz < 0 || cx >= this.w || cz >= this.h ? -1 : cz * this.w + cx;
+  }
+  /** Cả 4 ô quanh góc đi được. */
+  open(i: number): boolean {
+    const cx = i % this.w;
+    const cz = (i - cx) / this.w;
+    if (cx <= 0 || cz <= 0 || cx >= this.g.cols || cz >= this.g.rows) return false;
+    const c = this.g.cols;
+    return !this.g.blockedIdx((cz - 1) * c + cx - 1) && !this.g.blockedIdx((cz - 1) * c + cx) && !this.g.blockedIdx(cz * c + cx - 1) && !this.g.blockedIdx(cz * c + cx);
+  }
+  /** Có công trình trong vòng một ô quanh 4 ô của góc (để ưu tiên đi giữa lối). */
+  nearWall(i: number): boolean {
+    const cx = i % this.w;
+    const cz = (i - cx) / this.w;
+    for (let z = cz - 2; z <= cz + 1; z++)
+      for (let x = cx - 2; x <= cx + 1; x++)
+        if (x >= 0 && z >= 0 && x < this.g.cols && z < this.g.rows && this.g.occ[z * this.g.cols + x] !== 0) return true;
+    return false;
+  }
+}
 
 export class Paving {
   private mesh: THREE.Mesh;
@@ -65,21 +114,30 @@ export class Paving {
   /** Gọi mỗi khung hình với các công trình người xem đang thấy / còn nhớ. */
   sync(world: World, buildings: readonly Building[]): void {
     let key = "";
-    for (const b of buildings) key += `${b.id}:${b.x},${b.z};`;
+    for (const b of buildings) key += `${b.id}:${b.x},${b.z},${b.rot};`;
     if (key === this.key) return;
     this.key = key;
     this.rebuild(world, buildings);
   }
 
-  /** Các ô lưới sim (2 m) có đường. */
-  private plan(world: World, buildings: readonly Building[]): Set<number> {
-    const g = world.grid;
-    const exits: { cells: number[]; x: number; z: number; side: number }[] = [];
+  /** Các góc ô có đường, và các đoạn nối từ chân cửa ra tới điểm đầu đường. */
+  private plan(world: World, buildings: readonly Building[], cn: Corners): { pts: Set<number>; stubs: Rect[] } {
+    const exits: { start: number; x: number; z: number; side: number; stub: Rect }[] = [];
     for (const b of buildings) {
-      const e = world.exitRect(b.kind, b.x, b.z);
+      const e = world.exitRect(b.kind, b.x, b.z, b.rot);
       if (!e) continue;
-      const cells = g.cellsInRect(e[0], e[1], e[2], e[3]).filter((i) => !g.blockedIdx(i));
-      if (cells.length) exits.push({ cells, x: e[0], z: e[1], side: b.side });
+      const [dx, dz] = doorDir(b.rot);
+      // điểm đầu đường: giữa mép NGOÀI ô cửa ra (nằm trên đường kẻ lưới); đoạn nối từ chân tường ra tới đó, rộng bằng đường
+      const ox = e[0] + dx * e[2];
+      const oz = e[1] + dz * e[3];
+      const start = cn.at(ox, oz);
+      if (start < 0 || !cn.open(start)) continue;
+      const ix = e[0] - dx * e[2];
+      const iz = e[1] - dz * e[3];
+      const hw = dz !== 0 ? ROAD / 2 : 0;
+      const hd = dx !== 0 ? ROAD / 2 : 0;
+      const stub: Rect = [Math.min(ix, ox) - hw, Math.min(iz, oz) - hd, Math.max(ix, ox) + hw, Math.max(iz, oz) + hd];
+      exits.push({ start, x: ox, z: oz, side: b.side, stub });
     }
     // gần Tổng Hành Dinh trước (cửa của nó mở trục chính), rồi xa dần: đường mọc từ trong ra
     const hqs = buildings.filter((b) => b.kind === "hq");
@@ -87,12 +145,10 @@ export class Paving {
     exits.sort((a, b) => near(a.x, a.z) - near(b.x, b.z) || a.x - b.x || a.z - b.z);
 
     const rects = buildings.map((b) => {
-      const [hw, hd] = world.blockHalf(b.kind);
+      const [hw, hd] = world.blockHalf(b.kind, b.rot);
       return [b.x - hw, b.z - hd, b.x + hw, b.z + hd] as const;
     });
-    const clearOf = (i: number): number => {
-      const x = g.centerX(i % g.cols);
-      const z = g.centerZ(Math.floor(i / g.cols));
+    const clearOf = (x: number, z: number): number => {
       let d = Infinity;
       for (const r of rects) {
         const dx = Math.max(r[0] - x, 0, x - r[2]);
@@ -102,43 +158,33 @@ export class Paving {
       return d;
     };
 
-    // mỗi phe một mạng đường riêng: đường không bao giờ nối căn cứ hai phe với nhau (xem AI đấu AI thấy cả hai)
-    const all = new Set<number>();
     const nets = [new Set<number>(), new Set<number>()];
+    const stubs: Rect[] = [];
     for (const ex of exits) {
       const road = nets[ex.side];
-      if (road.size > 0 && this.route(g, ex.cells, (i) => road.has(i), CLUSTER_COST, road)) continue;
+      stubs.push(ex.stub);
+      if (road.size > 0 && this.route(cn, ex.start, (i) => road.has(i), CLUSTER_COST, road)) continue;
       // cụm căn cứ mới: trục chính từ cửa ra đi ra bãi trống, về phía giữa bản đồ
-      for (const i of ex.cells) road.add(i);
+      road.add(ex.start);
       const [tx, tz] = dirToCenter(ex.x, ex.z);
       const goal = (i: number): boolean => {
-        const x = g.centerX(i % g.cols) - ex.x;
-        const z = g.centerZ(Math.floor(i / g.cols)) - ex.z;
-        return x * tx + z * tz > 0 && clearOf(i) >= TRUNK_CLEAR;
+        const x = cn.x(i);
+        const z = cn.z(i);
+        return (x - ex.x) * tx + (z - ex.z) * tz > 0 && clearOf(x, z) >= TRUNK_CLEAR;
       };
-      this.route(g, ex.cells, goal, Infinity, road);
+      this.route(cn, ex.start, goal, Infinity, road);
     }
-    for (const net of nets) for (const i of net) all.add(i);
-    return all;
+    const pts = new Set<number>();
+    for (const net of nets) for (const i of net) pts.add(i);
+    return { pts, stubs };
   }
 
   /**
-   * Tìm đường rẻ nhất (4 hướng, phạt mỗi lần rẽ, phạt ô sát tường) từ các ô `from` tới ô đầu tiên thỏa `goal`; tìm thấy
-   * thì thêm cả đường vào `out` và trả về true. Trạng thái gồm cả hướng đang đi để tính được chi phí rẽ.
+   * Tìm đường rẻ nhất trên lưới góc ô (4 hướng, phạt mỗi lần rẽ, phạt điểm sát tường) từ `from` tới điểm đầu tiên thỏa
+   * `goal`; tìm thấy thì thêm cả đường vào `out` và trả về true. Trạng thái gồm cả hướng đang đi để tính chi phí rẽ.
    */
-  private route(g: World["grid"], from: readonly number[], goal: (i: number) => boolean, maxCost: number, out: Set<number>): boolean {
-    const nearWall = (i: number): boolean => {
-      const cx = i % g.cols;
-      const cz = (i - cx) / g.cols;
-      for (let dz = -1; dz <= 1; dz++)
-        for (let dx = -1; dx <= 1; dx++) {
-          const x = cx + dx;
-          const z = cz + dz;
-          if (x >= 0 && z >= 0 && x < g.cols && z < g.rows && g.occ[z * g.cols + x] !== 0) return true;
-        }
-      return false;
-    };
-    const best = new Map<number, number>(); // trạng thái (ô * 4 + hướng) → chi phí
+  private route(cn: Corners, from: number, goal: (i: number) => boolean, maxCost: number, out: Set<number>): boolean {
+    const best = new Map<number, number>(); // trạng thái (điểm * 4 + hướng) → chi phí
     const prev = new Map<number, number>();
     const heap: [number, number][] = []; // hàng đợi ưu tiên [chi phí, trạng thái]
     const push = (c: number, s: number): void => {
@@ -170,11 +216,10 @@ export class Paving {
       }
       return top;
     };
-    for (const i of from)
-      for (let d = 0; d < 4; d++) {
-        best.set(i * 4 + d, 0);
-        push(0, i * 4 + d);
-      }
+    for (let d = 0; d < 4; d++) {
+      best.set(from * 4 + d, 0);
+      push(0, from * 4 + d);
+    }
     let expanded = 0;
     while (heap.length && expanded++ < MAX_EXPAND) {
       const [c, s] = pop();
@@ -185,15 +230,15 @@ export class Paving {
         return true;
       }
       const dir = s & 3;
-      const cx = i % g.cols;
-      const cz = (i - cx) / g.cols;
+      const cx = i % cn.w;
+      const cz = (i - cx) / cn.w;
       for (let d = 0; d < 4; d++) {
         const nx = cx + DIRS[d][0];
         const nz = cz + DIRS[d][1];
-        if (nx < 0 || nz < 0 || nx >= g.cols || nz >= g.rows) continue;
-        const j = nz * g.cols + nx;
-        if (g.blockedIdx(j)) continue;
-        const nc = c + 1 + (d !== dir ? TURN_COST : 0) + (nearWall(j) ? WALL_COST : 0);
+        if (nx < 0 || nz < 0 || nx >= cn.w || nz >= cn.h) continue;
+        const j = nz * cn.w + nx;
+        if (!cn.open(j)) continue;
+        const nc = c + 1 + (d !== dir ? TURN_COST : 0) + (cn.nearWall(j) ? WALL_COST : 0);
         const ns = j * 4 + d;
         if (nc >= (best.get(ns) ?? Infinity)) continue;
         best.set(ns, nc);
@@ -206,7 +251,7 @@ export class Paving {
 
   private rebuild(world: World, buildings: readonly Building[]): void {
     const map = this.map;
-    const g = world.grid;
+    const cn = new Corners(world.grid, map.halfW, map.halfH);
     const nx = Math.round((map.halfW * 2) / RES);
     const nz = Math.round((map.halfH * 2) / RES);
     const mark = new Uint8Array(nx * nz); // 1 = đường
@@ -214,19 +259,20 @@ export class Paving {
     let i1 = 0;
     let j0 = nz;
     let j1 = 0;
-    for (const c of this.plan(world, buildings)) {
-      const cx = g.centerX(c % g.cols);
-      const cz = g.centerZ(Math.floor(c / g.cols));
-      const a = Math.max(0, Math.round((cx - ROAD / 2 + map.halfW) / RES));
-      const b = Math.min(nx, Math.round((cx + ROAD / 2 + map.halfW) / RES));
-      const p = Math.max(0, Math.round((cz - ROAD / 2 + map.halfH) / RES));
-      const q = Math.min(nz, Math.round((cz + ROAD / 2 + map.halfH) / RES));
+    const paint = (x0: number, z0: number, x1: number, z1: number): void => {
+      const a = Math.max(0, Math.round((x0 + map.halfW) / RES));
+      const b = Math.min(nx, Math.round((x1 + map.halfW) / RES));
+      const p = Math.max(0, Math.round((z0 + map.halfH) / RES));
+      const q = Math.min(nz, Math.round((z1 + map.halfH) / RES));
       for (let j = p; j < q; j++) mark.fill(1, j * nx + a, j * nx + Math.max(a, b));
       i0 = Math.min(i0, a);
       i1 = Math.max(i1, b);
       j0 = Math.min(j0, p);
       j1 = Math.max(j1, q);
-    }
+    };
+    const { pts, stubs } = this.plan(world, buildings, cn);
+    for (const c of pts) paint(cn.x(c) - ROAD / 2, cn.z(c) - ROAD / 2, cn.x(c) + ROAD / 2, cn.z(c) + ROAD / 2);
+    for (const r of stubs) paint(r[0], r[1], r[2], r[3]);
     const isRoad = (ix: number, iz: number): boolean => ix >= 0 && iz >= 0 && ix < nx && iz < nz && mark[iz * nx + ix] === 1;
 
     const pos: number[] = [];

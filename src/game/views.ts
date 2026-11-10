@@ -8,7 +8,7 @@ import * as THREE from "three";
 import { ExitArrows } from "./exit-arrows";
 import { Paving } from "./paving";
 import { sec } from "../sim/world";
-import { BUILDINGS, doorSign, FACTION_OF, RULES, UNITS, type Side, lotTime } from "../sim/content";
+import { BUILDINGS, doorDir, FACTION_OF, RULES, UNITS, type Side, lotTime } from "../sim/content";
 import type { GameMap } from "../sim/maps";
 import type { Building, Mine, Target, Unit, Uplink, Wreck } from "../sim/types";
 import { AIRBORNE_ALT, DT, type World } from "../sim/world";
@@ -178,7 +178,7 @@ export class Views {
         const rig = buildModel(b.kind, FACTION_OF[b.side], false);
         bakeStatic(rig);
         rig.root.position.set(b.x, this.map.groundY(b.x, b.z), b.z);
-        rig.root.rotation.y = doorSign(b.kind, b.z) < 0 ? Math.PI : 0; // nhà xưởng quay cửa về phía giữa bản đồ
+        rig.root.rotation.y = (b.rot * Math.PI) / 2; // nấc xoay = hướng cửa (+z của mô hình)
         v = { rig, yaw: 0, prevYaw: 0, roll: 0, pitch: 0, ring: null, active: new Set(), seen: f, lastShot: b.lastShot, muzzles: muzzlesOf(rig), muzzleCursor: -1 };
         this.scene.add(rig.root);
         this.buildings.set(b.id, v);
@@ -188,15 +188,16 @@ export class Views {
     }
     // ba mũi tên chỉ hướng cửa ra trước nhà phe mình đang được chọn
     for (const b of seenBuildings) {
-      const ex = selected.has(b.id) && b.side === viewer ? world.exitRect(b.kind, b.x, b.z) : null;
+      const ex = selected.has(b.id) && b.side === viewer ? world.exitRect(b.kind, b.x, b.z, b.rot) : null;
       let a = this.arrows.get(b.id);
       if (!ex) {
         a?.hide();
         continue;
       }
       if (!a) this.arrows.set(b.id, (a = new ExitArrows(this.scene, this.map)));
-      const dir = Math.sign(ex[1] - b.z);
-      a.show(b.x, ex[1] - dir * ex[3], dir, time);
+      const [dx, dz] = doorDir(b.rot);
+      // giữa mép cửa = tâm ô cửa ra lùi về phía nhà nửa chiều sâu ô
+      a.show(ex[0] - dx * ex[2], ex[1] - dz * ex[3], dx, dz, time);
     }
     for (const [id, a] of this.arrows)
       if (!world.buildings.some((b) => b.id === id)) {

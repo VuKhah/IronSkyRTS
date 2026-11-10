@@ -1,11 +1,18 @@
 /** Luật đặt công trình lên lưới ô vuông: nằm chính giữa khối ô, được đặt sát nhau nhưng không vây kín cửa ra, công bằng giữa hai phe. */
 import { describe, expect, it } from "vitest";
-import { BUILDINGS, type BuildingId } from "./content";
+import { BUILDINGS, defaultRot, type BuildingId } from "./content";
 import { CELL } from "./maps";
 import { World } from "./world";
 
 const cellsOf = (half: number): number => Math.ceil((half * 2) / CELL - 1e-9);
 const KINDS = Object.keys(BUILDINGS) as BuildingId[];
+
+/** Thả một công trình bằng công cụ Phòng Thử Nghiệm (đi qua đúng luật đặt nhà); trả về lý do nếu không đặt được. */
+const put = (w: World, side: 0 | 1, kind: BuildingId, x: number, z: number): string | null => {
+  const err = w.sandboxPlaceError(kind, x, z);
+  if (err === null) w.step([{ side, order: { t: "sbSpawn", kind, side, x, z } } as never]);
+  return err;
+};
 
 describe("Đặt công trình lên lưới", () => {
   it("Tổng Hành Dinh và các xưởng 8 × 8 m chiếm đúng 4 × 4 ô, Sân Đáp 6 × 8 ô, Nhà Máy Điện 3 × 4 ô", () => {
@@ -62,13 +69,6 @@ describe("Đặt công trình lên lưới", () => {
         }
   });
 
-  /** Thả một công trình bằng công cụ Phòng Thử Nghiệm (đi qua đúng luật đặt nhà); trả về lý do nếu không đặt được. */
-  const put = (w: World, side: 0 | 1, kind: BuildingId, x: number, z: number): string | null => {
-    const err = w.sandboxPlaceError(kind, x, z);
-    if (err === null) w.step([{ side, order: { t: "sbSpawn", kind, side, x, z } } as never]);
-    return err;
-  };
-
   it("nhà được đặt sát nhau (người dùng 10/11/2026: miễn là xe vẫn ra được)", () => {
     const w = new World(1, { sandbox: true });
     // xưởng ở chỗ đất trống; Trạm Radar sát hông xưởng (không phải phía cửa), rồi tháp sát Radar
@@ -97,7 +97,7 @@ describe("Đặt công trình lên lưới", () => {
     const w = new World(1, { sandbox: true });
     for (const side of [0, 1] as const) {
       const hq = w.buildings.find((b) => b.kind === "hq" && b.side === side)!;
-      const e = w.exitRect("hq", hq.x, hq.z)!;
+      const e = w.exitRect("hq", hq.x, hq.z, hq.rot)!;
       expect(Math.sign(e[1] - hq.z)).toBe(Math.sign(-hq.z)); // cửa nhìn về phía z = 0
     }
     const sg = [1, -1] as const;
@@ -105,7 +105,7 @@ describe("Đặt công trình lên lưới", () => {
       const fx = sg[side] * -20;
       const fz = sg[side] * 20;
       expect(put(w, side, "factory", fx, fz)).toBeNull();
-      const e = w.exitRect("factory", fx, fz)!;
+      const e = w.exitRect("factory", fx, fz, defaultRot("factory", fz))!;
       expect(put(w, side, "power-pylon", e[0], e[1] + Math.sign(e[1] - fz))).toMatch(/^Không được chắn cửa ra/);
     }
   });
@@ -118,7 +118,7 @@ describe("Đặt công trình lên lưới", () => {
       const fx = sg * -20;
       const fz = sg * 20;
       expect(put(w, side, "factory", fx, fz)).toBeNull();
-      const e = w.exitRect("factory", fx, fz)!;
+      const e = w.exitRect("factory", fx, fz, defaultRot("factory", fz))!;
       const door = Math.sign(e[1] - fz);
       const [, fd] = BUILDINGS.factory.half;
       const ez = fz + door * (fd + 2); // tâm hàng tháp hai bên cửa (tháp 4 × 4 m)
@@ -129,4 +129,35 @@ describe("Đặt công trình lên lưới", () => {
       // lùi ra một ô thì vẫn còn lối hai bên: được
       expect(put(w, side, "turret", fx, fz + door * (fd + 2 + 6))).toBeNull();
     });
+});
+
+describe("Xoay công trình (người dùng 10/11/2026)", () => {
+  it("Sân Đáp xoay 90°: nền móng đổi chiều, ô đáp nằm trong nền móng, máy bay đậu quay theo nhà", () => {
+    const w = new World(1, { sandbox: true });
+    const [nx, nz] = w.blockCells("airfield", 0);
+    expect(w.blockCells("airfield", 1)).toEqual([nz, nx]);
+    w.step([{ side: 0, order: { t: "sbSpawn", kind: "airfield", side: 0, x: -24, z: 24, rot: 1 } } as never]);
+    const af = w.buildings.find((b) => b.kind === "airfield")!;
+    expect(af.rot).toBe(1);
+    const [hw, hd] = w.blockHalf("airfield", 1);
+    expect(af.cells.length).toBe(nx * nz);
+    for (let i = 0; i < af.pads.length; i++) {
+      const [px, pz] = w.padPos(af, i);
+      expect(Math.abs(px - af.x), `ô đáp ${i}`).toBeLessThan(hw);
+      expect(Math.abs(pz - af.z), `ô đáp ${i}`).toBeLessThan(hd);
+    }
+  });
+
+  it("cửa ra quay theo nấc xoay; lệnh xây mang theo nấc xoay", () => {
+    const w = new World(1, { sandbox: true });
+    for (const [rot, dx, dz] of [[0, 0, 1], [1, 1, 0], [2, 0, -1], [3, -1, 0]] as const) {
+      const e = w.exitRect("factory", 0, 0, rot)!;
+      expect([Math.sign(e[0]), Math.sign(e[1])]).toEqual([dx, dz]);
+    }
+    expect(put(w, 0, "factory", -20, 20)).toBeNull();
+    const w2 = new World(1, { sandbox: true });
+    expect(w2.sandboxPlaceError("factory", -20, 20, 1)).toBeNull();
+    w2.step([{ side: 0, order: { t: "sbSpawn", kind: "factory", side: 0, x: -20, z: 20, rot: 1 } } as never]);
+    expect(w2.buildings.find((b) => b.kind === "factory")!.rot).toBe(1);
+  });
 });

@@ -50,15 +50,17 @@ export class ExitArrows {
   }
 
   /**
-   * Đặt ba mũi bắt đầu từ mép cửa (x, z0) đi ra theo hướng `dir` (+1 / −1 theo trục z), bám độ cao mặt đất, và cho sáng
-   * lần lượt theo thời gian `time` (giây).
+   * Đặt ba mũi bắt đầu từ giữa mép cửa (x0, z0) đi ra theo hướng cửa (dx, dz) (một trong bốn hướng trục), bám độ cao
+   * mặt đất, và cho sáng lần lượt theo thời gian `time` (giây).
    */
-  show(x: number, z0: number, dir: number, time: number): void {
+  show(x0: number, z0: number, dx: number, dz: number, time: number): void {
     this.root.visible = true;
     this.root.children.forEach((m, k) => {
-      const z = z0 + dir * (0.9 + k * STEP);
+      const d = 0.9 + k * STEP;
+      const x = x0 + dx * d;
+      const z = z0 + dz * d;
       m.position.set(x, this.map.groundY(x, z) + 0.12, z);
-      m.rotation.y = dir < 0 ? Math.PI : 0;
+      m.rotation.y = Math.atan2(dx, dz); // hình gốc chỉ về +z; quay sang hướng cửa
       // pha lệch nhau 1/3 chu kỳ: mũi gần cửa sáng trước, rồi tới mũi ngoài
       const ph = (((time / PERIOD - k / 3) % 1) + 1) % 1;
       this.mats[k].opacity = 0.25 + 0.7 * Math.max(0, 1 - ph * 2.2);

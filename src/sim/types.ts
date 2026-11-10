@@ -156,6 +156,8 @@ export interface Building {
   side: Side;
   x: number;
   z: number;
+  /** Nấc xoay 0..3 = hướng cửa (+z, +x, −z, −x); xem `doorDir`, `rotHalf` trong content.ts. */
+  rot: number;
   hp: number;
   maxHp: number;
   /** Tiến độ xây (0..1). */
@@ -236,7 +238,7 @@ export type Order =
   /** Xe Vận Tải đi kéo xác quân về (mỗi xe một xác: xác được chạm trước, rồi các xác gần đó). */
   | { t: "salvage"; ids: number[]; wreck: number }
   | { t: "rtb"; ids: number[] }
-  | { t: "build"; kind: BuildingId; x: number; z: number }
+  | { t: "build"; kind: BuildingId; x: number; z: number; rot?: number }
   | { t: "produce"; building: number; kind: UnitId }
   | { t: "cancel"; building: number }
   | { t: "rally"; building: number; x: number; z: number }
@@ -247,7 +249,7 @@ export type Order =
   | { t: "mobilize" }
   // ---- Phòng Thử Nghiệm: chỉ có tác dụng khi World tạo với { sandbox: true }, trận thường bỏ qua
   /** Thả quân / công trình (đã xây xong) cho phe `side`. Có (gx, gz) thì quân tự đi tới đó: mặc định tấn công-di chuyển, `go: "move"` thì chỉ đi (máy bay bay ngang). */
-  | { t: "sbSpawn"; kind: UnitId | BuildingId; side: Side; x: number; z: number; gx?: number; gz?: number; go?: "move" | "amove" }
+  | { t: "sbSpawn"; kind: UnitId | BuildingId; side: Side; x: number; z: number; gx?: number; gz?: number; go?: "move" | "amove"; rot?: number }
   | { t: "sbRemove"; ids: number[] }
   /** Hồi đầy máu (và dầu máy bay). */
   | { t: "sbHeal"; ids: number[] }

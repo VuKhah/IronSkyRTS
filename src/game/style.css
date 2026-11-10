@@ -131,6 +131,7 @@ button { font: inherit; color: inherit; }
 .place-confirm { position: absolute; display: flex; gap: 10px; transform: translate(-50%, 0); pointer-events: auto; }
 .place-confirm button { width: 52px; height: 52px; border-radius: 50%; border: 2px solid var(--line-strong); background: var(--panel-solid); font-size: 22px; font-weight: 800; cursor: pointer; }
 .place-confirm .ok { border-color: var(--good); color: var(--good); }
+.place-confirm .rot { border-color: #ffd23f; color: #ffd23f; }
 .place-confirm .no { border-color: var(--bad); color: var(--bad); }
 .place-confirm .ok[disabled] { opacity: 0.4; }
 .hint-line { position: absolute; z-index: 3; left: 50%; transform: translateX(-50%); bottom: calc(150px + var(--safe-b)); background: var(--panel); border: 1px solid var(--accent); color: #ffe2b3; padding: 5px 14px; border-radius: 999px; font-size: 13px; pointer-events: none; white-space: nowrap; }

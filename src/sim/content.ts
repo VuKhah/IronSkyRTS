@@ -1137,6 +1137,49 @@ export function doorSign(kind: BuildingId, z: number): 1 | -1 {
   return DOOR_FACING.has(kind) && z > 0 ? -1 : 1;
 }
 
+/**
+ * Nấc xoay công trình (người dùng 10/11/2026: "thêm cơ chế xoay tòa nhà"): 0..3, mỗi nấc 90°. Nấc là hướng CỬA quay về:
+ * 0 = +z, 1 = +x, 2 = −z, 3 = −x. Mô hình quay `rotation.y = rot · 90°` (Three.js quay +z sang +x khi góc dương).
+ */
+export function doorDir(rot: number): [number, number] {
+  switch (rot & 3) {
+    case 1:
+      return [1, 0];
+    case 2:
+      return [0, -1];
+    case 3:
+      return [-1, 0];
+    default:
+      return [0, 1];
+  }
+}
+/** Nấc xoay mặc định: cửa quay về phía giữa bản đồ theo trục z (như trước khi có xoay). */
+export function defaultRot(kind: BuildingId, z: number): number {
+  return doorSign(kind, z) < 0 ? 2 : 0;
+}
+/** Nửa kích thước nền móng sau khi xoay (nấc lẻ thì đổi chiều rộng với chiều sâu). */
+export function rotHalf(kind: BuildingId, rot: number): [number, number] {
+  const [a, b] = BUILDINGS[kind].half;
+  return rot & 1 ? [b, a] : [a, b];
+}
+/** Độ lệch (ox, oz) trong khung mô hình đổi sang khung thế giới theo nấc xoay (khớp `rotation.y` của Three.js). */
+export function rotOffset(ox: number, oz: number, rot: number): [number, number] {
+  switch (rot & 3) {
+    case 1:
+      return [oz, -ox];
+    case 2:
+      return [-ox, -oz];
+    case 3:
+      return [-oz, ox];
+    default:
+      return [ox, oz];
+  }
+}
+/** Chuẩn hóa nấc xoay nhận từ lệnh (có thể là số bất kỳ) về 0..3; không có thì undefined. */
+export function normRot(rot: number | undefined): number | undefined {
+  return rot === undefined || !Number.isFinite(rot) ? undefined : ((Math.round(rot) % 4) + 4) % 4;
+}
+
 export const MVP_BUILDABLE: readonly BuildingId[] = ["factory", "special-factory", "aircraft-factory", "airfield", "power-plant", "battery", "power-pylon", "turret", "radar"];
 
 export function isUnitId(id: string): id is UnitId {
