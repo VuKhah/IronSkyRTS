@@ -3,7 +3,7 @@ import { VitePWA } from "vite-plugin-pwa";
 import { fileURLToPath } from "node:url";
 
 // base "./": đường dẫn tương đối, để bản build chạy được ở bất kỳ thư mục con nào (GitHub Pages: /<tên-repo>/).
-// Mỗi trang HTML là một "điểm vào" riêng: trang game (index.html) và Xưởng Mô Hình (models.html).
+// Mỗi trang HTML là một "điểm vào" riêng: trang game (index.html), Xưởng Mô Hình (models.html), Bản Vẽ Mặt Bằng (plan.html).
 export default defineConfig({
   base: "./",
   // Three.js chiếm phần lớn dung lượng (~150 KB nén): chấp nhận được, chưa cần tách nhỏ.
@@ -12,7 +12,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: fileURLToPath(new URL("./index.html", import.meta.url)),
-        models: fileURLToPath(new URL("./models.html", import.meta.url))
+        models: fileURLToPath(new URL("./models.html", import.meta.url)),
+        plan: fileURLToPath(new URL("./plan.html", import.meta.url))
       }
     }
   },

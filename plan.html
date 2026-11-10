@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bản Vẽ Mặt Bằng · Iron Sky</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700&display=swap" rel="stylesheet" />
+    <style>
+      :root { --paper: #f4f1e8; --ink: #2b2b2b; --muted: #6b675e; --line: #d8d2c2; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #e9e5d9; color: var(--ink); font-family: "Be Vietnam Pro", system-ui, sans-serif; }
+      header { padding: 20px 24px 8px; }
+      h1 { margin: 0 0 6px; font-size: 22px; }
+      p { margin: 4px 0; color: var(--muted); font-size: 14px; max-width: 1100px; line-height: 1.5; }
+      .legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 10px 0 0; font-size: 13px; color: var(--ink); }
+      .legend span { display: inline-flex; align-items: center; gap: 6px; }
+      .sw { width: 22px; height: 12px; display: inline-block; border: 1px solid #0003; }
+      h2 { margin: 18px 24px 6px; font-size: 17px; }
+      .sheet { display: flex; flex-wrap: wrap; gap: 14px; padding: 6px 24px 28px; align-items: flex-start; }
+      figure { margin: 0; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 8px; box-shadow: 0 1px 3px #0001; }
+      figure canvas { display: block; }
+      figcaption { font-size: 12px; line-height: 1.45; margin-top: 6px; max-width: 100%; }
+      figcaption b { font-size: 13px; }
+      a { color: #2f6fb8; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Bản Vẽ Mặt Bằng</h1>
+      <p>
+        Mọi binh chủng và công trình nhìn thẳng từ trên xuống, <b>cùng một tỉ lệ</b>, đặt trên lưới đất 2 m của sim (nét đậm) và lưới 0,4 m
+        (nét mờ, kích thước mô hình là bội số của 4 dm). Cửa chính / mũi xe quay xuống dưới (+z). Số liệu lấy thẳng từ <code>content.ts</code>
+        và mô hình thật nên luôn khớp với trận đấu.
+      </p>
+      <div class="legend">
+        <span><i class="sw" style="background:#9cc3e6"></i>Ô lưới nhà chiếm (chặn xe)</span>
+        <span><i class="sw" style="border:2px dashed #c0392b;background:none"></i>Nền móng thật (<code>half</code>)</span>
+        <span><i class="sw" style="background:#f4d35e"></i>Ô cửa ra 4 × 2 m (xe ra ở đây, không được đặt nhà lên)</span>
+        <span><i class="sw" style="background:#f2b48a"></i>Đệm bắt buộc (<code>clearCells</code>)</span>
+        <span><i class="sw" style="border:2px solid #c0392b;border-radius:50%;background:#f3c9c4"></i>Vòng va chạm của quân và ô nó đè lên</span>
+      </div>
+    </header>
+    <h2>Công trình</h2>
+    <section class="sheet" id="buildings"></section>
+    <h2>Quân đội</h2>
+    <section class="sheet" id="units"></section>
+    <script type="module" src="./src/plan-page/main.ts"></script>
+  </body>
+</html>
