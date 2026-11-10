@@ -30,9 +30,8 @@
     <header>
       <h1>Bản Vẽ Mặt Bằng</h1>
       <p>
-        <b>Căn cứ phòng thủ mẫu</b> cho một đạo quân khoảng 80 (giới hạn quân hiện tại), đặt ở góc bản đồ nên chỉ phải thủ <b>một góc quạt 90°</b>.
-        Tường chặn cả hai phe, không có cổng: chỗ chừa trống là đường. Mọi nhà, tường đặt bằng đúng luật đặt nhà của sim (vùng xây, viền,
-        ô cấm xây, cửa ra); cả đạo quân đặt lên bản vẽ để kiểm chỗ. Mọi số là số tạm. Xem tấm xếp diện tích nhỏ nhất: <a href="./plan.html?pack=1">?pack=1</a>.
+        Hai tấm, cùng lưới đất 2 m của sim (nét đậm) và cùng luật đặt nhà thật của sim: nền móng gồm thân + viền, hai nhà cạnh nhau dùng chung
+        1 ô cấm xây (tường thì không cần), lối ra không bị vây. Số liệu lấy thẳng từ <code>content.ts</code> nên đổi cỡ nhà thì bản vẽ tự xếp lại.
       </p>
       <div class="legend">
         <span><i class="sw" style="background:#9cc3e6"></i>Ô lưới nhà chiếm (chặn xe)</span>
@@ -44,12 +43,24 @@
         <span><i class="sw" style="background:#f4d35e66"></i>Dải đường / hầm kiểm chuẩn</span>
         <span><i class="sw" style="background:#7a5c00"></i>Đường xe đi ra</span>
         <span><i class="sw" style="border:2px dashed #8e44ad;background:none"></i>Giếng phóng (cất cánh thẳng đứng)</span>
-        <span><i class="sw" style="border:2px dashed #2b2b2b;background:none"></i>Hình bao (tấm ?pack=1)</span>
+        <span><i class="sw" style="border:2px dashed #2b2b2b;background:none"></i>Hình bao (tấm 1)</span>
         <span><i class="sw" style="background:#3b3a36"></i>Mép bản đồ</span>
-        <span><i class="sw" style="border:2px dashed #c0392b;background:none;border-radius:50%"></i>Tuyến tường / tầm bắn tháp</span>
+        <span><i class="sw" style="background:#c0392b33;border:1px solid #c0392b"></i>Tầm bắn tháp</span>
+        <span><i class="sw" style="border:2px dashed #8e44ad;background:none;border-radius:50%"></i>Tầm Patriot</span>
+        <span><i class="sw" style="border-top:3px dashed #c0392b;background:none;height:0"></i>Đường địch vào (sim tìm)</span>
+        <span><i class="sw" style="border-top:3px solid #1e8449;background:none;height:0"></i>Đường xe ra trận (sim tìm)</span>
       </div>
     </header>
+    <h2>Bản vẽ 1: mọi công trình, xếp cho hình bao nhỏ nhất</h2>
+    <p style="margin: 0 24px">Mỗi loại công trình một nhà (không tính quân), xếp sát nhau cho hình bao nhỏ nhất (xếp hình chữ nhật vào hộp, seed cố định).</p>
     <section class="sheet" id="layout"></section>
+    <h2>Bản vẽ 2: căn cứ phòng thủ mẫu, đạo quân khoảng 80, thủ góc quạt 90°</h2>
+    <p style="margin: 0 24px">
+      Căn cứ ở góc bản đồ nên chỉ phải thủ một góc quạt 90°. Tường chặn cả hai phe, không có cổng: chỗ chừa trống là đường. Hai cửa ngõ,
+      sau mỗi cửa có tường chắn tạo túi hỏa lực; tháp phủ kín tường; nhà quý ở sâu trong góc. Sim tự tìm đường địch vào và đường xe ra
+      để kiểm bố cục (kết quả ghi dưới bản vẽ). Mọi số là số tạm.
+    </p>
+    <section class="sheet" id="defense"></section>
     <script type="module" src="./src/plan-page/main.ts"></script>
   </body>
 </html>
