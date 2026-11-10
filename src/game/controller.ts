@@ -20,6 +20,10 @@ import type { GestureHandlers, TapInfo } from "./input";
 import type { Match } from "./match";
 import { Views } from "./views";
 import { PlacementGrid } from "./placement-grid";
+import { CELL } from "../sim/maps";
+
+/** Dải tường kéo một lần dài tối đa bấy nhiêu ô. */
+const STRIP_MAX = 40;
 
 const GHOST_OK = new THREE.MeshBasicMaterial({ color: 0x6fdc8c, transparent: true, opacity: 0.45, depthWrite: false });
 const GHOST_BAD = new THREE.MeshBasicMaterial({ color: 0xff6b5e, transparent: true, opacity: 0.45, depthWrite: false });
@@ -52,6 +56,10 @@ export class Controller implements GestureHandlers {
   private ghost: Rig | null = null;
   private ghostKind: BuildingId | null = null;
   private ghostValid = true;
+  /** Đang kéo rải dải công trình lát theo ô (tường): điểm đầu / điểm cuối trên mặt đất. */
+  private strip: { x0: number; z0: number; x1: number; z1: number } | null = null;
+  /** Bóng mờ từng ô của dải đang kéo (dùng lại giữa các khung hình). */
+  private stripGhosts: Rig[] = [];
   /** Ba mũi tên chỉ hướng cửa ra trên bóng công trình đang đặt (chỉ nhà có xe chạy ra). */
   private ghostArrows: ExitArrows | null = null;
   /** Nấc xoay Tư lệnh chọn cho công trình đang đặt (R / nút ⟳); null = mặc định, cửa quay về giữa bản đồ. */
@@ -369,6 +377,7 @@ export class Controller implements GestureHandlers {
     this.placeKind = null;
     this.placePos = null;
     this.clearGhost();
+    this.clearStrip();
     if (this.aim) this.aim.visible = false;
   }
 
@@ -471,6 +480,93 @@ export class Controller implements GestureHandlers {
     this.sfx.ui("build");
     // công trình lát theo ô (tường): đặt xong vẫn giữ chế độ đặt để rải tiếp
     if (!keep && !BUILDINGS[this.placeKind].tile) this.cancelPlace();
+  }
+
+  /**
+   * Các ô của dải đang kéo: thẳng theo hướng kéo nhiều hơn (ngang hoặc dọc), từ ô đầu tới ô cuối, tối đa `STRIP_MAX` ô.
+   * Mỗi ô kèm lý do không đặt được (null = được), tính cả Sắt cộng dồn của các ô trước nó.
+   */
+  private stripCells(): { x: number; z: number; ok: boolean }[] {
+    const s = this.strip;
+    const kind = this.placeKind;
+    if (!s || !kind || this.me === null) return [];
+    const [ax, az] = this.world.snapBuilding(kind, s.x0, s.z0, 0);
+    const [bx, bz] = this.world.snapBuilding(kind, s.x1, s.z1, 0);
+    const horiz = Math.abs(bx - ax) >= Math.abs(bz - az);
+    const span = horiz ? bx - ax : bz - az;
+    const n = Math.min(STRIP_MAX - 1, Math.round(Math.abs(span) / CELL));
+    const dx = horiz ? Math.sign(span) : 0;
+    const dz = horiz ? 0 : Math.sign(span);
+    const cost = BUILDINGS[kind].cost!;
+    const st = this.world.sides[this.me];
+    let iron = st.iron;
+    let oil = st.oil;
+    const out: { x: number; z: number; ok: boolean }[] = [];
+    for (let i = 0; i <= n; i++) {
+      const x = ax + dx * i * CELL;
+      const z = az + dz * i * CELL;
+      let ok = this.world.canPlace(this.me, kind, x, z, 0) === null && iron >= cost.iron && oil >= cost.oil;
+      if (ok) {
+        iron -= cost.iron;
+        oil -= cost.oil;
+      }
+      out.push({ x, z, ok });
+    }
+    return out;
+  }
+
+  /** Thả tay sau khi kéo: ra lệnh xây mọi ô đặt được của dải (mỗi ô một lệnh), vẫn giữ chế độ đặt để kéo tiếp. */
+  private placeStrip(): void {
+    const kind = this.placeKind;
+    if (!kind) return;
+    const cells = this.stripCells();
+    let n = 0;
+    for (const c of cells) {
+      if (!c.ok) continue;
+      this.issue({ t: "build", kind, x: c.x, z: c.z, rot: 0 });
+      n++;
+    }
+    const skip = cells.length - n;
+    if (n) this.sfx.ui("build");
+    else this.sfx.ui("error");
+    if (skip) this.hud?.alert(n ? `Đặt ${n} ô, bỏ ${skip} ô vướng hoặc thiếu Sắt` : "Không ô nào đặt được", n ? undefined : "bad");
+  }
+
+  /** Bóng mờ từng ô của dải: nối liền dọc dải, xanh = đặt được, đỏ = không. */
+  private drawStrip(): void {
+    const cells = this.strip ? this.stripCells() : [];
+    const kind = this.placeKind;
+    while (kind && this.stripGhosts.length < cells.length) {
+      const g = buildModel(kind, FACTION_OF[this.me ?? 0], false);
+      this.scene.add(g.root);
+      this.stripGhosts.push(g);
+    }
+    this.stripGhosts.forEach((g, i) => {
+      const c = cells[i];
+      g.root.visible = !!c;
+      if (!c) return;
+      g.root.position.set(c.x, this.world.map.groundY(c.x, c.z) + 0.05, c.z);
+      // nối với ô trước / sau trong dải (bit 1 = +x, 2 = −x, 4 = +z, 8 = −z)
+      const prev = cells[i - 1];
+      const next = cells[i + 1];
+      const bit = (o: { x: number; z: number } | undefined): number => (!o ? 0 : o.x > c.x ? 1 : o.x < c.x ? 2 : o.z > c.z ? 4 : 8);
+      g.setLinks?.(bit(prev) | bit(next));
+      g.root.traverse((o) => {
+        if (o instanceof THREE.Mesh) {
+          o.material = c.ok ? GHOST_OK : GHOST_BAD;
+          o.castShadow = false;
+        }
+      });
+    });
+  }
+
+  private clearStrip(): void {
+    this.strip = null;
+    for (const g of this.stripGhosts) {
+      this.scene.remove(g.root);
+      disposeRig(g);
+    }
+    this.stripGhosts = [];
   }
 
   /** Vị trí màn hình để đặt nút ✓ ✕ (chỉ khi dùng cảm ứng). */
@@ -670,9 +766,25 @@ export class Controller implements GestureHandlers {
   }
 
   boxStart(x: number, y: number): void {
+    // đang đặt công trình lát theo ô (tường): kéo = rải cả dải
+    if (this.mode === "place" && this.placeKind && BUILDINGS[this.placeKind].tile) {
+      const { w, h } = this.size();
+      const g = this.cam.ground(x, y, w, h);
+      if (g) this.strip = { x0: g.x, z0: g.z, x1: g.x, z1: g.z };
+      return;
+    }
     this.box = { x0: x, y0: y, x1: x, y1: y };
   }
   boxMove(x: number, y: number): void {
+    if (this.strip) {
+      const { w, h } = this.size();
+      const g = this.cam.ground(x, y, w, h);
+      if (g) {
+        this.strip.x1 = g.x;
+        this.strip.z1 = g.z;
+      }
+      return;
+    }
     if (this.box) {
       this.box.x1 = x;
       this.box.y1 = y;
@@ -680,8 +792,15 @@ export class Controller implements GestureHandlers {
   }
   boxCancel(): void {
     this.box = null;
+    this.strip = null;
   }
   boxEnd(x: number, y: number, shift: boolean): void {
+    if (this.strip) {
+      this.boxMove(x, y);
+      this.placeStrip();
+      this.strip = null;
+      return;
+    }
     const b = this.box;
     this.box = null;
     if (!b || this.me === null) return;
@@ -859,8 +978,14 @@ export class Controller implements GestureHandlers {
     if (this.keys.has("q")) this.cam.rotate(dt * 1.6);
     if (this.keys.has("e")) this.cam.rotate(-dt * 1.6);
 
+    // dải tường đang kéo: bóng từng ô thay cho bóng một nhà
+    this.drawStrip();
+    if (this.strip && this.ghost) {
+      this.ghost.root.visible = false;
+      this.placeGrid?.hide();
+    }
     // bóng mờ công trình đang đặt: xanh = đặt được, đỏ = không
-    if (this.mode === "place" && this.ghost && this.placePos && this.placeKind && this.me !== null) {
+    else if (this.mode === "place" && this.ghost && this.placePos && this.placeKind && this.me !== null) {
       const { x, z } = this.placePos;
       // bóng mờ nhảy theo lưới: đúng chỗ công trình sẽ đứng
       const rot = this.rotAt(z);
