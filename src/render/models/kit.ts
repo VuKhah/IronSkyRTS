@@ -7,7 +7,7 @@
  */
 import * as THREE from "three";
 import { ConvexGeometry } from "three/addons/geometries/ConvexGeometry.js";
-import type { Faction } from "../../sim/content";
+import type { Faction, UnitId } from "../../sim/content";
 
 /**
  * Đặt tên bộ phận (tiếng Việt) cho một khối hoặc một nhóm khối: Xưởng Mô Hình hiện tên này khi rê chuột vào,
@@ -52,6 +52,11 @@ export interface Rig {
   setFlight?(airborne: boolean, roll: number): void;
   /** Chỉ báo mức (0..1), ví dụ % pin của Trạm Tích Điện. */
   setLevel?(k: number): void;
+  /**
+   * Xưởng có sân ráp: loại xe đang đúc (null = nghỉ), số xe trong lô, tiến độ lô 0..1. Mỗi xe của lô hiện trên một sân, nhô dần
+   * theo tiến độ; xong lô thì xe thật xuất hiện đúng chỗ đó.
+   */
+  setAssembly?(kind: UnitId | null, count: number, k: number): void;
   /** Số đạn vũ khí phụ còn treo trên thân (ví dụ tên lửa dưới cánh Falcon): bắn rồi thì ẩn đi. */
   setAmmo?(n: number): void;
   /** Miệng ống theo đúng thứ tự bắn, để đường đạn xuất phát từ đó. Không khai báo thì chiến trường dùng các tia lửa đầu nòng (`muzzleFlash`). */

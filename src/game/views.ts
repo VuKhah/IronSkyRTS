@@ -465,6 +465,11 @@ export class Views {
     }
     // thanh tiến độ trên nóc xưởng: theo lô đang đúc, không có hàng chờ thì trống
     if (b.built && spec.produces && b.kind !== "hq") v.rig.setLevel?.(b.queue.length ? b.prog / sec(lotTime(b.queue[0]!)) : 0);
+    // xưởng có sân ráp: xe đang đúc hiện trên sân, nhô dần theo tiến độ lô
+    if (b.built && spec.bay) {
+      const kind = b.queue.length ? b.queue[0]! : null;
+      v.rig.setAssembly?.(kind, kind ? UNITS[kind].batch : 0, kind ? b.prog / sec(lotTime(kind)) : 0);
+    }
     v.rig.update(dt, time, a);
     const mat = viewer === null ? (b.side === 0 ? RING_MAT.own : RING_MAT.enemy) : b.side === viewer ? RING_MAT.own : RING_MAT.enemy;
     this.setRing(v, root, selected, Math.max(spec.half[0], spec.half[1]), mat, 0.14);
