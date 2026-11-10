@@ -20,13 +20,15 @@ import { groundRipple } from "./scene";
 
 /** Mặt đường nổi trên mặt đất bao nhiêu (m): đủ để không bị cỏ xuyên qua, đủ thấp để không thấy là một tấm ván. */
 const LIFT = 0.05;
-/** Ô vẽ đường 1 m (nửa ô lưới sim 2 m, để có dải cỏ 1 m sát chân tường). */
-const RES = 1;
-/** Dải cỏ giữa chân tường và mép đường (m). Lối đi 4 m = 1 m cỏ + 2 m đường + 1 m cỏ. */
-const GRASS = 1;
-/** Bề rộng đường giữa hai nhà và đường cửa nhà nhỏ (m); nhà rộng từ 8 m có cửa rộng `DOOR_WIDE`. */
-const ROAD = 2;
+/** Ô vẽ đường 0,5 m (một phần tư ô lưới sim 2 m), đủ mịn để có dải cỏ 0,5 m sát chân tường. */
+const RES = 0.5;
+/** Bề rộng đường giữa hai nhà (m; người dùng 10/11/2026: 2 → 3). */
+const ROAD = 3;
+/** Dải cỏ giữa chân tường và mép đường (m). Lối đi 4 m = 0,5 m cỏ + 3 m đường + 0,5 m cỏ. */
+const GRASS = 0.5;
+/** Bề rộng đường từ cửa chính: nhà rộng từ 8 m có cửa `DOOR_WIDE`, nhà nhỏ `DOOR_NARROW`. */
 const DOOR_WIDE = 4;
+const DOOR_NARROW = 2;
 /** Lối đi rộng nhất vẫn vẽ đường giữa hai nhà (m): xa hơn thì coi như hai nhà không đứng cạnh nhau. */
 const MAX_LANE = 8;
 /** Đường cửa đi xa nhất để tìm đường có sẵn (m); không gặp thì chỉ là sân trước cửa dài `DOOR_APRON` m. */
@@ -141,18 +143,18 @@ export class Paving {
     for (const { b, hw, hd, roads } of box) {
       if (!roads) continue;
       const dir = doorSign(b.kind, b.z);
-      const w = hw * 2 >= 8 ? DOOR_WIDE : ROAD;
+      const w = hw * 2 >= 8 ? DOOR_WIDE : DOOR_NARROW;
       const edge = b.z + dir * hd;
       let len = 0;
       let reached = false;
-      for (let s = 0; s < DOOR_MAX; s++) {
-        const zc = edge + dir * (s + 0.5);
+      for (let s = 0; s < DOOR_MAX; s += RES) {
+        const zc = edge + dir * (s + RES / 2);
         if (roadAt(b.x, zc)) {
           reached = true;
           break;
         }
         if (inOther(b, b.x, zc)) break;
-        len = s + 1;
+        len = s + RES;
       }
       if (!reached) len = Math.min(len, DOOR_APRON);
       if (len <= 0) continue;
