@@ -4,7 +4,7 @@
  * vùng luật bằng canvas 2D. Mọi số đọc từ content.ts / World nên bản vẽ luôn khớp với sim.
  */
 import * as THREE from "three";
-import { BUILDINGS, doorDir, FACTION_OF, rotHalf, RULES, UNITS, type BuildingId, type UnitId } from "../sim/content";
+import { BUILDINGS, doorDir, FACTION_OF, rotHalf, rotOffset, RULES, UNITS, type BuildingId, type UnitId } from "../sim/content";
 import { Paving } from "../game/paving";
 import { CELL } from "../sim/maps";
 import { World } from "../sim/world";
@@ -125,6 +125,126 @@ function figure(host: HTMLElement, cv: HTMLCanvasElement, caption: string): void
   host.append(f);
 }
 
+type Rect = readonly [number, number, number, number];
+type ToPx = (lx: number, lz: number) => [number, number];
+
+/**
+ * Khu ráp / giếng phóng của xưởng, theo khung mô hình (cửa ở +z): các ô xe đứng (`slots`, đánh số), dải xe chạy ra (`lane`),
+ * đường xe đi từ mỗi ô ra mép nền (`paths`), và giếng cất cánh thẳng đứng (`shafts`). Đọc từ `bay` / `doors` / `stall` / `pads`.
+ */
+function bayPlan(id: BuildingId): { slots: readonly Rect[]; lane: Rect | null; paths: [number, number][][]; shafts: readonly Rect[]; text: string } | null {
+  const spec = BUILDINGS[id];
+  const c = (v: number): number => Math.round(v / CELL);
+  if (spec.pads && spec.launch) {
+    const sizes = spec.pads.map((r) => `${c(r[2] - r[0])} × ${c(r[3] - r[1])}`).join(", ");
+    return { slots: [], lane: null, paths: [], shafts: spec.pads, text: `${spec.pads.length} giếng phóng trên sàn nóc (${sizes} ô), máy bay cất cánh thẳng đứng; không có lối ra mặt đất` };
+  }
+  const bay = spec.bay;
+  if (!bay) return null;
+  if (spec.pads) {
+    // bệ ráp + hầm kiểm chuẩn: phần khu ráp ngoài các bệ; xe lăn ngang sang hầm rồi chạy thẳng ra cạnh cửa
+    const px0 = Math.min(...spec.pads.map((r) => r[0]));
+    const lane: Rect = [bay[0], bay[1], px0, bay[3]];
+    const lx = (bay[0] + px0) / 2;
+    const paths = spec.pads.map((r): [number, number][] => [[(r[0] + r[2]) / 2, (r[1] + r[3]) / 2], [lx, (r[1] + r[3]) / 2], [lx, bay[3]]]);
+    const p = spec.pads[0];
+    return { slots: spec.pads, lane, paths, shafts: [], text: `${spec.pads.length} bệ ráp ${c(p[2] - p[0])} × ${c(p[3] - p[1])} ô + hầm kiểm chuẩn ${c(lane[2] - lane[0])} × ${c(lane[3] - lane[1])} ô (xe lăn sang hầm rồi chạy ra)` };
+  }
+  const n = spec.doors ?? 1;
+  const w = (bay[2] - bay[0]) / n;
+  const st = spec.stall ?? bay[3] - bay[1];
+  const slots: Rect[] = [];
+  const paths: [number, number][][] = [];
+  for (let k = 0; k < n; k++) {
+    const x0 = bay[0] + k * w;
+    slots.push([x0, bay[1], x0 + w, bay[1] + st]);
+    paths.push([[x0 + w / 2, bay[1] + st / 2], [x0 + w / 2, bay[3]]]);
+  }
+  const lane: Rect = [bay[0], bay[1] + st, bay[2], bay[3]];
+  return { slots, lane, paths, shafts: [], text: `${n} sân ráp ${c(w)} × ${c(st)} ô + dải đường ${c(lane[3] - lane[1])} × ${c(lane[2] - lane[0])} ô cho xe chạy ra` };
+}
+
+/** Vẽ khu ráp / giếng phóng lên bản vẽ; `to` đổi tọa độ khung mô hình ra điểm ảnh, `k` = px / m. */
+function drawBayMarks(g: CanvasRenderingContext2D, id: BuildingId, to: ToPx, k: number): void {
+  const plan = bayPlan(id);
+  if (!plan) return;
+  const box = (r: Rect): [number, number, number, number] => {
+    const [ax, az] = to(r[0], r[1]);
+    const [bx, bz] = to(r[2], r[3]);
+    return [Math.min(ax, bx), Math.min(az, bz), Math.abs(bx - ax), Math.abs(bz - az)];
+  };
+  const tag = (text: string, x: number, z: number): void => {
+    g.font = `700 ${Math.max(10, Math.round(k * 0.55))}px 'Be Vietnam Pro', sans-serif`;
+    const tw = g.measureText(text).width;
+    g.fillStyle = "#fffdf6e6";
+    g.fillRect(x - tw / 2 - 3, z - 8, tw + 6, 16);
+    g.fillStyle = "#7a3d00";
+    g.fillText(text, x - tw / 2, z + 4);
+  };
+  if (plan.lane) {
+    const [x, z, w, h] = box(plan.lane);
+    g.fillStyle = "#f4d35e66";
+    g.fillRect(x, z, w, h);
+  }
+  g.lineWidth = 2;
+  g.strokeStyle = "#d35400";
+  g.setLineDash([6, 3]);
+  for (const r of plan.slots) {
+    const [x, z, w, h] = box(r);
+    g.strokeRect(x + 1, z + 1, w - 2, h - 2);
+  }
+  g.setLineDash([]);
+  // đường xe đi: từ ô ráp ra mép nền, đầu mũi tên ở cuối
+  g.strokeStyle = "#7a5c00";
+  g.fillStyle = "#7a5c00";
+  g.lineWidth = 3;
+  for (const path of plan.paths) {
+    const pts = path.map(([x, z]) => to(x, z));
+    g.beginPath();
+    pts.forEach(([x, z], i) => (i ? g.lineTo(x, z) : g.moveTo(x, z)));
+    g.stroke();
+    const [ex, ez] = pts[pts.length - 1];
+    const [fx, fz] = pts[pts.length - 2];
+    const l = Math.hypot(ex - fx, ez - fz) || 1;
+    const ux = (ex - fx) / l;
+    const uz = (ez - fz) / l;
+    g.beginPath();
+    g.moveTo(ex, ez);
+    g.lineTo(ex - ux * 10 - uz * 7, ez - uz * 10 + ux * 7);
+    g.lineTo(ex - ux * 10 + uz * 7, ez - uz * 10 - ux * 7);
+    g.closePath();
+    g.fill();
+  }
+  plan.slots.forEach((r, i) => {
+    const [x, z] = to((r[0] + r[2]) / 2, (r[1] + r[3]) / 2);
+    tag(`${BUILDINGS[id].pads ? "Bệ" : "Sân"} ${i + 1}`, x, z);
+  });
+  if (plan.lane && BUILDINGS[id].pads) {
+    const [x, z] = to((plan.lane[0] + plan.lane[2]) / 2, (plan.lane[1] + plan.lane[3]) / 2);
+    tag("Hầm", x, z);
+  }
+  // giếng phóng: viền tím + ký hiệu cất cánh thẳng đứng (vòng tròn có chấm giữa = mũi tên chỉ lên trời)
+  plan.shafts.forEach((r, i) => {
+    const [x, z, w, h] = box(r);
+    g.strokeStyle = "#8e44ad";
+    g.lineWidth = 2;
+    g.setLineDash([6, 3]);
+    g.strokeRect(x + 1, z + 1, w - 2, h - 2);
+    g.setLineDash([]);
+    const cx = x + w / 2;
+    const cz = z + h / 2;
+    const rr = Math.min(w, h) * 0.22;
+    g.beginPath();
+    g.arc(cx, cz, rr, 0, Math.PI * 2);
+    g.stroke();
+    g.fillStyle = "#8e44ad";
+    g.beginPath();
+    g.arc(cx, cz, rr * 0.28, 0, Math.PI * 2);
+    g.fill();
+    tag(k > 16 ? `Giếng ${i + 1} · cất cánh đứng` : `Giếng ${i + 1}`, cx, z + h - 12);
+  });
+}
+
 function drawBuilding(id: BuildingId): void {
   const spec = BUILDINGS[id];
   const [hw, hd] = spec.half;
@@ -149,8 +269,9 @@ function drawBuilding(id: BuildingId): void {
   g.setLineDash([6, 4]);
   g.strokeRect(px(-hw), pz(-hd), hw * 2 * S, hd * 2 * S);
   g.setLineDash([]);
-  if (exit) {
-    // mũi tên hướng xe ra
+  drawBayMarks(g, id, (x, z) => [px(x), pz(z)], S);
+  if (exit && !bayPlan(id)) {
+    // mũi tên hướng xe ra (Tổng Hành Dinh: ô cửa ra ngoài thân)
     const x = px(exit[0]);
     const z0 = pz(exit[1] - exit[3]) + 4;
     const z1 = pz(exit[1] + exit[3]) - 3;
@@ -173,7 +294,8 @@ function drawBuilding(id: BuildingId): void {
     `<b>${spec.name}</b> <code>${id}</code>`,
     `Thân ${fmt(hw * 2)} × ${fmt(hd * 2)} m → <b>${nx} × ${nz} ô</b> · viền ${Math.round(m / CELL)} ô → nền móng <b>${nx + 2 * Math.round(m / CELL)} × ${nz + 2 * Math.round(m / CELL)} ô</b> · + ${RULES.buildPadCells} ô cấm xây`
   ];
-  if (spec.bay) parts.push(spec.pads ? `${spec.pads.length} bệ ráp + hầm kiểm chuẩn cho xe chạy ra (trong thân nhà)` : `${spec.doors} ô ráp xe + dải đường cho xe chạy ra (trong thân nhà)`);
+  const bp = bayPlan(id);
+  if (bp) parts.push(bp.text);
   else if (exit) parts.push("Có cửa ra 4 × 2 m (xe chạy ra)");
   if (spec.fort) parts.push("Công sự");
   figure(document.getElementById("buildings")!, cv, parts.join("<br>"));
@@ -288,7 +410,8 @@ function drawLayout(): void {
   const X0 = -32;
   const X1 = 54;
   const Z0 = -38;
-  const Z1 = 30;
+  const Z1 = 46;
+  const UNIT_Z = 37; // hàng binh chủng so cỡ
   const cv = document.createElement("canvas");
   cv.width = (X1 - X0) * LS;
   cv.height = (Z1 - Z0) * LS;
@@ -348,14 +471,15 @@ function drawLayout(): void {
     rigs.push(rig);
   };
   for (const b of blds) put(b.kind, b.x, b.z, (b.rot * Math.PI) / 2);
-  // binh chủng xếp cột bên phải để so cỡ (mũi quay về phía trận, −z); Xe Vận Tải đỗ ở ô dỡ hàng bên trái Tổng Hành Dinh
+  // binh chủng xếp một hàng ngang ở đáy bản vẽ để so cỡ (mũi quay về phía trận, −z), tránh đường nhựa đi về phía trận;
+  // Xe Vận Tải đỗ ở ô dỡ hàng bên trái Tổng Hành Dinh
   const names: [string, number, number][] = [];
-  let uz = -32;
+  let ux = X0 + 3;
   for (const id of Object.keys(UNITS) as UnitId[]) {
-    const len = id === "artillery" ? 6 : UNITS[id].radius * 1.6;
-    put(id, hq.x + 42, hq.z + uz + len, Math.PI);
-    names.push([UNITS[id].short, hq.x + 47, hq.z + uz + len]);
-    uz += len * 2 + 2;
+    const wid = Math.max(UNITS[id].radius * 2, id === "valkyrie" ? 7.4 : 0, id === "falcon" ? 5.2 : 0);
+    put(id, hq.x + ux + wid / 2, hq.z + UNIT_Z, Math.PI);
+    names.push([UNITS[id].short, hq.x + ux + wid / 2, hq.z + UNIT_Z + 6.5]);
+    ux += wid + 3;
   }
   put("hauler", hq.x - 6.6, hq.z, Math.PI / 2);
   const cam = new THREE.OrthographicCamera(X0, X1, -Z0, -Z1, 0.1, 400);
@@ -379,7 +503,11 @@ function drawLayout(): void {
     g.setLineDash([5, 4]);
     g.strokeRect(px(b.x - hw), pz(b.z - hd), hw * 2 * LS, hd * 2 * LS);
     g.setLineDash([]);
-    const e = w.exitRect(b.kind, b.x, b.z, b.rot);
+    drawBayMarks(g, b.kind, (lx, lz) => {
+      const [ox, oz] = rotOffset(lx, lz, b.rot);
+      return [px(b.x + ox), pz(b.z + oz)];
+    }, LS);
+    const e = bayPlan(b.kind) ? null : w.exitRect(b.kind, b.x, b.z, b.rot);
     if (e) {
       const [dx, dz] = doorDir(b.rot);
       const bx = px(e[0] + dx * e[2]);
@@ -404,7 +532,7 @@ function drawLayout(): void {
   }
   g.font = "11px 'Be Vietnam Pro', sans-serif";
   g.fillStyle = "#2b2b2b";
-  for (const [n, x, z] of names) g.fillText(n, px(x), pz(z) + 4);
+  for (const [n, x, z] of names) g.fillText(n, px(x) - g.measureText(n).width / 2, pz(z) + 4);
   g.fillRect(10, cv.height - 14, 10 * LS, 3);
   g.fillText("10 m (5 ô)", 10, cv.height - 18);
   figure(
