@@ -20,8 +20,8 @@
       h2 { margin: 18px 24px 6px; font-size: 17px; }
       .sheet { display: flex; flex-wrap: wrap; gap: 14px; padding: 6px 24px 28px; align-items: flex-start; }
       figure { margin: 0; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 8px; box-shadow: 0 1px 3px #0001; }
-      figure canvas { display: block; }
-      figcaption { font-size: 12px; line-height: 1.45; margin-top: 6px; max-width: 100%; }
+      figure canvas { display: block; max-width: 100%; height: auto; }
+      figcaption { font-size: 12px; line-height: 1.45; margin-top: 6px; max-width: 100% !important; }
       figcaption b { font-size: 13px; }
       a { color: #2f6fb8; }
     </style>
@@ -30,34 +30,24 @@
     <header>
       <h1>Bản Vẽ Mặt Bằng</h1>
       <p>
-        Mọi binh chủng và công trình nhìn thẳng từ trên xuống, <b>cùng một tỉ lệ</b>, đặt trên lưới đất 2 m của sim (nét đậm) và lưới 0,4 m
-        (nét mờ, kích thước mô hình là bội số của 4 dm). Cửa chính / mũi xe quay xuống dưới (+z). Số liệu lấy thẳng từ <code>content.ts</code>
-        và mô hình thật nên luôn khớp với trận đấu.
+        Tất cả công trình (mỗi loại một nhà, không tính quân) nhìn thẳng từ trên xuống, <b>xếp sát nhau cho hình bao nhỏ nhất</b>, trên lưới
+        đất 2 m của sim (nét đậm) và lưới 0,4 m (nét mờ). Mọi nhà đặt bằng đúng luật đặt nhà của sim: nền móng gồm thân + viền, hai nhà
+        cạnh nhau dùng chung 1 ô cấm xây, lối ra không bị vây. Số liệu lấy thẳng từ <code>content.ts</code> nên đổi cỡ nhà thì bản vẽ tự xếp lại.
       </p>
       <div class="legend">
         <span><i class="sw" style="background:#9cc3e6"></i>Ô lưới nhà chiếm (chặn xe)</span>
-        <span><i class="sw" style="border:2px dashed #c0392b;background:none"></i>Nền móng thật (<code>half</code>)</span>
-        <span><i class="sw" style="background:#f4d35e"></i>Cửa ra ngoài thân (Tổng Hành Dinh: 4 × 2 m)</span>
-        <span><i class="sw" style="border:2px dashed #d35400;background:none"></i>Sân ráp / bệ ráp trong thân xưởng (xe mới đúc đứng ở đây, đánh số)</span>
-        <span><i class="sw" style="background:#f4d35e66"></i>Dải đường / hầm kiểm chuẩn cho xe chạy ra</span>
-        <span><i class="sw" style="background:#7a5c00"></i>Đường xe đi từ ô ráp ra mép nền</span>
-        <span><i class="sw" style="border:2px dashed #8e44ad;background:none"></i>Giếng phóng: máy bay cất cánh thẳng đứng</span>
+        <span><i class="sw" style="border:2px dashed #c0392b;background:none"></i>Thân nhà (<code>half</code>)</span>
         <span><i class="sw" style="background:#cfe5bf"></i>Viền trong mô hình (đất trống, xe đi được)</span>
         <span><i class="sw" style="background:#f6d0cb"></i>Ô cấm xây (hai nhà dùng chung)</span>
-        <span><i class="sw" style="border:2px solid #c0392b;border-radius:50%;background:#f3c9c4"></i>Vòng va chạm của quân và ô nó đè lên</span>
+        <span><i class="sw" style="background:#f4d35e"></i>Cửa ra ngoài thân (Tổng Hành Dinh)</span>
+        <span><i class="sw" style="border:2px dashed #d35400;background:none"></i>Sân ráp / bệ ráp (đánh số)</span>
+        <span><i class="sw" style="background:#f4d35e66"></i>Dải đường / hầm kiểm chuẩn</span>
+        <span><i class="sw" style="background:#7a5c00"></i>Đường xe đi ra</span>
+        <span><i class="sw" style="border:2px dashed #8e44ad;background:none"></i>Giếng phóng (cất cánh thẳng đứng)</span>
+        <span><i class="sw" style="border:2px dashed #2b2b2b;background:none"></i>Hình bao</span>
       </div>
     </header>
-    <h2>Mặt bằng chung: căn cứ mẫu phe Lam</h2>
-    <p style="margin: 0 24px">
-      Cả 16 công trình đặt trên <b>cùng một lưới đất</b>, quanh một Tổng Hành Dinh phe Lam trên bãi đất trống của bản đồ thử 960 m, qua đúng luật đặt nhà của sim (chỗ nào phạm luật ghi
-      lỗi bên dưới). Đường nhựa do chính bộ dựng đường của game sinh ra. Phía trận (giữa bản đồ) ở trên. Các binh chủng xếp một hàng ở đáy
-      bản vẽ để so cỡ; một Xe Vận Tải đỗ ở ô dỡ hàng cạnh Tổng Hành Dinh.
-    </p>
     <section class="sheet" id="layout"></section>
-    <h2>Công trình</h2>
-    <section class="sheet" id="buildings"></section>
-    <h2>Quân đội</h2>
-    <section class="sheet" id="units"></section>
     <script type="module" src="./src/plan-page/main.ts"></script>
   </body>
 </html>
