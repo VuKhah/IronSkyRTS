@@ -4,6 +4,7 @@
  * (không phải tự dọn hàng nghìn đối tượng 3D của trận trước).
  */
 import * as THREE from "three";
+import type Stats from "stats-gl";
 import { BUILDINGS, FACTION_OF, RES_NAME, RULES, SIDE_NAME, UNITS, type EntityId, type Side, type UnitId } from "../sim/content";
 import type { SideStats, SimEvent } from "../sim/types";
 import { TICK_RATE } from "../sim/world";
@@ -487,9 +488,26 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
   }
   // ?perf=1: bảng đo hiệu năng (FPS, số lệnh vẽ, số tam giác) — để biết máy có bị lag không
   const perfEl = new URLSearchParams(location.search).has("perf") ? document.createElement("div") : null;
+  // Kèm biểu đồ stats-gl: FPS, CPU (ms để ra lệnh vẽ), GPU (ms card đồ họa vẽ thật) và SIM (ms lõi mô phỏng mỗi khung hình).
+  // Nhờ vậy biết chỗ nghẽn nằm ở đâu: GPU cao = cảnh nặng (tam giác, bóng đổ); CPU cao = nhiều lệnh vẽ; SIM cao = luật chơi.
+  let stats: Stats | null = null;
+  let simPanel: InstanceType<typeof Stats.Panel> | null = null;
+  let simMs = 0;
+  let simMax = 0;
+  let simFrames = 0;
+  let simT = performance.now();
   if (perfEl) {
     perfEl.style.cssText = "position:absolute;left:8px;top:48px;background:rgba(0,0,0,.7);color:#9f9;font:12px monospace;padding:4px 8px;border-radius:6px;pointer-events:none;white-space:pre";
     app.appendChild(perfEl);
+    // Tải động: người chơi bình thường không phải tải thêm gói này.
+    void import("stats-gl").then(({ default: StatsGL }) => {
+      const s = new StatsGL({ trackGPU: true, horizontal: true, logsPerSecond: 4 });
+      simPanel = s.addPanel(new StatsGL.Panel("SIM", "#fc6", "#321"));
+      s.dom.style.cssText += ";position:absolute;left:8px;top:74px;right:auto;bottom:auto;z-index:5;pointer-events:none";
+      app.appendChild(s.dom);
+      void s.init(scene.renderer);
+      stats = s;
+    });
   }
   let perfFrames = 0;
   let fpsFrames = 0;
@@ -517,7 +535,20 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
     if (world.winner !== -1) scheduleEnd();
     me = match.player;
     viewer = sandbox ? sandbox.viewer() : me;
+    const simStart = stats ? performance.now() : 0;
     ctrl.alpha = match.advance(dt);
+    if (stats && simPanel) {
+      const ms = performance.now() - simStart;
+      simMs += ms;
+      simMax = Math.max(simMax, ms);
+      simFrames++;
+      if (now - simT > 250) {
+        simPanel.update(simMs / simFrames, Math.max(10, simMax), 2, " ms");
+        simPanel.updateGraph(simMs / simFrames, Math.max(10, simMax));
+        simMs = simMax = simFrames = 0;
+        simT = now;
+      }
+    }
     if (debugFrames > 0) {
       debugFrames--;
       console.log(`[frame] now=${now.toFixed(1)} dt=${dt.toFixed(4)} tick=${world.tick} paused=${match.paused} speed=${match.speed}`);
@@ -564,6 +595,7 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
     }
     sandbox?.update(now);
     scene.render(cam.cam, cam.strategic);
+    stats?.update();
     // Tự hạ chất lượng nếu máy chậm (đo mỗi 2 giây, chỉ khi tab đang hiện). ?hq=1 để giữ nguyên.
     // Chỉ hạ khi chậm HAI lần đo liên tiếp: một cú giật ngắn (một loạt tên lửa, nổ lớn) không được làm xấu hình cả trận.
     fpsFrames++;

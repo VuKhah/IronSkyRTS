@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Biểu tượng Iron Sky: nền thép tối, hai cánh chữ V màu phe Lam trên đường chân trời -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b2738"/>
+      <stop offset="1" stop-color="#0b0f16"/>
+    </linearGradient>
+    <linearGradient id="wing" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7cc4ff"/>
+      <stop offset="1" stop-color="#2f7fd8"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="196" fill="none" stroke="#3a4a60" stroke-width="10"/>
+  <path d="M96 330 H416" stroke="#3a4a60" stroke-width="10" stroke-linecap="round"/>
+  <path d="M256 128 L408 300 L340 300 L256 206 L172 300 L104 300 Z" fill="url(#wing)"/>
+  <path d="M256 236 L330 320 L282 320 L256 290 L230 320 L182 320 Z" fill="#e8a33c"/>
+</svg>
