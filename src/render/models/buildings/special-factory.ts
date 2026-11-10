@@ -231,7 +231,8 @@ export function buildSpecialFactory(p: Palette, faction: Faction): Rig {
 
   // ================================================================ 6. XE ĐANG RÁP / MÁY MÓC TRÊN TỪNG BỆ
   const kinds = (SPEC.produces ?? []) as UnitId[];
-  const face = -((SPEC.padFace ?? 0) * Math.PI) / 2; // nấc padFace → góc quay quanh trục đứng (3 = đầu xe về −x)
+  // nấc padFace n → rotation.y = n·90° (mũi +z quay thành sin/cos của góc đó: 1 = +x, 3 = −x), khớp doorDir(n) của sim
+  const face = ((SPEC.padFace ?? 0) * Math.PI) / 2;
   const stalls: { cars: Map<UnitId, THREE.Group>; tools: THREE.Group; spark: THREE.Mesh }[] = [];
   PADS.forEach((r) => {
     const cx = (r[0] + r[2]) / 2;
