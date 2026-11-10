@@ -383,7 +383,13 @@ export class World {
   }
 
   canHit(w: WeaponSpec, t: Target): boolean {
+    if (t.cat === "unit" && World.sheltered(t)) return false;
     return this.isAirborne(t) ? w.dmgAir > 0 : w.dmgGround > 0;
+  }
+
+  /** Máy bay còn chờ dưới giếng phóng: đang ở trong nhà, không bị nhắm bắn, không dính sát thương lan. */
+  static sheltered(u: Unit): boolean {
+    return u.air === "launch" && u.airT < 0;
   }
 
   padPos(b: Building, i: number): [number, number] {
@@ -846,7 +852,7 @@ export class World {
       }
       case "rtb":
         for (const u of this.ownUnits(side, o.ids)) {
-          if (u.air === "flying" || u.air === "takeoff") u.rtb = true;
+          if (u.air === "flying" || u.air === "takeoff" || u.air === "launch") u.rtb = true;
           if (u.air === "parked") u.mission = "none";
         }
         break;
@@ -2455,13 +2461,14 @@ export class World {
     for (let k = 0; k < us.batch; k++) {
     const offset = (k - (us.batch - 1) / 2) * (2 * us.radius + FORMATION_GAP);
     if (us.domain === "air") {
-      // Nhà Máy Máy Bay: lăn ra cửa xưởng (phía cửa theo nấc xoay `doorDir`), cất cánh thẳng ra trước, rồi tự
-      // bay về bãi trống gần nhất (giữ chỗ ngay từ lúc xuất xưởng để hai máy bay không tranh một bãi)
+      // Nhà Máy Máy Bay: cả lô ra đời trong cùng tick này và giữ chỗ bãi đậu ngay (đã kiểm đủ bãi cho cả lô ở trên), nên hai
+      // xưởng không bao giờ tranh một bãi. Có giếng phóng (`pads` + `launch`): chiếc k dùng giếng k mod số giếng, chiếc dùng
+      // chung giếng chờ dưới giếng thêm `gap` giây mỗi lượt, rồi bay thẳng lên. Không có giếng: cất cánh thẳng ra trước cửa.
+      const bs = BUILDINGS[b.kind];
       const slot = this.nearestFreePad(b.side, b.x, b.z)!;
       const [ddx, ddz] = doorDir(b.rot);
-      const reach = BUILDINGS[b.kind].half[1] + 1; // nửa chiều sâu theo khung mô hình (cửa ở +z của mô hình)
-      // nhà có lối ra trong nền móng: mỗi máy bay của lô lăn ra một cửa
-      const [ax, az] = BUILDINGS[b.kind].bay ? this.doorPos(b, k) : [b.x + ddx * reach - ddz * offset, b.z + ddz * reach + ddx * offset];
+      const reach = bs.half[1] + 1; // nửa chiều sâu theo khung mô hình (cửa ở +z của mô hình)
+      const [ax, az] = bs.bay || bs.pads ? this.doorPos(b, k) : [b.x + ddx * reach - ddz * offset, b.z + ddz * reach + ddx * offset];
       const u = this.spawnUnit(kind, b.side, ax, az);
       u.lot = lot;
       u.hx = u.phx = ddx;
@@ -2470,8 +2477,16 @@ export class World {
       u.padB = slot.b.id;
       u.padI = slot.i;
       u.rtb = true;
-      u.air = "takeoff";
-      u.airT = 0;
+      if (bs.launch && bs.pads) {
+        const L = RULES.air.launch;
+        u.air = "launch";
+        u.airT = -sec(L.hatch + Math.floor(k / bs.pads.length) * L.gap);
+        u.alt = u.palt = bs.launch.deck - bs.launch.shaft; // đáy giếng
+        u.ax = bs.launch.shaft + L.clear; // lúc phóng, `ax` giữ quãng bay thẳng lên (m); hạ cánh mới dùng ax làm điểm đầu
+      } else {
+        u.air = "takeoff";
+        u.airT = 0;
+      }
     } else {
       // xe ra ở ô cửa ra (trước cửa, phía `doorDir`), cả lô xếp ngang theo bề rộng cửa; chỗ bị xe khác đứng thì lấy ô trống gần nhất
       const e = this.exitRect(b.kind, b.x, b.z, b.rot);
@@ -3564,7 +3579,7 @@ export class World {
     if (u.fuel > 0) return true;
     u.fuel = 0;
     if (this.homeDistance(u) !== null || u.air === "landing") {
-      if (u.air === "flying" || u.air === "takeoff") {
+      if (u.air === "flying" || u.air === "takeoff" || u.air === "launch") {
         u.rtb = true;
         u.air = "returning";
       }
@@ -3637,6 +3652,33 @@ export class World {
         u.z += u.hz * u.speed * DT;
         if (!this.burn(u, spec)) return;
         if (u.airT >= T) {
+          u.air = "flying";
+          u.alt = A.cruiseAlt;
+        }
+        return;
+      }
+      case "launch": {
+        // 1) chờ dưới giếng (airT < 0) · 2) bay thẳng lên tới cao hơn sàn `clear` · 3) tăng tốc ra trước, lên độ bay
+        const L = A.launch;
+        u.airT++;
+        if (u.airT <= 0) {
+          u.speed = 0;
+          return;
+        }
+        const rise = sec(L.rise);
+        const out = sec(L.climbOut);
+        if (u.airT <= rise) {
+          u.speed = 0;
+          u.alt += u.ax / rise; // ax = quãng bay thẳng lên, đặt lúc xuất xưởng
+        } else {
+          const k = (u.airT - rise) / out;
+          u.speed = spec.speed * Math.min(1, 0.15 + 0.85 * k);
+          u.alt += (A.cruiseAlt - u.alt) / Math.max(1, rise + out - u.airT + 1);
+          u.x += u.hx * u.speed * DT;
+          u.z += u.hz * u.speed * DT;
+        }
+        if (!this.burn(u, spec)) return;
+        if (u.airT >= rise + out) {
           u.air = "flying";
           u.alt = A.cruiseAlt;
         }
@@ -4029,7 +4071,7 @@ export class World {
   private clusterValue(side: Side, x: number, z: number, r: number): number {
     let v = 0;
     for (const e of this.units) {
-      if (e.side === side || e.hp <= 0 || e.alt > AIRBORNE_ALT) continue;
+      if (e.side === side || e.hp <= 0 || e.alt > AIRBORNE_ALT || World.sheltered(e)) continue;
       if (dist2(x, z, e.x, e.z) <= r * r && this.visibleTo(side, e)) v += valueOf(e.kind);
     }
     return v;
@@ -4100,7 +4142,7 @@ export class World {
       }
       if (s.splash > 0) {
         for (const u of this.units) {
-          if (u.side === s.side || u.hp <= 0 || (u.alt > AIRBORNE_ALT) !== s.hitAir) continue;
+          if (u.side === s.side || u.hp <= 0 || (u.alt > AIRBORNE_ALT) !== s.hitAir || World.sheltered(u)) continue;
           const r = s.splash + UNITS[u.kind].radius * 0.5;
           if (dist2(x, z, u.x, u.z) <= r * r) this.damage(u, s);
         }

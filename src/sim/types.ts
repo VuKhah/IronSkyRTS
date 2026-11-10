@@ -11,7 +11,8 @@ import type { BuildingId, DmgType, FormationId, Res, Side, UnitId, WeaponVisual 
 export type UnitOrder = "idle" | "move" | "amove" | "attack" | "strike";
 /** Xe Vận Tải: khai thác mỏ (toMine → mining → toDock → unloading) hoặc trục vớt xác (toWreck → salvaging → toDock → unloading). */
 export type HaulState = "idle" | "toMine" | "mining" | "toDock" | "unloading" | "toWreck" | "salvaging";
-export type AirState = "none" | "parked" | "takeoff" | "flying" | "returning" | "landing";
+/** `launch`: phóng thẳng đứng từ giếng Nhà Máy Máy Bay (airT < 0 = còn chờ dưới giếng, được che chắn). */
+export type AirState = "none" | "parked" | "takeoff" | "launch" | "flying" | "returning" | "landing";
 export type AirMission = "none" | "move" | "attack";
 
 export interface Unit {

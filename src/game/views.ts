@@ -8,7 +8,7 @@ import * as THREE from "three";
 import { ExitArrows } from "./exit-arrows";
 import { Paving } from "./paving";
 import { sec } from "../sim/world";
-import { BUILDINGS, doorDir, FACTION_OF, RULES, UNITS, type Side, lotTime } from "../sim/content";
+import { BUILDINGS, doorDir, FACTION_OF, RULES, rotOffset, UNITS, type Side, lotTime } from "../sim/content";
 import type { GameMap } from "../sim/maps";
 import type { Building, Mine, Target, Unit, Uplink, Wreck } from "../sim/types";
 import { AIRBORNE_ALT, DT, type World } from "../sim/world";
@@ -376,7 +376,8 @@ export class Views {
       const pitchTarget = Math.atan2(sink, Math.max(1, u.speed));
       v.pitch += (pitchTarget - v.pitch) * Math.min(1, dt * 5);
       root.rotation.set(v.pitch, v.yaw, 0, "YXZ");
-      v.rig.setFlight?.(alt > 0.6, flying ? v.roll : 0);
+      // đang phóng từ giếng: giữ càng hạ tới khi bắt đầu bay ra trước
+      v.rig.setFlight?.(u.air === "launch" ? u.speed > 0 : alt > 0.6, flying ? v.roll : 0);
       if (spec.secondary) v.rig.setAmmo?.(u.ammo2);
       if (spec.weapon && (world.tick - u.lastShot) * DT < 0.25) a.add("fire");
     } else {
@@ -465,7 +466,22 @@ export class Views {
     }
     // thanh tiến độ trên nóc xưởng: theo lô đang đúc, không có hàng chờ thì trống
     if (b.built && spec.produces && b.kind !== "hq") v.rig.setLevel?.(b.queue.length ? b.prog / sec(lotTime(b.queue[0]!)) : 0);
-    // xưởng có sân ráp: xe đang đúc hiện trên sân, nhô dần theo tiến độ lô
+    // giếng phóng: mở cửa cuốn khi có máy bay phe mình đang phóng từ giếng đó (theo trạng thái sim, tua nhanh vẫn đúng)
+    if (b.built && spec.launch && spec.pads && v.rig.setLaunch) {
+      spec.pads.forEach((r, k) => {
+        const [ox, oz] = rotOffset((r[0] + r[2]) / 2, (r[1] + r[3]) / 2, b.rot);
+        const px = b.x + ox;
+        const pz = b.z + oz;
+        let open = false;
+        for (const u of world.units)
+          if (u.side === b.side && u.air === "launch" && (u.x - px) ** 2 + (u.z - pz) ** 2 < 9) {
+            open = true;
+            break;
+          }
+        v.rig.setLaunch!(k, open);
+      });
+    }
+    // xưởng có sân ráp: xe đang đúc hiện trên sân (hiện thẳng, không nâng)
     if (b.built && spec.bay) {
       const kind = b.queue.length ? b.queue[0]! : null;
       v.rig.setAssembly?.(kind, kind ? UNITS[kind].batch : 0, kind ? b.prog / sec(lotTime(kind)) : 0);

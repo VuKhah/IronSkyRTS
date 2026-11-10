@@ -352,7 +352,7 @@ export class Hud {
           const sp = UNITS[single.kind];
           if (sp.fuel) {
             const f = single.fuel / sp.fuel.tank;
-            const state = { parked: f >= RULES.air.takeoffMin ? "Sẵn sàng" : "Đang nạp dầu", takeoff: "Cất cánh", flying: "Đang bay", returning: "Về sân", landing: "Hạ cánh", none: "" }[single.air];
+            const state = { parked: f >= RULES.air.takeoffMin ? "Sẵn sàng" : "Đang nạp dầu", takeoff: "Cất cánh", launch: "Phóng khỏi giếng", flying: "Đang bay", returning: "Về sân", landing: "Hạ cánh", none: "" }[single.air];
             extra = `<small>Dầu ${Math.round(single.fuel)}/${sp.fuel.tank}L · ${state}</small>`;
           } else if (single.kind === "hauler") {
             const st = {

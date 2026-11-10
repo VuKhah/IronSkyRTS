@@ -275,6 +275,12 @@ export interface BuildingSpec {
   pads?: readonly (readonly [number, number, number, number])[];
   /** Hướng đầu xe đứng trên bệ, theo khung mô hình (nấc như `rot`: 0 = +z, 1 = +x, 2 = −z, 3 = −x). Mặc định 0 (nhìn ra cửa). */
   padFace?: number;
+  /**
+   * Nhà Máy Máy Bay: `pads` là các GIẾNG PHÓNG trên sàn nóc, máy bay cất cánh thẳng đứng (trạng thái `launch`). Cả lô ra đời cùng
+   * một tick (giữ đủ bãi đậu như cũ); chiếc thứ k dùng giếng k mod số giếng, chiếc dùng chung giếng chờ dưới giếng tới lượt.
+   * `deck`: độ cao mặt sàn phóng (m), `shaft`: độ sâu giếng (m).
+   */
+  launch?: { deck: number; shaft: number };
   /** Trạm Radar: tầm nhìn xuyên sương mù khi đủ điện (m). */
   radarSight?: number;
   /** Công trình tiêu thụ điện: thứ tự được cấp điện khi thiếu (1 = trước nhất). Hậu cần tự phân. */
@@ -414,7 +420,12 @@ export const RULES = {
     /** 1 Dầu trong kho = 1 lít nhiên liệu. */
     oilPerLiter: 1,
     /** Số bãi đậu mỗi Sân Đáp (vị trí: `PAD_OFFSETS` cuối file này). */
-    pads: 5
+    pads: 5,
+    /**
+     * Phóng thẳng đứng từ giếng Nhà Máy Máy Bay (giây / mét): chờ `hatch` cho cửa cuốn mở, chiếc dùng chung giếng chờ thêm
+     * `gap` mỗi lượt; bay thẳng lên trong `rise` tới cao hơn sàn `clear`, rồi tăng tốc ra trước và lên độ bay trong `climbOut`.
+     */
+    launch: { hatch: 1, gap: 2.5, rise: 1.6, clear: 2.5, climbOut: 1.6 }
   }
 } as const;
 
@@ -778,7 +789,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     role: "Pháo đài bay. Rải chuỗi bom phá hủy căn cứ. (Sau MVP)",
     domain: "air",
     group: "KQ",
-    batch: 2,
+    batch: 1, // người dùng 10/11/2026: Valkyrie đúc lô 1 (một giếng lớn)
     mvp: false,
     cost: { iron: 230, oil: 90 },
     buildTime: 9,
@@ -906,15 +917,19 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     armorClass: "struct",
     sight: 16,
     half: [9, 9], // thân 9 × 9 ô (người dùng 10/11/2026, bản vẽ xưởng): + viền 1 ô trong mô hình = nền móng 11 × 11 ô
-    bay: [-9, 1, 3, 9], // góc trước bên phải nhìn theo bản vẽ (cửa ở trên): 3 ô ráp xe 2 × 3 + dải đường 1 × 6 trước chúng
-    doors: 3,
-    stall: 6,
+    // 10/11/2026: nhà chứa có sàn phóng trên nóc, 2 giếng cửa cuốn (lớn 8 × 8 m cho Valkyrie sải cánh 7,3 m, nhỏ 6 × 6 m);
+    // không có lối ra mặt đất, máy bay cất cánh thẳng đứng. Giếng đầu tiên là giếng lớn.
+    pads: [
+      [-6.5, -0.2, 1.5, 7.8],
+      [-5.5, -8, 0.5, -2]
+    ],
+    launch: { deck: 7.5, shaft: 5 },
     produces: ["falcon", "valkyrie"],
     power: -10,
     priority: 3,
     features: [
       "Cần ít nhất một Sân Đáp còn bãi trống: máy bay mới cần chỗ đậu, hết bãi thì xưởng tạm dừng.",
-      "Máy bay lăn ra cửa xưởng, cất cánh rồi tự bay về bãi trống gần nhất (đầy dầu).",
+      "Hai giếng phóng cửa cuốn trên nóc: máy bay cất cánh thẳng đứng rồi tự bay về bãi trống gần nhất (đầy dầu).",
       "Xưởng bị phá thì không đúc thêm được, máy bay đang có vẫn bay từ Sân Đáp."
     ]
   },
