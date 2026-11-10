@@ -461,8 +461,18 @@ export class World {
   private layoutError(kind: BuildingId, x: number, z: number): string | null {
     const [hw, hd] = this.blockHalf(kind);
     const exits: { name: string; e: [number, number, number, number] }[] = [];
+    const myClear = (BUILDINGS[kind].clearCells ?? 0) * CELL;
     for (const b of this.buildings) {
       if (b.hp <= 0) continue;
+      // đệm cho xe vận tải ra vào (Tổng Hành Dinh…): lấy đệm lớn hơn của hai nhà
+      const pad = Math.max(myClear, (BUILDINGS[b.kind].clearCells ?? 0) * CELL);
+      if (pad > 0) {
+        const [ow, od] = this.blockHalf(b.kind);
+        if (Math.abs(b.x - x) < hw + ow + pad - 1e-6 && Math.abs(b.z - z) < hd + od + pad - 1e-6) {
+          const who = BUILDINGS[b.kind].clearCells ? BUILDINGS[b.kind].name : BUILDINGS[kind].name;
+          return `Phải chừa ${pad / CELL} ô quanh ${who} cho xe vận tải ra vào`;
+        }
+      }
       const e = this.exitRect(b.kind, b.x, b.z);
       if (!e) continue;
       if (Math.abs(e[0] - x) < e[2] + hw - 1e-6 && Math.abs(e[1] - z) < e[3] + hd - 1e-6) return `Không được chắn cửa ra của ${BUILDINGS[b.kind].name}`;

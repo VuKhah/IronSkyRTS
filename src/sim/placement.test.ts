@@ -71,14 +71,26 @@ describe("Đặt công trình lên lưới", () => {
 
   it("nhà được đặt sát nhau (người dùng 10/11/2026: miễn là xe vẫn ra được)", () => {
     const w = new World(1, { sandbox: true });
+    // xưởng ở chỗ đất trống; Trạm Radar sát hông xưởng (không phải phía cửa), rồi tháp sát Radar
+    expect(put(w, 0, "factory", -20, 20)).toBeNull();
+    const [fw] = BUILDINGS.factory.half;
+    const [rx] = w.blockCells("radar");
+    const x1 = -20 - fw - (rx * CELL) / 2;
+    expect(put(w, 0, "radar", x1, 20)).toBeNull();
+    expect(put(w, 0, "turret", x1 - rx * CELL, 20)).toBeNull();
+  });
+
+  it("Tổng Hành Dinh vẫn phải có đệm 2 ô quanh mình cho xe vận tải ra vào", () => {
+    const w = new World(1, { sandbox: true });
+    expect(BUILDINGS.hq.clearCells).toBe(2);
     const hq = w.buildings.find((b) => b.kind === "hq" && b.side === 0)!;
     const [hw] = BUILDINGS.hq.half;
-    const dir = hq.x > 0 ? -1 : 1;
-    // Trạm Radar sát cạnh hông Tổng Hành Dinh (không phải phía cửa), rồi tháp sát Radar
     const [rx] = w.blockCells("radar");
-    const x1 = hq.x + dir * (hw + (rx * CELL) / 2);
-    expect(put(w, 0, "radar", x1, hq.z)).toBeNull();
-    expect(put(w, 0, "turret", x1 + dir * rx * CELL, hq.z)).toBeNull();
+    const dir = hq.x > 0 ? -1 : 1;
+    const at = (gap: number): number => hq.x + dir * (hw + gap + (rx * CELL) / 2);
+    expect(put(w, 0, "radar", at(0), hq.z)).toMatch(/^Phải chừa 2 ô quanh Tổng Hành Dinh/);
+    expect(put(w, 0, "radar", at(CELL), hq.z)).toMatch(/^Phải chừa 2 ô quanh Tổng Hành Dinh/);
+    expect(put(w, 0, "radar", at(2 * CELL), hq.z)).toBeNull();
   });
 
   it("không được đè lên ô cửa ra; cửa ra của Tổng Hành Dinh và xưởng quay về phía giữa bản đồ", () => {
@@ -87,7 +99,14 @@ describe("Đặt công trình lên lưới", () => {
       const hq = w.buildings.find((b) => b.kind === "hq" && b.side === side)!;
       const e = w.exitRect("hq", hq.x, hq.z)!;
       expect(Math.sign(e[1] - hq.z)).toBe(Math.sign(-hq.z)); // cửa nhìn về phía z = 0
-      expect(put(w, side, "power-pylon", e[0], e[1] + Math.sign(e[1] - hq.z) * 1)).toMatch(/^Không được chắn cửa ra/);
+    }
+    const sg = [1, -1] as const;
+    for (const side of [0, 1] as const) {
+      const fx = sg[side] * -20;
+      const fz = sg[side] * 20;
+      expect(put(w, side, "factory", fx, fz)).toBeNull();
+      const e = w.exitRect("factory", fx, fz)!;
+      expect(put(w, side, "power-pylon", e[0], e[1] + Math.sign(e[1] - fz))).toMatch(/^Không được chắn cửa ra/);
     }
   });
 

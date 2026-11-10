@@ -5,6 +5,7 @@
  * - Hoạt ảnh lấy từ trạng thái sim: đang chạy → "move", vừa bắn → "fire", tháp pháo quay về mục tiêu thật.
  */
 import * as THREE from "three";
+import { ExitArrows } from "./exit-arrows";
 import { Paving } from "./paving";
 import { sec } from "../sim/world";
 import { BUILDINGS, doorSign, FACTION_OF, RULES, UNITS, type Side, lotTime } from "../sim/content";
@@ -135,6 +136,8 @@ export class Views {
 
   /** Mặt đường quanh công trình (một mesh, dựng lại khi danh sách nhà nhìn thấy thay đổi). */
   private paving: Paving;
+  /** Mũi tên cửa ra trước các nhà đang được chọn (theo id công trình). */
+  private arrows = new Map<number, ExitArrows>();
 
   constructor(
     private scene: THREE.Scene,
@@ -183,6 +186,23 @@ export class Views {
       v.seen = f;
       this.updateBuilding(world, b, v, dt, time, selected.has(b.id), viewer);
     }
+    // ba mũi tên chỉ hướng cửa ra trước nhà phe mình đang được chọn
+    for (const b of seenBuildings) {
+      const ex = selected.has(b.id) && b.side === viewer ? world.exitRect(b.kind, b.x, b.z) : null;
+      let a = this.arrows.get(b.id);
+      if (!ex) {
+        a?.hide();
+        continue;
+      }
+      if (!a) this.arrows.set(b.id, (a = new ExitArrows(this.scene, this.map)));
+      const dir = Math.sign(ex[1] - b.z);
+      a.show(b.x, ex[1] - dir * ex[3], dir, time);
+    }
+    for (const [id, a] of this.arrows)
+      if (!world.buildings.some((b) => b.id === id)) {
+        a.dispose();
+        this.arrows.delete(id);
+      }
     for (const m of world.mines) {
       let v = this.mines.get(m.id);
       if (!v) {

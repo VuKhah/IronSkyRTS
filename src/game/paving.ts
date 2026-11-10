@@ -35,7 +35,7 @@ const WALL_COST = 0.6;
 /** Giới hạn số trạng thái xét mỗi lần tìm đường (mạng đường của một căn cứ không bao giờ cần nhiều hơn). */
 const MAX_EXPAND = 20000;
 /** Cửa ra mà đường nối về mạng đắt hơn bấy nhiêu thì coi như thuộc cụm căn cứ khác (mở trục chính riêng). */
-const CLUSTER_COST = 160;
+const CLUSTER_COST = 100;
 
 const DIRS: readonly (readonly [number, number])[] = [[1, 0], [0, 1], [-1, 0], [0, -1]];
 
@@ -74,12 +74,12 @@ export class Paving {
   /** Các ô lưới sim (2 m) có đường. */
   private plan(world: World, buildings: readonly Building[]): Set<number> {
     const g = world.grid;
-    const exits: { cells: number[]; x: number; z: number }[] = [];
+    const exits: { cells: number[]; x: number; z: number; side: number }[] = [];
     for (const b of buildings) {
       const e = world.exitRect(b.kind, b.x, b.z);
       if (!e) continue;
       const cells = g.cellsInRect(e[0], e[1], e[2], e[3]).filter((i) => !g.blockedIdx(i));
-      if (cells.length) exits.push({ cells, x: e[0], z: e[1] });
+      if (cells.length) exits.push({ cells, x: e[0], z: e[1], side: b.side });
     }
     // gần Tổng Hành Dinh trước (cửa của nó mở trục chính), rồi xa dần: đường mọc từ trong ra
     const hqs = buildings.filter((b) => b.kind === "hq");
@@ -102,8 +102,11 @@ export class Paving {
       return d;
     };
 
-    const road = new Set<number>();
+    // mỗi phe một mạng đường riêng: đường không bao giờ nối căn cứ hai phe với nhau (xem AI đấu AI thấy cả hai)
+    const all = new Set<number>();
+    const nets = [new Set<number>(), new Set<number>()];
     for (const ex of exits) {
+      const road = nets[ex.side];
       if (road.size > 0 && this.route(g, ex.cells, (i) => road.has(i), CLUSTER_COST, road)) continue;
       // cụm căn cứ mới: trục chính từ cửa ra đi ra bãi trống, về phía giữa bản đồ
       for (const i of ex.cells) road.add(i);
@@ -115,7 +118,8 @@ export class Paving {
       };
       this.route(g, ex.cells, goal, Infinity, road);
     }
-    return road;
+    for (const net of nets) for (const i of net) all.add(i);
+    return all;
   }
 
   /**

@@ -254,6 +254,11 @@ export interface BuildingSpec {
   oilBurn?: number;
   /** Mở vùng xây dựng bán kính này (m) quanh công trình. Chỉ HQ, Nhà Máy Điện và Cột Điện có. */
   zone?: number;
+  /**
+   * Đệm bắt buộc (số ô lưới 2 m) quanh công trình: không nhà nào được đứng gần hơn, để xe vận tải ra vào quanh nó.
+   * Người dùng 10/11/2026: nhà được đặt sát nhau, riêng Tổng Hành Dinh và nơi xe vận tải ra vào vẫn chừa 2 ô.
+   */
+  clearCells?: number;
   /** Trạm Radar: tầm nhìn xuyên sương mù khi đủ điện (m). */
   radarSight?: number;
   /** Công trình tiêu thụ điện: thứ tự được cấp điện khi thiếu (1 = trước nhất). Hậu cần tự phân. */
@@ -801,12 +806,13 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     half: [4, 4],
     produces: ["hauler"],
     power: 20,
-    zone: 24,
+    zone: 72, // tạm ×3 (người dùng 10/11/2026; trước là 24)
+    clearCells: 2,
     weapon: { name: "Pháo kép tự vệ", dmgGround: 40, dmgAir: 28, range: 22, cooldown: 1.2, dmgType: "normal", splash: 1.5, visual: "cannon", traverse: 60 },
     features: [
       "Nơi Xe Vận Tải dỡ hàng: Sắt và Dầu chỉ vào kho khi được chở về đây.",
       "Thu nhập gốc +2 Sắt mỗi giây, để bên mất hết mỏ vẫn còn đường gỡ.",
-      "Phát điện nền +20 MW và mở vùng xây dựng 24m.",
+      "Phát điện nền +20 MW và mở vùng xây dựng 72m.",
       "Có pháo kép tự vệ bắn cả mặt đất lẫn trên không."
     ]
   },
@@ -965,9 +971,9 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     sight: 12,
     half: [2, 2],
     power: 0,
-    zone: 16,
+    zone: 48, // tạm ×3 (người dùng 10/11/2026; trước là 16)
     features: [
-      "Mở vùng xây dựng 16m quanh cột: nối nhiều cột để xây Tháp Phòng Thủ cạnh mỏ xa.",
+      "Mở vùng xây dựng 48m quanh cột: nối nhiều cột để xây Tháp Phòng Thủ cạnh mỏ xa.",
       "Rẻ và mỏng: mắt xích yếu mà Lynx địch luôn nhắm tới.",
       "Mất cột thì công trình đã xây vẫn chạy, nhưng không xây thêm được ở đó."
     ]

@@ -274,16 +274,21 @@ describe("lõi mô phỏng", () => {
     const w = new World(5);
     w.sides[0].iron = 9000;
     const hq = w.hqOf(0)!;
-    const far: [number, number] = [hq.x + 50, hq.z - 6]; // cách cột cuối đủ xa để chừa lối đi
-    expect(w.canPlace(0, "turret", far[0], far[1])).not.toBeNull();
-    // chuỗi cột điện từ căn cứ hướng ra điểm xa
-    let x = hq.x;
-    for (let i = 0; i < 3; i++) {
-      x += 14;
-      expect(w.canPlace(0, "power-pylon", x, hq.z - 6), `cột thứ ${i + 1}`).toBeNull();
-      w.step([{ side: 0, order: { t: "build", kind: "power-pylon", x, z: hq.z - 6 } }]);
-      for (let k = 0; k < sec(4); k++) w.step([]);
+    // đọc tầm xây từ số liệu (đang tạm ×3): điểm xa nằm ngoài vùng Tổng Hành Dinh nhưng trong tầm một Cột Điện dựng ở mép vùng
+    const Z = BUILDINGS.hq.zone!;
+    const P = BUILDINGS["power-pylon"].zone!;
+    const OUT = "Phải xây trong vùng";
+    let plan: { far: [number, number]; pyl: [number, number] } | null = null;
+    for (let k = 0; k < 16 && !plan; k++) {
+      const [dx, dz] = [Math.cos((k * Math.PI) / 8), Math.sin((k * Math.PI) / 8)];
+      const far: [number, number] = [hq.x + dx * (Z + P * 0.5), hq.z + dz * (Z + P * 0.5)];
+      const pyl: [number, number] = [hq.x + dx * Z * 0.9, hq.z + dz * Z * 0.9];
+      if (w.canPlace(0, "turret", far[0], far[1])?.startsWith(OUT) && w.canPlace(0, "power-pylon", pyl[0], pyl[1]) === null) plan = { far, pyl };
     }
+    expect(plan, "tìm được một hướng có đất trống ngoài vùng Tổng Hành Dinh").not.toBeNull();
+    const { far, pyl } = plan!;
+    w.step([{ side: 0, order: { t: "build", kind: "power-pylon", x: pyl[0], z: pyl[1] } }]);
+    for (let k = 0; k < sec(10); k++) w.step([]);
     expect(w.canPlace(0, "turret", far[0], far[1])).toBeNull();
   });
 

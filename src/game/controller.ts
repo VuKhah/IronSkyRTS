@@ -7,6 +7,7 @@
  * Trên máy tính: nhấp trái để chọn, nhấp phải để ra lệnh. Trên điện thoại: chạm đất khi đang chọn quân là ra lệnh đi.
  */
 import * as THREE from "three";
+import { ExitArrows } from "./exit-arrows";
 import { strategicMarks } from "./overlay";
 import { BUILDINGS, canStrike, DEFAULT_FORMATION, doorSign, FACTION_OF, RES_NAME, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
 import type { Building, Entity, Mine, Order, Unit, Wreck } from "../sim/types";
@@ -51,6 +52,8 @@ export class Controller implements GestureHandlers {
   private ghost: Rig | null = null;
   private ghostKind: BuildingId | null = null;
   private ghostValid = true;
+  /** Ba mũi tên chỉ hướng cửa ra trên bóng công trình đang đặt (chỉ nhà có xe chạy ra). */
+  private ghostArrows: ExitArrows | null = null;
   private sellArmed = { id: 0, t: 0 };
   /** Vòng ngắm rải thảm (bán kính = độ tản của dàn phóng: vùng tên lửa rơi). */
   private aim: THREE.Mesh | null = null;
@@ -844,6 +847,11 @@ export class Controller implements GestureHandlers {
       const valid = this.placeReason === null;
       const [nx, nz] = this.world.blockCells(this.placeKind);
       (this.placeGrid ??= new PlacementGrid(this.scene, this.world.map)).show(gx, gz, nx, nz, valid);
+      const ex = this.world.exitRect(this.placeKind, gx, gz);
+      if (ex) {
+        const dir = Math.sign(ex[1] - gz);
+        (this.ghostArrows ??= new ExitArrows(this.scene, this.world.map)).show(gx, ex[1] - dir * ex[3], dir, performance.now() / 1000);
+      } else this.ghostArrows?.hide();
       if (valid !== this.ghostValid) {
         this.ghostValid = valid;
         this.ghost.root.traverse((o) => {
@@ -860,6 +868,7 @@ export class Controller implements GestureHandlers {
       this.aim.material = this.placeReason === null ? AIM_OK : AIM_BAD;
     } else {
       this.placeReason = null;
+      this.ghostArrows?.hide();
       if (this.ghost && this.mode !== "place") this.clearGhost();
       if (this.aim) this.aim.visible = false;
     }
