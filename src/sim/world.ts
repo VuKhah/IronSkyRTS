@@ -47,6 +47,10 @@ const AIR_FORMATION_GAP = 18;
 const SQUAD_RESHAPE_EXTRA = 8;
 /** Va chạm giữa xe đang chạy và xe đứng yên: phần lực đẩy xe chạy phải chịu (xe đứng chịu phần còn lại). */
 const MOVER_SHARE = 0.85;
+/** Ô đỗ dỡ hàng của Xe Vận Tải: số ô mỗi cạnh Tổng Hành Dinh, khoảng cách giữa hai ô (m), tâm ô cách mép nhà (m). */
+const DOCK_PER_SIDE = 3;
+const DOCK_GAP = 3.2;
+const DOCK_OUT = 2.6;
 /** Đội hình hành quân: bán kính quay nhỏ nhất của người dẫn đầu (m) khi đội hình hẹp (một hai xe mỗi hàng). */
 const SQUAD_MIN_TURN_R = 3;
 /** Hướng đội hình lệch hướng đi mới quá góc này thì cả đội xoay tại chỗ trước rồi mới hành quân. */
@@ -242,6 +246,8 @@ export class World {
   /** Bản đồ của trận (không đổi trong trận). Trận được xác định bởi bản đồ + seed + danh sách lệnh. */
   readonly map: GameMap;
   readonly grid: Grid;
+  /** Bảng ô đỗ dỡ hàng quanh Tổng Hành Dinh (tính một lần, xem `dockSlots`). */
+  private docks: (readonly [number, number, number, number])[] | null = null;
   /** Độ cao mặt đất ở tâm từng ô lưới (m), tính một lần lúc tạo trận (địa hình không đổi). */
   readonly cellH: Float64Array;
   /** Vật che tầm nhìn đứng trên mặt đất từng ô (m): rừng cao 4 m, còn lại 0 (TERRAIN.losHeight). */
@@ -392,7 +398,7 @@ export class World {
   }
 
   /** Nửa kích thước khối ô lưới công trình chiếm (lớn hơn hoặc bằng `half`). */
-  private blockHalf(kind: BuildingId): [number, number] {
+  blockHalf(kind: BuildingId): [number, number] {
     const [hw, hd] = BUILDINGS[kind].half;
     return [(cellsFor(hw) * CELL) / 2, (cellsFor(hd) * CELL) / 2];
   }
@@ -3009,22 +3015,69 @@ export class World {
     this.setPath(u, x, z);
   }
 
+  /**
+   * Ô đỗ dỡ hàng quanh Tổng Hành Dinh (người dùng 10/11/2026: xe tải hay chụm đầu vào một chỗ). Mỗi cạnh `DOCK_PER_SIDE` ô
+   * cách nhau `DOCK_GAP` m (rộng hơn bề ngang xe), xe đỗ đầu hướng vào nhà nên các thùng nằm song song, không chồng nhau.
+   * Trả về [dx, dz, nx, nz] so với tâm nhà cho phe Lam; phe Đỏ đảo dấu cả bốn số để chọn ô đối xứng tuyệt đối.
+   */
+  private dockSlots(): readonly (readonly [number, number, number, number])[] {
+    if (this.docks) return this.docks;
+    const r = BUILDINGS.hq.half[0] + DOCK_OUT;
+    const out: [number, number, number, number][] = [];
+    for (const [nx, nz] of [[1, 0], [0, 1], [-1, 0], [0, -1]] as const)
+      for (let k = 0; k < DOCK_PER_SIDE; k++) {
+        const t = (k - (DOCK_PER_SIDE - 1) / 2) * DOCK_GAP;
+        out.push([nx * r - nz * t, nz * r + nx * t, nx, nz]);
+      }
+    return (this.docks = out);
+  }
+
   private toDock(u: Unit): void {
     const hq = this.hqOf(u.side);
     if (!hq) {
       u.hState = "idle";
       return;
     }
-    // dỡ hàng ở cạnh Tổng Hành Dinh gần phía xe đang tới
-    const dx = u.x - hq.x;
-    const dz = u.z - hq.z;
-    const l = Math.sqrt(dx * dx + dz * dz) || 1;
-    const r = BUILDINGS.hq.half[0] + 2.6;
-    const f = this.grid.nearestFree(hq.x + (dx / l) * r, hq.z + (dz / l) * r, 5) ?? [hq.x + r, hq.z];
-    u.tx = f[0];
-    u.tz = f[1];
+    // chọn ô đỗ còn trống gần xe nhất; ô đã có xe khác đang tới / đang dỡ thì coi như rất xa (hết ô trống thì chen ô gần nhất)
+    const sg = u.side === 0 ? 1 : -1;
+    let best = -1;
+    let bestD = Infinity;
+    const slots = this.dockSlots();
+    for (let i = 0; i < slots.length; i++) {
+      const sx = hq.x + sg * slots[i][0];
+      const sz = hq.z + sg * slots[i][1];
+      if (this.grid.blockedAt(sx, sz)) continue;
+      let d = dist2(u.x, u.z, sx, sz);
+      for (const o of this.units)
+        if (o !== u && o.kind === "hauler" && o.side === u.side && (o.hState === "toDock" || o.hState === "unloading") && dist2(o.tx, o.tz, sx, sz) < 0.25) {
+          d += 1e6;
+          break;
+        }
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    if (best >= 0) {
+      const sl = slots[best];
+      u.tx = hq.x + sg * sl[0];
+      u.tz = hq.z + sg * sl[1];
+      u.faceX = -sg * sl[2];
+      u.faceZ = -sg * sl[3];
+    } else {
+      // mọi ô đều bị công trình chắn (hiếm): dỡ ở cạnh nhà gần phía xe đang tới như cũ
+      const dx = u.x - hq.x;
+      const dz = u.z - hq.z;
+      const l = Math.sqrt(dx * dx + dz * dz) || 1;
+      const r = BUILDINGS.hq.half[0] + DOCK_OUT;
+      const f = this.grid.nearestFree(hq.x + (dx / l) * r, hq.z + (dz / l) * r, 5) ?? [hq.x + r, hq.z];
+      u.tx = f[0];
+      u.tz = f[1];
+      u.faceX = -dx / l;
+      u.faceZ = -dz / l;
+    }
     u.hState = "toDock";
-    this.setPath(u, f[0], f[1]);
+    this.setPath(u, u.tx, u.tz);
   }
 
   private nearHq(u: Unit, hq: Building, margin: number): boolean {
@@ -3213,7 +3266,8 @@ export class World {
           u.hState = "idle";
           return;
         }
-        if (this.nearHq(u, hq, 2.4) || dist2(u.x, u.z, u.tx, u.tz) <= 2) {
+        // chỉ dừng khi tới đúng ô đỗ của mình (trước đây chạm mép nhà là dừng nên cả đoàn chụm vào một góc)
+        if (dist2(u.x, u.z, u.tx, u.tz) <= 2) {
           u.hState = "unloading";
           u.hTimer = sec(RULES.haulerUnload);
           this.halt(u);
@@ -3228,6 +3282,7 @@ export class World {
         return;
       }
       case "unloading": {
+        this.turnHull(u, u.faceX, u.faceZ); // vừa dỡ vừa xoay thân cho ngay ô đỗ (đầu hướng vào nhà)
         if (--u.hTimer > 0) return;
         const st = this.sides[u.side];
         st[u.cargoRes] += u.cargo;
@@ -3638,7 +3693,11 @@ export class World {
         }
         // xe đang chạy nhường xe đã đứng yên: xe chạy chịu phần lớn lực đẩy (lách qua), xe đã vào hàng chỉ xê dịch chút ít
         // (vẫn nhường một chút để khe hẹp nới dần, xe chạy không kẹt mãi). Hai xe cùng chạy hoặc cùng đứng thì chia đều.
-        const wa = a.moved === b.moved ? 0.5 : a.moved ? MOVER_SHARE : 1 - MOVER_SHARE;
+        // Quân ĐÃ HẠ BỆ (chân chống cắm đất) thì không bị xô chút nào: xe kia chịu trọn; hai quân cùng hạ bệ thì không ai nhích.
+        const pa = this.anchored(a);
+        const pb = this.anchored(b);
+        if (pa && pb) continue;
+        const wa = pa ? 0 : pb ? 1 : a.moved === b.moved ? 0.5 : a.moved ? MOVER_SHARE : 1 - MOVER_SHARE;
         const over = min - d;
         // xe chạy gặp xe đứng: ngoài đẩy ra còn LÁCH SANG BÊN (vuông góc hướng chạy, phía xa vật cản), không thì đâm
         // thẳng vào nhau sẽ bị đẩy lùi đúng ngược hướng mỗi tick và kẹt mãi
@@ -3669,6 +3728,12 @@ export class World {
         }
       }
     }
+  }
+
+  /** Quân đã hạ bệ xong (chân chống cắm đất): đứng chết tại chỗ, xe khác tông vào không xô được. */
+  private anchored(u: Unit): boolean {
+    const dep = UNITS[u.kind].weapon?.deploy;
+    return !!dep && u.still >= sec(dep.time);
   }
 
   private alert(side: Side, what: AlertKind, x: number, z: number, n?: number): void {

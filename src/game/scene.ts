@@ -16,6 +16,11 @@ const SKIRT = 20;
 const SEG_PER_M = 1;
 /** Trần số ô lưới địa hình mỗi cạnh: bản đồ lớn thưa lưới đi thay vì tăng tam giác theo diện tích (960 m ở 1 ô/m là 3,7 triệu tam giác kể cả lớp sương mù). */
 const MAX_TERRAIN_SEG = 320;
+
+/** Gợn nhỏ cho đất bớt phẳng lì (chỉ để nhìn, không có trong sim). Lớp nào phủ sát mặt đất (mặt đường) phải cộng cùng gợn này. */
+export function groundRipple(x: number, z: number): number {
+  return Math.sin(x * 0.37 + z * 0.11) * 0.08 + Math.sin(z * 0.29 - x * 0.17) * 0.07;
+}
 /** Trần số cây trang trí: mọi cây nằm chung một lệnh vẽ nên số tam giác tăng theo số cây. */
 const MAX_TREES = 3500;
 const WATER_Y = -0.55;
@@ -131,7 +136,7 @@ export class BattleScene {
       const z = pos.getZ(i);
       let h = map.terrainHeight(x, z);
       // gợn nhỏ cho đất bớt phẳng lì (chỉ để nhìn)
-      h += Math.sin(x * 0.37 + z * 0.11) * 0.08 + Math.sin(z * 0.29 - x * 0.17) * 0.07;
+      h += groundRipple(x, z);
       pos.setY(i, h);
       const river = map.nearRiver(x, z);
       const noise = (Math.sin(x * 0.21) * Math.sin(z * 0.17) + 1) * 0.5;

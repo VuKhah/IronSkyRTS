@@ -10,7 +10,7 @@ import { assignMin } from "./assign";
 import { Rng } from "./fmath";
 import { arenaPoint } from "./scenarios";
 import type { Unit } from "./types";
-import { sec, World } from "./world";
+import { dirToCenter, sec, World } from "./world";
 
 function spawn(w: World, kind: UnitId, x: number, z: number, side: 0 | 1 = 0): Unit {
   w.step([{ side, order: { t: "sbSpawn", kind, side, x, z } }]);
@@ -252,4 +252,58 @@ describe("xoay thân xe tại chỗ (turnRate)", () => {
       expect(a.hx, "chưa thu bệ xong thì thân chưa quay").toBe(hx);
     }
   });
+});
+
+describe("quân đã hạ bệ không bị xô (người dùng 10/11/2026)", () => {
+  it("Lynx chạy xuyên qua chỗ SkyGuard đã hạ bệ: SkyGuard đứng yên tuyệt đối, Lynx lách qua và tới nơi", () => {
+    const w = new World(1, { sandbox: true });
+    const [cx, cz] = arenaPoint(0);
+    const sg = spawn(w, "skyguard", cx, cz);
+    for (let t = 0; t < sec(UNITS.skyguard.weapon!.deploy!.time + 0.5); t++) w.step([]);
+    const lx = spawn(w, "lynx", cx - 10, cz);
+    const [sx, sz] = [sg.x, sg.z];
+    w.step([{ side: 0, order: { t: "move", ids: [lx.id], x: cx + 10, z: cz } }]);
+    let touched = false;
+    for (let t = 0; t < sec(20) && lx.order !== "idle"; t++) {
+      w.step([]);
+      const d = Math.sqrt((lx.x - sg.x) ** 2 + (lx.z - sg.z) ** 2);
+      if (d < UNITS.lynx.radius + UNITS.skyguard.radius) touched = true;
+      expect([sg.x, sg.z]).toEqual([sx, sz]);
+    }
+    expect(touched).toBe(true); // phép thử có ý nghĩa: hai xe thật sự chạm nhau
+    expect(lx.order).toBe("idle");
+    expect(Math.sqrt((lx.x - cx - 10) ** 2 + (lx.z - cz) ** 2)).toBeLessThan(3);
+  });
+});
+
+describe("Xe Vận Tải đỗ dỡ hàng theo ô quanh Tổng Hành Dinh (người dùng 10/11/2026: xe tải hay chụm đầu vào một chỗ)", () => {
+  for (const side of [0, 1] as const)
+    it(`4 xe cùng chạy về từ một hướng: mỗi xe một ô, không xe nào chồng lên xe khác, đủ hàng được dỡ (phe ${side})`, () => {
+      const w = new World(1, { sandbox: true });
+      const hq = w.hqOf(side)!;
+      const [dx, dz] = dirToCenter(hq.x, hq.z);
+      const hs: Unit[] = [];
+      for (let i = 0; i < 4; i++) {
+        const [x, z] = w.grid.nearestFree(hq.x + dx * 16 - dz * (i - 1.5) * 3, hq.z + dz * 16 + dx * (i - 1.5) * 3, 6)!;
+        const h = spawn(w, "hauler", x, z, side);
+        h.cargo = 50;
+        h.cargoRes = "iron";
+        h.manual = false;
+        hs.push(h);
+      }
+      const mined = (): number => w.sides[side].stats.ironMined;
+      let minGap = Infinity;
+      let shared = 0;
+      for (let t = 0; t < sec(40) && mined() < 200 - 1e-6; t++) {
+        w.step([]);
+        const un = hs.filter((h) => h.hState === "unloading");
+        if (new Set(un.map((h) => `${h.tx.toFixed(2)},${h.tz.toFixed(2)}`)).size < un.length) shared++;
+        for (let i = 0; i < un.length; i++)
+          for (let j = i + 1; j < un.length; j++) minGap = Math.min(minGap, Math.sqrt((un[i].x - un[j].x) ** 2 + (un[i].z - un[j].z) ** 2));
+      }
+      expect(mined(), hs.map((h) => h.hState).join()).toBeGreaterThanOrEqual(200 - 1e-6);
+      expect(shared).toBe(0); // không lúc nào hai xe đang dỡ chung một ô đỗ
+      // xe rộng 2,46 m đỗ song song: tâm hai xe đang dỡ phải cách nhau hơn bề ngang xe (trước đây ~2,7 m, chồng thân khi đâm đầu)
+      expect(minGap).toBeGreaterThan(2.9);
+    });
 });

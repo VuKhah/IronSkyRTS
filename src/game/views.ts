@@ -5,6 +5,7 @@
  * - Hoạt ảnh lấy từ trạng thái sim: đang chạy → "move", vừa bắn → "fire", tháp pháo quay về mục tiêu thật.
  */
 import * as THREE from "three";
+import { Paving } from "./paving";
 import { sec } from "../sim/world";
 import { BUILDINGS, doorSign, FACTION_OF, RULES, UNITS, type Side, lotTime } from "../sim/content";
 import type { GameMap } from "../sim/maps";
@@ -132,10 +133,15 @@ export class Views {
   private uplinkViews = new Map<number, UplinkView>();
   private frame = 0;
 
+  /** Mặt đường quanh công trình (một mesh, dựng lại khi danh sách nhà nhìn thấy thay đổi). */
+  private paving: Paving;
+
   constructor(
     private scene: THREE.Scene,
     private map: GameMap
-  ) {}
+  ) {
+    this.paving = new Paving(scene, map);
+  }
 
   /** Toàn bộ thực thể đang hiển thị (để chọn bằng chạm/chuột và vẽ thanh máu). */
   visibleUnits(world: World, viewer: Side | null): Unit[] {
@@ -161,7 +167,9 @@ export class Views {
       v.seen = f;
       this.updateUnit(world, u, v, alpha, dt, time, selected.has(u.id), viewer);
     }
-    for (const b of this.visibleBuildings(world, viewer)) {
+    const seenBuildings = this.visibleBuildings(world, viewer);
+    this.paving.sync(world, seenBuildings);
+    for (const b of seenBuildings) {
       let v = this.buildings.get(b.id);
       if (!v) {
         const rig = buildModel(b.kind, FACTION_OF[b.side], false);
