@@ -1,10 +1,9 @@
-/** Luật đặt công trình lên lưới ô vuông: nằm chính giữa khối ô, luôn chừa lối đi, công bằng giữa hai phe. */
+/** Luật đặt công trình lên lưới ô vuông: nằm chính giữa khối ô, được đặt sát nhau nhưng không vây kín cửa ra, công bằng giữa hai phe. */
 import { describe, expect, it } from "vitest";
-import { BUILDINGS, RULES, type BuildingId } from "./content";
+import { BUILDINGS, type BuildingId } from "./content";
 import { CELL } from "./maps";
 import { World } from "./world";
 
-const LANE = "Phải chừa lối đi cho xe giữa các công trình";
 const cellsOf = (half: number): number => Math.ceil((half * 2) / CELL - 1e-9);
 const KINDS = Object.keys(BUILDINGS) as BuildingId[];
 
@@ -63,37 +62,52 @@ describe("Đặt công trình lên lưới", () => {
         }
   });
 
-  it("công sự được đặt sát nhau để khép tuyến, nhưng cạnh công trình khác vẫn phải chừa lối đi", () => {
+  /** Thả một công trình bằng công cụ Phòng Thử Nghiệm (đi qua đúng luật đặt nhà); trả về lý do nếu không đặt được. */
+  const put = (w: World, side: 0 | 1, kind: BuildingId, x: number, z: number): string | null => {
+    const err = w.sandboxPlaceError(kind, x, z);
+    if (err === null) w.step([{ side, order: { t: "sbSpawn", kind, side, x, z } } as never]);
+    return err;
+  };
+
+  it("nhà được đặt sát nhau (người dùng 10/11/2026: miễn là xe vẫn ra được)", () => {
     const w = new World(1, { sandbox: true });
     const hq = w.buildings.find((b) => b.kind === "hq" && b.side === 0)!;
     const [hw] = BUILDINGS.hq.half;
-    const lane = RULES.buildGapCells * CELL;
-    const [nx] = w.blockCells("turret");
-    const blockW = nx * CELL;
-    // tháp đầu tiên đứng cách Tổng Hành Dinh đúng một lối đi về phía có đất trống
     const dir = hq.x > 0 ? -1 : 1;
-    const x1 = hq.x + dir * (hw + lane + blockW / 2);
-    const z1 = hq.z;
-    expect(w.sandboxPlaceError("turret", x1, z1)).toBeNull();
-    w.step([{ side: 0, order: { t: "sbSpawn", kind: "turret", side: 0, x: x1, z: z1 } } as never]);
-    // tháp thứ hai sát ngay tháp đầu: không chừa ô nào
-    expect(w.sandboxPlaceError("turret", x1 + dir * blockW, z1)).toBeNull();
-    // nhà thường sát tháp thì phải chừa lối đi
-    expect(w.sandboxPlaceError("radar", x1 + dir * blockW, z1)).toBe(LANE);
-    // tháp sát Tổng Hành Dinh cũng phải chừa lối đi
-    expect(w.sandboxPlaceError("turret", hq.x + dir * (hw + blockW / 2), z1)).toBe(LANE);
+    // Trạm Radar sát cạnh hông Tổng Hành Dinh (không phải phía cửa), rồi tháp sát Radar
+    const [rx] = w.blockCells("radar");
+    const x1 = hq.x + dir * (hw + (rx * CELL) / 2);
+    expect(put(w, 0, "radar", x1, hq.z)).toBeNull();
+    expect(put(w, 0, "turret", x1 + dir * rx * CELL, hq.z)).toBeNull();
   });
 
-  it("giữa hai công trình phải đủ lối đi", () => {
+  it("không được đè lên ô cửa ra; cửa ra của Tổng Hành Dinh và xưởng quay về phía giữa bản đồ", () => {
     const w = new World(1, { sandbox: true });
-    const hq = w.buildings.find((b) => b.kind === "hq" && b.side === 0)!;
-    const [hw] = BUILDINGS.hq.half;
-    const [fw] = BUILDINGS.factory.half;
-    const lane = RULES.buildGapCells * CELL;
-    for (const dir of [-1, 1]) {
-      expect(w.sandboxPlaceError("factory", hq.x + dir * (hw + fw + lane - CELL), hq.z)).toBe(LANE);
-      expect(w.sandboxPlaceError("factory", hq.x + dir * (hw + fw + lane), hq.z)).not.toBe(LANE);
+    for (const side of [0, 1] as const) {
+      const hq = w.buildings.find((b) => b.kind === "hq" && b.side === side)!;
+      const e = w.exitRect("hq", hq.x, hq.z)!;
+      expect(Math.sign(e[1] - hq.z)).toBe(Math.sign(-hq.z)); // cửa nhìn về phía z = 0
+      expect(put(w, side, "power-pylon", e[0], e[1] + Math.sign(e[1] - hq.z) * 1)).toMatch(/^Không được chắn cửa ra/);
     }
-    expect(lane).toBeGreaterThanOrEqual(3.58);
   });
+
+  for (const side of [0, 1] as const)
+    it(`không được vây kín cửa ra của xưởng: viên tháp cuối cùng bịt lối bị từ chối (phe ${side})`, () => {
+      const w = new World(1, { sandbox: true });
+      const sg = side === 0 ? 1 : -1;
+      // xưởng ở chỗ đất trống, soi gương cho phe Đỏ
+      const fx = sg * -20;
+      const fz = sg * 20;
+      expect(put(w, side, "factory", fx, fz)).toBeNull();
+      const e = w.exitRect("factory", fx, fz)!;
+      const door = Math.sign(e[1] - fz);
+      const [, fd] = BUILDINGS.factory.half;
+      const ez = fz + door * (fd + 2); // tâm hàng tháp hai bên cửa (tháp 4 × 4 m)
+      expect(put(w, side, "turret", fx - 4, ez)).toBeNull();
+      expect(put(w, side, "turret", fx + 4, ez)).toBeNull();
+      // tháp chắn ngay trước ô cửa: cửa chỉ còn 2 ô bị vây bốn phía
+      expect(put(w, side, "turret", fx, fz + door * (fd + 2 + 4))).toMatch(/^Sẽ vây kín cửa ra/);
+      // lùi ra một ô thì vẫn còn lối hai bên: được
+      expect(put(w, side, "turret", fx, fz + door * (fd + 2 + 6))).toBeNull();
+    });
 });

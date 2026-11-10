@@ -47,6 +47,12 @@ const AIR_FORMATION_GAP = 18;
 const SQUAD_RESHAPE_EXTRA = 8;
 /** Va chạm giữa xe đang chạy và xe đứng yên: phần lực đẩy xe chạy phải chịu (xe đứng chịu phần còn lại). */
 const MOVER_SHARE = 0.85;
+/** Ô cửa ra trước cửa nhà có xe chạy ra: rộng × sâu (m). Loang tìm bãi trống trong ± `EXIT_ESCAPE` ô, hoặc đủ `EXIT_ROOM` ô. */
+const EXIT_W = 4;
+const EXIT_D = 2;
+const EXIT_ESCAPE = 12;
+const EXIT_ROOM = 300;
+const N4: readonly (readonly [number, number])[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 /** Ô đỗ dỡ hàng của Xe Vận Tải: số ô mỗi cạnh Tổng Hành Dinh, khoảng cách giữa hai ô (m), tâm ô cách mép nhà (m). */
 const DOCK_PER_SIDE = 3;
 const DOCK_GAP = 3.2;
@@ -403,19 +409,74 @@ export class World {
     return [(cellsFor(hw) * CELL) / 2, (cellsFor(hd) * CELL) / 2];
   }
 
-  /** Đặt ở đây có làm mất lối đi giữa hai công trình không (tính cả công trình phe khác)? */
-  private blocksLane(kind: BuildingId, x: number, z: number): boolean {
-    const [bw, bd] = this.blockHalf(kind);
-    const gap = RULES.buildGapCells * CELL;
-    const fort = BUILDINGS[kind].fort;
-    for (const b of this.buildings) {
-      if (b.hp <= 0) continue;
-      // hai công sự được đứng sát nhau: chúng sinh ra để chặn đường
-      if (fort && BUILDINGS[b.kind].fort) continue;
-      const [ow, od] = this.blockHalf(b.kind);
-      if (Math.abs(b.x - x) < bw + ow + gap - 1e-6 && Math.abs(b.z - z) < bd + od + gap - 1e-6) return true;
+  /**
+   * Ô cửa ra của công trình có xe mặt đất chạy ra (Tổng Hành Dinh, Xưởng Xe Tăng, Xưởng Xe Chuyên Dụng): hình chữ nhật
+   * `EXIT_W` × `EXIT_D` m ngay trước cửa (phía `doorSign`). Trả về [tâm x, tâm z, nửa rộng, nửa sâu], hoặc null nếu nhà
+   * không có xe chạy ra. Người dùng 10/11/2026: nhà được đặt sát nhau, miễn là xe vẫn ra được.
+   */
+  exitRect(kind: BuildingId, x: number, z: number): [number, number, number, number] | null {
+    if (!BUILDINGS[kind].produces?.some((u) => UNITS[u].domain === "ground")) return null;
+    const [, bd] = this.blockHalf(kind);
+    return [x, z + doorSign(kind, z) * (bd + EXIT_D / 2), EXIT_W / 2, EXIT_D / 2];
+  }
+
+  /**
+   * Từ ô cửa ra có ra được bãi trống không, coi như các ô `extra` cũng bị chắn (nền móng của nhà đang định đặt).
+   * Loang theo 4 hướng trong cửa sổ ± `EXIT_ESCAPE` ô: chạm mép cửa sổ, hoặc vùng loang được từ `EXIT_ROOM` ô trở lên,
+   * thì coi là thông. Kết quả chỉ là đúng / sai nên không phụ thuộc thứ tự loang (tất định, đối xứng giữa hai phe).
+   */
+  private exitOpen(e: readonly [number, number, number, number], extra: ReadonlySet<number>): boolean {
+    const g = this.grid;
+    const ox = g.cellX(e[0]);
+    const oz = g.cellZ(e[1]);
+    const seen = new Set<number>();
+    const queue: number[] = [];
+    for (const i of g.cellsInRect(e[0], e[1], e[2], e[3]))
+      if (!g.blockedIdx(i) && !extra.has(i)) {
+        seen.add(i);
+        queue.push(i);
+      }
+    for (let q = 0; q < queue.length; q++) {
+      const i = queue[q];
+      const cx = i % g.cols;
+      const cz = (i - cx) / g.cols;
+      if (Math.max(Math.abs(cx - ox), Math.abs(cz - oz)) >= EXIT_ESCAPE || seen.size >= EXIT_ROOM) return true;
+      for (const [dx, dz] of N4) {
+        const nx = cx + dx;
+        const nz = cz + dz;
+        if (nx < 0 || nz < 0 || nx >= g.cols || nz >= g.rows) continue;
+        const j = nz * g.cols + nx;
+        if (seen.has(j) || g.blockedIdx(j) || extra.has(j)) continue;
+        seen.add(j);
+        queue.push(j);
+      }
     }
     return false;
+  }
+
+  /**
+   * Luật bố trí khi đặt nhà ở (x, z) (đã nằm trên lưới, nền móng đã trống): không đè lên cửa ra của nhà nào, cửa ra của
+   * chính nó phải trống, và mọi cửa ra gần đó (kể cả của nó) vẫn thông ra bãi trống. Thay cho luật cũ "chừa lối 2 ô".
+   */
+  private layoutError(kind: BuildingId, x: number, z: number): string | null {
+    const [hw, hd] = this.blockHalf(kind);
+    const exits: { name: string; e: [number, number, number, number] }[] = [];
+    for (const b of this.buildings) {
+      if (b.hp <= 0) continue;
+      const e = this.exitRect(b.kind, b.x, b.z);
+      if (!e) continue;
+      if (Math.abs(e[0] - x) < e[2] + hw - 1e-6 && Math.abs(e[1] - z) < e[3] + hd - 1e-6) return `Không được chắn cửa ra của ${BUILDINGS[b.kind].name}`;
+      if (Math.abs(e[0] - x) <= hw + EXIT_ESCAPE * CELL && Math.abs(e[1] - z) <= hd + EXIT_ESCAPE * CELL) exits.push({ name: BUILDINGS[b.kind].name, e });
+    }
+    const foot = new Set(this.grid.cellsInRect(x, z, hw, hd));
+    const own = this.exitRect(kind, x, z);
+    if (own) {
+      if (!this.map.fits(own[0], own[1], own[2], own[3])) return "Cửa ra nằm ngoài bản đồ";
+      for (const i of this.grid.cellsInRect(own[0], own[1], own[2], own[3])) if (this.grid.blockedIdx(i)) return "Cửa ra bị chắn, xe không ra được";
+      if (!this.exitOpen(own, foot)) return "Cửa ra bị vây kín, xe không ra được";
+    }
+    for (const { name, e } of exits) if (!this.exitOpen(e, foot)) return `Sẽ vây kín cửa ra của ${name}`;
+    return null;
   }
 
   /** null = được phép xây; ngược lại là lý do (tiếng Việt) để hiện cho người chơi. */
@@ -424,7 +485,8 @@ export class World {
     const [hw, hd] = this.blockHalf(kind);
     if (!this.map.fits(x, z, hw, hd)) return "Ngoài bản đồ";
     for (const i of this.grid.cellsInRect(x, z, hw, hd)) if (this.grid.blockedIdx(i)) return "Vướng sông, đá hoặc công trình";
-    if (this.blocksLane(kind, x, z)) return "Phải chừa lối đi cho xe giữa các công trình";
+    const lay = this.layoutError(kind, x, z);
+    if (lay) return lay;
     const big = Math.max(hw, hd);
     for (const m of this.mines) if (dist2(m.x, m.z, x, z) < (5 + big) * (5 + big)) return "Quá gần mỏ";
     for (const u of this.units) {
@@ -774,7 +836,8 @@ export class World {
     const [hw, hd] = this.blockHalf(kind);
     if (!this.map.fits(x, z, hw, hd)) return "Ngoài bản đồ";
     for (const i of this.grid.cellsInRect(x, z, hw, hd)) if (this.grid.blockedIdx(i)) return "Vướng sông, đá, mỏ hoặc công trình";
-    if (this.blocksLane(kind, x, z)) return "Phải chừa lối đi cho xe giữa các công trình";
+    const lay = this.layoutError(kind, x, z);
+    if (lay) return lay;
     return null;
   }
 
@@ -2325,10 +2388,14 @@ export class World {
       u.air = "takeoff";
       u.airT = 0;
     } else {
-      const spec = BUILDINGS[b.kind];
-      const [dx, dz] = dirToCenter(b.x, b.z);
-      const reach = Math.max(spec.half[0], spec.half[1]) + 2.5;
-      const u = this.spawnUnit(kind, b.side, b.x + dx * reach - dz * offset, b.z + dz * reach + dx * offset);
+      // xe ra ở ô cửa ra (trước cửa, phía doorSign), cả lô xếp ngang theo bề rộng cửa; chỗ bị xe khác đứng thì lấy ô trống gần nhất
+      const e = this.exitRect(b.kind, b.x, b.z);
+      const door = doorSign(b.kind, b.z);
+      const [fx, fz] = e ? [e[0] + offset, e[1] + door * e[3]] : [b.x + offset, b.z + door * (BUILDINGS[b.kind].half[1] + 2.5)];
+      const [sx, sz] = this.grid.nearestFree(fx, fz, 6) ?? [fx, fz];
+      const u = this.spawnUnit(kind, b.side, sx, sz);
+      u.hx = u.phx = 0;
+      u.hz = u.phz = door;
       u.lot = lot;
       ids.push(u.id);
     }

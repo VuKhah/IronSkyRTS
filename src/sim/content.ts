@@ -245,7 +245,7 @@ export interface BuildingSpec {
   sight: number;
   /** Nửa kích thước nền móng theo X và Z (m): ô lưới bị chiếm, không đi xuyên được. */
   half: readonly [number, number];
-  /** Công sự (tháp, tường…): hai công sự được đặt sát nhau để khép tuyến phòng thủ; với công trình khác vẫn phải chừa lối đi. */
+  /** Công sự (tháp, tường…): công trình phòng thủ, không có đường trong căn cứ. (Từ 10/11/2026 mọi nhà được đặt sát nhau, miễn không vây kín cửa ra.) */
   fort?: boolean;
   produces?: UnitId[];
   /** MW: dương = phát điện, âm = tiêu thụ. */
@@ -353,7 +353,6 @@ export const RULES = {
   /** Đài Liên Lạc (điểm chiếm, Bản cập nhật vui): chiếm như mỏ; phe giữ đài nhìn xa quanh đài (cột ăng-ten cao, không bị đồi che). */
   uplink: { sight: 24 },
   /** Khoảng trống tối thiểu giữa hai công trình (số ô lưới 2 m): 2 ô = 4 m, vừa Titan rộng 3,58 m đi qua. */
-  buildGapCells: 2,
   /**
    * Kỹ năng: MỌI kỹ năng thuộc về một binh chủng có thật, phải đúc ra và có hình thù (quyết định 05/11/2026):
    * không có "điểm chỉ huy" để gọi đòn từ trên trời như game tham chiếu. Rải thảm là của Xe Tên Lửa Loạt (vũ khí
@@ -1124,10 +1123,10 @@ export const PAD_OFFSETS: readonly (readonly [number, number])[] = [
 export const CONTROL_CELL: readonly [number, number] = [-3, -5.4];
 
 /**
- * Nhà xưởng quay cửa (phía +z của mô hình) về phía giữa bản đồ theo trục z: xưởng nằm ở nửa +z thì xoay 180°.
+ * Tổng Hành Dinh và nhà xưởng quay cửa (phía +z của mô hình) về phía giữa bản đồ theo trục z: xưởng nằm ở nửa +z thì xoay 180°.
  * Quay đúng nửa vòng nên nền móng không đổi. Sim (máy bay cất cánh ra cửa) và phần vẽ cùng dùng hàm này.
  */
-const DOOR_FACING: ReadonlySet<BuildingId> = new Set<BuildingId>(["factory", "special-factory", "aircraft-factory"]);
+const DOOR_FACING: ReadonlySet<BuildingId> = new Set<BuildingId>(["hq", "factory", "special-factory", "aircraft-factory"]);
 export function doorSign(kind: BuildingId, z: number): 1 | -1 {
   return DOOR_FACING.has(kind) && z > 0 ? -1 : 1;
 }
