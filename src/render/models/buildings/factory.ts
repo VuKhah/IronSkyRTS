@@ -62,22 +62,79 @@ export function buildFactory(p: Palette, faction: Faction): Rig {
   }
   add(part("Dải cửa sổ", box(BX * 2 - 1.2, 0.6, 0.04, p.glass, 0, 5.4, HZ0 - 0.03)));
 
-  // mái răng cưa 3 nhịp chạy dọc z: nhìn từ trên cao là 3 sọc màu phe
+  // mái răng cưa 3 nhịp chạy dọc z: nhìn từ trên cao vẫn là 3 sọc màu phe, nhưng mỗi nhịp một việc riêng
+  // (quạt hút tròn / hộp quạt thông gió / kính trời) để mái không thành 3 tấm phẳng giống hệt nhau
   const TEETH = 3;
   const TW = (BX * 2) / TEETH;
   const TH = 1.6;
+  const SL = Math.hypot(TW, TH); // chiều dài mặt dốc
+  const SLOPE = Math.atan2(TH, TW);
   for (let i = 0; i < TEETH; i++) {
     const x0 = -BX + i * TW;
     const x1 = x0 + TW;
     const wedge: P3[] = [];
     for (const z of [HZ0, HZ1]) wedge.push([x0, WALL_TOP, z], [x1, WALL_TOP, z], [x1, WALL_TOP + TH, z]);
     add(part("Mái răng cưa", facets(wedge, p.hullDark)));
-    const y = (x: number) => WALL_TOP + ((x - x0) / TW) * TH;
-    const panel: P3[] = [];
-    for (const z of [HZ0 + 0.3, HZ1 - 0.3])
-      for (const x of [x0 + 0.2, x1 - 0.15]) panel.push([x, y(x) + 0.02, z], [x, y(x) + 0.08, z]);
-    add(part("Mặt mái (màu phe)", facets(panel, p.team)));
     add(part("Dải kính lấy sáng", box(0.06, TH * 0.75, hallD - 0.6, p.glass, x1 + 0.04, WALL_TOP + TH * 0.45, hallZ)));
+    for (let z = HZ0 + 0.6; z < HZ1; z += 1.6) add(part("Song kính", box(0.1, TH * 0.8, 0.08, p.hullDark, x1 + 0.06, WALL_TOP + TH * 0.45, z)));
+
+    // khung nghiêng theo mặt dốc: trục x' chạy lên dốc (0..SL), y' vuông góc mặt mái, z giữ nguyên
+    const s = group();
+    s.position.set(x0, WALL_TOP, 0);
+    s.rotation.z = SLOPE;
+    add(s);
+    const on = (...o: THREE.Object3D[]) => s.add(...o);
+    // tấm màu phe chia 2 nửa trước / sau bằng dải tối, giữ sọc màu phe khi nhìn từ xa
+    const halfD = (hallD - 0.9) / 2;
+    for (const k of [-1, 1]) on(part("Mặt mái (màu phe)", box(SL - 0.45, 0.06, halfD, p.team, SL / 2, 0.05, hallZ + k * (halfD / 2 + 0.15))));
+    // gân tôn sóng chạy theo dốc
+    for (let z = HZ0 + 0.55; z < HZ1 - 0.3; z += 0.7) on(part("Gân tôn", box(SL - 0.45, 0.05, 0.06, p.hullDark, SL / 2, 0.1, z)));
+    on(part("Nóc mái", box(0.32, 0.14, hallD + 0.1, p.metal, SL - 0.12, 0.08, hallZ)));
+    on(part("Máng xối", box(0.3, 0.16, hallD + 0.2, p.hullDark, 0.1, 0.02, hallZ)));
+
+    if (i === 0) {
+      // hàng quạt hút gió tròn (turbine) dọc nóc
+      for (let k = 0; k < 4; k++) {
+        const z = HZ0 + 1.4 + k * ((hallD - 2.8) / 3);
+        on(
+          part(
+            "Quạt hút gió tròn",
+            group(
+              cyl(0.28, 0.32, 0.4, p.hullDark, 10, SL * 0.62, 0.3, z),
+              cyl(0.42, 0.42, 0.42, p.metal, 12, SL * 0.62, 0.72, z),
+              sphere(0.42, p.metal, SL * 0.62, 0.93, z, 10)
+            )
+          )
+        );
+        on(part("Đai quạt (màu phe)", cyl(0.44, 0.44, 0.08, p.teamDark, 12, SL * 0.62, 0.72, z)));
+      }
+      // lối đi bảo trì dọc chân dốc
+      on(part("Lối đi bảo trì", box(0.7, 0.06, hallD - 1, p.metal, 1.0, 0.16, hallZ)));
+      for (let z = HZ0 + 0.8; z < HZ1 - 0.4; z += 2.2) on(part("Lan can", box(0.05, 0.6, 0.05, p.warning, 1.33, 0.46, z)));
+      on(part("Lan can", box(0.05, 0.05, hallD - 1, p.warning, 1.33, 0.76, hallZ)));
+    } else if (i === 1) {
+      // 2 hộp quạt thông gió lớn, tránh chính giữa (chỗ thanh tiến độ)
+      for (const z of [HZ0 + 1.9, HZ1 - 1.9]) {
+        on(part("Hộp quạt thông gió", box(2.0, 0.7, 2.0, p.hull, SL * 0.45, 0.42, z)));
+        on(part("Lưới quạt", box(1.6, 0.04, 1.6, p.rubber, SL * 0.45, 0.79, z)));
+        on(part("Cánh quạt", box(1.5, 0.05, 0.22, p.metal, SL * 0.45, 0.82, z)));
+        on(part("Cánh quạt", box(0.22, 0.05, 1.5, p.metal, SL * 0.45, 0.82, z)));
+        on(part("Viền hộp quạt (màu phe)", box(2.04, 0.12, 2.04, p.teamDark, SL * 0.45, 0.72, z)));
+      }
+      // ống gió nối 2 hộp quạt, chạy dọc nhà
+      on(part("Ống gió", box(0.5, 0.5, hallD - 6, p.metal, SL * 0.45, 0.4, hallZ)));
+      for (const z of [hallZ - 1.4, hallZ + 1.4]) on(part("Đai ống gió", box(0.58, 0.58, 0.1, p.hullDark, SL * 0.45, 0.4, z)));
+    } else {
+      // ô kính trời trên mặt dốc (né chân ống khói ở góc sau)
+      for (let k = 0; k < 3; k++) {
+        const z = HZ0 + 3.1 + k * 2.3;
+        on(part("Khung kính trời", box(2.4, 0.16, 1.7, p.hullDark, SL * 0.42, 0.12, z)));
+        on(part("Kính trời", box(2.1, 0.06, 1.4, p.glass, SL * 0.42, 0.21, z)));
+      }
+      // tủ điện trên mái cạnh ống khói
+      on(part("Tủ điện mái", box(1.2, 0.8, 0.9, p.hull, SL * 0.3, 0.45, HZ0 + 1.2)));
+      on(part("Đèn tủ điện", box(0.3, 0.12, 0.05, p.warning, SL * 0.3, 0.6, HZ0 + 1.67)));
+    }
   }
 
   // cánh văn phòng: góc trước bên kia khu ráp
@@ -97,9 +154,29 @@ export function buildFactory(p: Palette, faction: Faction): Rig {
   add(part("Phòng điều khiển", box(1.2, 1.8, 4.4, p.hullDark, WX0 - 0.6, 3.7, STALL_Z)));
   add(part("Kính phòng điều khiển", box(0.05, 1.2, 4.0, p.glass, WX0 - 1.22, 3.8, STALL_Z)));
   add(part("Cửa văn phòng", box(1.4, 2.4, 0.06, p.hullDark, wingX, BASE_Y + 1.2, WZ1 + 0.04)));
-  for (const [x, z] of [[wingX - 1.2, wingZ - 1.5], [wingX + 1.1, wingZ + 1.4]] as const) {
-    add(part("Máy điều hòa", box(1.1, 0.6, 1.1, p.metal, x, WING_TOP + 0.42, z)));
+  // tường chắn mái quanh mép, mái có ô sàn kỹ thuật, máy điều hòa, nắp lên mái, cột ăng-ten
+  const WW = WX1 - WX0;
+  const WD = WZ1 - WZ0;
+  for (const s of [-1, 1]) {
+    add(part("Tường chắn mái", box(WW, 0.5, 0.18, p.hull, wingX, WING_TOP + 0.25, wingZ + s * (WD / 2 - 0.09))));
+    add(part("Tường chắn mái", box(0.18, 0.5, WD, p.hull, wingX + s * (WW / 2 - 0.09), WING_TOP + 0.25, wingZ)));
+    add(part("Mũ tường chắn", box(WW + 0.1, 0.06, 0.26, p.metal, wingX, WING_TOP + 0.53, wingZ + s * (WD / 2 - 0.09))));
+    add(part("Mũ tường chắn", box(0.26, 0.06, WD + 0.1, p.metal, wingX + s * (WW / 2 - 0.09), WING_TOP + 0.53, wingZ)));
   }
+  add(part("Sàn kỹ thuật", box(2.6, 0.08, 3.0, p.concreteDark, wingX - 0.9, WING_TOP + 0.16, wingZ - 1.4)));
+  for (const [x, z] of [[wingX - 1.5, wingZ - 2.0], [wingX - 0.3, wingZ - 2.0], [wingX - 1.5, wingZ - 0.8]] as const) {
+    add(part("Máy điều hòa", box(1.0, 0.6, 1.0, p.metal, x, WING_TOP + 0.5, z)));
+    add(part("Quạt điều hòa", cyl(0.36, 0.36, 0.04, p.rubber, 10, x, WING_TOP + 0.82, z)));
+  }
+  add(part("Ống gió văn phòng", box(0.3, 0.3, 2.4, p.metal, wingX - 0.3, WING_TOP + 0.35, wingZ - 0.2)));
+  add(part("Nắp lên mái", box(0.9, 0.35, 0.9, p.hullDark, wingX + 1.6, WING_TOP + 0.3, wingZ + 2.4)));
+  add(part("Nắp lên mái", box(0.95, 0.06, 0.95, p.warning, wingX + 1.6, WING_TOP + 0.5, wingZ + 2.4)));
+  const ANT_X = wingX + 1.7;
+  const ANT_Z = wingZ - 2.4;
+  add(part("Cột ăng-ten", cyl(0.06, 0.08, 3.2, p.metal, 6, ANT_X, WING_TOP + 1.7, ANT_Z)));
+  for (const y of [0.9, 1.9]) add(part("Thanh ăng-ten", box(0.9, 0.04, 0.04, p.metal, ANT_X, WING_TOP + y, ANT_Z)));
+  add(part("Đèn đỉnh ăng-ten", sphere(0.1, p.warning, ANT_X, WING_TOP + 3.35, ANT_Z, 6)));
+  add(part("Chảo vệ tinh", group(cyl(0.45, 0.12, 0.18, p.white, 12, wingX + 0.6, WING_TOP + 0.75, wingZ + 0.6), box(0.1, 0.5, 0.1, p.metal, wingX + 0.6, WING_TOP + 0.4, wingZ + 0.6))));
 
   // ================================================================ 2. CỬA CUỐN: mỗi sân ráp một cửa
   const sig = productionSignals(p, 6);
