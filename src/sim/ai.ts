@@ -249,7 +249,7 @@ export class Ai {
     const [cx, cz] = dirToCenter(base.x, base.z);
     const back = kind === "airfield" || kind === "aircraft-factory" || kind === "power-plant" || kind === "radar" || kind === "battery";
     const cands: { x: number; z: number; score: number }[] = [];
-    for (const r of [13, 17, 21, 25, 29]) {
+    for (const r of [13, 17, 21, 25, 29, 33, 37, 41]) {
       for (const [dx, dz] of DIRS) {
         const dot = dx * cx + dz * cz;
         const score = r + (back ? dot * 10 : -dot * 10);

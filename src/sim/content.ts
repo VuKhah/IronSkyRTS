@@ -255,10 +255,18 @@ export interface BuildingSpec {
   /** Mở vùng xây dựng bán kính này (m) quanh công trình. Chỉ HQ, Nhà Máy Điện và Cột Điện có. */
   zone?: number;
   /**
-   * Đệm bắt buộc (số ô lưới 2 m) quanh công trình: không nhà nào được đứng gần hơn, để xe vận tải ra vào quanh nó.
-   * Người dùng 10/11/2026: nhà được đặt sát nhau, riêng Tổng Hành Dinh và nơi xe vận tải ra vào vẫn chừa 2 ô.
+   * Viền riêng (số ô lưới 2 m) thay cho `RULES.buildMarginCells`: Tổng Hành Dinh rộng hơn (2 ô) để xe vận tải ra vào quanh nó.
    */
   clearCells?: number;
+  /**
+   * Lối ra nằm TRONG nền móng (khung mô hình, m: [x0, z0, x1, z1], cửa ở phía +z): các ô này không bị nhà chặn, xe đúc xong
+   * đứng ở đây rồi chạy ra. Người dùng 10/11/2026: xưởng 9 × 9 ô, góc trước bên phải là `doors` cửa, mỗi cửa 2 × 3 ô.
+   */
+  bay?: readonly [number, number, number, number];
+  /** Số ô ráp xe chia đều theo bề rộng `bay` (mỗi xe trong lô đứng một ô, rồi chạy ra). */
+  doors?: number;
+  /** Chiều sâu ô ráp xe (m), tính từ cạnh sau của `bay`; phần còn lại phía trước là dải đường cho xe chạy ra. */
+  stall?: number;
   /** Trạm Radar: tầm nhìn xuyên sương mù khi đủ điện (m). */
   radarSight?: number;
   /** Công trình tiêu thụ điện: thứ tự được cấp điện khi thiếu (1 = trước nhất). Hậu cần tự phân. */
@@ -282,6 +290,13 @@ export const RULES = {
   startOil: 100,
   /** Thu nhập gốc của Tổng Hành Dinh (Sắt/giây). */
   hqTrickle: 2,
+  /**
+   * Bố trí căn cứ (người dùng 10/11/2026, bản vẽ xưởng): mọi công trình có VIỀN `buildMarginCells` ô nằm trong mô hình (đất
+   * trống, xe đi được, không chặn lưới; nhà có `clearCells` thì dùng số đó), cộng `buildPadCells` ô CẤM XÂY bên ngoài mà hai
+   * nhà dùng chung được. Hai thân nhà gần nhất cách nhau viền A + cấm xây + viền B (mặc định 1 + 1 + 1 = 3 ô).
+   */
+  buildMarginCells: 1,
+  buildPadCells: 1,
   unitCap: 80,
   /** Cả khối đi cùng tốc độ = min(tốc độ trung bình, xe chậm nhất × hệ số này): xe chậm được hộ tống thì đi nhanh hơn. Số tạm. */
   escortBoost: 1.3,
@@ -828,7 +843,10 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     hp: 1000,
     armorClass: "struct",
     sight: 16,
-    half: [4, 4],
+    half: [9, 9], // thân 9 × 9 ô (người dùng 10/11/2026, bản vẽ xưởng): + viền 1 ô trong mô hình = nền móng 11 × 11 ô
+    bay: [-9, 1, 3, 9], // góc trước bên phải nhìn theo bản vẽ (cửa ở trên): 3 ô ráp xe 2 × 3 + dải đường 1 × 6 trước chúng
+    doors: 3,
+    stall: 6,
     produces: ["lynx", "titan", "skyguard"],
     power: -10,
     priority: 3,
@@ -847,7 +865,10 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     hp: 1000,
     armorClass: "struct",
     sight: 16,
-    half: [4, 4],
+    half: [9, 9], // thân 9 × 9 ô (người dùng 10/11/2026, bản vẽ xưởng): + viền 1 ô trong mô hình = nền móng 11 × 11 ô
+    bay: [-9, 1, 3, 9], // góc trước bên phải nhìn theo bản vẽ (cửa ở trên): 3 ô ráp xe 2 × 3 + dải đường 1 × 6 trước chúng
+    doors: 3,
+    stall: 6,
     produces: ["rocket", "artillery"],
     power: -10,
     priority: 3,
@@ -870,7 +891,10 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     hp: 1000,
     armorClass: "struct",
     sight: 16,
-    half: [4, 4],
+    half: [9, 9], // thân 9 × 9 ô (người dùng 10/11/2026, bản vẽ xưởng): + viền 1 ô trong mô hình = nền móng 11 × 11 ô
+    bay: [-9, 1, 3, 9], // góc trước bên phải nhìn theo bản vẽ (cửa ở trên): 3 ô ráp xe 2 × 3 + dải đường 1 × 6 trước chúng
+    doors: 3,
+    stall: 6,
     produces: ["falcon", "valkyrie"],
     power: -10,
     priority: 3,

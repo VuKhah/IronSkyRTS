@@ -4,7 +4,7 @@
  * vùng luật bằng canvas 2D. Mọi số đọc từ content.ts / World nên bản vẽ luôn khớp với sim.
  */
 import * as THREE from "three";
-import { BUILDINGS, doorDir, FACTION_OF, rotHalf, UNITS, type BuildingId, type UnitId } from "../sim/content";
+import { BUILDINGS, doorDir, FACTION_OF, rotHalf, RULES, UNITS, type BuildingId, type UnitId } from "../sim/content";
 import { Paving } from "../game/paving";
 import { CELL } from "../sim/maps";
 import { World } from "../sim/world";
@@ -130,11 +130,13 @@ function drawBuilding(id: BuildingId): void {
   const [hw, hd] = spec.half;
   const [nx, nz] = world.blockCells(id, 0);
   const [bw, bd] = world.blockHalf(id, 0);
-  const pad = (spec.clearCells ?? 0) * CELL;
+  const m = world.marginOf(id);
+  const pad = RULES.buildPadCells * CELL;
   const exit = world.exitRect(id, 0, 0, 0);
-  const t: Tile = { ex: bw + Math.max(pad, 0) + 3, ez: bd + Math.max(pad, exit ? 2 : 0) + 3, gx: nx % 2 ? CELL / 2 : 0, gz: nz % 2 ? CELL / 2 : 0 };
+  const t: Tile = { ex: bw + m + pad + 1, ez: bd + m + pad + 1, gx: nx % 2 ? CELL / 2 : 0, gz: nz % 2 ? CELL / 2 : 0 };
   const { cv, g, px, pz } = paper(t);
-  if (pad) cells(g, px, pz, -bw - pad, -bd - pad, bw + pad, bd + pad, "#f2b48a");
+  cells(g, px, pz, -bw - m - pad, -bd - m - pad, bw + m + pad, bd + m + pad, "#f6d0cb");
+  cells(g, px, pz, -bw - m, -bd - m, bw + m, bd + m, "#cfe5bf");
   cells(g, px, pz, -bw, -bd, bw, bd, "#9cc3e6");
   if (exit) cells(g, px, pz, exit[0] - exit[2], exit[1] - exit[3], exit[0] + exit[2], exit[1] + exit[3], "#f4d35e");
   grid(g, t, px, pz);
@@ -169,10 +171,10 @@ function drawBuilding(id: BuildingId): void {
   scaleBar(g, cv.height);
   const parts = [
     `<b>${spec.name}</b> <code>${id}</code>`,
-    `Nền móng ${fmt(hw * 2)} × ${fmt(hd * 2)} m → chiếm <b>${nx} × ${nz} ô</b> (${fmt(bw * 2)} × ${fmt(bd * 2)} m)`
+    `Thân ${fmt(hw * 2)} × ${fmt(hd * 2)} m → <b>${nx} × ${nz} ô</b> · viền ${Math.round(m / CELL)} ô → nền móng <b>${nx + 2 * Math.round(m / CELL)} × ${nz + 2 * Math.round(m / CELL)} ô</b> · + ${RULES.buildPadCells} ô cấm xây`
   ];
-  if (exit) parts.push("Có cửa ra 4 × 2 m (xe chạy ra)");
-  if (pad) parts.push(`Đệm ${spec.clearCells} ô quanh nhà cho xe vận tải`);
+  if (spec.bay) parts.push(`${spec.doors} ô ráp xe + dải đường cho xe chạy ra (trong thân nhà)`);
+  else if (exit) parts.push("Có cửa ra 4 × 2 m (xe chạy ra)");
   if (spec.fort) parts.push("Công sự");
   figure(document.getElementById("buildings")!, cv, parts.join("<br>"));
 }
@@ -266,9 +268,19 @@ function drawLayout(): void {
   for (const [kind, dx, dz, rot] of plan) {
     const x = hq.x + dx;
     const z = hq.z + dz;
-    const err = w.sandboxPlaceError(kind, x, z, rot);
-    if (err) errors.push(`${BUILDINGS[kind].name} (${dx}, ${dz}): ${err}`);
-    else w.step([{ side: 0, order: { t: "sbSpawn", kind, side: 0, x, z, rot } } as never]);
+    // tìm chỗ hợp lệ gần chỗ dự kiến nhất (xoắn ốc theo ô lưới): bố trí mẫu tự giãn theo luật khoảng cách hiện tại
+    let spot: [number, number] | null = null;
+    let err = w.sandboxPlaceError(kind, x, z, rot);
+    for (let r = 0; r <= 12 && !spot; r++)
+      for (let i = -r; i <= r && !spot; i++)
+        for (const [ox, oz] of [[i, -r], [i, r], [-r, i], [r, i]] as const) {
+          if (spot) break;
+          const e = w.sandboxPlaceError(kind, x + ox * CELL, z + oz * CELL, rot);
+          if (e === null) spot = [x + ox * CELL, z + oz * CELL];
+          else if (r === 0) err = e;
+        }
+    if (!spot) errors.push(`${BUILDINGS[kind].name} (${dx}, ${dz}): ${err}`);
+    else w.step([{ side: 0, order: { t: "sbSpawn", kind, side: 0, x: spot[0], z: spot[1], rot } } as never]);
   }
   // chỉ lấy nhà của căn cứ mẫu (bỏ Tổng Hành Dinh có sẵn của bản đồ ở xa)
   const blds = w.buildings.filter((b) => b.side === 0 && Math.abs(b.x - hq.x) < 80 && Math.abs(b.z - hq.z) < 80);
@@ -290,9 +302,15 @@ function drawLayout(): void {
     g.fillRect(px(x0), pz(z0), (x1 - x0) * LS, (z1 - z0) * LS);
   };
   for (const b of blds) {
-    const pad = (BUILDINGS[b.kind].clearCells ?? 0) * CELL;
+    const m = w.marginOf(b.kind);
+    const pad = RULES.buildPadCells * CELL;
     const [bw, bd] = w.blockHalf(b.kind, b.rot);
-    if (pad) rect(b.x - bw - pad, b.z - bd - pad, b.x + bw + pad, b.z + bd + pad, "#f2b48a");
+    rect(b.x - bw - m - pad, b.z - bd - m - pad, b.x + bw + m + pad, b.z + bd + m + pad, "#f6d0cb");
+  }
+  for (const b of blds) {
+    const m = w.marginOf(b.kind);
+    const [bw, bd] = w.blockHalf(b.kind, b.rot);
+    rect(b.x - bw - m, b.z - bd - m, b.x + bw + m, b.z + bd + m, "#cfe5bf");
   }
   for (const b of blds) {
     const [bw, bd] = w.blockHalf(b.kind, b.rot);

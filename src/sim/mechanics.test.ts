@@ -386,7 +386,8 @@ describe("mọi mâm xoay đều mất thời gian (traverse)", () => {
       const tw = building(w, 0, "turret", ...P(0));
       const s = behind ? -1 : 1;
       const t0 = w.tick;
-      building(w, 1, "power-pylon", tw.x + tw.aimX * 12 * s, tw.z + tw.aimZ * 12 * s);
+      // 16 m: đủ xa để qua luật khoảng cách giữa hai nhà (3 ô) kể cả khi đặt chéo, vẫn trong tầm 20 m của tháp
+      building(w, 1, "power-pylon", tw.x + tw.aimX * 16 * s, tw.z + tw.aimZ * 16 * s);
       if (shotsNow(w, tw.id)) return w.tick - t0;
       const shots = run(w, sec(6), tw.id);
       expect(shots.length).toBeGreaterThan(0);

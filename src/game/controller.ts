@@ -869,7 +869,8 @@ export class Controller implements GestureHandlers {
       this.ghost.root.visible = true;
       this.placeReason = this.world.canPlace(this.me, this.placeKind, x, z, rot);
       const valid = this.placeReason === null;
-      const [nx, nz] = this.world.blockCells(this.placeKind, rot);
+      // bóng hiện cả nền móng: thân nhà + viền trong mô hình (không được đè lên ô đỏ của nhà khác)
+      const [nx, nz] = this.world.footCells(this.placeKind, rot);
       const me = this.me;
       const rev = `${this.world.buildings.length}:${this.world.buildings.reduce((n, b) => n + (b.built ? 1 : 0), 0)}`;
       (this.placeGrid ??= new PlacementGrid(this.scene, this.world.map)).show(gx, gz, nx, nz, valid, (cx, cz) => this.world.cellForbidden(me, cx, cz), rev);

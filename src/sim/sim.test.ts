@@ -201,8 +201,8 @@ describe("lõi mô phỏng", () => {
   /** Đặt công trình ở chỗ hợp lệ gần Tổng Hành Dinh phe 0, trả về công trình vừa đặt. */
   const placeNear = (w: World, kind: BuildingId) => {
     const hq = w.hqOf(0)!;
-    for (let r = 10; r <= 30; r += 2)
-      for (const [dx, dz] of [[1, 0], [0, -1], [1, -1], [-1, 0], [0, 1], [-1, -1], [1, 1]] as const) {
+    for (let r = 10; r <= 60; r += 2)
+      for (const [dx, dz] of [[1, 0], [0, -1], [1, -1], [-1, 0], [0, 1], [-1, -1], [1, 1], [-1, 1]] as const) {
         const x = Math.round(hq.x + dx * r);
         const z = Math.round(hq.z + dz * r);
         if (w.canPlace(0, kind, x, z) === null) {

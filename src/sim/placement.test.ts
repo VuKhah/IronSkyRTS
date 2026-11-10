@@ -1,8 +1,8 @@
-/** Luật đặt công trình lên lưới ô vuông: nằm chính giữa khối ô, được đặt sát nhau nhưng không vây kín cửa ra, công bằng giữa hai phe. */
+/** Luật đặt công trình lên lưới ô vuông: nằm chính giữa khối ô, cách nhau ít nhất 1 ô, không vây kín cửa ra, công bằng giữa hai phe. */
 import { describe, expect, it } from "vitest";
-import { BUILDINGS, defaultRot, type BuildingId } from "./content";
+import { BUILDINGS, doorDir, RULES, type BuildingId } from "./content";
 import { CELL } from "./maps";
-import { World } from "./world";
+import { sec, World } from "./world";
 
 const cellsOf = (half: number): number => Math.ceil((half * 2) / CELL - 1e-9);
 const KINDS = Object.keys(BUILDINGS) as BuildingId[];
@@ -15,18 +15,19 @@ const put = (w: World, side: 0 | 1, kind: BuildingId, x: number, z: number): str
 };
 
 describe("Đặt công trình lên lưới", () => {
-  it("Tổng Hành Dinh và các xưởng 8 × 8 m chiếm đúng 4 × 4 ô, Sân Đáp 6 × 8 ô, Nhà Máy Điện 3 × 4 ô", () => {
+  it("Tổng Hành Dinh 4 × 4 ô, ba xưởng 9 × 9 ô (có 3 cửa trong nền móng), Sân Đáp 6 × 8 ô, Nhà Máy Điện 3 × 4 ô", () => {
     expect(BUILDINGS.hq.half.map(cellsOf)).toEqual([4, 4]);
-    expect(BUILDINGS.factory.half.map(cellsOf)).toEqual([4, 4]);
-    expect(BUILDINGS["special-factory"].half.map(cellsOf)).toEqual([4, 4]);
-    expect(BUILDINGS["aircraft-factory"].half.map(cellsOf)).toEqual([4, 4]);
+    for (const k of ["factory", "special-factory", "aircraft-factory"] as const) {
+      expect(BUILDINGS[k].half.map(cellsOf), k).toEqual([9, 9]);
+      expect(BUILDINGS[k].doors, k).toBe(3);
+    }
     expect(BUILDINGS.airfield.half.map(cellsOf)).toEqual([6, 8]);
     expect(BUILDINGS["power-plant"].half.map(cellsOf)).toEqual([3, 4]);
   });
 
-  it("công trình chỉ có 3 cỡ chuẩn ngoài Sân Đáp: 8 × 8 m, 4,8 × 6,4 m và 4 × 4 m", () => {
+  it("công trình chỉ có 4 cỡ chuẩn ngoài Sân Đáp: xưởng 18 × 18 m, 8 × 8 m, 4,8 × 6,4 m và 4 × 4 m", () => {
     const sizes = new Set(KINDS.filter((k) => k !== "airfield").map((k) => BUILDINGS[k].half.join("x")));
-    expect([...sizes].sort()).toEqual(["2.4x3.2", "2x2", "4x4"]);
+    expect([...sizes].sort()).toEqual(["2.4x3.2", "2x2", "4x4", "9x9"]);
   });
 
   it("mọi kích cỡ công trình là bội số của 4 dm", () => {
@@ -69,15 +70,20 @@ describe("Đặt công trình lên lưới", () => {
         }
   });
 
-  it("nhà được đặt sát nhau (người dùng 10/11/2026: miễn là xe vẫn ra được)", () => {
+  it("hai thân nhà cách nhau ít nhất viền + ô cấm xây + viền = 3 ô (người dùng 10/11/2026, bản vẽ xưởng)", () => {
     const w = new World(1, { sandbox: true });
-    // xưởng ở chỗ đất trống; Trạm Radar sát hông xưởng (không phải phía cửa), rồi tháp sát Radar
-    expect(put(w, 0, "factory", -20, 20)).toBeNull();
-    const [fw] = BUILDINGS.factory.half;
+    expect([RULES.buildMarginCells, RULES.buildPadCells]).toEqual([1, 1]);
+    expect(put(w, 0, "factory", -25, 25)).toBeNull();
+    const f = w.buildings.find((b) => b.kind === "factory")!;
+    const [fw] = w.blockHalf("factory", f.rot);
     const [rx] = w.blockCells("radar");
-    const x1 = -20 - fw - (rx * CELL) / 2;
-    expect(put(w, 0, "radar", x1, 20)).toBeNull();
-    expect(put(w, 0, "turret", x1 - rx * CELL, 20)).toBeNull();
+    const at = (gap: number): number => f.x + fw + gap + (rx * CELL) / 2;
+    expect(put(w, 0, "radar", at(2 * CELL), f.z - 4)).toBe("Phải cách Xưởng Xe Tăng ít nhất 3 ô");
+    expect(put(w, 0, "radar", at(3 * CELL), f.z - 4)).toBeNull();
+    // tháp cũng vậy (không còn ngoại lệ công sự đứng sát nhau)
+    const r = w.buildings.find((b) => b.kind === "radar")!;
+    expect(put(w, 0, "turret", r.x + rx * CELL + 2 * CELL, r.z)).toMatch(/^Phải cách Trạm Radar ít nhất 3 ô/);
+    expect(put(w, 0, "turret", r.x + rx * CELL + 3 * CELL, r.z)).toBeNull();
   });
 
   it("Tổng Hành Dinh vẫn phải có đệm 2 ô quanh mình cho xe vận tải ra vào", () => {
@@ -88,47 +94,47 @@ describe("Đặt công trình lên lưới", () => {
     const [rx] = w.blockCells("radar");
     const dir = hq.x > 0 ? -1 : 1;
     const at = (gap: number): number => hq.x + dir * (hw + gap + (rx * CELL) / 2);
-    expect(put(w, 0, "radar", at(0), hq.z)).toMatch(/^Phải chừa 2 ô quanh Tổng Hành Dinh/);
-    expect(put(w, 0, "radar", at(CELL), hq.z)).toMatch(/^Phải chừa 2 ô quanh Tổng Hành Dinh/);
-    expect(put(w, 0, "radar", at(2 * CELL), hq.z)).toBeNull();
+    // viền Tổng Hành Dinh 2 ô + cấm xây 1 + viền Radar 1 = 4 ô
+    expect(put(w, 0, "radar", at(3 * CELL), hq.z)).toBe("Phải cách Tổng Hành Dinh ít nhất 4 ô");
+    expect(put(w, 0, "radar", at(4 * CELL), hq.z)).toBeNull();
   });
 
-  it("không được đè lên ô cửa ra; cửa ra của Tổng Hành Dinh và xưởng quay về phía giữa bản đồ", () => {
+  it("cửa ra của Tổng Hành Dinh quay về giữa bản đồ; xưởng có 3 cửa ở góc trước bên phải, ô cửa không bị chặn", () => {
     const w = new World(1, { sandbox: true });
     for (const side of [0, 1] as const) {
       const hq = w.buildings.find((b) => b.kind === "hq" && b.side === side)!;
       const e = w.exitRect("hq", hq.x, hq.z, hq.rot)!;
       expect(Math.sign(e[1] - hq.z)).toBe(Math.sign(-hq.z)); // cửa nhìn về phía z = 0
     }
-    const sg = [1, -1] as const;
-    for (const side of [0, 1] as const) {
-      const fx = sg[side] * -20;
-      const fz = sg[side] * 20;
-      expect(put(w, side, "factory", fx, fz)).toBeNull();
-      const e = w.exitRect("factory", fx, fz, defaultRot("factory", fz))!;
-      expect(put(w, side, "power-pylon", e[0], e[1] + Math.sign(e[1] - fz))).toMatch(/^Không được chắn cửa ra/);
-    }
+    expect(put(w, 0, "factory", -25, 25)).toBeNull();
+    const f = w.buildings.find((b) => b.kind === "factory")!;
+    const e = w.exitRect("factory", f.x, f.z, f.rot)!;
+    // khu ráp xe + dải đường 6 × 4 ô nằm trong thân nhà, các ô của nó xe đi được, phần còn lại của thân thì chặn
+    expect([e[2] * 2, e[3] * 2]).toEqual([12, 8]);
+    for (const i of w.grid.cellsInRect(e[0], e[1], e[2], e[3])) expect(w.grid.blockedIdx(i)).toBe(false);
+    expect(w.grid.blockedAt(f.x, f.z)).toBe(true);
+    // không đặt được gì lên lối ra
+    expect(put(w, 0, "power-pylon", e[0], e[1])).not.toBeNull();
   });
 
-  for (const side of [0, 1] as const)
-    it(`không được vây kín cửa ra của xưởng: viên tháp cuối cùng bịt lối bị từ chối (phe ${side})`, () => {
-      const w = new World(1, { sandbox: true });
-      const sg = side === 0 ? 1 : -1;
-      // xưởng ở chỗ đất trống, soi gương cho phe Đỏ
-      const fx = sg * -20;
-      const fz = sg * 20;
-      expect(put(w, side, "factory", fx, fz)).toBeNull();
-      const e = w.exitRect("factory", fx, fz, defaultRot("factory", fz))!;
-      const door = Math.sign(e[1] - fz);
-      const [, fd] = BUILDINGS.factory.half;
-      const ez = fz + door * (fd + 2); // tâm hàng tháp hai bên cửa (tháp 4 × 4 m)
-      expect(put(w, side, "turret", fx - 4, ez)).toBeNull();
-      expect(put(w, side, "turret", fx + 4, ez)).toBeNull();
-      // tháp chắn ngay trước ô cửa: cửa chỉ còn 2 ô bị vây bốn phía
-      expect(put(w, side, "turret", fx, fz + door * (fd + 2 + 4))).toMatch(/^Sẽ vây kín cửa ra/);
-      // lùi ra một ô thì vẫn còn lối hai bên: được
-      expect(put(w, side, "turret", fx, fz + door * (fd + 2 + 6))).toBeNull();
-    });
+  it("lô 3 Lynx ra 3 cửa khác nhau, đứng trên ô đi được trong lối ra", () => {
+    const w = new World(1, { sandbox: true });
+    expect(put(w, 0, "factory", -25, 25)).toBeNull();
+    const f = w.buildings.find((b) => b.kind === "factory")!;
+    const e = w.exitRect("factory", f.x, f.z, f.rot)!;
+    const before = new Set(w.units.map((u) => u.id));
+    w.step([{ side: 0, order: { t: "produce", building: f.id, kind: "lynx" } }]);
+    for (let t = 0; t < sec(60) && w.units.filter((u) => !before.has(u.id)).length < 3; t++) w.step([]);
+    const lynx = w.units.filter((u) => !before.has(u.id) && u.kind === "lynx");
+    expect(lynx.length).toBe(3);
+    const xs = lynx.map((u) => Math.round(u.x));
+    expect(new Set(xs).size).toBe(3);
+    for (const u of lynx) {
+      expect(Math.abs(u.x - e[0]), "trong lối ra").toBeLessThanOrEqual(e[2]);
+      expect(Math.abs(u.z - e[1]), "trong lối ra").toBeLessThanOrEqual(e[3]);
+      expect(w.grid.blockedAt(u.x, u.z)).toBe(false);
+    }
+  });
 });
 
 describe("Xoay công trình (người dùng 10/11/2026)", () => {
@@ -150,9 +156,11 @@ describe("Xoay công trình (người dùng 10/11/2026)", () => {
 
   it("cửa ra quay theo nấc xoay; lệnh xây mang theo nấc xoay", () => {
     const w = new World(1, { sandbox: true });
-    for (const [rot, dx, dz] of [[0, 0, 1], [1, 1, 0], [2, 0, -1], [3, -1, 0]] as const) {
+    for (const rot of [0, 1, 2, 3]) {
+      // tâm lối ra nằm về phía cửa: tích vô hướng với hướng cửa dương
       const e = w.exitRect("factory", 0, 0, rot)!;
-      expect([Math.sign(e[0]), Math.sign(e[1])]).toEqual([dx, dz]);
+      const [dx, dz] = doorDir(rot);
+      expect(e[0] * dx + e[1] * dz, `nấc ${rot}`).toBeGreaterThan(0);
     }
     expect(put(w, 0, "factory", -20, 20)).toBeNull();
     const w2 = new World(1, { sandbox: true });

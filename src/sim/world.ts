@@ -415,10 +415,50 @@ export class World {
    * không có xe chạy ra. Người dùng 10/11/2026: nhà được đặt sát nhau, miễn là xe vẫn ra được.
    */
   exitRect(kind: BuildingId, x: number, z: number, rot: number): [number, number, number, number] | null {
+    const bay = BUILDINGS[kind].bay;
+    if (bay) return this.localRect(bay, x, z, rot);
     if (!BUILDINGS[kind].produces?.some((u) => UNITS[u].domain === "ground")) return null;
     const [bw, bd] = this.blockHalf(kind, rot);
     const [dx, dz] = doorDir(rot);
     return dz !== 0 ? [x, z + dz * (bd + EXIT_D / 2), EXIT_W / 2, EXIT_D / 2] : [x + dx * (bw + EXIT_D / 2), z, EXIT_D / 2, EXIT_W / 2];
+  }
+
+  /** Viền trong mô hình của công trình (m): đất trống xe đi được quanh thân nhà, tính vào nền móng khi bố trí. */
+  marginOf(kind: BuildingId): number {
+    return (BUILDINGS[kind].clearCells ?? RULES.buildMarginCells) * CELL;
+  }
+
+  /** Số ô của cả nền móng (thân + viền hai bên) theo x và z, để hiện bóng công trình khi đặt. */
+  footCells(kind: BuildingId, rot = 0): [number, number] {
+    const [nx, nz] = this.blockCells(kind, rot);
+    const m = 2 * Math.round(this.marginOf(kind) / CELL);
+    return [nx + m, nz + m];
+  }
+
+  /** Hình chữ nhật [x0, z0, x1, z1] trong khung mô hình đổi ra khung thế giới: [tâm x, tâm z, nửa rộng, nửa sâu]. */
+  private localRect(r: readonly [number, number, number, number], x: number, z: number, rot: number): [number, number, number, number] {
+    const [ax, az] = rotOffset(r[0], r[1], rot);
+    const [bx, bz] = rotOffset(r[2], r[3], rot);
+    return [x + (ax + bx) / 2, z + (az + bz) / 2, Math.abs(bx - ax) / 2, Math.abs(bz - az) / 2];
+  }
+
+  /** Các ô lưới của lối ra trong nền móng (không bị nhà chặn). */
+  private bayCells(kind: BuildingId, x: number, z: number, rot: number): Set<number> {
+    const bay = BUILDINGS[kind].bay;
+    if (!bay) return new Set();
+    const e = this.localRect(bay, x, z, rot);
+    return new Set(this.grid.cellsInRect(e[0], e[1], e[2], e[3]));
+  }
+
+  /** Tâm cửa thứ k của nhà có `bay` (giữa chiều sâu lối ra), theo khung thế giới. */
+  private doorPos(b: Building, k: number): [number, number] {
+    const spec = BUILDINGS[b.kind];
+    const bay = spec.bay!;
+    const n = spec.doors ?? 1;
+    const lx = bay[0] + ((k % n) + 0.5) * ((bay[2] - bay[0]) / n);
+    const lz = bay[1] + (spec.stall ?? bay[3] - bay[1]) / 2; // giữa ô ráp xe
+    const [ox, oz] = rotOffset(lx, lz, b.rot);
+    return [b.x + ox, b.z + oz];
   }
 
   /**
@@ -462,24 +502,21 @@ export class World {
   private layoutError(kind: BuildingId, x: number, z: number, rot: number): string | null {
     const [hw, hd] = this.blockHalf(kind, rot);
     const exits: { name: string; e: [number, number, number, number] }[] = [];
-    const myClear = (BUILDINGS[kind].clearCells ?? 0) * CELL;
+    const myMargin = this.marginOf(kind);
     for (const b of this.buildings) {
       if (b.hp <= 0) continue;
-      // đệm cho xe vận tải ra vào (Tổng Hành Dinh…): lấy đệm lớn hơn của hai nhà
-      const pad = Math.max(myClear, (BUILDINGS[b.kind].clearCells ?? 0) * CELL);
-      if (pad > 0) {
-        const [ow, od] = this.blockHalf(b.kind, b.rot);
-        if (Math.abs(b.x - x) < hw + ow + pad - 1e-6 && Math.abs(b.z - z) < hd + od + pad - 1e-6) {
-          const who = BUILDINGS[b.kind].clearCells ? BUILDINGS[b.kind].name : BUILDINGS[kind].name;
-          return `Phải chừa ${pad / CELL} ô quanh ${who} cho xe vận tải ra vào`;
-        }
-      }
+      // hai thân nhà cách nhau ít nhất: viền nhà này + ô cấm xây (dùng chung) + viền nhà kia
+      const gap = myMargin + RULES.buildPadCells * CELL + this.marginOf(b.kind);
+      const [ow, od] = this.blockHalf(b.kind, b.rot);
+      if (Math.abs(b.x - x) < hw + ow + gap - 1e-6 && Math.abs(b.z - z) < hd + od + gap - 1e-6) return `Phải cách ${BUILDINGS[b.kind].name} ít nhất ${Math.round(gap / CELL)} ô`;
       const e = this.exitRect(b.kind, b.x, b.z, b.rot);
       if (!e) continue;
       if (Math.abs(e[0] - x) < e[2] + hw - 1e-6 && Math.abs(e[1] - z) < e[3] + hd - 1e-6) return `Không được chắn cửa ra của ${BUILDINGS[b.kind].name}`;
       if (Math.abs(e[0] - x) <= hw + EXIT_ESCAPE * CELL && Math.abs(e[1] - z) <= hd + EXIT_ESCAPE * CELL) exits.push({ name: BUILDINGS[b.kind].name, e });
     }
-    const foot = new Set(this.grid.cellsInRect(x, z, hw, hd));
+    // nền móng nhà định đặt (trừ lối ra trong nền móng của chính nó: các ô đó xe vẫn đi được)
+    const ownBay = this.bayCells(kind, x, z, rot);
+    const foot = new Set(this.grid.cellsInRect(x, z, hw, hd).filter((i) => !ownBay.has(i)));
     const own = this.exitRect(kind, x, z, rot);
     if (own) {
       if (!this.map.fits(own[0], own[1], own[2], own[3])) return "Cửa ra nằm ngoài bản đồ";
@@ -503,11 +540,10 @@ export class World {
       if (b.hp <= 0) continue;
       const e = this.exitRect(b.kind, b.x, b.z, b.rot);
       if (e && Math.abs(x - e[0]) < e[2] && Math.abs(z - e[1]) < e[3]) return true;
-      const pad = (BUILDINGS[b.kind].clearCells ?? 0) * CELL;
-      if (pad > 0) {
-        const [ow, od] = this.blockHalf(b.kind, b.rot);
-        if (Math.abs(x - b.x) < ow + pad && Math.abs(z - b.z) < od + pad) return true;
-      }
+      // nền móng nhà kia (thân + viền) và ô cấm xây quanh nó: nền móng nhà mới (cả viền) không được đè lên
+      const pad = this.marginOf(b.kind) + RULES.buildPadCells * CELL;
+      const [ow, od] = this.blockHalf(b.kind, b.rot);
+      if (Math.abs(x - b.x) < ow + pad && Math.abs(z - b.z) < od + pad) return true;
       const zone = BUILDINGS[b.kind].zone;
       if (!inZone && zone && b.side === side && b.built && dist2(b.x, b.z, x, z) <= zone * zone) inZone = true;
     }
@@ -673,7 +709,9 @@ export class World {
     const rot = normRot(rotIn) ?? defaultRot(kind, z);
     [x, z] = this.snapBuilding(kind, x, z, rot);
     const [blockW, blockD] = this.blockHalf(kind, rot);
-    const cells = this.grid.cellsInRect(x, z, blockW, blockD);
+    // lối ra trong nền móng (bay) không bị chặn: xe đúc xong đứng ở đó rồi chạy ra
+    const bayCells = this.bayCells(kind, x, z, rot);
+    const cells = this.grid.cellsInRect(x, z, blockW, blockD).filter((i) => !bayCells.has(i));
     this.grid.block(cells, 1);
     const [dx, dz] = dirToCenter(x, z);
     const reach = Math.max(spec.half[0], spec.half[1]) + 6;
@@ -2417,7 +2455,9 @@ export class World {
       const slot = this.nearestFreePad(b.side, b.x, b.z)!;
       const [ddx, ddz] = doorDir(b.rot);
       const reach = BUILDINGS[b.kind].half[1] + 1; // nửa chiều sâu theo khung mô hình (cửa ở +z của mô hình)
-      const u = this.spawnUnit(kind, b.side, b.x + ddx * reach - ddz * offset, b.z + ddz * reach + ddx * offset);
+      // nhà có lối ra trong nền móng: mỗi máy bay của lô lăn ra một cửa
+      const [ax, az] = BUILDINGS[b.kind].bay ? this.doorPos(b, k) : [b.x + ddx * reach - ddz * offset, b.z + ddz * reach + ddx * offset];
+      const u = this.spawnUnit(kind, b.side, ax, az);
       u.lot = lot;
       u.hx = u.phx = ddx;
       u.hz = u.phz = ddz;
@@ -2433,9 +2473,11 @@ export class World {
       const [ddx, ddz] = doorDir(b.rot);
       const out = BUILDINGS[b.kind].half[1] + 2.5;
       // mép ngoài ô cửa ra, cả lô xếp ngang (vuông góc hướng cửa)
-      const [fx, fz] = e
-        ? [e[0] + ddx * e[2] - ddz * offset, e[1] + ddz * e[3] + ddx * offset]
-        : [b.x + ddx * out - ddz * offset, b.z + ddz * out + ddx * offset];
+      const [fx, fz] = BUILDINGS[b.kind].bay
+        ? this.doorPos(b, k) // mỗi xe của lô ra một cửa (xưởng 3 cửa, lô tối đa 3)
+        : e
+          ? [e[0] + ddx * e[2] - ddz * offset, e[1] + ddz * e[3] + ddx * offset]
+          : [b.x + ddx * out - ddz * offset, b.z + ddz * out + ddx * offset];
       const [sx, sz] = this.grid.nearestFree(fx, fz, 6) ?? [fx, fz];
       const u = this.spawnUnit(kind, b.side, sx, sz);
       u.hx = u.phx = ddx;

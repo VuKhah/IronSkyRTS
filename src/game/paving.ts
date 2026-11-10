@@ -18,7 +18,7 @@
  * nhớ nên không làm lộ nhà địch trong sương mù.
  */
 import * as THREE from "three";
-import { doorDir } from "../sim/content";
+import { BUILDINGS, doorDir } from "../sim/content";
 import { CELL, type GameMap } from "../sim/maps";
 import type { Building } from "../sim/types";
 import { dirToCenter, type World } from "../sim/world";
@@ -137,7 +137,8 @@ export class Paving {
       const hw = dz !== 0 ? ROAD / 2 : 0;
       const hd = dx !== 0 ? ROAD / 2 : 0;
       const stub: Rect = [Math.min(ix, ox) - hw, Math.min(iz, oz) - hd, Math.max(ix, ox) + hw, Math.max(iz, oz) + hd];
-      exits.push({ start, x: ox, z: oz, side: b.side, stub });
+      // xưởng có lối ra trong nền móng (bay): sàn lối ra do mô hình vẽ, không cần đoạn nối
+      exits.push({ start, x: ox, z: oz, side: b.side, stub: BUILDINGS[b.kind].bay ? [0, 0, 0, 0] : stub });
     }
     // gần Tổng Hành Dinh trước (cửa của nó mở trục chính), rồi xa dần: đường mọc từ trong ra
     const hqs = buildings.filter((b) => b.kind === "hq");
