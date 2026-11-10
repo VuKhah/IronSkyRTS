@@ -4,7 +4,8 @@
  * vùng luật bằng canvas 2D. Mọi số đọc từ content.ts / World nên bản vẽ luôn khớp với sim.
  */
 import * as THREE from "three";
-import { BUILDINGS, FACTION_OF, UNITS, type BuildingId, type UnitId } from "../sim/content";
+import { BUILDINGS, doorDir, FACTION_OF, rotHalf, UNITS, type BuildingId, type UnitId } from "../sim/content";
+import { Paving } from "../game/paving";
 import { CELL } from "../sim/maps";
 import { World } from "../sim/world";
 import { buildModel, disposeRig } from "../render/models";
@@ -13,6 +14,16 @@ import { buildModel, disposeRig } from "../render/models";
 const S = 22;
 const FINE = 0.4;
 const PAPER = "#f4f1e8";
+/** Tên ngắn cho nhà nhỏ 4 × 4 m trên mặt bằng chung (tên đầy đủ dài hơn nhà, đè lên nhau). */
+const SHORT: Partial<Record<BuildingId, string>> = {
+  turret: "Tháp",
+  "aa-ciws": "CIWS",
+  "aa-sam": "Patriot",
+  "aa-emp": "Xung ĐT",
+  battery: "Pin",
+  radar: "Radar",
+  "power-pylon": "Cột Điện"
+};
 
 const fmt = (v: number): string => (Math.round(v * 100) / 100).toLocaleString("vi-VN");
 
@@ -220,5 +231,171 @@ function drawUnit(id: UnitId): void {
   figure(document.getElementById("units")!, cv, parts.join("<br>"));
 }
 
+/**
+ * Mặt bằng chung: một căn cứ mẫu phe Lam đặt bằng luật thật của sim (World Phòng Thử Nghiệm), đường do `Paving` sinh ra,
+ * cả cảnh chụp trực giao một lần rồi vẽ đè lưới và vùng luật. Tọa độ (dx, dz) tính từ tâm Tổng Hành Dinh; phe Lam ở nửa +z
+ * nên phía trận (giữa bản đồ) là −z, nằm ở trên bản vẽ.
+ */
+function drawLayout(): void {
+  const LS = 13; // px / m cho bản vẽ chung
+  // bãi đất trống rộng trên bản đồ thử 960 m (Tổng Hành Dinh thật của các bản đồ chính nằm sát góc, căn cứ mẫu tràn ra ngoài)
+  const w = new World(1, { sandbox: true, map: "big-test" });
+  w.step([{ side: 0, order: { t: "sbSpawn", kind: "hq", side: 0, x: -60, z: 60 } } as never]);
+  const hq = w.buildings.find((b) => b.kind === "hq" && b.x === -60 && b.z === 60)!;
+  // [loại, dx, dz, nấc xoay?]: chưa có nấc thì dùng mặc định (cửa về phía trận)
+  const plan: [BuildingId, number, number, number?][] = [
+    ["factory", -12, -16],
+    ["special-factory", 12, -16],
+    ["aircraft-factory", 26, -16],
+    ["airfield", 0, 18],
+    ["power-plant", -14, 0],
+    ["power-plant", -20, 0],
+    ["battery", -14, 8],
+    ["battery", -18, 8],
+    ["radar", 14, 2],
+    ["oil-extractor", 20, 4],
+    ["ammo-depot", 14, 12],
+    ["power-pylon", -26, 12],
+    ["turret", -10, -30],
+    ["aa-ciws", -6, -30],
+    ["aa-sam", 6, -30],
+    ["aa-emp", 10, -30],
+    ["outpost", 20, -30]
+  ];
+  const errors: string[] = [];
+  for (const [kind, dx, dz, rot] of plan) {
+    const x = hq.x + dx;
+    const z = hq.z + dz;
+    const err = w.sandboxPlaceError(kind, x, z, rot);
+    if (err) errors.push(`${BUILDINGS[kind].name} (${dx}, ${dz}): ${err}`);
+    else w.step([{ side: 0, order: { t: "sbSpawn", kind, side: 0, x, z, rot } } as never]);
+  }
+  // chỉ lấy nhà của căn cứ mẫu (bỏ Tổng Hành Dinh có sẵn của bản đồ ở xa)
+  const blds = w.buildings.filter((b) => b.side === 0 && Math.abs(b.x - hq.x) < 80 && Math.abs(b.z - hq.z) < 80);
+  // vùng vẽ (m, tính từ tâm Tổng Hành Dinh)
+  const X0 = -32;
+  const X1 = 54;
+  const Z0 = -38;
+  const Z1 = 30;
+  const cv = document.createElement("canvas");
+  cv.width = (X1 - X0) * LS;
+  cv.height = (Z1 - Z0) * LS;
+  const g = cv.getContext("2d")!;
+  const px = (x: number): number => (x - hq.x - X0) * LS;
+  const pz = (z: number): number => (z - hq.z - Z0) * LS;
+  g.fillStyle = PAPER;
+  g.fillRect(0, 0, cv.width, cv.height);
+  const rect = (x0: number, z0: number, x1: number, z1: number, fill: string): void => {
+    g.fillStyle = fill;
+    g.fillRect(px(x0), pz(z0), (x1 - x0) * LS, (z1 - z0) * LS);
+  };
+  for (const b of blds) {
+    const pad = (BUILDINGS[b.kind].clearCells ?? 0) * CELL;
+    const [bw, bd] = w.blockHalf(b.kind, b.rot);
+    if (pad) rect(b.x - bw - pad, b.z - bd - pad, b.x + bw + pad, b.z + bd + pad, "#f2b48a");
+  }
+  for (const b of blds) {
+    const [bw, bd] = w.blockHalf(b.kind, b.rot);
+    rect(b.x - bw, b.z - bd, b.x + bw, b.z + bd, "#9cc3e6");
+    const e = w.exitRect(b.kind, b.x, b.z, b.rot);
+    if (e) rect(e[0] - e[2], e[1] - e[3], e[0] + e[2], e[1] + e[3], "#f4d35e");
+  }
+  // lưới đất 2 m chung (đúng lưới của sim: đường kẻ ở −halfW + k·2)
+  g.strokeStyle = "#cfc6b0";
+  g.lineWidth = 1;
+  g.beginPath();
+  for (let x = Math.ceil((hq.x + X0 + w.map.halfW) / CELL) * CELL - w.map.halfW; x <= hq.x + X1; x += CELL) {
+    g.moveTo(Math.round(px(x)) + 0.5, 0);
+    g.lineTo(Math.round(px(x)) + 0.5, cv.height);
+  }
+  for (let z = Math.ceil((hq.z + Z0 + w.map.halfH) / CELL) * CELL - w.map.halfH; z <= hq.z + Z1; z += CELL) {
+    g.moveTo(0, Math.round(pz(z)) + 0.5);
+    g.lineTo(cv.width, Math.round(pz(z)) + 0.5);
+  }
+  g.stroke();
+
+  // cảnh 3D: đường nhựa của game + mọi mô hình ở đúng chỗ, chụp trực giao từ trên xuống
+  const sc = new THREE.Scene();
+  sc.add(new THREE.HemisphereLight(0xffffff, 0x8a8478, 1.7));
+  const lt = new THREE.DirectionalLight(0xffffff, 1.4);
+  lt.position.set(4, 10, 6);
+  sc.add(lt);
+  new Paving(sc, w.map).sync(w, blds);
+  const rigs: ReturnType<typeof buildModel>[] = [];
+  const put = (id: BuildingId | UnitId, x: number, z: number, yaw: number): void => {
+    const rig = buildModel(id, FACTION_OF[0], false);
+    rig.root.position.set(x, w.map.groundY(x, z) + 0.06, z);
+    rig.root.rotation.y = yaw;
+    sc.add(rig.root);
+    rigs.push(rig);
+  };
+  for (const b of blds) put(b.kind, b.x, b.z, (b.rot * Math.PI) / 2);
+  // binh chủng xếp cột bên phải để so cỡ (mũi quay về phía trận, −z); Xe Vận Tải đỗ ở ô dỡ hàng bên trái Tổng Hành Dinh
+  const names: [string, number, number][] = [];
+  let uz = -32;
+  for (const id of Object.keys(UNITS) as UnitId[]) {
+    const len = id === "artillery" ? 6 : UNITS[id].radius * 1.6;
+    put(id, hq.x + 42, hq.z + uz + len, Math.PI);
+    names.push([UNITS[id].short, hq.x + 47, hq.z + uz + len]);
+    uz += len * 2 + 2;
+  }
+  put("hauler", hq.x - 6.6, hq.z, Math.PI / 2);
+  const cam = new THREE.OrthographicCamera(X0, X1, -Z0, -Z1, 0.1, 400);
+  cam.up.set(0, 0, -1);
+  cam.position.set(hq.x, 200, hq.z);
+  cam.lookAt(hq.x, 0, hq.z);
+  renderer.setSize(cv.width, cv.height, false);
+  renderer.render(sc, cam);
+  g.drawImage(renderer.domElement, 0, 0);
+  for (const r of rigs) disposeRig(r);
+
+  // viền khối ô, nền móng thật, mũi tên cửa ra, tên nhà
+  g.font = "600 11px 'Be Vietnam Pro', sans-serif";
+  for (const b of blds) {
+    const [bw, bd] = w.blockHalf(b.kind, b.rot);
+    const [hw, hd] = rotHalf(b.kind, b.rot);
+    g.strokeStyle = "#2f6fb8";
+    g.lineWidth = 2;
+    g.strokeRect(px(b.x - bw), pz(b.z - bd), bw * 2 * LS, bd * 2 * LS);
+    g.strokeStyle = "#c0392b";
+    g.setLineDash([5, 4]);
+    g.strokeRect(px(b.x - hw), pz(b.z - hd), hw * 2 * LS, hd * 2 * LS);
+    g.setLineDash([]);
+    const e = w.exitRect(b.kind, b.x, b.z, b.rot);
+    if (e) {
+      const [dx, dz] = doorDir(b.rot);
+      const bx = px(e[0] + dx * e[2]);
+      const bz = pz(e[1] + dz * e[3]);
+      g.strokeStyle = "#7a5c00";
+      g.fillStyle = "#7a5c00";
+      g.lineWidth = 3;
+      g.beginPath();
+      g.moveTo(px(e[0] - dx * e[2]), pz(e[1] - dz * e[3]));
+      g.lineTo(bx, bz);
+      g.stroke();
+      g.beginPath();
+      g.arc(bx, bz, 4, 0, Math.PI * 2);
+      g.fill();
+    }
+    const label = SHORT[b.kind] ?? BUILDINGS[b.kind].name;
+    const tw = g.measureText(label).width;
+    g.fillStyle = "#fffdf6dd";
+    g.fillRect(px(b.x) - tw / 2 - 3, pz(b.z + bd) - 15, tw + 6, 14);
+    g.fillStyle = "#2b2b2b";
+    g.fillText(label, px(b.x) - tw / 2, pz(b.z + bd) - 4);
+  }
+  g.font = "11px 'Be Vietnam Pro', sans-serif";
+  g.fillStyle = "#2b2b2b";
+  for (const [n, x, z] of names) g.fillText(n, px(x), pz(z) + 4);
+  g.fillRect(10, cv.height - 14, 10 * LS, 3);
+  g.fillText("10 m (5 ô)", 10, cv.height - 18);
+  figure(
+    document.getElementById("layout")!,
+    cv,
+    errors.length ? `<b>Phạm luật đặt nhà:</b><br>${errors.join("<br>")}` : "Mọi công trình đặt hợp lệ theo luật hiện tại của sim."
+  );
+}
+
+drawLayout();
 for (const id of Object.keys(BUILDINGS) as BuildingId[]) drawBuilding(id);
 for (const id of Object.keys(UNITS) as UnitId[]) drawUnit(id);
