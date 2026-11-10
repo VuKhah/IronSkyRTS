@@ -48,7 +48,7 @@ const UNIT_CAT: Record<UnitId, string> = { commander: "command", hauler: "comman
 const BUILDING_CAT: Record<BuildingId, string> = {
   hq: "base", factory: "base", "special-factory": "base", "aircraft-factory": "base", airfield: "base",
   "power-plant": "energy", "power-pylon": "energy", battery: "energy", "oil-extractor": "energy", "ammo-depot": "energy",
-  turret: "defense", "aa-ciws": "defense", "aa-sam": "defense", "aa-emp": "defense",
+  turret: "defense", "aa-ciws": "defense", "aa-sam": "defense", "aa-emp": "defense", wall: "defense",
   radar: "front", outpost: "front"
 };
 

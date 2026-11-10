@@ -12,6 +12,10 @@ import { BUILDINGS, doorDir, FACTION_OF, RULES, rotOffset, UNITS, type Side, lot
 import type { GameMap } from "../sim/maps";
 import type { Building, Mine, Target, Unit, Uplink, Wreck } from "../sim/types";
 import { AIRBORNE_ALT, DT, type World } from "../sim/world";
+import { CELL } from "../sim/maps";
+
+/** 4 hướng ô bên cạnh (tường nối hình). */
+const DIRS4: readonly [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 import { buildModel, buildNode, disposeRig, type NodeRig, type Rig } from "../render/models";
 import { bakeObject, bakeStatic } from "../render/models/bake";
 
@@ -172,6 +176,9 @@ export class Views {
     }
     const seenBuildings = this.visibleBuildings(world, viewer);
     this.paving.sync(world, seenBuildings);
+    // công trình lát theo ô (tường): ô nào có tường cùng loại cùng phe (người xem đang thấy / còn nhớ), để nối hình
+    const tiles = new Set<string>();
+    for (const b of seenBuildings) if (BUILDINGS[b.kind].tile && b.hp > 0) tiles.add(`${b.side}:${b.kind}:${b.x},${b.z}`);
     for (const b of seenBuildings) {
       let v = this.buildings.get(b.id);
       if (!v) {
@@ -184,6 +191,16 @@ export class Views {
         this.buildings.set(b.id, v);
       }
       v.seen = f;
+      if (BUILDINGS[b.kind].tile && v.rig.setLinks) {
+        let mask = 0;
+        for (const [dx, dz] of DIRS4) {
+          if (!tiles.has(`${b.side}:${b.kind}:${b.x + dx * CELL},${b.z + dz * CELL}`)) continue;
+          // hướng thế giới → khung mô hình (xoay ngược nấc của nhà)
+          const [lx, lz] = rotOffset(dx, dz, (4 - (b.rot & 3)) & 3);
+          mask |= lx > 0.5 ? 1 : lx < -0.5 ? 2 : lz > 0.5 ? 4 : 8;
+        }
+        v.rig.setLinks(mask);
+      }
       this.updateBuilding(world, b, v, dt, time, selected.has(b.id), viewer);
     }
     // ba mũi tên chỉ hướng cửa ra trước nhà phe mình đang được chọn

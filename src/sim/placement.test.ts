@@ -25,9 +25,9 @@ describe("Đặt công trình lên lưới", () => {
     expect(BUILDINGS["power-plant"].half.map(cellsOf)).toEqual([3, 4]);
   });
 
-  it("công trình chỉ có 4 cỡ chuẩn ngoài Sân Đáp: xưởng 18 × 18 m, 8 × 8 m, 4,8 × 6,4 m và 4 × 4 m", () => {
+  it("công trình chỉ có 5 cỡ chuẩn ngoài Sân Đáp: xưởng 18 × 18 m, 8 × 8 m, 4,8 × 6,4 m, 4 × 4 m và tường 1 ô 2 × 2 m", () => {
     const sizes = new Set(KINDS.filter((k) => k !== "airfield").map((k) => BUILDINGS[k].half.join("x")));
-    expect([...sizes].sort()).toEqual(["2.4x3.2", "2x2", "4x4", "9x9"]);
+    expect([...sizes].sort()).toEqual(["1x1", "2.4x3.2", "2x2", "4x4", "9x9"]);
   });
 
   it("mọi kích cỡ công trình là bội số của 4 dm", () => {
@@ -167,5 +167,24 @@ describe("Xoay công trình (người dùng 10/11/2026)", () => {
     expect(w2.sandboxPlaceError("factory", -20, 20, 1)).toBeNull();
     w2.step([{ side: 0, order: { t: "sbSpawn", kind: "factory", side: 0, x: -20, z: 20, rot: 1 } } as never]);
     expect(w2.buildings.find((b) => b.kind === "factory")!.rot).toBe(1);
+  });
+  it("Tường Thành 1 ô: đặt liền nhau thành dải, sát mép nền móng nhà khác, không chắn cửa ra, ô có tường thì chặn xe", () => {
+    const w = new World(1, { sandbox: true });
+    expect(put(w, 0, "factory", -25, 25)).toBeNull();
+    const f = w.buildings.find((b) => b.kind === "factory")!;
+    const [, bd] = w.blockHalf("factory", f.rot);
+    const m = w.marginOf("factory");
+    // dải 4 ô tường liền nhau ngay ngoài mép sau nền móng xưởng (phía không có cửa)
+    const dz = f.rot === 2 ? 1 : -1; // phía sau xưởng (ngược hướng cửa)
+    const z = f.z + dz * (bd + m + CELL / 2);
+    for (let k = -2; k < 2; k++) expect(put(w, 0, "wall", f.x + (k + 0.5) * CELL, z), `ô ${k}`).toBeNull();
+    const walls = w.buildings.filter((b) => b.kind === "wall");
+    expect(walls.length).toBe(4);
+    for (const b of walls) expect(w.grid.blockedAt(b.x, b.z)).toBe(true);
+    // lấn vào viền trong mô hình của xưởng thì không được
+    expect(put(w, 0, "wall", f.x + 2.5 * CELL, f.z + dz * (bd + m - CELL / 2))).not.toBeNull();
+    // không đặt lên lối ra của xưởng
+    const e = w.exitRect("factory", f.x, f.z, f.rot)!;
+    expect(put(w, 0, "wall", e[0] + 1, e[1] + 1)).not.toBeNull();
   });
 });

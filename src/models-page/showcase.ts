@@ -8,9 +8,8 @@ import { palette, partIfUnnamed } from "../render/models/kit";
 import { buildCarrier } from "../render/models/units/carrier";
 import { buildScoutDrone } from "../render/models/units/scout-drone";
 import { buildShieldDrone } from "../render/models/units/shield-drone";
-import { buildWallShowcase } from "../render/models/buildings/wall";
 
-/** Nhóm trong tab Quân đội (navy, drone) hoặc tab Công trình (defense). */
+/** Nhóm trong tab Quân đội (navy, drone) hoặc tab Công trình (defense, ...). */
 export type ShowcaseCat = "navy" | "drone" | "defense";
 
 export interface ShowcaseItem {
@@ -71,24 +70,6 @@ export const SHOWCASE = {
     build(faction: Faction): Rig {
       const rig = buildShieldDrone(palette(faction));
       partIfUnnamed("Drone Khiên/Khói", rig.root);
-      return rig;
-    }
-  },
-  wall: {
-    tab: "buildings",
-    cat: "defense",
-    name: "Tường Thành",
-    sub: "Bản tạm, chưa có luật chơi",
-    role: "Xây theo đoạn trên lưới 2 m để chặn đường, ép địch vào điểm nghẽn trước họng tháp phòng thủ.",
-    notes: [
-      "Chỉ xem trước trong Xưởng Mô Hình, chưa có trong trận đấu.",
-      "Kiểu tường chắn nổ bê tông chữ T: mỗi tấm đúng 1 ô (2 m), chân đế rộng 1,4 m, thân dày 0,4 m, cao 3,4 m, dải màu phe gần đỉnh, dây thép gai trên đỉnh.",
-      "Cột trụ 1,2 × 1,2 m cao 3,9 m ở hai đầu và chỗ rẽ góc, mũ màu phe, đèn vàng.",
-      "Bản xem trước là một đoạn chữ L: 5 tấm, rẽ góc, 3 tấm."
-    ],
-    build(faction: Faction): Rig {
-      const rig = buildWallShowcase(palette(faction));
-      partIfUnnamed("Tường Thành", rig.root);
       return rig;
     }
   }

@@ -57,6 +57,8 @@ export interface Rig {
    * theo tiến độ; xong lô thì xe thật xuất hiện đúng chỗ đó.
    */
   setAssembly?(kind: UnitId | null, count: number, k: number): void;
+  /** Công trình lát theo ô (tường): các ô cùng loại bên cạnh, bit 1 = +x, 2 = −x, 4 = +z, 8 = −z theo khung mô hình. */
+  setLinks?(mask: number): void;
   /** Nhà Máy Máy Bay: mở / đóng cửa cuốn của giếng phóng thứ k (chiến trường gọi theo trạng thái máy bay `launch` trong sim). */
   setLaunch?(k: number, open: boolean): void;
   /** Số đạn vũ khí phụ còn treo trên thân (ví dụ tên lửa dưới cánh Falcon): bắn rồi thì ẩn đi. */

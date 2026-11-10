@@ -429,6 +429,11 @@ export class World {
     return dz !== 0 ? [x, z + dz * (bd + EXIT_D / 2), EXIT_W / 2, EXIT_D / 2] : [x + dx * (bw + EXIT_D / 2), z, EXIT_D / 2, EXIT_W / 2];
   }
 
+  /** Số ô cấm xây giữa hai nền móng: 0 nếu một bên là công trình lát theo ô (tường), không thì `RULES.buildPadCells`. */
+  padBetween(a: BuildingId, b: BuildingId): number {
+    return BUILDINGS[a].tile || BUILDINGS[b].tile ? 0 : RULES.buildPadCells;
+  }
+
   /** Viền trong mô hình của công trình (m): đất trống xe đi được quanh thân nhà, tính vào nền móng khi bố trí. */
   marginOf(kind: BuildingId): number {
     return (BUILDINGS[kind].clearCells ?? RULES.buildMarginCells) * CELL;
@@ -516,8 +521,9 @@ export class World {
     const myMargin = this.marginOf(kind);
     for (const b of this.buildings) {
       if (b.hp <= 0) continue;
-      // hai thân nhà cách nhau ít nhất: viền nhà này + ô cấm xây (dùng chung) + viền nhà kia
-      const gap = myMargin + RULES.buildPadCells * CELL + this.marginOf(b.kind);
+      // hai thân nhà cách nhau ít nhất: viền nhà này + ô cấm xây (dùng chung) + viền nhà kia; công trình lát theo ô (tường)
+      // không cần ô cấm xây
+      const gap = myMargin + this.padBetween(kind, b.kind) * CELL + this.marginOf(b.kind);
       const [ow, od] = this.blockHalf(b.kind, b.rot);
       if (Math.abs(b.x - x) < hw + ow + gap - 1e-6 && Math.abs(b.z - z) < hd + od + gap - 1e-6) return `Phải cách ${BUILDINGS[b.kind].name} ít nhất ${Math.round(gap / CELL)} ô`;
       const e = this.exitRect(b.kind, b.x, b.z, b.rot);
@@ -543,7 +549,7 @@ export class World {
    * dùng 10/11/2026). Cùng luật với `canPlace`: ngoài vùng xây, vướng sông / đá / nhà / mỏ, sát mỏ, là ô cửa ra, hoặc nằm
    * trong đệm `clearCells` của nhà khác. Không thay đổi trạng thái.
    */
-  cellForbidden(side: Side, x: number, z: number): boolean {
+  cellForbidden(side: Side, x: number, z: number, kind?: BuildingId): boolean {
     if (this.grid.blockedAt(x, z)) return true;
     for (const m of this.mines) if (dist2(m.x, m.z, x, z) < 5 * 5) return true;
     let inZone = false;
@@ -552,7 +558,7 @@ export class World {
       const e = this.exitRect(b.kind, b.x, b.z, b.rot);
       if (e && Math.abs(x - e[0]) < e[2] && Math.abs(z - e[1]) < e[3]) return true;
       // nền móng nhà kia (thân + viền) và ô cấm xây quanh nó: nền móng nhà mới (cả viền) không được đè lên
-      const pad = this.marginOf(b.kind) + RULES.buildPadCells * CELL;
+      const pad = this.marginOf(b.kind) + (kind ? this.padBetween(kind, b.kind) : RULES.buildPadCells) * CELL;
       const [ow, od] = this.blockHalf(b.kind, b.rot);
       if (Math.abs(x - b.x) < ow + pad && Math.abs(z - b.z) < od + pad) return true;
       const zone = BUILDINGS[b.kind].zone;

@@ -20,6 +20,7 @@ import { buildSAM } from "./sam";
 import { buildEMP } from "./emp";
 import { buildBattery } from "./battery";
 import { buildRadar } from "./radar";
+import { buildWall } from "./wall";
 
 const BUILDERS: Record<BuildingId, (p: Palette, f: Faction, showcase: boolean) => Rig> = {
   radar: (p) => buildRadar(p),
@@ -37,7 +38,8 @@ const BUILDERS: Record<BuildingId, (p: Palette, f: Faction, showcase: boolean) =
   "ammo-depot": (p) => buildAmmoDepot(p),
   "aa-ciws": (p) => buildCIWS(p),
   "aa-sam": (p) => buildSAM(p),
-  "aa-emp": (p) => buildEMP(p)
+  "aa-emp": (p) => buildEMP(p),
+  wall: (p) => buildWall(p)
 };
 
 /** showcase = true: bản trưng bày trên Xưởng Mô Hình (có thêm đồ trang trí, ví dụ máy bay đậu sẵn). */

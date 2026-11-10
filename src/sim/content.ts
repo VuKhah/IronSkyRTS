@@ -32,6 +32,7 @@ export type BuildingId =
   | "factory"
   | "special-factory"
   | "aircraft-factory"
+  | "wall"
   | "airfield"
   | "turret"
   | "power-plant"
@@ -247,6 +248,12 @@ export interface BuildingSpec {
   half: readonly [number, number];
   /** Công sự (tháp, tường…): công trình phòng thủ, không có đường trong căn cứ. (Từ 10/11/2026 mọi nhà được đặt sát nhau, miễn không vây kín cửa ra.) */
   fort?: boolean;
+  /**
+   * Công trình lát theo ô (Tường Thành, người dùng 10/11/2026 "1 ô lưới, đơn giản như Clash of Clans"): không có viền trong mô
+   * hình (`clearCells` 0), không cần ô cấm xây với nhà khác (đặt sát nhau thành dải, sát mép nền móng nhà khác), đặt xong vẫn
+   * ở chế độ đặt để rải tiếp, và hình tự nối với ô cùng loại cùng phe ngay bên cạnh (`Rig.setLinks`).
+   */
+  tile?: boolean;
   produces?: UnitId[];
   /** MW: dương = phát điện, âm = tiêu thụ. */
   power: number;
@@ -973,6 +980,30 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     weapon: { name: "Pháo kép tự động 30mm", dmgGround: 30, dmgAir: 30, range: 20, cooldown: 0.6, dmgType: "normal", splash: 0, visual: "bullet", traverse: 90 },
     features: ["Bắn cả xe lẫn máy bay trong tầm 20m.", "Giáp Công sự: chỉ đạn xuyên giáp (Pháo) phá nhanh. Giữ mỏ và cửa ngõ căn cứ. Dùng Cột Điện để xây được tháp ở xa căn cứ.", "Thiếu điện thì bắn chậm, mất hẳn điện thì ngừng bắn."]
   },
+  wall: {
+    id: "wall",
+    fort: true,
+    tile: true,
+    kind: "building",
+    name: "Tường Thành",
+    label: "TƯỜNG",
+    role: "Chặn đường từng ô, ép địch vào điểm nghẽn trước họng tháp phòng thủ.",
+    mvp: true,
+    // số tạm (10/11/2026), chờ buổi cân bằng
+    cost: { iron: 10, oil: 0 },
+    buildTime: 1,
+    hp: 400,
+    armorClass: "fort",
+    sight: 4,
+    half: [1, 1], // đúng 1 ô lưới 2 m
+    clearCells: 0,
+    power: 0,
+    features: [
+      "Mỗi đoạn đúng 1 ô lưới; đặt liên tiếp các ô cạnh nhau thành dải, tường tự nối liền.",
+      "Đặt sát nhau và sát nhà khác được, nhưng không được chắn hay vây kín cửa ra.",
+      "Giáp Công sự: đạn thường gần như vô dụng, Pháo phá nhanh."
+    ]
+  },
   outpost: {
     id: "outpost",
     kind: "building",
@@ -1233,7 +1264,7 @@ export function normRot(rot: number | undefined): number | undefined {
   return rot === undefined || !Number.isFinite(rot) ? undefined : ((Math.round(rot) % 4) + 4) % 4;
 }
 
-export const MVP_BUILDABLE: readonly BuildingId[] = ["factory", "special-factory", "aircraft-factory", "airfield", "power-plant", "battery", "power-pylon", "turret", "radar"];
+export const MVP_BUILDABLE: readonly BuildingId[] = ["factory", "special-factory", "aircraft-factory", "airfield", "power-plant", "battery", "power-pylon", "turret", "wall", "radar"];
 
 export function isUnitId(id: string): id is UnitId {
   return id in UNITS;

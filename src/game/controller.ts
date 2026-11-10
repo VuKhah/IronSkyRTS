@@ -469,7 +469,8 @@ export class Controller implements GestureHandlers {
     }
     this.issue({ t: "build", kind: this.placeKind, x, z, rot });
     this.sfx.ui("build");
-    if (!keep) this.cancelPlace();
+    // công trình lát theo ô (tường): đặt xong vẫn giữ chế độ đặt để rải tiếp
+    if (!keep && !BUILDINGS[this.placeKind].tile) this.cancelPlace();
   }
 
   /** Vị trí màn hình để đặt nút ✓ ✕ (chỉ khi dùng cảm ứng). */
@@ -872,8 +873,9 @@ export class Controller implements GestureHandlers {
       // bóng hiện cả nền móng: thân nhà + viền trong mô hình (không được đè lên ô đỏ của nhà khác)
       const [nx, nz] = this.world.footCells(this.placeKind, rot);
       const me = this.me;
+      const kind = this.placeKind;
       const rev = `${this.world.buildings.length}:${this.world.buildings.reduce((n, b) => n + (b.built ? 1 : 0), 0)}`;
-      (this.placeGrid ??= new PlacementGrid(this.scene, this.world.map)).show(gx, gz, nx, nz, valid, (cx, cz) => this.world.cellForbidden(me, cx, cz), rev);
+      (this.placeGrid ??= new PlacementGrid(this.scene, this.world.map)).show(gx, gz, nx, nz, valid, (cx, cz) => this.world.cellForbidden(me, cx, cz, kind), rev);
       const ex = this.world.exitRect(this.placeKind, gx, gz, rot);
       if (ex) {
         const [dx, dz] = doorDir(rot);
