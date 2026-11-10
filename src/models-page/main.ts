@@ -8,7 +8,7 @@ import {
 } from "../sim/content";
 import { buildModel, disposeRig } from "../render/models";
 import { bakeStatic } from "../render/models/bake";
-import { isShowcase, SHOWCASE, SHOWCASE_IDS, type ShowcaseId } from "./showcase";
+import { isShowcase, SHOWCASE, SHOWCASE_IDS, showcaseTab, type ShowcaseId } from "./showcase";
 import { Stage, Thumbnailer, type ViewName } from "./stage";
 
 const VIEW_LABEL: Record<ViewName, string> = { three: "3/4", front: "Trước", side: "Cạnh", top: "Trên", back: "Sau" };
@@ -166,7 +166,8 @@ function catOf(id: EntityId | ShowcaseId): string {
 }
 
 function itemsIn(tab: Tab, cat: string): (EntityId | ShowcaseId)[] {
-  const all: (EntityId | ShowcaseId)[] = tab === "units" ? [...UNIT_IDS, ...SHOWCASE_IDS] : BUILDING_IDS;
+  const extra = SHOWCASE_IDS.filter((id) => showcaseTab(id) === tab);
+  const all: (EntityId | ShowcaseId)[] = tab === "units" ? [...UNIT_IDS, ...extra] : [...BUILDING_IDS, ...extra];
   return all.filter((id) => catOf(id) === cat);
 }
 
@@ -289,7 +290,7 @@ function loadModel(keepView: boolean): void {
 
 function select(id: EntityId | ShowcaseId, push = true): void {
   state.id = id;
-  state.tab = id in UNITS || isShowcase(id) ? "units" : "buildings";
+  state.tab = isShowcase(id) ? showcaseTab(id) : id in UNITS ? "units" : "buildings";
   state.cat = catOf(id);
   if (push) history.replaceState(null, "", `#${id}`);
   renderTabs();
