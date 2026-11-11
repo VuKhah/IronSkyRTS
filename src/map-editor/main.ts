@@ -32,12 +32,14 @@ interface Layout {
   refs?: Ref[];
 }
 
-type RefKind = "art" | "titan" | "titan4" | "drone" | "sfac";
+type RefKind = "art" | "titan" | "titan4" | "drone" | "sfac" | "oil" | "iron";
 interface Ref {
   k: RefKind;
   x: number;
   z: number;
   rot: number;
+  /** Mỏ: chủ ban đầu (0 Lam, 1 Đỏ, −1 trung lập). */
+  own?: number;
 }
 let refs: Ref[] = [];
 let rot = 0;
@@ -77,6 +79,8 @@ const MARK_TOOLS: { id: Tool; label: string; color?: string }[] = [
   { id: "titan4", label: "Mốc: 4 Titan" },
   { id: "drone", label: "Mốc: tầm Drone TS" },
   { id: "sfac", label: "Mốc: Xưởng Chuyên Dụng" },
+  { id: "iron", label: "Mỏ Sắt", color: "#7fd0d8" },
+  { id: "oil", label: "Mỏ Dầu", color: "#8a4fd0" },
   { id: "delref", label: "Xóa mốc" }
 ];
 const BRUSHES = [
@@ -174,7 +178,43 @@ const SFAC = BUILDINGS["special-factory"];
 /** Khoảng cách tâm hai Titan đứng cạnh nhau trong dãy (m): thân rộng ~3,8 m + khe 2 m. */
 const TITAN_GAP = 6;
 
+/**
+ * Luật địa chất mỏ (người dùng chốt 11/11/2026): Dầu không cao hơn tầng 0, Sắt không thấp hơn tầng 1; mỏ 2 × 2 ô không
+ * nằm trên dốc / nước sâu. Trả lý do sai hoặc null.
+ */
+function mineError(f: Ref): string | null {
+  const c = Math.floor((f.x + map.halfW) / CELL);
+  const r = Math.floor((f.z + map.halfH) / CELL);
+  let lo = 9, hi = -1;
+  for (const [dc, dr] of [[-1, -1], [0, -1], [-1, 0], [0, 0]]) {
+    const v = grid[r + dr]?.[c + dc];
+    if (v === undefined || v === "d" || v === "r" || surf[r + dr]?.[c + dc] === "w") return "mỏ nằm trên dốc, đá, nước sâu hoặc ngoài bản đồ";
+    const t = tierAt(c + dc, r + dr);
+    lo = Math.min(lo, t);
+    hi = Math.max(hi, t);
+  }
+  if (lo !== hi) return "mỏ nằm vắt qua hai tầng";
+  if (f.k === "oil" && hi > 0) return "Dầu không được cao hơn tầng 0";
+  if (f.k === "iron" && lo < 1) return "Sắt không được thấp hơn tầng 1";
+  return null;
+}
+
 function drawRef(f: Ref): void {
+  if (f.k === "oil" || f.k === "iron") {
+    const err = mineError(f);
+    const R0 = 7;
+    g.beginPath();
+    g.arc(X(f.x), Y(f.z), R0, 0, Math.PI * 2);
+    g.fillStyle = f.k === "oil" ? "#8a4fd0" : "#7fd0d8";
+    g.fill();
+    g.lineWidth = 2.5;
+    g.strokeStyle = err ? "#e0402a" : f.own === 0 ? "#2e9eff" : f.own === 1 ? "#f23d3d" : "#ffffff";
+    g.stroke();
+    g.fillStyle = "#111";
+    g.font = "bold 9px system-ui, sans-serif";
+    g.fillText(f.k === "oil" ? "D" : "S", X(f.x), Y(f.z) + 1);
+    return;
+  }
   const a = (f.rot * Math.PI) / 180;
   g.save();
   g.translate(X(f.x), Y(f.z));
@@ -253,7 +293,7 @@ function drawRef(f: Ref): void {
 function refAt(x: number, z: number): number {
   for (let i = refs.length - 1; i >= 0; i--) {
     const f = refs[i];
-    const reach = f.k === "titan4" ? 13 : f.k === "sfac" ? 11 : 6;
+    const reach = f.k === "titan4" ? 13 : f.k === "sfac" ? 11 : f.k === "oil" || f.k === "iron" ? 4 : 6;
     if ((x - f.x) ** 2 + (z - f.z) ** 2 < reach * reach) return i;
   }
   return -1;
@@ -376,6 +416,10 @@ function draw(): void {
         g.fill();
       }
     }
+  for (const f of refs) if (f.k === "oil" || f.k === "iron") {
+    const e = mineError(f);
+    if (e) errors.push(`${f.k === "oil" ? "Dầu" : "Sắt"} ${cellLabel(f.x, f.z).split(" ·")[0]}: ${e}`);
+  }
   ruleEl.textContent = errors.length ? `⚠ ${errors.length} dốc sai luật: ${errors.slice(0, 4).join(" · ")}${errors.length > 4 ? " …" : ""}` : "Mọi dốc đúng luật";
   ruleEl.style.color = errors.length ? "#ff8a73" : "#8fd19e";
   // lưới: ô ly, ô lớn + tên, đường vàng
@@ -535,7 +579,7 @@ cv.addEventListener("pointerdown", (e) => {
       const step = refs[i].k === "sfac" ? 90 : 15; // nhà trong game xoay theo bội 90°
       refs[i].rot = (refs[i].rot + (e.shiftKey ? -step : step) + 360) % 360;
       rot = refs[i].rot;
-    } else if (Math.abs(x) < map.halfW && Math.abs(z) < map.halfH) refs.push({ k: tool as RefKind, x: Math.round(x), z: Math.round(z), rot });
+    } else if (Math.abs(x) < map.halfW && Math.abs(z) < map.halfH) refs.push({ k: tool as RefKind, x: Math.round(x), z: Math.round(z), rot, ...(tool === "oil" || tool === "iron" ? { own: -1 } : {}) });
     draw();
     void save();
     return;

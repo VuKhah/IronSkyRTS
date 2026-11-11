@@ -84,7 +84,7 @@ let group = new THREE.Group();
 scene.add(group);
 
 interface Ref {
-  k: "art" | "titan" | "titan4" | "drone" | "sfac";
+  k: "art" | "titan" | "titan4" | "drone" | "sfac" | "oil" | "iron";
   x: number;
   z: number;
   rot: number;
@@ -182,7 +182,7 @@ function build(grid: string[][], surf: string[][], refs: Ref[]): void {
   // xe nào thì đặt tạm một Titan và một Pháo giữa vùng để so cỡ
   const inside = (f: Ref): boolean => f.x > A.x0 && f.x < A.x1 && f.z > A.z0 && f.z < A.z1;
   const here = refs.filter((f) => inside(f) && f.k !== "drone");
-  if (!here.some((f) => f.k === "art" || f.k === "titan" || f.k === "titan4"))
+  if (!here.some((f) => f.k === "art" || f.k === "titan" || f.k === "titan4" || f.k === "oil" || f.k === "iron"))
     here.push({ k: "titan", x: cx - 12, z: cz, rot: 0 }, { k: "art", x: cx + 12, z: cz, rot: 0 });
   for (const f of here) {
     const yaw = (-f.rot * Math.PI) / 180;
@@ -198,6 +198,8 @@ function build(grid: string[][], surf: string[][], refs: Ref[]): void {
     else if (f.k === "titan4") for (let i = 0; i < 4; i++) put(titanBox(0, 0, 0), (i - 1.5) * 6);
     else if (f.k === "art") put(artilleryBox(0, 0, 0), 0);
     else if (f.k === "sfac") put(factoryBox(), 0);
+    else if (f.k === "oil") put(boxAt(3.8, 4, 3.8, OIL, 0, 0, 0), 0);
+    else if (f.k === "iron") put(boxAt(3.8, 1.6, 3.8, IRON, 0, 0, 0), 0);
   }
   inst(new THREE.ConeGeometry(1.3, 4.5, 6), 0x2f5527, trees, 2.25);
   inst(new THREE.BoxGeometry(2, 3, 2), 0x6b6258, rocks, 1.5);
@@ -208,6 +210,8 @@ function build(grid: string[][], surf: string[][], refs: Ref[]): void {
 // ------------------------------------------------------------------ mô hình hộp đối chiếu
 const TEAM = new THREE.MeshLambertMaterial({ color: 0x2e7fd0, flatShading: true });
 const DARK = new THREE.MeshLambertMaterial({ color: 0x1d3f63, flatShading: true });
+const OIL = new THREE.MeshLambertMaterial({ color: 0x8a4fd0, flatShading: true });
+const IRON = new THREE.MeshLambertMaterial({ color: 0x7fd0d8, flatShading: true });
 function boxAt(w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number): THREE.Mesh {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   m.position.set(x, y + h / 2, z);
