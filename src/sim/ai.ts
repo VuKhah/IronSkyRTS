@@ -7,13 +7,15 @@
  * AI chạy bên trong vòng tick nên cũng phải tất định: không Math.random, không thời gian thật.
  */
 import { BUILDINGS, lotCost, UNITS, valueOf, type BuildingId, type Side, type UnitId } from "./content";
-import { dcos, dist2, dsin, Rng, TAU } from "./fmath";
+import { dist2, Rng } from "./fmath";
 import type { Building, Mine, Order, Unit, Uplink } from "./types";
 import { dirToCenter, sec, type World } from "./world";
 
 /** Giữ lựa chọn xe mặt đất để dành tiền tối đa chừng này (quá lâu thì chọn lại, ví dụ địch vừa đổi sang máy bay). */
 const SAVE_FOR = sec(30);
-const DIRS: readonly (readonly [number, number])[] = Array.from({ length: 16 }, (_, i) => [dcos((i * TAU) / 16), dsin((i * TAU) / 16)] as const);
+/** Bước lưới (m) khi dò chỗ đặt công trình, và thời gian bỏ qua một loại công trình vừa tìm không ra chỗ. */
+const SPOT_STEP = 4;
+const NO_ROOM_RETRY = sec(20);
 
 export class Ai {
   private wave = 0;
@@ -34,6 +36,8 @@ export class Ai {
   private rng: Rng;
   private waveBonus = 0;
   private capChoice = 0;
+  /** Tick gần nhất mỗi loại công trình tìm không ra chỗ đặt: tạm bỏ qua loại đó để kế hoạch xây không kẹt. */
+  private noSpotAt: Partial<Record<BuildingId, number>> = {};
 
   constructor(
     readonly side: Side,
@@ -225,39 +229,63 @@ export class Ai {
     const st = w.sides[this.side];
     // Điện: thiếu thì xây Nhà Máy Điện trước (nếu còn Dầu để đốt)
     const canPower = st.oil > 60;
-    if (st.eff < 1 && canPower) return "power-plant";
-    if (count("battery") === 0 && count("power-plant") > 0 && t > sec(240) && st.iron > 300) return "battery";
-    let want: BuildingId | null = null;
+    if (st.eff < 1 && canPower && !this.noRoom(w, "power-plant")) return "power-plant";
+    if (count("battery") === 0 && count("power-plant") > 0 && t > sec(240) && st.iron > 300 && !this.noRoom(w, "battery")) return "battery";
     const turrets = count("turret");
-    if (count("factory") === 0) want = "factory";
-    else if (count("airfield") === 0 && t > sec(70)) want = "airfield";
-    else if (count("aircraft-factory") === 0 && t > sec(90)) want = "aircraft-factory";
-    else if (t > sec(110) && turrets < Math.min(3, 1 + Math.floor(t / sec(200)))) want = "turret";
-    else if (count("special-factory") === 0 && t > sec(200)) want = "special-factory"; // không đòi dư Sắt: kế hoạch xây tự giữ tiền (reserve)
-    else if (count("factory") < 2 && t > sec(280) && st.iron > 450) want = "factory";
-    else if (count("radar") === 0 && t > sec(300) && st.iron > 350) want = "radar";
-    else if (count("airfield") < 2 && t > sec(420) && st.oil > 250) want = "airfield";
-    else if (turrets < 5 && t > sec(480) && st.iron > 700) want = "turret";
+    // Danh sách theo thứ tự ưu tiên; loại vừa tìm không ra chỗ đặt thì tạm bỏ qua, xét loại kế tiếp
+    // (trước đây một kế hoạch không có chỗ, ví dụ Nhà Máy Máy Bay, chặn mọi công trình sau nó cả trận).
+    const wants: [boolean, BuildingId][] = [
+      [count("factory") === 0, "factory"],
+      [count("airfield") === 0 && t > sec(70), "airfield"],
+      [count("aircraft-factory") === 0 && t > sec(90), "aircraft-factory"],
+      [t > sec(110) && turrets < Math.min(3, 1 + Math.floor(t / sec(200))), "turret"],
+      [count("special-factory") === 0 && t > sec(200), "special-factory"], // không đòi dư Sắt: kế hoạch xây tự giữ tiền (reserve)
+      [count("factory") < 2 && t > sec(280) && st.iron > 450, "factory"],
+      [count("radar") === 0 && t > sec(300) && st.iron > 350, "radar"],
+      [count("airfield") < 2 && t > sec(420) && st.oil > 250, "airfield"],
+      [turrets < 5 && t > sec(480) && st.iron > 700, "turret"],
+    ];
+    let want: BuildingId | null = null;
+    for (const [ok, k] of wants) if (ok && !this.noRoom(w, k)) { want = k; break; }
     if (!want) return null;
     const draw = -Math.min(0, BUILDINGS[want].power);
-    if (draw > 0 && st.powerUse + st.powerPending + draw > st.powerCap && canPower) return "power-plant";
+    if (draw > 0 && st.powerUse + st.powerPending + draw > st.powerCap && canPower && !this.noRoom(w, "power-plant")) return "power-plant";
     return want;
   }
 
-  /** Tìm chỗ đặt công trình quanh căn cứ: công trình chiến đấu hướng ra sông, Sân Đáp lùi về sau. */
+  /** Loại công trình vừa tìm không ra chỗ đặt (trong `NO_ROOM_RETRY` tick gần đây). */
+  private noRoom(w: World, kind: BuildingId): boolean {
+    const at = this.noSpotAt[kind];
+    return at !== undefined && w.tick - at < NO_ROOM_RETRY;
+  }
+
+  /**
+   * Tìm chỗ đặt công trình trong vùng xây quanh căn cứ: công trình chiến đấu hướng ra giữa bản đồ, công trình hậu cần lùi về sau.
+   * Quét lưới 4 m quanh Tổng Hành Dinh (không chỉ vài tia cố định: căn cứ ở góc bản đồ thì phần lớn tia rơi ra ngoài, còn xưởng
+   * 11 × 11 ô không lọt vào tia nào). Điểm bằng nhau thì xét theo tọa độ tương đối đã soi gương theo phe để hai phe chọn đối xứng.
+   */
   private findSpot(w: World, kind: BuildingId, base: Building): [number, number] | null {
     const [cx, cz] = dirToCenter(base.x, base.z);
     const back = kind === "airfield" || kind === "aircraft-factory" || kind === "power-plant" || kind === "radar" || kind === "battery";
-    const cands: { x: number; z: number; score: number }[] = [];
-    for (const r of [13, 17, 21, 25, 29, 33, 37, 41]) {
-      for (const [dx, dz] of DIRS) {
-        const dot = dx * cx + dz * cz;
-        const score = r + (back ? dot * 10 : -dot * 10);
-        cands.push({ x: Math.round(base.x + dx * r), z: Math.round(base.z + dz * r), score });
+    const flip = this.side === 0 ? 1 : -1;
+    const reach = BUILDINGS.hq.zone ?? 24;
+    const cands: { ox: number; oz: number; score: number }[] = [];
+    for (let ox = -reach; ox <= reach; ox += SPOT_STEP) {
+      for (let oz = -reach; oz <= reach; oz += SPOT_STEP) {
+        const d2 = ox * ox + oz * oz;
+        if (d2 < 10 * 10 || d2 > reach * reach) continue;
+        const r = Math.sqrt(d2);
+        const dot = (ox * cx + oz * cz) / r;
+        cands.push({ ox: ox * flip, oz: oz * flip, score: r + (back ? dot * 10 : -dot * 10) });
       }
     }
-    cands.sort((a, b) => a.score - b.score || a.x - b.x || a.z - b.z);
-    for (const c of cands) if (w.canPlace(this.side, kind, c.x, c.z) === null) return [c.x, c.z];
+    cands.sort((a, b) => a.score - b.score || a.ox - b.ox || a.oz - b.oz);
+    for (const c of cands) {
+      const x = base.x + c.ox * flip;
+      const z = base.z + c.oz * flip;
+      if (w.canPlace(this.side, kind, x, z) === null) return [x, z];
+    }
+    this.noSpotAt[kind] = w.tick;
     return null;
   }
 
