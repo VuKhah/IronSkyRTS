@@ -8,11 +8,11 @@ import { TacticalMap } from "./tactical-map";
 import type { Side } from "../sim/content";
 import { Rng } from "../sim/fmath";
 import type { GameMap } from "../sim/maps";
-import { BERM_OUT, buildBorderMesh, buildTerrainMesh, WATER_Y } from "./terrain-mesh";
+import { buildTerrainMesh, WATER_Y } from "./terrain-mesh";
 import type { World } from "../sim/world";
 
-/** Địa hình vẽ rộng hơn vùng chơi chừng này (m) mỗi bên, để mép bản đồ không lộ khoảng trống. */
-const SKIRT = 20;
+/** Địa hình vẽ rộng hơn vùng chơi chừng này (m) mỗi bên. 0 từ 11/11/2026: người dùng muốn ngoài mép bản đồ không có gì. */
+const SKIRT = 0;
 /** Trần số cây trang trí: mọi cây nằm chung một lệnh vẽ nên số tam giác tăng theo số cây. */
 const MAX_TREES = 3500;
 
@@ -74,11 +74,6 @@ export class BattleScene {
     terrain.castShadow = true;
     terrain.receiveShadow = true;
     this.scene.add(terrain);
-    // thành bản đồ: con đê màu vôi chạy mượt theo viền (side Double: hướng vòng tam giác tùy chiều đường viền)
-    const border = new THREE.Mesh(buildBorderMesh(map), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0, side: THREE.DoubleSide }));
-    border.castShadow = true;
-    border.receiveShadow = true;
-    this.scene.add(border);
 
     this.water = new THREE.Mesh(
       new THREE.PlaneGeometry(this.sizeW, this.sizeH),
@@ -87,6 +82,7 @@ export class BattleScene {
     this.water.rotation.x = -Math.PI / 2;
     this.water.position.y = WATER_Y;
     this.water.receiveShadow = true;
+    this.water.visible = map.def.rivers.length > 0; // không có sông thì tấm nước lộ ra ở góc bo (roundTop)
     this.scene.add(this.water);
 
     this.addBridges();
@@ -169,28 +165,11 @@ export class BattleScene {
     }
   }
 
-  /** Rừng cây trang trí ở viền bản đồ và trên đồi (InstancedMesh: 1 lần vẽ cho hàng trăm cây). */
+  /** Rừng cây trang trí theo vùng rừng bản đồ tô (InstancedMesh: 1 lần vẽ cho hàng trăm cây). */
   private addTrees(): void {
     const map = this.map;
     const rng = new Rng(7);
     const spots: { x: number; z: number; s: number }[] = [];
-    const clear = (x: number, z: number): boolean => {
-      for (const [hx, hz] of map.bases) if (Math.hypot(x - hx, z - hz) < 30) return false;
-      for (const m of map.mines) if (Math.hypot(x - m.x, z - m.z) < 12) return false;
-      const river = map.nearRiver(x, z);
-      if (river && river.dist < river.river.bank + 3) return false;
-      return true;
-    };
-    // số cây theo diện tích (bản 160 m: 340 cây); rải tới cả phần viền ngoài vùng chơi
-    const area = (map.w * map.h) / (160 * 160);
-    const maxTrees = Math.round(340 * area);
-    for (let i = 0; i < 1600 * area && spots.length < maxTrees; i++) {
-      const x = (rng.next() * 2 - 1) * (map.halfW + SKIRT - 4);
-      const z = (rng.next() * 2 - 1) * (map.halfH + SKIRT - 4);
-      const ok = map.inset(x, z) < BERM_OUT - 1.5; // chỉ ngoài thành bản đồ, không mọc xuyên con đê
-      if (!ok || !clear(x, z)) continue;
-      spots.push({ x, z, s: 0.8 + rng.next() * 0.7 });
-    }
     // rừng do bản đồ tô: cây dày theo lưới có xô lệch, cây thấp hơn cây viền để còn thấy quân bên dưới
     const forestStep = 3.6;
     for (let z = -map.halfH; z < map.halfH; z += forestStep)

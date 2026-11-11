@@ -159,6 +159,8 @@ export class GameMap {
     this.cols = Math.round(this.w / CELL);
     this.rows = Math.round(this.h / CELL);
     if (this.cols * CELL !== this.w || this.rows * CELL !== this.h) throw new Error(`Bản đồ "${def.id}": kích thước phải là bội số của ${CELL} m`);
+    const rt = def.roundTop ?? 0;
+    if (rt % CELL !== 0 || rt * (1 - Math.SQRT1_2) >= WALL) throw new Error(`roundTop ${rt} m: phải là bội số ${CELL} m và ≤ 12 m (phần cắt nằm trong dải sát mép)`);
     this.edgeX = this.halfW - WALL;
     this.edgeZ = this.halfH - WALL;
     this.airX = this.halfW - AIR_MARGIN;
@@ -389,8 +391,8 @@ export class GameMap {
   }
 
   /**
-   * Độ cao để VẼ mặt đất: như terrainHeight nhưng bỏ phần nâng của dải vách rìa (EDGE_H). Thành bản đồ được phần vẽ dựng
-   * bằng lưới riêng chạy mượt theo đường viền (terrain-mesh.ts `buildBorderMesh`); sim vẫn chặn các ô đó như cũ.
+   * Độ cao để VẼ mặt đất: như terrainHeight nhưng bỏ phần nâng của dải vách rìa (EDGE_H): bản đồ không vẽ thành ở mép
+   * (người dùng 11/11/2026), sim vẫn chặn các ô đó như cũ.
    */
   drawGroundY(x: number, z: number): number {
     const y = this.terrainHeight(x, z);

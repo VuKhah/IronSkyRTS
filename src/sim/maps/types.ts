@@ -112,6 +112,11 @@ export interface MapDef {
   rivers: readonly RiverDef[];
   /** Hiệu ứng địa hình theo vùng (luật của từng loại nằm ở terrain.ts). */
   regions?: readonly RegionDef[];
+  /**
+   * Bo hai góc phía Bắc khi VẼ mặt đất (m, bội số 2 m; chỉ ảnh hưởng hình). Luật vẫn là hình chữ nhật: bán kính ≤ 12 m nên
+   * phần bị cắt nằm gọn trong dải sát mép vốn không đi được (r·(1 − 1/√2) < WALL), hai phe vẫn công bằng dù chỉ bo hai góc.
+   */
+  roundTop?: number;
   /** Bộ màu / cảnh cho phần vẽ (không ảnh hưởng luật). */
   biome?: string;
 }
