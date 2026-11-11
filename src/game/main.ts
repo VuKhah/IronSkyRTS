@@ -18,6 +18,7 @@ import { Fx } from "./fx";
 import { Hud } from "./hud";
 import { attachGestures } from "./input";
 import { Match, type Mode } from "./match";
+import { loadPick, mountPicker, pickerHtml, type Pick } from "./map-picker";
 import { Minimap } from "./minimap";
 import { Overlay } from "./overlay";
 import { DUEL_CENTER, Sandbox } from "./sandbox";
@@ -26,12 +27,16 @@ import { Views } from "./views";
 
 const app = document.getElementById("app")!;
 const randomSeed = (): number => Math.floor(Math.random() * 1e9) + 1;
-const go = (mode: Mode | null, seed = randomSeed()): void => {
-  // giữ nguyên bản đồ và phe đang chơi khi mở trận mới (menu chọn bản đồ: bước B6)
-  const cur = new URLSearchParams(location.search);
-  const map = cur.get("map");
-  const side = cur.get("side");
-  location.search = mode ? `?play=${mode}&seed=${seed}${map ? `&map=${encodeURIComponent(map)}` : ""}${side === "1" ? "&side=1" : ""}` : "";
+/**
+ * Mở trận mới (hoặc về menu khi `mode` = null). Từ menu: bản đồ / phe theo lựa chọn ở menu. Trong trận (nút "Trận mới"):
+ * giữ nguyên bản đồ và phe đang chơi trên link.
+ */
+const go = (mode: Mode | null, seed = randomSeed(), pick: Pick = loadPick()): void => {
+  if (!mode) {
+    location.search = "";
+    return;
+  }
+  location.search = `?play=${mode}&seed=${seed}&map=${encodeURIComponent(pick.map)}${pick.side === 1 ? "&side=1" : ""}`;
 };
 
 const HELP = `
@@ -51,8 +56,9 @@ function showMenu(): void {
     <div class="screen">
       <div class="card">
         <h1>IRON SKY</h1>
-        <p>Tư Lệnh Chiến Thuật &amp; Hậu Cần · bản v1 (MVP). Hai đạo quân tranh mỏ Sắt và giàn Dầu dọc dòng sông chéo có 3 lối qua.</p>
-        <button class="menu-btn primary" data-go="vsai">Chơi với AI<small>Bạn là Liên Minh Lam, đối đầu Tập Đoàn Đỏ</small></button>
+        <p>Tư Lệnh Chiến Thuật &amp; Hậu Cần · bản v1 (MVP). Hai đạo quân tranh mỏ Sắt và giàn Dầu, chỉ huy cả sư đoàn trong trận không quá 20 phút.</p>
+        ${pickerHtml()}
+        <button class="menu-btn primary" data-go="vsai">Chơi với AI<small data-vs>Bạn là Liên Minh Lam, đối đầu Tập Đoàn Đỏ</small></button>
         <button class="menu-btn" data-go="aivai">Xem AI đấu AI<small>Hai AI đánh nhau, có nút tăng tốc ×1 ×2 ×4</small></button>
         <button class="menu-btn" data-go="sandbox">Phòng Thử Nghiệm<small>Thả quân và công trình tùy ý để thử từng binh chủng</small></button>
         <button class="menu-btn" data-help>Cách chơi<small>Luật thắng, kinh tế, điều khiển chạm và chuột</small></button>
@@ -60,7 +66,15 @@ function showMenu(): void {
         <div data-helpbox hidden>${HELP}</div>
       </div>
     </div>`;
-  app.querySelectorAll<HTMLElement>("[data-go]").forEach((b) => b.addEventListener("click", () => go(b.dataset.go as Mode)));
+  const pick = mountPicker(app);
+  // dòng mô tả nút "Chơi với AI" theo phe đang chọn
+  const vs = app.querySelector<HTMLElement>("[data-vs]")!;
+  const syncVs = (): void => {
+    vs.textContent = pick().side === 1 ? "Bạn là Tập Đoàn Đỏ, đối đầu Liên Minh Lam" : "Bạn là Liên Minh Lam, đối đầu Tập Đoàn Đỏ";
+  };
+  app.querySelectorAll("[data-side]").forEach((b) => b.addEventListener("click", syncVs));
+  syncVs();
+  app.querySelectorAll<HTMLElement>("[data-go]").forEach((b) => b.addEventListener("click", () => go(b.dataset.go as Mode, randomSeed(), pick())));
   app.querySelector("[data-help]")!.addEventListener("click", () => {
     const box = app.querySelector<HTMLElement>("[data-helpbox]")!;
     box.hidden = !box.hidden;

@@ -250,3 +250,28 @@ a.menu-btn { color: inherit; text-decoration: none; }
 .sb-verdict small { color: var(--dim); }
 .sb-verdict.ok { border-color: var(--good); }
 .sb-verdict.no { border-color: var(--bad); }
+
+/* Chọn bản đồ ở menu (B6) */
+.picker { display: flex; flex-direction: column; gap: 8px; }
+.picker-head { display: flex; align-items: center; justify-content: space-between; font-weight: 700; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; font-size: 13px; }
+.side-pick { display: flex; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; }
+.side-pick button { cursor: pointer; padding: 5px 14px; background: transparent; border: 0; color: var(--dim); font-weight: 700; font-size: 13px; }
+.side-pick button[data-side="0"].on { background: rgba(62, 168, 255, 0.25); color: #8fd0ff; }
+.side-pick button[data-side="1"].on { background: rgba(255, 77, 77, 0.25); color: #ff9a8f; }
+.map-list { display: flex; flex-direction: column; gap: 8px; }
+.map-card {
+  cursor: pointer; display: flex; gap: 12px; align-items: center; text-align: left; padding: 8px; border-radius: 10px;
+  border: 1px solid var(--line-strong); background: rgba(255, 255, 255, 0.04); color: inherit;
+}
+.map-card:hover { border-color: var(--accent); }
+.map-card.on { border-color: var(--accent); background: rgba(255, 181, 71, 0.12); box-shadow: inset 3px 0 0 var(--accent); }
+.map-thumb { flex: 0 0 96px; width: 96px; height: 96px; display: grid; place-items: center; border-radius: 6px; overflow: hidden; background: rgba(0, 0, 0, 0.3); transition: transform 0.25s; }
+.map-thumb.flip { transform: rotate(180deg); }
+.map-thumb canvas { width: 100%; height: 100%; object-fit: contain; display: block; }
+.map-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.map-info b { font-size: 15px; }
+.map-info small { color: var(--accent); font-size: 12px; font-weight: 600; }
+.map-info span { color: var(--dim); font-size: 12.5px; line-height: 1.35; }
+@media (max-width: 760px) {
+  .map-thumb { flex-basis: 72px; width: 72px; height: 72px; }
+}

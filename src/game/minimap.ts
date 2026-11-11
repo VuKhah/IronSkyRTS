@@ -10,8 +10,43 @@ import { TERRAIN, type GameMap, type TerrainKind } from "../sim/maps";
 const TINT: Partial<Record<TerrainKind, number>> = { road: 0.85, sand: 0.8, mud: 0.85, snow: 0.9, forest: 0.8 };
 import type { World } from "../sim/world";
 
-const SIDE_COLOR = ["#3ea8ff", "#ff4d4d"];
-const RES_COLOR = { iron: "#8fc7f5", oil: "#d17af2" };
+export const SIDE_COLOR = ["#3ea8ff", "#ff4d4d"];
+export const RES_COLOR = { iron: "#8fc7f5", oil: "#d17af2" };
+
+/** Ảnh nền địa hình nhìn từ trên (1 điểm ảnh = 1 m): dùng cho minimap và ảnh bản đồ ở menu. */
+export function paintTerrain(map: GameMap): HTMLCanvasElement {
+  const W = Math.round(map.w);
+  const H = Math.round(map.h);
+  const bg = document.createElement("canvas");
+  bg.width = W;
+  bg.height = H;
+  const b = bg.getContext("2d")!;
+  const img = b.createImageData(W, H);
+  for (let pz = 0; pz < H; pz++)
+    for (let px = 0; px < W; px++) {
+      const x = px - map.halfW + 0.5;
+      const z = pz - map.halfH + 0.5;
+      const h = map.terrainHeight(x, z);
+      let c = [78, 104, 52];
+      if (h > 1.5) c = [104, 120, 70];
+      const river = map.nearRiver(x, z);
+      if (river && river.dist < river.river.half + 1 && h < 0) c = h < -1 ? [44, 98, 140] : [140, 128, 100];
+      const kind = map.terrainAt(x, z);
+      const k = TINT[kind];
+      if (k) {
+        const t = TERRAIN[kind].color;
+        c = [c[0] * (1 - k) + ((t >> 16) & 255) * k, c[1] * (1 - k) + ((t >> 8) & 255) * k, c[2] * (1 - k) + (t & 255) * k];
+      }
+      if (map.inset(x, z) < 5 || h > 3.8) c = [70, 66, 60];
+      const i = (pz * W + px) * 4;
+      img.data[i] = c[0];
+      img.data[i + 1] = c[1];
+      img.data[i + 2] = c[2];
+      img.data[i + 3] = 255;
+    }
+  b.putImageData(img, 0, 0);
+  return bg;
+}
 
 export class Minimap {
   private ctx: CanvasRenderingContext2D;
@@ -32,37 +67,7 @@ export class Minimap {
     // khung theo tỉ lệ bản đồ: giữ bề rộng trong CSS, chiều cao tự tính (bản đồ chữ nhật nằm ngang thì minimap thấp hơn)
     canvas.style.aspectRatio = `${map.w} / ${map.h}`;
     canvas.style.height = "auto";
-    // ảnh nền: 1 điểm ảnh = 1 m
-    const W = Math.round(map.w);
-    const H = Math.round(map.h);
-    this.bg = document.createElement("canvas");
-    this.bg.width = W;
-    this.bg.height = H;
-    const b = this.bg.getContext("2d")!;
-    const img = b.createImageData(W, H);
-    for (let pz = 0; pz < H; pz++)
-      for (let px = 0; px < W; px++) {
-        const x = px - map.halfW + 0.5;
-        const z = pz - map.halfH + 0.5;
-        const h = map.terrainHeight(x, z);
-        let c = [78, 104, 52];
-        if (h > 1.5) c = [104, 120, 70];
-        const river = map.nearRiver(x, z);
-        if (river && river.dist < river.river.half + 1 && h < 0) c = h < -1 ? [44, 98, 140] : [140, 128, 100];
-        const kind = map.terrainAt(x, z);
-        const k = TINT[kind];
-        if (k) {
-          const t = TERRAIN[kind].color;
-          c = [c[0] * (1 - k) + ((t >> 16) & 255) * k, c[1] * (1 - k) + ((t >> 8) & 255) * k, c[2] * (1 - k) + (t & 255) * k];
-        }
-        if (map.inset(x, z) < 5 || h > 3.8) c = [70, 66, 60];
-        const i = (pz * W + px) * 4;
-        img.data[i] = c[0];
-        img.data[i + 1] = c[1];
-        img.data[i + 2] = c[2];
-        img.data[i + 3] = 255;
-      }
-    b.putImageData(img, 0, 0);
+    this.bg = paintTerrain(map);
     this.fog = document.createElement("canvas");
     this.fog.width = map.cols;
     this.fog.height = map.rows;
