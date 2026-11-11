@@ -7,13 +7,11 @@
  * lên cảnh 3D mà không bị địa hình nhô lên che mất.
  */
 import * as THREE from "three";
-import type { GameMap, Vec2 } from "../sim/maps";
+import { colName, mapRuler, type GameMap, type Vec2 } from "../sim/maps";
 
 const TEX = 2048;
 /** Lề ngoài bản đồ, tính theo tỉ lệ cạnh dài (chỗ ghi chữ cái, số lưới). */
 const PAD = 0.055;
-/** Số ô lưới theo cạnh ngang: cùng cách đặt tên với `npm run map-preview`. */
-const GRID_COLS = 12;
 /** Thời gian vệt quét đi hết bản đồ (giây). */
 const SWEEP_SECONDS = 9;
 
@@ -25,8 +23,6 @@ const TERRAIN_FILL: Partial<Record<string, string>> = {
   mud: "rgba(170, 120, 70, 0.14)",
   snow: "rgba(220, 240, 255, 0.14)"
 };
-
-const colName = (i: number): string => (i < 26 ? String.fromCharCode(65 + i) : `A${String.fromCharCode(39 + i)}`);
 
 function drawDisplay(map: GameMap): HTMLCanvasElement {
   const pad = Math.max(map.w, map.h) * PAD;
@@ -173,38 +169,45 @@ function drawDisplay(map: GameMap): HTMLCanvasElement {
   }
   g.restore();
 
-  // lưới ô đặt tên, để nói được "đưa quân tới D6"
-  const cell = map.w / GRID_COLS;
-  const rows = Math.round(map.h / cell);
+  // lưới ô đặt tên, để nói được "đưa quân tới D6": thước đo chung với map-preview và ô ly trên sân (ruler.ts)
+  const ruler = mapRuler(map);
   const fontPx = Math.max(15, pad * s * 0.4);
-  g.strokeStyle = `rgba(${CYAN}, 0.14)`;
+  const line = (x0: number, z0: number, x1: number, z1: number): void => {
+    g.beginPath();
+    g.moveTo(X(x0), Y(z0));
+    g.lineTo(X(x1), Y(z1));
+    g.stroke();
+  };
   g.lineWidth = 1;
+  g.strokeStyle = `rgba(${CYAN}, 0.06)`;
+  for (const x of ruler.minorX) line(x, -map.halfH, x, map.halfH);
+  for (const z of ruler.minorZ) line(-map.halfW, z, map.halfW, z);
+  g.strokeStyle = `rgba(${CYAN}, 0.14)`;
   g.fillStyle = `rgba(${CYAN}, 0.85)`;
   g.font = `600 ${fontPx}px Consolas, 'Courier New', monospace`;
   g.textAlign = "center";
   g.textBaseline = "middle";
-  for (let i = 0; i <= GRID_COLS; i++) {
-    const x = -map.halfW + i * cell;
-    g.beginPath();
-    g.moveTo(X(x), Y(-map.halfH));
-    g.lineTo(X(x), Y(map.halfH));
-    g.stroke();
-    if (i < GRID_COLS) {
-      g.fillText(colName(i), X(x + cell / 2), Y(-map.halfH - pad * 0.5));
-      g.fillText(colName(i), X(x + cell / 2), Y(map.halfH + pad * 0.5));
+  const ce = ruler.colEdges;
+  const re = ruler.rowEdges;
+  ce.forEach((x, i) => {
+    line(x, -map.halfH, x, map.halfH);
+    if (i + 1 < ce.length) {
+      g.fillText(colName(i), X((x + ce[i + 1]) / 2), Y(-map.halfH - pad * 0.5));
+      g.fillText(colName(i), X((x + ce[i + 1]) / 2), Y(map.halfH + pad * 0.5));
     }
-  }
-  for (let i = 0; i <= rows; i++) {
-    const z = -map.halfH + i * cell;
-    g.beginPath();
-    g.moveTo(X(-map.halfW), Y(z));
-    g.lineTo(X(map.halfW), Y(z));
-    g.stroke();
-    if (i < rows) {
-      g.fillText(String(i + 1), X(-map.halfW - pad * 0.5), Y(z + cell / 2));
-      g.fillText(String(i + 1), X(map.halfW + pad * 0.5), Y(z + cell / 2));
+  });
+  re.forEach((z, i) => {
+    line(-map.halfW, z, map.halfW, z);
+    if (i + 1 < re.length) {
+      g.fillText(String(i + 1), X(-map.halfW - pad * 0.5), Y((z + re[i + 1]) / 2));
+      g.fillText(String(i + 1), X(map.halfW + pad * 0.5), Y((z + re[i + 1]) / 2));
     }
-  }
+  });
+  g.strokeStyle = "rgba(242, 193, 78, 0.6)";
+  g.setLineDash([10, 8]);
+  for (const x of ruler.guideX) line(x, -map.halfH, x, map.halfH);
+  for (const z of ruler.guideZ) line(-map.halfW, z, map.halfW, z);
+  g.setLineDash([]);
 
   // khung phát sáng
   glow(`rgba(${CYAN}, 1)`, 16);

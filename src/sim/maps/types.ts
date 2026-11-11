@@ -117,6 +117,11 @@ export interface MapDef {
    * phần bị cắt nằm gọn trong dải sát mép vốn không đi được (r·(1 − 1/√2) < WALL), hai phe vẫn công bằng dù chỉ bo hai góc.
    */
   roundTop?: number;
+  /**
+   * Thước đo (ruler.ts): ô lớn `cell` m và ô ly `minor` m căn giữa tâm, đường dẫn `guideX` / `guideZ` (m). Có thước thì mặt
+   * sân 3D vẽ kiểu giấy kẻ ô ly (màu trơn + lưới) để người dùng ước lượng khi dựng bản đồ. Chỉ ảnh hưởng hình và công cụ.
+   */
+  ruler?: { cell: number; minor?: number; guideX?: readonly number[]; guideZ?: readonly number[] };
   /** Bộ màu / cảnh cho phần vẽ (không ảnh hưởng luật). */
   biome?: string;
 }

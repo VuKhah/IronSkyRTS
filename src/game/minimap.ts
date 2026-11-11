@@ -37,6 +37,7 @@ export function paintTerrain(map: GameMap): HTMLCanvasElement {
       // địa hình bậc thang: tầng càng cao càng sáng, mép vách là nét sẫm (đọc như đường đồng mức)
       const tier = Math.min(map.tierAt(x, z), 2);
       let c = TIER_RGB[tier];
+      if (map.def.ruler) c = [207 - tier * 18, 201 - tier * 18, 182 - tier * 18]; // bản đồ đang dựng: màu giấy như sân 3D
       if (map.onRamp(x, z)) c = [150, 136, 100];
       const river = map.nearRiver(x, z);
       if (river && river.dist < river.river.half + 1 && h < 0) c = h < -1 ? [44, 98, 140] : [140, 128, 100];

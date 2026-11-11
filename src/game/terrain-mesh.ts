@@ -11,7 +11,7 @@
  * Chỉ để vẽ, không ảnh hưởng luật.
  */
 import * as THREE from "three";
-import { CELL, TERRAIN, type GameMap, type TerrainKind } from "../sim/maps";
+import { CELL, mapRuler, TERRAIN, type GameMap, type TerrainKind } from "../sim/maps";
 
 /** Điểm ảnh texture màu mặt đất trên mỗi mét. */
 const TEX_PER_M = 1;
@@ -227,13 +227,17 @@ function groundTexture(map: GameMap, x0: number, z0: number, W: number, H: numbe
   const cliff = new THREE.Color(0x6a6158);
   const rimC = new THREE.Color(0x8a7f6c);
   const rampC = new THREE.Color(0x9b8a68);
+  const paper = !!map.def.ruler;
+  const paperC = new THREE.Color(0xcfc9b6);
   for (let j = 0; j < nz; j++)
     for (let i = 0; i < nx; i++) {
       const x = x0 + (i + 0.5) / TEX_PER_M;
       const z = z0 + (j + 0.5) / TEX_PER_M;
       const h = map.terrainHeight(x, z);
       const noise = (Math.sin(x * 0.21) * Math.sin(z * 0.17) + 1) * 0.5;
-      col.copy(grassA).lerp(grassB, noise);
+      // bản đồ có thước đo (đang dựng): sân màu giấy trơn để kẻ ô ly ước lượng; còn lại cỏ lốm đốm
+      if (paper) col.copy(paperC);
+      else col.copy(grassA).lerp(grassB, noise);
       const inside = Math.abs(x) < map.halfW && Math.abs(z) < map.halfH;
       const tier = inside ? Math.min(map.tierAt(x, z), 2) : 0;
       if (tier > 0) col.lerp(dry, 0.25 * tier);
@@ -274,3 +278,36 @@ function groundTexture(map: GameMap, x0: number, z0: number, W: number, H: numbe
   return tex;
 }
 
+
+/**
+ * Ô ly trên mặt sân (bản đồ có `MapDef.ruler`): ô ly mờ, ô lớn đậm, đường dẫn màu vàng; đoạn ngắn 2 m bám độ cao mặt đất
+ * để khi có tầng cao vẫn nằm trên mặt. Thước chung với bàn tác chiến và map-preview (ruler.ts). Không có thước thì null.
+ */
+export function buildRulerLines(map: GameMap): THREE.Group | null {
+  if (!map.def.ruler) return null;
+  const ruler = mapRuler(map);
+  const group = new THREE.Group();
+  const lift = 0.06;
+  const make = (xs: readonly number[], zs: readonly number[], color: number, opacity: number): void => {
+    const pos: number[] = [];
+    const y = (x: number, z: number): number => map.drawGroundY(Math.max(-map.halfW + 0.01, Math.min(map.halfW - 0.01, x)), Math.max(-map.halfH + 0.01, Math.min(map.halfH - 0.01, z))) + lift;
+    for (const x of xs)
+      for (let z = -map.halfH; z < map.halfH - 1e-6; z += CELL) {
+        const z1 = Math.min(map.halfH, z + CELL);
+        pos.push(x, y(x, z + 0.01), z, x, y(x, z1 - 0.01), z1);
+      }
+    for (const z of zs)
+      for (let x = -map.halfW; x < map.halfW - 1e-6; x += CELL) {
+        const x1 = Math.min(map.halfW, x + CELL);
+        pos.push(x, y(x + 0.01, z), z, x1, y(x1 - 0.01, z), z);
+      }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    group.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false })));
+  };
+  const inner = (e: number[]): number[] => e.slice(1, -1); // mép bản đồ không kẻ
+  make(ruler.minorX, ruler.minorZ, 0x6f6a5c, 0.35);
+  make(inner(ruler.colEdges), inner(ruler.rowEdges), 0x3f3b33, 0.75);
+  make(ruler.guideX, ruler.guideZ, 0xc8901a, 0.95);
+  return group;
+}

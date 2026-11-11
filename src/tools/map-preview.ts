@@ -2,18 +2,18 @@
  * Vẽ bản đồ nhìn từ trên xuống, có lưới ô đặt tên (A1, B2…), để góp ý bằng lời: "đưa đồi từ C5 sang D6".
  * Đồng thời in vị trí căn cứ, mỏ, lối qua theo ô. Vẽ từ chính GameMap nên khớp luật chơi.
  *
- *   npm run map-preview -- <mã bản đồ> [file ra = Docs/maps/_xem-truoc/<mã>.svg] [cỡ ô lưới = 20 m]
+ *   npm run map-preview -- <mã bản đồ> [file ra = Docs/maps/_xem-truoc/<mã>.svg]
+ * Lưới theo thước đo của bản đồ (ruler.ts, chung với bàn tác chiến và ô ly trên sân trong game).
  *
  * Mở file .svg bằng trình duyệt là xem được.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { getMap, TERRAIN } from "../sim/maps";
+import { cellName, colName, getMap, mapRuler, TERRAIN } from "../sim/maps";
 
 const ID = process.argv[2];
-if (!ID) throw new Error("Cách dùng: npm run map-preview -- <mã bản đồ> [file ra] [cỡ ô lưới]");
+if (!ID) throw new Error("Cách dùng: npm run map-preview -- <mã bản đồ> [file ra]");
 const OUT = process.argv[3] ?? `Docs/maps/_xem-truoc/${ID}.svg`;
-const CELL_M = Number(process.argv[4] ?? 20);
 const map = getMap(ID);
 
 const SAMPLE = 2; // lấy mẫu địa hình mỗi 2 m, trùng cỡ ô sim
@@ -21,14 +21,10 @@ const PAD = 26; // lề cho chữ A, B, C / 1, 2, 3
 const sx = (x: number): number => x + map.halfW + PAD;
 const sy = (z: number): number => z + map.halfH + PAD;
 
-const cols = Math.ceil(map.w / CELL_M);
-const rows = Math.ceil(map.h / CELL_M);
-const colName = (i: number): string => (i < 26 ? String.fromCharCode(65 + i) : `A${String.fromCharCode(39 + i)}`);
-const cellOf = (x: number, z: number): string => {
-  const c = Math.max(0, Math.min(cols - 1, Math.floor((x + map.halfW) / CELL_M)));
-  const r = Math.max(0, Math.min(rows - 1, Math.floor((z + map.halfH) / CELL_M)));
-  return `${colName(c)}${r + 1}`;
-};
+const ruler = mapRuler(map);
+const cols = ruler.colEdges.length - 1;
+const rows = ruler.rowEdges.length - 1;
+const cellOf = (x: number, z: number): string => cellName(ruler, x, z);
 
 /** Màu từng mẫu: theo loại địa hình, tối hơn ở chỗ thấp và sáng hơn ở chỗ cao để thấy đồi. */
 function colorAt(x: number, z: number): string {
@@ -78,17 +74,25 @@ for (const c of map.crossings()) {
   out.push(`<line x1="${sx(x - c.dirX * half)}" y1="${sy(z - c.dirZ * half)}" x2="${sx(x + c.dirX * half)}" y2="${sy(z + c.dirZ * half)}" stroke="${bridge ? "#f4f4f0" : "#e8d39a"}" stroke-width="5"/>`);
 }
 
-// Lưới ô
-for (let i = 0; i <= cols; i++) {
-  const x = Math.min(PAD + i * CELL_M, PAD + map.w);
-  out.push(`<line x1="${x}" y1="${PAD}" x2="${x}" y2="${PAD + map.h}" stroke="#000" stroke-opacity="0.4" stroke-width="0.6"/>`);
-  if (i < cols) out.push(`<text x="${PAD + (i + 0.5) * CELL_M}" y="18" text-anchor="middle" font-size="12" fill="#e6edf2">${colName(i)}</text>`);
-}
-for (let i = 0; i <= rows; i++) {
-  const y = Math.min(PAD + i * CELL_M, PAD + map.h);
-  out.push(`<line x1="${PAD}" y1="${y}" x2="${PAD + map.w}" y2="${y}" stroke="#000" stroke-opacity="0.4" stroke-width="0.6"/>`);
-  if (i < rows) out.push(`<text x="13" y="${PAD + (i + 0.5) * CELL_M + 4}" text-anchor="middle" font-size="12" fill="#e6edf2">${i + 1}</text>`);
-}
+// Lưới ô: ô ly mờ, ô lớn đậm hơn, đường dẫn (tỉ lệ vàng…) màu vàng
+const vline = (x: number, op: number, w: number, color = "#000", dash = ""): void => {
+  out.push(`<line x1="${sx(x)}" y1="${PAD}" x2="${sx(x)}" y2="${PAD + map.h}" stroke="${color}" stroke-opacity="${op}" stroke-width="${w}"${dash}/>`);
+};
+const hline = (z: number, op: number, w: number, color = "#000", dash = ""): void => {
+  out.push(`<line x1="${PAD}" y1="${sy(z)}" x2="${PAD + map.w}" y2="${sy(z)}" stroke="${color}" stroke-opacity="${op}" stroke-width="${w}"${dash}/>`);
+};
+for (const x of ruler.minorX) vline(x, 0.18, 0.4);
+for (const z of ruler.minorZ) hline(z, 0.18, 0.4);
+ruler.colEdges.forEach((x, i) => {
+  vline(x, 0.45, 0.7);
+  if (i < cols) out.push(`<text x="${sx((x + ruler.colEdges[i + 1]) / 2)}" y="18" text-anchor="middle" font-size="12" fill="#e6edf2">${colName(i)}</text>`);
+});
+ruler.rowEdges.forEach((z, i) => {
+  hline(z, 0.45, 0.7);
+  if (i < rows) out.push(`<text x="13" y="${sy((z + ruler.rowEdges[i + 1]) / 2) + 4}" text-anchor="middle" font-size="12" fill="#e6edf2">${i + 1}</text>`);
+});
+for (const x of ruler.guideX) vline(x, 0.9, 1.2, "#f2c14e", ` stroke-dasharray="6 4"`);
+for (const z of ruler.guideZ) hline(z, 0.9, 1.2, "#f2c14e", ` stroke-dasharray="6 4"`);
 
 // Ký hiệu
 const OWNER = (o: number): string => (o === 0 ? "#2e9eff" : o === 1 ? "#f23d3d" : "#ffffff");
@@ -108,7 +112,7 @@ writeFileSync(OUT, out.join("\n"));
 
 const res = { iron: "Sắt", oil: "Dầu" } as Record<string, string>;
 const side = (o: number): string => (o === 0 ? "Lam" : o === 1 ? "Đỏ" : "trung lập");
-console.log(`${map.def.name} (${ID}): ${map.w} × ${map.h} m, lưới ${cols} × ${rows} ô ${CELL_M} m. Hàng 1 là phía Bắc, cột A là phía Tây.`);
+console.log(`${map.def.name} (${ID}): ${map.w} × ${map.h} m, lưới ${cols} × ${rows} ô ${ruler.cell} m${ruler.minor ? `, ô ly ${ruler.minor} m` : ""}${map.def.ruler ? " (căn giữa tâm)" : ""}. Hàng 1 là phía Bắc, cột A là phía Tây.`);
 console.log(`Căn cứ: ${map.bases.map(([x, z], i) => `${i === 0 ? "Lam" : "Đỏ"} ${cellOf(x, z)}`).join(" · ")}`);
 console.log(`Mỏ: ${map.mines.map((m) => `${res[m.res]} ${cellOf(m.x, m.z)} (${side(m.owner)})`).join(" · ")}`);
 console.log(`Lối qua: ${map.crossings().map((c) => `${c.def.kind === "bridge" ? "Cầu" : "Bãi cạn"} ${cellOf(c.def.x, c.def.z)}`).join(" · ") || "không có"}`);

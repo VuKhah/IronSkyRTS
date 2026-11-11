@@ -8,7 +8,7 @@ import { TacticalMap } from "./tactical-map";
 import type { Side } from "../sim/content";
 import { Rng } from "../sim/fmath";
 import type { GameMap } from "../sim/maps";
-import { buildTerrainMesh, WATER_Y } from "./terrain-mesh";
+import { buildRulerLines, buildTerrainMesh, WATER_Y } from "./terrain-mesh";
 import type { World } from "../sim/world";
 
 /** Địa hình vẽ rộng hơn vùng chơi chừng này (m) mỗi bên. 0 từ 11/11/2026: người dùng muốn ngoài mép bản đồ không có gì. */
@@ -74,6 +74,8 @@ export class BattleScene {
     terrain.castShadow = true;
     terrain.receiveShadow = true;
     this.scene.add(terrain);
+    const ruler = buildRulerLines(map); // ô ly để ước lượng khi dựng bản đồ (chỉ bản đồ có thước đo)
+    if (ruler) this.scene.add(ruler);
 
     this.water = new THREE.Mesh(
       new THREE.PlaneGeometry(this.sizeW, this.sizeH),
