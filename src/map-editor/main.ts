@@ -99,8 +99,9 @@ function tierAt(c: number, r: number): number {
 /**
  * Hướng đi LÊN của khối dốc chiếm khung ô [c0, c1] × [r0, r1]: so tầng trung bình của dải ô ngay ngoài bốn cạnh, trục nào
  * hai đầu chênh tầng thì leo theo trục đó về phía cao hơn; cả hai trục đều chênh thì leo theo cạnh ngắn. Không chênh: null.
+ * `ok`: hai đầu chênh đúng 1 tầng (luật: dốc chỉ lên một tầng, không vượt tầng).
  */
-function rampDir(c0: number, r0: number, c1: number, r1: number): "n" | "e" | "s" | "w" | null {
+function rampDir(c0: number, r0: number, c1: number, r1: number): { dir: "n" | "e" | "s" | "w"; ok: boolean } | null {
   const avg = (cells: [number, number][]): number => {
     let s = 0, n = 0;
     for (const [c, r] of cells) {
@@ -124,7 +125,10 @@ function rampDir(c0: number, r0: number, c1: number, r1: number): "n" | "e" | "s
   if (!okNS && !okEW) return null;
   // hai trục đều chênh (ví dụ dốc nằm giữa vách đồi và nền): leo theo cạnh ngắn của khối
   const useNS = okNS && okEW ? r1 - r0 <= c1 - c0 : okNS;
-  return useNS ? (ns > 0 ? "n" : "s") : ew > 0 ? "e" : "w";
+  const dir = useNS ? (ns > 0 ? "n" : "s") : ew > 0 ? "e" : "w";
+  // dốc chỉ lên đúng 1 tầng: hai đầu phải chênh đúng 1 (không vượt tầng, không lẫn tầng)
+  const diff = Math.abs(useNS ? ns : ew);
+  return { dir, ok: Math.abs(diff - 1) < 1e-6 };
 }
 
 function draw(): void {
@@ -162,7 +166,7 @@ function draw(): void {
     }
   g.stroke();
   // mũi tên dốc: mỗi khối dốc (các ô dốc liền nhau) một hàng mũi tên dài đúng từ chân tới đỉnh dốc, lặp theo bề ngang
-  // mỗi ~14 m; hướng tự suy: phía nào tầng cao hơn là phía đỉnh. Không suy được (hai đầu bằng tầng) thì viền đỏ.
+  // mỗi ~14 m; hướng tự suy: phía nào tầng cao hơn là phía đỉnh. Hai đầu bằng tầng, hay chênh khác đúng 1 tầng: viền đỏ.
   const seen = new Uint8Array(ROWS * COLS);
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++) {
@@ -184,19 +188,20 @@ function draw(): void {
       }
       const x0 = PAD + c0 * CELL * K, x1 = PAD + (c1 + 1) * CELL * K;
       const y0 = PAD + r0 * CELL * K, y1 = PAD + (r1 + 1) * CELL * K;
-      const d = rampDir(c0, r0, c1, r1);
-      if (!d) {
+      const rd = rampDir(c0, r0, c1, r1);
+      if (!rd || !rd.ok) {
         g.strokeStyle = "#e0402a";
         g.lineWidth = 2;
         g.strokeRect(x0, y0, x1 - x0, y1 - y0);
-        continue;
+        if (!rd) continue;
       }
+      const d = rd.dir;
       const ns = d === "n" || d === "s";
       const len = ns ? y1 - y0 : x1 - x0; // chiều dài dốc theo hướng leo
       const wid = ns ? x1 - x0 : y1 - y0;
       const n = Math.max(1, Math.round(wid / (14 * K)));
       const head = Math.min(len * 0.45, 3 * K);
-      g.strokeStyle = g.fillStyle = "#3b3122";
+      g.strokeStyle = g.fillStyle = rd.ok ? "#3b3122" : "#e0402a";
       g.lineWidth = 1.6;
       for (let k = 0; k < n; k++) {
         const t = (k + 0.5) / n;
