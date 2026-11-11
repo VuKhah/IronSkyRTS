@@ -27,13 +27,15 @@ export function cellTier(grid: string[][], c: number, r: number): number {
 }
 
 /**
- * Hướng đi LÊN của khối dốc chiếm khung ô [c0, c1] × [r0, r1]: so tầng trung bình của dải ô ngay ngoài bốn cạnh, trục nào
- * hai đầu chênh tầng thì leo theo trục đó về phía cao hơn; cả hai trục đều chênh thì leo theo cạnh ngắn. Không chênh: null.
- * `ok`: hai đầu chênh đúng 1 tầng (luật: dốc chỉ lên một tầng, không vượt tầng). `low`: tầng phía chân dốc.
+ * Hướng đi LÊN của khối dốc chiếm khung ô [c0, c1] × [r0, r1]. Thử cả bốn hướng và chấm điểm theo luật dốc (rampRule):
+ * đỉnh cao hơn chân đúng 1 tầng (nặng nhất), dài đúng 10 m theo hướng đó, có chiếu nghỉ 10 m phía trên, một hông dựa vào
+ * khối cao. Đoán theo trung bình tầng bốn phía thì khối vuông 10 × 10 hay bị lừa bởi vai đất / vách bên hông.
+ * Không hướng nào có đỉnh cao hơn chân: null. `ok`: chênh đúng 1 tầng. `low`: tầng chân dốc.
  */
 export function rampDirOf(grid: string[][], c0: number, r0: number, c1: number, r1: number): { dir: Dir; ok: boolean; low: number } | null {
   const rows = grid.length;
   const cols = grid[0]?.length ?? 0;
+  const span = (a: number, b: number): number[] => Array.from({ length: b - a + 1 }, (_, i) => a + i);
   const avg = (cells: [number, number][]): number => {
     let s = 0,
       n = 0;
@@ -46,21 +48,25 @@ export function rampDirOf(grid: string[][], c0: number, r0: number, c1: number, 
     }
     return n ? s / n : NaN;
   };
-  const span = (a: number, b: number): number[] => Array.from({ length: b - a + 1 }, (_, i) => a + i);
-  const N = avg(span(c0, c1).map((c) => [c, r0 - 1]));
-  const S = avg(span(c0, c1).map((c) => [c, r1 + 1]));
-  const W = avg(span(r0, r1).map((r) => [c0 - 1, r]));
-  const E = avg(span(r0, r1).map((r) => [c1 + 1, r]));
-  const ns = isNaN(N) || isNaN(S) ? 0 : N - S;
-  const ew = isNaN(E) || isNaN(W) ? 0 : E - W;
-  const okNS = Math.abs(ns) >= 0.25;
-  const okEW = Math.abs(ew) >= 0.25;
-  if (!okNS && !okEW) return null;
-  const useNS = okNS && okEW ? r1 - r0 <= c1 - c0 : okNS;
-  const dir: Dir = useNS ? (ns > 0 ? "n" : "s") : ew > 0 ? "e" : "w";
-  const diff = Math.abs(useNS ? ns : ew);
-  const low = Math.round(useNS ? Math.min(N, S) : Math.min(E, W));
-  return { dir, ok: Math.abs(diff - 1) < 1e-6, low };
+  const strip = (dir: Dir, k: number): [number, number][] =>
+    // dải ô ngay ngoài cạnh phía `dir` của khung, cách mép k ô (k = 1: sát mép)
+    dir === "n" ? span(c0, c1).map((c) => [c, r0 - k]) : dir === "s" ? span(c0, c1).map((c) => [c, r1 + k]) : dir === "w" ? span(r0, r1).map((r) => [c0 - k, r]) : span(r0, r1).map((r) => [c1 + k, r]);
+  const OPP: Record<Dir, Dir> = { n: "s", s: "n", e: "w", w: "e" };
+  let best: { dir: Dir; ok: boolean; low: number; score: number } | null = null;
+  for (const dir of ["n", "e", "s", "w"] as Dir[]) {
+    const top = avg(strip(dir, 1));
+    const foot = avg(strip(OPP[dir], 1));
+    if (isNaN(top) || isNaN(foot) || top - foot < 0.25) continue;
+    const ok = Math.abs(top - foot - 1) < 1e-6;
+    const ns = dir === "n" || dir === "s";
+    const len = ns ? r1 - r0 + 1 : c1 - c0 + 1;
+    let landing = true;
+    for (let k = 1; k <= RAMP_CELLS && landing; k++) if (strip(dir, k).some(([c, r]) => cellTier(grid, c, r) !== Math.round(top))) landing = false;
+    const lat = ns ? Math.max(avg(strip("w", 1)), avg(strip("e", 1))) : Math.max(avg(strip("n", 1)), avg(strip("s", 1)));
+    const score = (ok ? 8 : 0) + (len === RAMP_CELLS ? 4 : 0) + (landing ? 2 : 0) + (lat >= top ? 1 : 0) + (top - foot) * 0.01;
+    if (!best || score > best.score) best = { dir, ok, low: Math.round(foot), score };
+  }
+  return best ? { dir: best.dir, ok: best.ok, low: best.low } : null;
 }
 
 /** Mọi khối dốc (các ô "d" liền nhau theo 4 hướng) cùng hướng leo; khối không suy được hướng bị bỏ qua. */
@@ -122,7 +128,7 @@ export const RAMP_CELLS = 5;
  * 1. Khối dốc là hình chữ nhật, lên đúng 1 tầng.
  * 2. Dài đúng 10 m theo hướng leo; rộng là bội số 10 m (ghép nhiều khối 10 × 10 cạnh nhau theo bề ngang).
  * 3. Không nối dốc theo chiều leo: ngay trên đỉnh có chiếu nghỉ phẳng sâu 10 m, ngang bề rộng dốc, cùng tầng đỉnh dốc.
- * 4. Dốc không lộ thiên: ít nhất một bên hông dựa trọn vào khối cao (≥ tầng đỉnh dốc) hoặc đá.
+ * 4. Dốc không lộ thiên: ít nhất một bên hông dựa trọn vào khối cao (≥ tầng đỉnh dốc), đá, hoặc mép bản đồ.
  * `landing`: khung ô chiếu nghỉ (để vẽ).
  */
 export function rampRule(
@@ -147,7 +153,8 @@ export function rampRule(
   for (let r = landing[1]; r <= landing[3]; r++)
     for (let c = landing[0]; c <= landing[2]; c++)
       if (cellTier(grid, c, r) !== high || grid[r]?.[c] === "r") return { error: "trên đỉnh dốc phải có chiếu nghỉ phẳng 10 m", landing };
-  const solid = (c: number, r: number): boolean => grid[r]?.[c] === "r" || cellTier(grid, c, r) >= high;
+  // khối chặn: đá, khối cao bằng / hơn đỉnh dốc, hoặc mép bản đồ (dải sát mép không đi được)
+  const solid = (c: number, r: number): boolean => r < 0 || c < 0 || r >= grid.length || c >= grid[0].length || grid[r][c] === "r" || cellTier(grid, c, r) >= high;
   const side = (cells: [number, number][]): boolean => cells.every(([c, r]) => solid(c, r));
   const span = (a: number, z: number): number[] => Array.from({ length: z - a + 1 }, (_, i) => a + i);
   const sideA = ns ? span(r0, r1).map((r): [number, number] => [c0 - 1, r]) : span(c0, c1).map((c): [number, number] => [c, r0 - 1]);
