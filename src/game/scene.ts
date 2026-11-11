@@ -7,25 +7,14 @@ import * as THREE from "three";
 import { TacticalMap } from "./tactical-map";
 import type { Side } from "../sim/content";
 import { Rng } from "../sim/fmath";
-import { TERRAIN, type GameMap, type TerrainKind } from "../sim/maps";
+import type { GameMap } from "../sim/maps";
+import { buildTerrainMesh, WATER_Y } from "./terrain-mesh";
 import type { World } from "../sim/world";
 
 /** Địa hình vẽ rộng hơn vùng chơi chừng này (m) mỗi bên, để mép bản đồ không lộ khoảng trống. */
 const SKIRT = 20;
-/** Số mắt lưới địa hình trên mỗi mét. */
-const SEG_PER_M = 1;
-/** Trần số ô lưới địa hình mỗi cạnh: bản đồ lớn thưa lưới đi thay vì tăng tam giác theo diện tích (960 m ở 1 ô/m là 3,7 triệu tam giác kể cả lớp sương mù). */
-const MAX_TERRAIN_SEG = 320;
-
-/** Gợn nhỏ cho đất bớt phẳng lì (chỉ để nhìn, không có trong sim). Lớp nào phủ sát mặt đất (mặt đường) phải cộng cùng gợn này. */
-export function groundRipple(x: number, z: number): number {
-  return Math.sin(x * 0.37 + z * 0.11) * 0.08 + Math.sin(z * 0.29 - x * 0.17) * 0.07;
-}
 /** Trần số cây trang trí: mọi cây nằm chung một lệnh vẽ nên số tam giác tăng theo số cây. */
 const MAX_TREES = 3500;
-const WATER_Y = -0.55;
-/** Các loại địa hình do bản đồ tô (vùng `regions`) được phủ màu riêng lên mặt đất, minimap; độ đậm của lớp phủ. */
-const TINT: Partial<Record<TerrainKind, number>> = { road: 0.9, sand: 0.85, mud: 0.9, snow: 0.95, forest: 0.75 };
 
 export class BattleScene {
   readonly renderer: THREE.WebGLRenderer;
@@ -76,8 +65,13 @@ export class BattleScene {
     this.sun.shadow.normalBias = 0.04;
     this.scene.add(this.sun, this.sun.target);
 
-    const terrainGeo = this.buildTerrainGeometry();
-    const terrain = new THREE.Mesh(terrainGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0 }));
+    // địa hình bậc thang: mặt tầng (texture màu mặt đất) + vách đá (màu theo đỉnh), terrain-mesh.ts
+    const { geometry: terrainGeo, texture: groundTex } = buildTerrainMesh(map, SKIRT);
+    const terrain = new THREE.Mesh(terrainGeo, [
+      new THREE.MeshStandardMaterial({ map: groundTex, roughness: 0.95, metalness: 0 }),
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0, side: THREE.DoubleSide })
+    ]);
+    terrain.castShadow = true;
     terrain.receiveShadow = true;
     this.scene.add(terrain);
 
@@ -112,117 +106,6 @@ export class BattleScene {
     this.fogMesh = new THREE.Mesh(fogGeo, fogMat);
     this.fogMesh.renderOrder = 2;
     this.scene.add(this.fogMesh);
-  }
-
-  private buildTerrainGeometry(): THREE.BufferGeometry {
-    const map = this.map;
-    const seg = Math.min(SEG_PER_M, MAX_TERRAIN_SEG / Math.max(this.sizeW, this.sizeH));
-    const geo = new THREE.PlaneGeometry(this.sizeW, this.sizeH, Math.round(this.sizeW * seg), Math.round(this.sizeH * seg));
-    geo.rotateX(-Math.PI / 2);
-    const pos = geo.getAttribute("position");
-    const colors = new Float32Array(pos.count * 3);
-    const col = new THREE.Color();
-    const grassA = new THREE.Color(0x5f7f3c);
-    const grassB = new THREE.Color(0x76913f);
-    const dry = new THREE.Color(0x9a9a5c);
-    const sand = new THREE.Color(0xc2b07c);
-    const gravel = new THREE.Color(0x8d8576);
-    const bed = new THREE.Color(0x4e5a4a);
-    const rock = new THREE.Color(0x7b756c);
-    const cliff = new THREE.Color(0x6a6158);
-    const tint = this.regionTint(geo);
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i);
-      const z = pos.getZ(i);
-      let h = map.terrainHeight(x, z);
-      // gợn nhỏ cho đất bớt phẳng lì (chỉ để nhìn)
-      h += groundRipple(x, z);
-      pos.setY(i, h);
-      const river = map.nearRiver(x, z);
-      const noise = (Math.sin(x * 0.21) * Math.sin(z * 0.17) + 1) * 0.5;
-      col.copy(grassA).lerp(grassB, noise);
-      const inset = map.inset(x, z);
-      if (h > 1.8) col.lerp(dry, Math.min(1, (h - 1.8) / 3));
-      if (river && river.dist < river.river.bank + 1.5 && h < 0.4) col.copy(river.crossing?.kind === "ford" ? gravel : sand);
-      if (h < WATER_Y - 0.2) col.copy(bed);
-      // lớp màu loại địa hình (đường, bùn, rừng…), mép đã làm mờ
-      const tw = tint.w[i];
-      if (tw > 0) {
-        col.r = col.r * (1 - tw) + tint.rgb[i * 3];
-        col.g = col.g * (1 - tw) + tint.rgb[i * 3 + 1];
-        col.b = col.b * (1 - tw) + tint.rgb[i * 3 + 2];
-      }
-      for (const r of map.rocks) {
-        const d = Math.hypot(x - r.x, z - r.z);
-        if (d < r.r + 1.2) col.copy(rock).lerp(cliff, noise);
-      }
-      if (inset < 6) col.lerp(cliff, Math.min(1, (6 - inset) / 6));
-      colors[i * 3] = col.r;
-      colors[i * 3 + 1] = col.g;
-      colors[i * 3 + 2] = col.b;
-    }
-    geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    geo.computeVertexNormals();
-    return geo;
-  }
-
-  /**
-   * Lớp màu của các loại địa hình do bản đồ tô, theo từng đỉnh của lưới mặt đất: độ đậm `w` và màu đã nhân độ đậm `rgb`.
-   * Làm mờ 3×3 để mép vùng mềm, không thành bậc thang theo ô.
-   */
-  private regionTint(geo: THREE.PlaneGeometry): { w: Float32Array; rgb: Float32Array } {
-    const map = this.map;
-    const pos = geo.getAttribute("position");
-    const nx = geo.parameters.widthSegments + 1;
-    const nz = geo.parameters.heightSegments + 1;
-    const w0 = new Float32Array(pos.count);
-    const c0 = new Float32Array(pos.count * 3);
-    const col = new THREE.Color();
-    let any = false;
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i);
-      const z = pos.getZ(i);
-      const kind = map.terrainAt(x, z);
-      const k = TINT[kind];
-      if (!k) continue;
-      any = true;
-      // màu loại địa hình, gợn sáng tối nhẹ cho đỡ phẳng
-      const n = (Math.sin(x * 0.53 + z * 0.19) * Math.sin(z * 0.41 - x * 0.23) + 1) * 0.5;
-      col.setHex(TERRAIN[kind].color).multiplyScalar(0.88 + n * 0.22);
-      w0[i] = k;
-      c0[i * 3] = col.r * k;
-      c0[i * 3 + 1] = col.g * k;
-      c0[i * 3 + 2] = col.b * k;
-    }
-    if (!any) return { w: w0, rgb: c0 };
-    const w = new Float32Array(pos.count);
-    const rgb = new Float32Array(pos.count * 3);
-    for (let iz = 0; iz < nz; iz++)
-      for (let ix = 0; ix < nx; ix++) {
-        let sw = 0;
-        let sr = 0;
-        let sg = 0;
-        let sb = 0;
-        let n = 0;
-        for (let dz = -1; dz <= 1; dz++)
-          for (let dx = -1; dx <= 1; dx++) {
-            const jx = ix + dx;
-            const jz = iz + dz;
-            if (jx < 0 || jz < 0 || jx >= nx || jz >= nz) continue;
-            const j = jz * nx + jx;
-            sw += w0[j];
-            sr += c0[j * 3];
-            sg += c0[j * 3 + 1];
-            sb += c0[j * 3 + 2];
-            n++;
-          }
-        const i = iz * nx + ix;
-        w[i] = sw / n;
-        rgb[i * 3] = sr / n;
-        rgb[i * 3 + 1] = sg / n;
-        rgb[i * 3 + 2] = sb / n;
-      }
-    return { w, rgb };
   }
 
   private addBridges(): void {

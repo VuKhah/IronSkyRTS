@@ -23,7 +23,6 @@ import { BUILDINGS, doorDir } from "../sim/content";
 import { CELL, type GameMap } from "../sim/maps";
 import type { Building } from "../sim/types";
 import { dirToCenter, type World } from "../sim/world";
-import { groundRipple } from "./scene";
 
 /** Mặt đường nổi trên mặt đất bao nhiêu (m): đủ để không bị cỏ xuyên qua, đủ thấp để không thấy là một tấm ván. */
 const LIFT = 0.05;
@@ -282,7 +281,7 @@ export class Paving {
     const col: number[] = [];
     const asphalt = new THREE.Color(0x50555a);
     const edge = new THREE.Color(0x8a8a84);
-    const y = (x: number, z: number, up: number): number => map.terrainHeight(x, z) + groundRipple(x, z) + LIFT + up;
+    const y = (x: number, z: number, up: number): number => map.terrainHeight(x, z) + LIFT + up;
     /** Một tấm chữ nhật [ax..bx] × [az..bz], bám mặt đất ở bốn góc. */
     const quad = (ax: number, az: number, bx: number, bz: number, c: THREE.Color, up: number): void => {
       const p0 = [ax, y(ax, az, up), az];
