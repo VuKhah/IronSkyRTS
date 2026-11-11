@@ -299,6 +299,34 @@ describe("lõi mô phỏng", () => {
     expect(w.sides[1].stats.ironMined).toBeGreaterThan(0);
   });
 
+  it("AI xây Nhà Máy Máy Bay và vòng Tường Thành mà không tự nhốt quân mình", () => {
+    let blocked = 0;
+    const check = (w: World): void => {
+      if (w.tick % sec(20) !== 0) return;
+      for (const s of [0, 1] as const) {
+        const hq = w.hqOf(s);
+        const foe = w.hqOf((1 - s) as 0 | 1);
+        if (!hq || !foe) continue;
+        const fx = w.exitRect("hq", foe.x, foe.z, foe.rot)!;
+        // mọi cửa ra của phe này (Tổng Hành Dinh, xưởng) phải còn đường sang căn cứ địch và tới mọi mỏ
+        for (const b of w.buildings) {
+          if (b.side !== s || !b.built) continue;
+          const e = w.exitRect(b.kind, b.x, b.z, b.rot);
+          if (!e) continue;
+          if (!w.grid.findPath(e[0], e[1], fx[0], fx[1])) blocked++;
+          if (b.kind === "hq") for (const m of w.mines) if (!w.grid.findPath(e[0], e[1], m.x, m.z)) blocked++;
+        }
+      }
+    };
+    const { world } = runMatch(2, sec(8 * 60), 1000, undefined, check);
+    for (const s of [0, 1]) {
+      const mine = world.buildings.filter((b) => b.side === s);
+      expect(mine.some((b) => b.kind === "aircraft-factory"), `phe ${s} có Nhà Máy Máy Bay`).toBe(true);
+      expect(mine.filter((b) => b.kind === "wall").length, `phe ${s} có tường`).toBeGreaterThan(10);
+    }
+    expect(blocked).toBe(0);
+  });
+
   it("AI đấu AI chơi trọn một trận (≤ 25 phút) mà không có giá trị hỏng", () => {
     const { world } = runMatch(7, sec(25 * 60), 1000);
     for (const u of world.units) {

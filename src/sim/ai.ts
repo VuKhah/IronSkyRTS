@@ -16,6 +16,21 @@ const SAVE_FOR = sec(30);
 /** Bước lưới (m) khi dò chỗ đặt công trình, và thời gian bỏ qua một loại công trình vừa tìm không ra chỗ. */
 const SPOT_STEP = 4;
 const NO_ROOM_RETRY = sec(20);
+/**
+ * Tường Thành (số tạm): bắt đầu tính vòng tường từ giây này (và khi đã có tháp), giữ lại chừng này Sắt, bán kính tối thiểu,
+ * nửa bề rộng cửa ngõ (m).
+ */
+const WALL_FROM = sec(150);
+const WALL_KEEP = 200;
+const WALL_MIN_R = 36;
+const GAP_HALF = 5;
+/** Hai cửa ngõ gần nhau hơn chừng này (m) thì gộp làm một. */
+const GAP_MERGE = 20;
+interface WallPlan {
+  r: number;
+  tiles: [number, number][];
+  gaps: [number, number][];
+}
 
 export class Ai {
   private wave = 0;
@@ -38,6 +53,8 @@ export class Ai {
   private capChoice = 0;
   /** Tick gần nhất mỗi loại công trình tìm không ra chỗ đặt: tạm bỏ qua loại đó để kế hoạch xây không kẹt. */
   private noSpotAt: Partial<Record<BuildingId, number>> = {};
+  /** Kế hoạch vòng tường (tính một lần): bán kính, các ô tường theo thứ tự xây, các điểm cửa ngõ (cửa đầu = hướng địch tới). */
+  private wall: WallPlan | null = null;
 
   constructor(
     readonly side: Side,
@@ -127,6 +144,9 @@ export class Ai {
         oil -= c.oil;
       }
     }
+
+    // 3b. Tường Thành: vòng tường quanh căn cứ chừa cửa ngõ, chỉ xây bằng Sắt dư
+    if (hq) iron -= this.buildWalls(w, hq, myB, iron - reserve, out);
 
     // 4. Quân đội
     const army = mine.filter((u) => u.air === "none" && u.kind !== "hauler" && u.kind !== "commander");
@@ -223,7 +243,7 @@ export class Ai {
   }
 
   private nextBuilding(w: World, myB: Building[]): BuildingId | null {
-    if (myB.some((b) => !b.built)) return null;
+    if (myB.some((b) => !b.built && !BUILDINGS[b.kind].tile)) return null;
     const count = (k: BuildingId): number => myB.filter((b) => b.kind === k).length;
     const t = w.tick;
     const st = w.sides[this.side];
@@ -269,24 +289,137 @@ export class Ai {
     const back = kind === "airfield" || kind === "aircraft-factory" || kind === "power-plant" || kind === "radar" || kind === "battery";
     const flip = this.side === 0 ? 1 : -1;
     const reach = BUILDINGS.hq.zone ?? 24;
-    const cands: { ox: number; oz: number; score: number }[] = [];
+    const ring = this.wall;
+    const [bw, bd] = w.blockHalf(kind);
+    const big = Math.max(bw, bd) + w.marginOf(kind);
+    // tháp đứng sau cửa ngõ chính (phía địch tới) để khe hẹp nằm gọn trong tầm bắn
+    const gate = kind === "turret" && ring && ring.gaps.length ? ring.gaps[0] : null;
+    const k = ring ? (ring.r - 10) / ring.r : 0;
+    const gx = gate ? base.x + (gate[0] - base.x) * k : 0;
+    const gz = gate ? base.z + (gate[1] - base.z) * k : 0;
+    const keep = big + GAP_HALF + 4;
+    const cands: { ox: number; oz: number; score: number; inside: boolean }[] = [];
     for (let ox = -reach; ox <= reach; ox += SPOT_STEP) {
       for (let oz = -reach; oz <= reach; oz += SPOT_STEP) {
         const d2 = ox * ox + oz * oz;
         if (d2 < 10 * 10 || d2 > reach * reach) continue;
         const r = Math.sqrt(d2);
-        const dot = (ox * cx + oz * cz) / r;
-        cands.push({ ox: ox * flip, oz: oz * flip, score: r + (back ? dot * 10 : -dot * 10) });
+        // tọa độ tương đối soi gương theo phe: hai phe xét cùng một tập điểm đối xứng
+        const x = base.x + ox * flip;
+        const z = base.z + oz * flip;
+        // không bao giờ lấp cửa ngõ: lấp là tự nhốt quân mình trong vòng tường
+        if (ring && ring.gaps.some(([px, pz]) => dist2(px, pz, x, z) < keep * keep)) continue;
+        const dot = (ox * flip * cx + oz * flip * cz) / r;
+        const score = gate ? Math.sqrt(dist2(x, z, gx, gz)) : r + (back ? dot * 10 : -dot * 10);
+        cands.push({ ox, oz, score, inside: !ring || r + big + 2 < ring.r });
       }
     }
     cands.sort((a, b) => a.score - b.score || a.ox - b.ox || a.oz - b.oz);
-    for (const c of cands) {
-      const x = base.x + c.ox * flip;
-      const z = base.z + c.oz * flip;
-      if (w.canPlace(this.side, kind, x, z) === null) return [x, z];
+    // có vòng tường thì ưu tiên chỗ bên trong; hết chỗ mới ra ngoài
+    for (const pass of ring ? [true, false] : [false]) {
+      for (const c of cands) {
+        if (pass && !c.inside) continue;
+        const x = base.x + c.ox * flip;
+        const z = base.z + c.oz * flip;
+        if (w.canPlace(this.side, kind, x, z) === null) return [x, z];
+      }
     }
     this.noSpotAt[kind] = w.tick;
     return null;
+  }
+
+  /**
+   * Tường Thành: vòng tường quanh căn cứ, ngay ngoài công trình xa nhất, chừa cửa ngõ đúng chỗ đường tự nhiên cắt qua vòng
+   * (đường sang Tổng Hành Dinh địch, đường tới từng mỏ ngoài vòng). Quân ta và Xe Vận Tải vẫn ra vào qua cửa ngõ; quân mặt
+   * đất địch bị dồn vào vài khe hẹp thay vì tràn vào từ mọi phía. Xây dần từ cửa ngõ chính ra hai bên, mỗi lượt 1 ô, chỉ
+   * bằng Sắt dư; ô bị phá thì xây lại. Trả về số Sắt đã dùng.
+   */
+  private buildWalls(w: World, hq: Building, myB: Building[], spare: number, out: Order[]): number {
+    if (!hq.built || w.tick < WALL_FROM) return 0;
+    if (!this.wall) {
+      if (!myB.some((b) => b.kind === "turret" && b.built)) return 0;
+      this.wall = this.planWall(w, hq, myB);
+    }
+    const cost = BUILDINGS.wall.cost!.iron;
+    if (spare - cost < WALL_KEEP) return 0;
+    for (const [x, z] of this.wall.tiles) {
+      if (w.canPlace(this.side, "wall", x, z) !== null) continue;
+      out.push({ t: "build", kind: "wall", x, z });
+      return cost;
+    }
+    return 0;
+  }
+
+  /** Tính vòng tường một lần: bán kính, cửa ngõ, các ô tường theo thứ tự xây. */
+  private planWall(w: World, hq: Building, myB: Building[]): WallPlan {
+    // bán kính: ngay ngoài nền móng xa nhất, trong vùng xây của Tổng Hành Dinh
+    let far = 0;
+    for (const b of myB) {
+      if (BUILDINGS[b.kind].tile) continue;
+      const [hw, hd] = w.blockHalf(b.kind, b.rot);
+      far = Math.max(far, Math.sqrt(dist2(b.x, b.z, hq.x, hq.z)) + Math.max(hw, hd) + w.marginOf(b.kind));
+    }
+    const zone = BUILDINGS.hq.zone ?? 24;
+    const r = Math.max(WALL_MIN_R, Math.min(zone - 6, far + 8));
+    const outside = (x: number, z: number): boolean => dist2(x, z, hq.x, hq.z) >= r * r;
+    // cửa ngõ: chỗ đường từ cửa Tổng Hành Dinh tới đích cắt qua vòng tròn bán kính r
+    const ex = w.exitRect("hq", hq.x, hq.z, hq.rot);
+    const sx = ex ? ex[0] : hq.x;
+    const sz = ex ? ex[1] : hq.z;
+    const foe = w.hqOf((1 - this.side) as Side);
+    const goals: [number, number][] = [];
+    if (foe) goals.push([foe.x, foe.z]);
+    for (const m of w.mines) if (outside(m.x, m.z)) goals.push([m.x, m.z]);
+    const field = w.grid.field("wheel", false);
+    const gaps: [number, number][] = [];
+    for (const [tx, tz] of goals) {
+      const path = w.grid.findPath(sx, sz, tx, tz, field);
+      if (!path) continue;
+      let px = sx;
+      let pz = sz;
+      for (let i = 0; i < path.length; i += 2) {
+        const nx = path[i];
+        const nz = path[i + 1];
+        if (!outside(px, pz) && outside(nx, nz)) {
+          // chia đôi đoạn để tìm đúng chỗ cắt vòng tròn
+          let lo = 0;
+          let hi = 1;
+          for (let it = 0; it < 12; it++) {
+            const mid = (lo + hi) / 2;
+            if (outside(px + (nx - px) * mid, pz + (nz - pz) * mid)) hi = mid;
+            else lo = mid;
+          }
+          // cửa gần cửa đã có thì gộp làm một (xe đi vòng thêm một chút), để vòng tường không vụn thành nhiều đoạn ngắn
+          const qx = px + (nx - px) * hi;
+          const qz = pz + (nz - pz) * hi;
+          if (!gaps.some(([gx, gz]) => dist2(gx, gz, qx, qz) < GAP_MERGE * GAP_MERGE)) gaps.push([qx, qz]);
+          break;
+        }
+        px = nx;
+        pz = nz;
+      }
+    }
+    // ô tường: ô 2 m nằm trong vòng tròn mà có ô lân cận (8 hướng) nằm ngoài, nên dải tường liền 4 hướng (hình nối liền)
+    const flip = this.side === 0 ? 1 : -1;
+    const [c0x, c0z] = w.snapBuilding("wall", hq.x, hq.z);
+    const n = Math.ceil(r / 2) + 2;
+    const main = gaps[0] ?? [hq.x, hq.z];
+    const cells: { x: number; z: number; i: number; j: number; score: number }[] = [];
+    for (let i = -n; i <= n; i++) {
+      for (let j = -n; j <= n; j++) {
+        const x = c0x + i * 2 * flip;
+        const z = c0z + j * 2 * flip;
+        if (outside(x, z)) continue;
+        let edge = false;
+        for (let a = -1; a <= 1 && !edge; a++) for (let b = -1; b <= 1 && !edge; b++) if ((a || b) && outside(x + a * 2, z + b * 2)) edge = true;
+        if (!edge) continue;
+        if (gaps.some(([gx, gz]) => dist2(gx, gz, x, z) < GAP_HALF * GAP_HALF)) continue;
+        cells.push({ x, z, i, j, score: dist2(x, z, main[0], main[1]) });
+      }
+    }
+    // xây từ cửa ngõ chính ra hai bên; điểm bằng nhau xét theo chỉ số ô tương đối (đã soi gương theo phe)
+    cells.sort((a, b) => a.score - b.score || a.i - b.i || a.j - b.j);
+    return { r, tiles: cells.map((c) => [c.x, c.z]), gaps };
   }
 
   /** Xưởng Xe Tăng: Lynx, Titan, SkyGuard. */
