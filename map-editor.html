@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bản Vẽ Địa Hình · Iron Sky</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #121a24; color: #e6edf2; font: 14px system-ui, "Segoe UI", sans-serif; }
+      header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 10px 14px; }
+      h1 { margin: 0; font-size: 17px; }
+      .group { display: flex; gap: 4px; align-items: center; }
+      .group > span { color: #8fa0b0; font-size: 12px; margin-right: 2px; }
+      button { background: #1f2a37; color: #e6edf2; border: 1px solid #344456; border-radius: 6px; padding: 5px 9px; font: inherit; cursor: pointer; }
+      button.on { background: #f2c14e; color: #111; border-color: #f2c14e; font-weight: 600; }
+      .sw { display: inline-block; width: 12px; height: 12px; border: 1px solid #0006; vertical-align: -2px; margin-right: 4px; }
+      #status { color: #8fa0b0; font-size: 12px; margin-left: auto; }
+      #wrap { padding: 0 14px 14px; }
+      canvas { display: block; touch-action: none; cursor: crosshair; max-width: 100%; }
+      #hover { color: #8fa0b0; font-size: 12px; padding: 4px 14px 0; min-height: 18px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Bản Vẽ Địa Hình</h1>
+      <div class="group" id="tools"></div>
+      <div class="group" id="brushes"></div>
+      <div class="group"><label><input type="checkbox" id="sym" checked /> Đối xứng 180°</label></div>
+      <div class="group"><button id="undo">Hoàn tác (Ctrl+Z)</button></div>
+      <span id="status"></span>
+    </header>
+    <div id="hover"></div>
+    <div id="wrap"><canvas id="cv"></canvas></div>
+    <script type="module" src="/src/map-editor/main.ts"></script>
+  </body>
+</html>

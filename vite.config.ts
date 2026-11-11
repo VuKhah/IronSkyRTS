@@ -1,9 +1,49 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { VitePWA } from "vite-plugin-pwa";
 import { fileURLToPath } from "node:url";
 
 // base "./": đường dẫn tương đối, để bản build chạy được ở bất kỳ thư mục con nào (GitHub Pages: /<tên-repo>/).
 // Mỗi trang HTML là một "điểm vào" riêng: trang game (index.html), Xưởng Mô Hình (models.html), Bản Vẽ Mặt Bằng (plan.html).
+/**
+ * Chỉ khi chạy dev: Bản Vẽ Địa Hình (map-editor.html) đọc / ghi bản vẽ ở Docs/maps/<mã>/layout.json qua /__layout/<mã>,
+ * để người dùng tô trên trang và Claude sửa thẳng file, hai bên thấy cùng một bản.
+ */
+function layoutStore(): Plugin {
+  return {
+    name: "layout-store",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use("/__layout/", (req, res) => {
+        const name = (req.url ?? "").replace(/^\//, "").split("?")[0];
+        if (!/^[a-z0-9-]+$/.test(name)) {
+          res.statusCode = 400;
+          return res.end();
+        }
+        const dir = `Docs/maps/${name}`;
+        const file = `${dir}/layout.json`;
+        if (req.method === "PUT") {
+          let body = "";
+          req.on("data", (c) => (body += c));
+          req.on("end", () => {
+            mkdirSync(dir, { recursive: true });
+            writeFileSync(file, body);
+            res.end("ok");
+          });
+          return;
+        }
+        if (!existsSync(file)) {
+          res.statusCode = 404;
+          return res.end();
+        }
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader("Cache-Control", "no-store");
+        res.end(readFileSync(file, "utf8"));
+      });
+    }
+  };
+}
+
 export default defineConfig({
   base: "./",
   // Three.js chiếm phần lớn dung lượng (~150 KB nén): chấp nhận được, chưa cần tách nhỏ.
@@ -18,6 +58,7 @@ export default defineConfig({
     }
   },
   plugins: [
+    layoutStore(),
     // PWA: cài game lên màn hình chính điện thoại và chơi được khi mất mạng.
     // Service worker lưu sẵn mọi file của bản build (game không có tệp âm thanh / mô hình, nên rất nhẹ).
     // "autoUpdate": có bản mới trên GitHub Pages thì lần mở sau tự dùng bản mới, không hỏi người chơi.
