@@ -16,6 +16,8 @@ const map = getMap(ID);
 const ruler = mapRuler(map);
 const CELL = 2;
 const BASE = -3; // đáy sa bàn (m)
+/** Độ cao mỗi bậc tầng trên sa bàn (m): mặc định như game (TIER_H), chỉnh bằng thanh trượt hoặc ?tier= để thử, chưa đổi game. */
+let tierH = Number(q.get("tier")) || TIER_H;
 
 // ------------------------------------------------------------------ vùng xem
 function parseArea(a: string): { c0: number; r0: number; c1: number; r1: number; x0: number; x1: number; z0: number; z1: number } {
@@ -96,7 +98,7 @@ function build(grid: string[][], surf: string[][], refs: Ref[]): void {
     const fx0 = wx(b.c0), fx1 = wx(b.c1 + 1), fz0 = wz(b.r0), fz1 = wz(b.r1 + 1);
     const len = b.dir === "e" || b.dir === "w" ? fx1 - fx0 : fz1 - fz0;
     const run = b.dir === "e" ? x - fx0 : b.dir === "w" ? fx1 - x : b.dir === "s" ? z - fz0 : fz1 - z;
-    return (b.low + Math.max(0, Math.min(1, run / len))) * TIER_H;
+    return (b.low + Math.max(0, Math.min(1, run / len))) * tierH;
   };
   /** Độ cao bốn góc ô [Tây Bắc, Đông Bắc, Đông Nam, Tây Nam]; nước hạ thấp mặt. */
   const corners = (c: number, r: number): number[] => {
@@ -105,7 +107,7 @@ function build(grid: string[][], surf: string[][], refs: Ref[]): void {
     let h: number[];
     if (k >= 0) h = [rampH(blocks[k], x0, z0), rampH(blocks[k], x1, z0), rampH(blocks[k], x1, z1), rampH(blocks[k], x0, z1)];
     else {
-      const t = Math.max(0, cellTier(grid, c, r)) * TIER_H;
+      const t = Math.max(0, cellTier(grid, c, r)) * tierH;
       h = [t, t, t, t];
     }
     const s = surf[r]?.[c];
@@ -251,6 +253,7 @@ function factoryBox(): THREE.Group {
 
 // ------------------------------------------------------------------ nạp bản vẽ, tự nạp lại khi file đổi
 let lastText = "";
+let lastArgs: Parameters<typeof build> | null = null;
 async function load(): Promise<void> {
   const res = await fetch(`/__layout/${ID}`, { cache: "no-store" });
   if (!res.ok) return;
@@ -258,16 +261,35 @@ async function load(): Promise<void> {
   if (text === lastText) return;
   lastText = text;
   const data = JSON.parse(text) as { rows: string[]; surf?: string[]; refs?: Ref[] };
-  build(
+  lastArgs = [
     data.rows.map((r) => r.split("").map((v) => ("nesw".includes(v) ? "d" : v))),
     (data.surf ?? data.rows.map((r) => ".".repeat(r.length))).map((r) => r.split("")),
     data.refs ?? []
-  );
+  ];
+  build(...lastArgs);
 }
 document.getElementById("info")!.innerHTML =
-  `<b>Sa bàn ${AREA}</b> · ${Math.round(A.x1 - A.x0)} × ${Math.round(A.z1 - A.z0)} m · mỗi bậc tầng cao ${TIER_H} m<br>` +
+  `<b>Sa bàn ${AREA}</b> · ${Math.round(A.x1 - A.x0)} × ${Math.round(A.z1 - A.z0)} m · game hiện: bậc ${TIER_H} m<br>` +
+  `Thử bậc tầng cao: <input id="tierH" type="range" min="3" max="12" step="1" value="${tierH}" style="vertical-align:middle"> ` +
+  `<b id="tierV"></b><br><span id="slopes"></span><br>` +
   `Mô hình hộp lấy theo mốc trên Bản Vẽ Địa Hình (Titan, 4 Titan, Pháo hạ bệ, Xưởng); vùng chưa có mốc thì đặt tạm giữa vùng<br>` +
   `Kéo chuột trái: xoay · lăn: phóng · chuột phải: dời · đổi vùng: ?area=${colName(0)}1:${colName(2)}3`;
+/** Độ dốc (độ) của dốc dài L m khi bậc cao tierH m. */
+const slopeDeg = (L: number): number => Math.round((Math.atan(tierH / L) * 180) / Math.PI);
+function showTier(): void {
+  document.getElementById("tierV")!.textContent = `${tierH} m (tầng 2 cao ${tierH * 2} m)`;
+  document.getElementById("slopes")!.textContent = `Độ dốc: dốc 8 m ${slopeDeg(8)}° · 12 m ${slopeDeg(12)}° · 16 m ${slopeDeg(16)}° · 20 m ${slopeDeg(20)}°`;
+}
+const slider = document.getElementById("tierH") as HTMLInputElement;
+slider.addEventListener("input", () => {
+  tierH = Number(slider.value);
+  showTier();
+  const u = new URL(location.href);
+  u.searchParams.set("tier", String(tierH));
+  history.replaceState(null, "", u);
+  if (lastArgs) build(...lastArgs);
+});
+showTier();
 resize();
 void load();
 window.setInterval(() => void load(), 2000);
