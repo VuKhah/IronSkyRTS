@@ -13,3 +13,6 @@ AGENTS.md
 TASKS.md
 Docs/
 .claude/
+
+# Script đo / dò lỗi tạm của Claude (skill sim-verify)
+src/tools/_tmp/
