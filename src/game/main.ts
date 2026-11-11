@@ -20,6 +20,7 @@ import { attachGestures } from "./input";
 import { Match, type Mode } from "./match";
 import { loadPick, mountPicker, pickerHtml, type Pick } from "./map-picker";
 import { Minimap } from "./minimap";
+import { guardLandscape } from "./rotate-guard";
 import { Overlay } from "./overlay";
 import { DUEL_CENTER, Sandbox } from "./sandbox";
 import { BattleScene } from "./scene";
@@ -150,6 +151,7 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
   if (new URLSearchParams(location.search).has("nooverlay")) overlayCanvas.style.display = "none";
 
   const match = new Match(mode, seed, mapId, side);
+  guardLandscape(app, match);
   const map = match.world.map;
   let scene: BattleScene;
   try {

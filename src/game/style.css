@@ -275,3 +275,14 @@ a.menu-btn { color: inherit; text-decoration: none; }
 @media (max-width: 760px) {
   .map-thumb { flex-basis: 72px; width: 72px; height: 72px; }
 }
+
+/* Điện thoại cầm dọc trong trận: che màn, nhắc xoay ngang (rotate-guard.ts) */
+.rotate-guard {
+  position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  padding: 24px; text-align: center; background: rgba(5, 8, 13, 0.96); color: var(--text, #e8edf3);
+}
+.rotate-guard b { font-size: 20px; color: var(--accent); }
+.rotate-guard span { color: var(--dim); font-size: 14px; }
+.rotate-phone { width: 46px; height: 80px; border: 4px solid var(--accent); border-radius: 9px; margin-bottom: 18px; position: relative; animation: rotate-hint 2.4s ease-in-out infinite; }
+.rotate-phone::after { content: ""; position: absolute; left: 50%; bottom: 5px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: var(--accent); }
+@keyframes rotate-hint { 0%, 25% { transform: rotate(0deg); } 55%, 100% { transform: rotate(-90deg); } }
