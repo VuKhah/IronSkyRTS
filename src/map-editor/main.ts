@@ -30,7 +30,7 @@ let painting = false;
 const undoStack: string[][][] = [];
 
 // ------------------------------------------------------------------ công cụ
-type Tool = "0" | "1" | "2" | "n" | "e" | "s" | "w" | "r";
+type Tool = "0" | "1" | "2" | "n" | "e" | "s" | "w" | "r" | "x";
 const TOOLS: { id: Tool; label: string; color?: string }[] = [
   { id: "0", label: "Tầng 0", color: "#d6d0bd" },
   { id: "1", label: "Tầng 1", color: "#a99f86" },
@@ -39,7 +39,8 @@ const TOOLS: { id: Tool; label: string; color?: string }[] = [
   { id: "e", label: "Dốc →" },
   { id: "s", label: "Dốc ↓" },
   { id: "w", label: "Dốc ←" },
-  { id: "r", label: "Đá", color: "#55504a" }
+  { id: "r", label: "Đá", color: "#55504a" },
+  { id: "x", label: "Xóa dốc" }
 ];
 const BRUSHES = [
   { m: 2, label: "2 m" },
@@ -261,12 +262,31 @@ function brushRect(x: number, z: number): [number, number, number, number] | nul
   return [c0, r0, Math.max(c0 + 1, c1), Math.max(r0 + 1, r1)];
 }
 
+/** Xóa dốc ở ô (c, r): ô trở về tầng ở phía đỉnh dốc (đi theo hướng leo tới ô đầu tiên không phải dốc). */
+function unramp(c: number, r: number): void {
+  const d = grid[r][c];
+  if (!MIRROR[d]) return;
+  const [dc, dr] = { n: [0, -1], s: [0, 1], e: [1, 0], w: [-1, 0] }[d as "n"]!;
+  let cc = c, rr = r;
+  while (cc >= 0 && rr >= 0 && cc < COLS && rr < ROWS && MIRROR[grid[rr][cc]]) {
+    cc += dc;
+    rr += dr;
+  }
+  const top = cc >= 0 && rr >= 0 && cc < COLS && rr < ROWS ? grid[rr][cc] : "0";
+  grid[r][c] = top === "r" ? "0" : top;
+}
+
 function paintAt(x: number, z: number): void {
   const b = brushRect(x, z);
   if (!b) return;
   const [c0, r0, c1, r1] = b;
   for (let r = r0; r < r1; r++)
     for (let c = c0; c < c1; c++) {
+      if (tool === "x") {
+        unramp(c, r);
+        if (symBox.checked) unramp(COLS - 1 - c, ROWS - 1 - r);
+        continue;
+      }
       grid[r][c] = tool;
       if (symBox.checked) grid[ROWS - 1 - r][COLS - 1 - c] = MIRROR[tool] ?? tool;
     }
