@@ -74,8 +74,29 @@ const g = cv.getContext("2d")!;
 const PAD = 26;
 let K = 3; // điểm ảnh mỗi mét
 
+// phóng to: K = cỡ vừa khung × zoom; lăn chuột để phóng quanh con trỏ, giữ chuột phải (hoặc giữa) kéo để dời
+const wrap = document.getElementById("wrap")!;
+let zoom = 1;
+const fitK = (): number => Math.max(1.5, Math.min(4, (wrap.clientWidth - PAD * 2) / map.w));
+
+function setZoom(z: number, clientX?: number, clientY?: number): void {
+  const rc = wrap.getBoundingClientRect();
+  const px = clientX ?? rc.left + wrap.clientWidth / 2;
+  const py = clientY ?? rc.top + wrap.clientHeight / 2;
+  // điểm bản đồ (m) đang nằm dưới con trỏ, giữ nguyên chỗ đó trên màn hình sau khi phóng
+  const mx = (wrap.scrollLeft + px - rc.left - PAD) / K;
+  const mz = (wrap.scrollTop + py - rc.top - PAD) / K;
+  // khung vẽ trình duyệt tối đa khoảng 16.000 điểm ảnh mỗi chiều
+  const maxZoom = Math.min(10, 15000 / ((window.devicePixelRatio || 1) * (map.w * fitK() + PAD * 2)));
+  zoom = Math.max(1, Math.min(maxZoom, z));
+  resize();
+  wrap.scrollLeft = PAD + mx * K - (px - rc.left);
+  wrap.scrollTop = PAD + mz * K - (py - rc.top);
+  document.getElementById("zoomPct")!.textContent = `${Math.round(zoom * 100)}%`;
+}
+
 function resize(): void {
-  K = Math.max(1.5, Math.min(4, (window.innerWidth - 28 - PAD * 2) / map.w));
+  K = fitK() * zoom;
   const dpr = window.devicePixelRatio || 1;
   cv.width = Math.round((map.w * K + PAD * 2) * dpr);
   cv.height = Math.round((map.h * K + PAD * 2) * dpr);
@@ -331,7 +352,27 @@ function cellLabel(x: number, z: number): string {
   return `${colName(idx(ruler.colEdges, x))}${idx(ruler.rowEdges, z) + 1} · x ${x.toFixed(0)} m, z ${z.toFixed(0)} m`;
 }
 
+document.getElementById("zoomIn")!.onclick = () => setZoom(zoom * 1.25);
+document.getElementById("zoomOut")!.onclick = () => setZoom(zoom / 1.25);
+document.getElementById("zoomFit")!.onclick = () => setZoom(1);
+wrap.addEventListener(
+  "wheel",
+  (e) => {
+    e.preventDefault();
+    setZoom(zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15), e.clientX, e.clientY);
+  },
+  { passive: false }
+);
+let pan: { x: number; y: number; sl: number; st: number } | null = null;
+cv.addEventListener("contextmenu", (e) => e.preventDefault());
+
 cv.addEventListener("pointerdown", (e) => {
+  if (e.button === 1 || e.button === 2) {
+    pan = { x: e.clientX, y: e.clientY, sl: wrap.scrollLeft, st: wrap.scrollTop };
+    cv.setPointerCapture(e.pointerId);
+    return;
+  }
+  if (e.button !== 0) return;
   undoStack.push(grid.map((row) => row.slice()));
   if (undoStack.length > 50) undoStack.shift();
   painting = true;
@@ -339,11 +380,17 @@ cv.addEventListener("pointerdown", (e) => {
   paintAt(...eventPos(e));
 });
 cv.addEventListener("pointermove", (e) => {
+  if (pan) {
+    wrap.scrollLeft = pan.sl - (e.clientX - pan.x);
+    wrap.scrollTop = pan.st - (e.clientY - pan.y);
+    return;
+  }
   const [x, z] = eventPos(e);
   hoverEl.textContent = cellLabel(x, z);
   if (painting) paintAt(x, z);
 });
 const endStroke = (): void => {
+  pan = null;
   if (!painting) return;
   painting = false;
   void save();

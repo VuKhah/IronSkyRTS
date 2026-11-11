@@ -15,8 +15,9 @@
       button.on { background: #f2c14e; color: #111; border-color: #f2c14e; font-weight: 600; }
       .sw { display: inline-block; width: 12px; height: 12px; border: 1px solid #0006; vertical-align: -2px; margin-right: 4px; }
       #status { color: #8fa0b0; font-size: 12px; margin-left: auto; }
-      #wrap { padding: 0 14px 14px; }
-      canvas { display: block; touch-action: none; cursor: crosshair; max-width: 100%; }
+      #wrap { margin: 0 14px 14px; overflow: auto; max-height: calc(100vh - 96px); }
+      canvas { display: block; touch-action: none; cursor: crosshair; }
+      #zoomPct { color: #8fa0b0; font-size: 12px; min-width: 40px; text-align: center; }
       #hover { color: #8fa0b0; font-size: 12px; padding: 4px 14px 0; min-height: 18px; }
     </style>
   </head>
@@ -26,6 +27,7 @@
       <div class="group" id="tools"></div>
       <div class="group" id="brushes"></div>
       <div class="group"><label><input type="checkbox" id="sym" checked /> Đối xứng 180°</label></div>
+      <div class="group"><span>Phóng</span><button id="zoomOut">−</button><span id="zoomPct">100%</span><button id="zoomIn">+</button><button id="zoomFit">Vừa khung</button></div>
       <div class="group"><button id="undo">Hoàn tác (Ctrl+Z)</button></div>
       <span id="status"></span>
     </header>
