@@ -32,7 +32,7 @@ interface Layout {
   refs?: Ref[];
 }
 
-type RefKind = "art" | "titan4" | "drone" | "sfac";
+type RefKind = "art" | "titan" | "titan4" | "drone" | "sfac";
 interface Ref {
   k: RefKind;
   x: number;
@@ -72,6 +72,7 @@ const SURF_TOOLS: { id: SurfTool; label: string; color: string }[] = [
 const SURF_COLOR: Record<string, string> = { f: "rgba(52, 96, 44, 0.82)", w: "#2c6fa8", s: "#7fb6d8", m: "rgba(96, 74, 46, 0.85)", o: "rgba(184, 154, 106, 0.9)" };
 const MARK_TOOLS: { id: Tool; label: string; color?: string }[] = [
   { id: "art", label: "Mốc: Pháo" },
+  { id: "titan", label: "Mốc: 1 Titan" },
   { id: "titan4", label: "Mốc: 4 Titan" },
   { id: "drone", label: "Mốc: tầm Drone TS" },
   { id: "sfac", label: "Mốc: Xưởng Chuyên Dụng" },
@@ -238,11 +239,12 @@ function drawRef(f: Ref): void {
     g.fill();
   };
   if (f.k === "art") hull(0, (ART.halfLen ?? ART.radius) * 2, ART.radius * 2 * 0.9);
+  else if (f.k === "titan") hull(0, (TITAN.halfLen ?? TITAN.radius) * 2, TITAN.radius * 2);
   else for (let i = 0; i < 4; i++) hull((i - 1.5) * TITAN_GAP, (TITAN.halfLen ?? TITAN.radius) * 2, TITAN.radius * 2);
   g.restore();
   g.fillStyle = "#0b2a4a";
   g.font = "bold 11px system-ui, sans-serif";
-  g.fillText(f.k === "art" ? "Pháo Tự Hành" : "4 Titan", X(f.x), Y(f.z) + (f.k === "art" ? 7 : 6) * K + 8);
+  g.fillText(f.k === "art" ? "Pháo Tự Hành" : f.k === "titan" ? "Titan" : "4 Titan", X(f.x), Y(f.z) + (f.k === "art" ? 7 : 6) * K + 8);
 }
 
 /** Mốc dưới điểm (x, z), nếu có (vùng bắt: bán kính theo cỡ mốc). */

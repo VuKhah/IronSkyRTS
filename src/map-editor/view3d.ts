@@ -5,7 +5,7 @@
  */
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { UNITS } from "../sim/content";
+import { BUILDINGS, UNITS } from "../sim/content";
 import { colName, getMap, mapRuler, TIER_H } from "../sim/maps";
 import { cellTier, rampBlocks, type RampBlock } from "./layout";
 
@@ -77,7 +77,14 @@ const C_SURF: Record<string, THREE.Color> = {
 let group = new THREE.Group();
 scene.add(group);
 
-function build(grid: string[][], surf: string[][]): void {
+interface Ref {
+  k: "art" | "titan" | "titan4" | "drone" | "sfac";
+  x: number;
+  z: number;
+  rot: number;
+}
+
+function build(grid: string[][], surf: string[][], refs: Ref[]): void {
   scene.remove(group);
   group.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
   group = new THREE.Group();
@@ -165,7 +172,27 @@ function build(grid: string[][], surf: string[][]): void {
     const h = corners(c, r);
     return (h[0] + h[1] + h[2] + h[3]) / 4;
   };
-  group.add(titanBox(cx - 12, cz, groundAt(cx - 12, cz)), artilleryBox(cx + 12, cz, groundAt(cx + 12, cz)));
+  // mô hình lấy theo MỐC trên bản vẽ (đúng chỗ, đúng hướng; rot: độ theo chiều kim đồng hồ, 0 = Bắc). Vùng chưa có mốc
+  // xe nào thì đặt tạm một Titan và một Pháo giữa vùng để so cỡ
+  const inside = (f: Ref): boolean => f.x > A.x0 && f.x < A.x1 && f.z > A.z0 && f.z < A.z1;
+  const here = refs.filter((f) => inside(f) && f.k !== "drone");
+  if (!here.some((f) => f.k === "art" || f.k === "titan" || f.k === "titan4"))
+    here.push({ k: "titan", x: cx - 12, z: cz, rot: 0 }, { k: "art", x: cx + 12, z: cz, rot: 0 });
+  for (const f of here) {
+    const yaw = (-f.rot * Math.PI) / 180;
+    const put = (o: THREE.Object3D, dx: number): void => {
+      // dời ngang trong hệ của mốc rồi xoay theo hướng mốc
+      const ox = f.x + Math.cos(yaw) * dx;
+      const oz = f.z - Math.sin(yaw) * dx;
+      o.position.set(ox, groundAt(ox, oz), oz);
+      o.rotation.y = yaw;
+      group.add(o);
+    };
+    if (f.k === "titan") put(titanBox(0, 0, 0), 0);
+    else if (f.k === "titan4") for (let i = 0; i < 4; i++) put(titanBox(0, 0, 0), (i - 1.5) * 6);
+    else if (f.k === "art") put(artilleryBox(0, 0, 0), 0);
+    else if (f.k === "sfac") put(factoryBox(), 0);
+  }
   inst(new THREE.ConeGeometry(1.3, 4.5, 6), 0x2f5527, trees, 2.25);
   inst(new THREE.BoxGeometry(2, 3, 2), 0x6b6258, rocks, 1.5);
   scene.add(group);
@@ -213,6 +240,15 @@ function artilleryBox(x: number, z: number, y: number): THREE.Group {
   return g;
 }
 
+/** Xưởng Xe Chuyên Dụng: thân 2 × half (content.ts), cao ~8 m, cửa ra ở cạnh trước (Bắc khi rot = 0). */
+function factoryBox(): THREE.Group {
+  const [hx, hz] = BUILDINGS["special-factory"].half;
+  const g = new THREE.Group();
+  g.add(boxAt(hx * 2, 8, hz * 2, new THREE.MeshLambertMaterial({ color: 0x8a96a3, flatShading: true }), 0, 0, 0));
+  g.add(boxAt(hx * 0.9, 5, 0.4, DARK, 0, 0, -hz - 0.2));
+  return g;
+}
+
 // ------------------------------------------------------------------ nạp bản vẽ, tự nạp lại khi file đổi
 let lastText = "";
 async function load(): Promise<void> {
@@ -221,15 +257,16 @@ async function load(): Promise<void> {
   const text = await res.text();
   if (text === lastText) return;
   lastText = text;
-  const data = JSON.parse(text) as { rows: string[]; surf?: string[] };
+  const data = JSON.parse(text) as { rows: string[]; surf?: string[]; refs?: Ref[] };
   build(
     data.rows.map((r) => r.split("").map((v) => ("nesw".includes(v) ? "d" : v))),
-    (data.surf ?? data.rows.map((r) => ".".repeat(r.length))).map((r) => r.split(""))
+    (data.surf ?? data.rows.map((r) => ".".repeat(r.length))).map((r) => r.split("")),
+    data.refs ?? []
   );
 }
 document.getElementById("info")!.innerHTML =
   `<b>Sa bàn ${AREA}</b> · ${Math.round(A.x1 - A.x0)} × ${Math.round(A.z1 - A.z0)} m · mỗi bậc tầng cao ${TIER_H} m<br>` +
-  `Hộp xanh: Titan (trái) và Pháo Tự Hành đang hạ bệ (phải) để so cỡ<br>` +
+  `Mô hình hộp lấy theo mốc trên Bản Vẽ Địa Hình (Titan, 4 Titan, Pháo hạ bệ, Xưởng); vùng chưa có mốc thì đặt tạm giữa vùng<br>` +
   `Kéo chuột trái: xoay · lăn: phóng · chuột phải: dời · đổi vùng: ?area=${colName(0)}1:${colName(2)}3`;
 resize();
 void load();
