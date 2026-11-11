@@ -22,7 +22,7 @@ export interface RampBlock {
 export function cellTier(grid: string[][], c: number, r: number): number {
   const v = grid[r]?.[c];
   if (v === undefined || v === "0" || v === "r") return 0;
-  if (v === "1" || v === "2") return Number(v);
+  if (v === "1" || v === "2" || v === "3") return Number(v);
   return -1;
 }
 

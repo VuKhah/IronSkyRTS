@@ -4,7 +4,7 @@
  * người dùng tô thì trang tự lưu; Claude sửa file thì trang tự nạp lại (hỏi file mỗi 2 giây khi không đang tô).
  *
  * layout.json: { w, h, cell: 2, rows: string[] }: mỗi hàng một chuỗi, mỗi ký tự một ô 2 m (hàng đầu là phía Bắc):
- *   "0" "1" "2" = tầng · "d" = ô dốc · "r" = mỏm đá (trên tầng 0). Hướng dốc không lưu: mỗi khối dốc (ô "d" liền nhau)
+ *   "0" "1" "2" "3" = tầng (thiết kế 11/11/2026: mỗi bậc 5 m, tầng 3 = 15 m) · "d" = ô dốc · "r" = mỏm đá (trên tầng 0). Hướng dốc không lưu: mỗi khối dốc (ô "d" liền nhau)
  *   tự lấy hướng đi LÊN về phía tầng cao hơn ở hai đầu (cùng cách khi dựng MapDef). Bản cũ "n/e/s/w" được đổi thành "d".
  * `refs`: mốc đối chiếu cỡ thật (không phải địa hình): Pháo Tự Hành, dãy 4 Titan, tầm nhìn Drone Trinh Sát, Xưởng Xe
  * Chuyên Dụng; `rot` = độ, 0 = mũi xe / cửa xưởng hướng Bắc, theo chiều kim đồng hồ. Bấm lại vào mốc để xoay 15° (xưởng 90°),
@@ -52,11 +52,12 @@ const undoStack: { g: string[][]; s: string[][]; refs: Ref[] }[] = [];
 // ------------------------------------------------------------------ công cụ
 /** Công cụ lớp mặt đất: "s" + ký tự lớp (ví dụ "sf" = rừng). */
 type SurfTool = "s." | "sf" | "sw" | "ss" | "sm" | "so";
-type Tool = "0" | "1" | "2" | "d" | "r" | RefKind | "delref" | SurfTool;
+type Tool = "0" | "1" | "2" | "3" | "d" | "r" | RefKind | "delref" | SurfTool;
 const TOOLS: { id: Tool; label: string; color?: string }[] = [
   { id: "0", label: "Tầng 0", color: "#d6d0bd" },
   { id: "1", label: "Tầng 1", color: "#a99f86" },
   { id: "2", label: "Tầng 2", color: "#7d735d" },
+  { id: "3", label: "Tầng 3", color: "#55493a" },
   { id: "d", label: "Dốc", color: "#c6b48a" },
   { id: "r", label: "Đá", color: "#55504a" }
 ];
@@ -157,7 +158,7 @@ function resize(): void {
 }
 const X = (x: number): number => PAD + (x + map.halfW) * K;
 const Y = (z: number): number => PAD + (z + map.halfH) * K;
-const COLOR: Record<string, string> = { "0": "#d6d0bd", "1": "#a99f86", "2": "#7d735d", r: "#55504a" };
+const COLOR: Record<string, string> = { "0": "#d6d0bd", "1": "#a99f86", "2": "#7d735d", "3": "#55493a", r: "#55504a" };
 
 /** Tầng của ô (ô dốc: −1). Đọc bản vẽ dùng chung với trang 3D: layout.ts. */
 const tierAt = (c: number, r: number): number => cellTier(grid, c, r);

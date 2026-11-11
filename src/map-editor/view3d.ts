@@ -16,8 +16,12 @@ const map = getMap(ID);
 const ruler = mapRuler(map);
 const CELL = 2;
 const BASE = -3; // đáy sa bàn (m)
-/** Độ cao mỗi bậc tầng trên sa bàn (m): mặc định như game (TIER_H), chỉnh bằng thanh trượt hoặc ?tier= để thử, chưa đổi game. */
-let tierH = Number(q.get("tier")) || TIER_H;
+/**
+ * Độ cao mỗi bậc tầng trên sa bàn (m). Thiết kế người dùng chốt 11/11/2026: bậc 5 m, 3 tầng (5 / 10 / 15 m), mọi dốc cùng
+ * độ dốc; game còn 4 m cho tới khi dựng bản đồ. Chỉnh bằng thanh trượt hoặc ?tier= để thử.
+ */
+const DESIGN_TIER = 5;
+let tierH = Number(q.get("tier")) || DESIGN_TIER;
 
 // ------------------------------------------------------------------ vùng xem
 function parseArea(a: string): { c0: number; r0: number; c1: number; r1: number; x0: number; x1: number; z0: number; z1: number } {
@@ -65,7 +69,7 @@ function resize(): void {
 window.addEventListener("resize", resize);
 
 // ------------------------------------------------------------------ dựng khối từ bản vẽ
-const C_TOP = [new THREE.Color(0x8fa35a), new THREE.Color(0xa3a565), new THREE.Color(0xb7ad78)];
+const C_TOP = [new THREE.Color(0x8fa35a), new THREE.Color(0xa3a565), new THREE.Color(0xb7ad78), new THREE.Color(0xc9bf98)];
 const C_RAMP = new THREE.Color(0xb49a68);
 const C_CLIFF = new THREE.Color(0x7a6e60);
 const C_SOIL = new THREE.Color(0x56483a);
@@ -131,7 +135,7 @@ function build(grid: string[][], surf: string[][], refs: Ref[]): void {
       const x0 = wx(c), x1 = wx(c + 1), z0 = wz(r), z1 = wz(r + 1);
       const v = grid[r][c];
       const s = surf[r]?.[c] ?? ".";
-      const top = C_SURF[s] ?? (owner[r * cols + c] >= 0 ? C_RAMP : C_TOP[Math.max(0, Math.min(2, cellTier(grid, c, r)))]);
+      const top = C_SURF[s] ?? (owner[r * cols + c] >= 0 ? C_RAMP : C_TOP[Math.max(0, Math.min(3, cellTier(grid, c, r)))]);
       quad([[x0, h[0], z0], [x0, h[3], z1], [x1, h[2], z1], [x1, h[1], z0]], top);
       // cạnh Đông và cạnh Nam: vách giữa hai ô lệch độ cao; mép vùng: mặt cắt sa bàn xuống đáy
       const side = (a: number[], b: number[], ha: number, hb: number, la: number, lb: number, color: THREE.Color): void => {
@@ -269,7 +273,7 @@ async function load(): Promise<void> {
   build(...lastArgs);
 }
 document.getElementById("info")!.innerHTML =
-  `<b>Sa bàn ${AREA}</b> · ${Math.round(A.x1 - A.x0)} × ${Math.round(A.z1 - A.z0)} m · game hiện: bậc ${TIER_H} m<br>` +
+  `<b>Sa bàn ${AREA}</b> · ${Math.round(A.x1 - A.x0)} × ${Math.round(A.z1 - A.z0)} m · thiết kế: bậc ${DESIGN_TIER} m, 3 tầng · game hiện: bậc ${TIER_H} m<br>` +
   `Thử bậc tầng cao: <input id="tierH" type="range" min="3" max="12" step="1" value="${tierH}" style="vertical-align:middle"> ` +
   `<b id="tierV"></b><br><span id="slopes"></span><br>` +
   `Mô hình hộp lấy theo mốc trên Bản Vẽ Địa Hình (Titan, 4 Titan, Pháo hạ bệ, Xưởng); vùng chưa có mốc thì đặt tạm giữa vùng<br>` +
@@ -277,8 +281,8 @@ document.getElementById("info")!.innerHTML =
 /** Độ dốc (độ) của dốc dài L m khi bậc cao tierH m. */
 const slopeDeg = (L: number): number => Math.round((Math.atan(tierH / L) * 180) / Math.PI);
 function showTier(): void {
-  document.getElementById("tierV")!.textContent = `${tierH} m (tầng 2 cao ${tierH * 2} m)`;
-  document.getElementById("slopes")!.textContent = `Độ dốc: dốc 8 m ${slopeDeg(8)}° · 12 m ${slopeDeg(12)}° · 16 m ${slopeDeg(16)}° · 20 m ${slopeDeg(20)}°`;
+  document.getElementById("tierV")!.textContent = `${tierH} m (tầng 2 cao ${tierH * 2} m, tầng 3 cao ${tierH * 3} m)`;
+  document.getElementById("slopes")!.textContent = `Độ dốc: dốc 8 m ${slopeDeg(8)}° · 10 m ${slopeDeg(10)}° · 12 m ${slopeDeg(12)}° · 16 m ${slopeDeg(16)}° · 20 m ${slopeDeg(20)}°`;
 }
 const slider = document.getElementById("tierH") as HTMLInputElement;
 slider.addEventListener("input", () => {
