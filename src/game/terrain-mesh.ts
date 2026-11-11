@@ -227,7 +227,7 @@ function groundTexture(map: GameMap, x0: number, z0: number, W: number, H: numbe
   const cliff = new THREE.Color(0x6a6158);
   const rimC = new THREE.Color(0x8a7f6c);
   const rampC = new THREE.Color(0x9b8a68);
-  const paper = !!map.def.ruler;
+  const paper = !!map.def.ruler?.paper;
   const paperC = new THREE.Color(0xcfc9b6);
   for (let j = 0; j < nz; j++)
     for (let i = 0; i < nx; i++) {
@@ -239,8 +239,8 @@ function groundTexture(map: GameMap, x0: number, z0: number, W: number, H: numbe
       if (paper) col.copy(paperC);
       else col.copy(grassA).lerp(grassB, noise);
       const inside = Math.abs(x) < map.halfW && Math.abs(z) < map.halfH;
-      const tier = inside ? Math.min(map.tierAt(x, z), 2) : 0;
-      if (tier > 0) col.lerp(dry, 0.25 * tier);
+      const tier = inside ? Math.min(map.tierAt(x, z), 3) : 0;
+      if (tier > 0) col.lerp(dry, 0.22 * tier);
       const river = map.nearRiver(x, z);
       if (river && river.dist < river.river.bank + 1.5 && h < 0.4 && h > WATER_Y) col.copy(river.crossing?.kind === "ford" ? gravel : sand);
       if (h < WATER_Y - 0.2) col.copy(bed);
@@ -284,7 +284,7 @@ function groundTexture(map: GameMap, x0: number, z0: number, W: number, H: numbe
  * để khi có tầng cao vẫn nằm trên mặt. Thước chung với bàn tác chiến và map-preview (ruler.ts). Không có thước thì null.
  */
 export function buildRulerLines(map: GameMap): THREE.Group | null {
-  if (!map.def.ruler) return null;
+  if (!map.def.ruler?.paper) return null;
   const ruler = mapRuler(map);
   const group = new THREE.Group();
   const lift = 0.06;

@@ -11,8 +11,9 @@ import { blobPoly } from "./shapes";
 import { rampOnEdge } from "./shapes";
 import type { MapDef } from "./types";
 
-const MESA = blobPoly(-84, -18, 12, 12, 31, 0.1, 16);
-const PEAK = blobPoly(-84, -18, 6, 6, 32, 0.1, 12);
+// dốc dài 10 m (từ 11/11/2026): khối tầng 1 bán kính 20 m, đỉnh tầng 2 bán kính 7 m để hai dốc 0 → 1 và 1 → 2 vẫn vừa
+const MESA = blobPoly(-84, -18, 20, 20, 31, 0.1, 16);
+const PEAK = blobPoly(-84, -18, 7, 7, 32, 0.1, 12);
 
 export const PROVING_GROUND: MapDef = {
   id: "proving-ground",
@@ -41,7 +42,7 @@ export const PROVING_GROUND: MapDef = {
     { tier: 1, poly: MESA },
     { tier: 2, poly: PEAK }
   ],
-  ramps: [rampOnEdge(MESA, -84, -6, "N", 8), rampOnEdge(PEAK, -78, -18, "W", 6)],
+  ramps: [rampOnEdge(MESA, -84, 2, "N", 8), rampOnEdge(PEAK, -77, -18, "W", 6)],
   rocks: [{ x: -50, z: -6, r: 5, h: 4 }],
   rivers: [
     {

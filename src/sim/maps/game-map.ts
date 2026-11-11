@@ -15,11 +15,14 @@ import type { Blob, CrossingDef, MapDef, MineDef, RampDef, RampDir, RegionDef, R
 /** Cạnh ô lưới (m): tìm đường, sương mù, độ cao trong sim đều theo lưới này. */
 export const CELL = 2;
 /** Mỗi bậc tầng cao chừng này (m): tầng 0 = 0 m, tầng 1 = 4 m, tầng 2 = 8 m. ⚠️ Số tạm. */
-export const TIER_H = 4;
-/** Khối dốc dài cố định chừng này (m) theo hướng leo (4 ô): độ dốc TIER_H / RAMP_LEN. */
-export const RAMP_LEN = 8;
+export const TIER_H = 5;
+/**
+ * Khối dốc dài cố định chừng này (m) theo hướng leo (5 ô): độ dốc TIER_H / RAMP_LEN ≈ 27°. Người dùng chốt 11/11/2026 trên
+ * Sa Bàn 3D: bậc 5 m, 3 tầng (5 / 10 / 15 m), mọi dốc là khối 10 × 10 m lên đúng một bậc (Docs/design/MAPS_PLAN.md).
+ */
+export const RAMP_LEN = 10;
 /** Tầng cao nhất mà quân mặt đất đứng được. */
-export const MAX_TIER = 2;
+export const MAX_TIER = 3;
 /**
  * Hai ô cạnh nhau (8 hướng) lệch nhau quá chừng này (m) mà không qua dốc thì là VÁCH: ô cao hơn thành "mép vách" (bị chặn).
  * Phải lớn hơn độ lệch giữa hai ô dốc liền nhau (TIER_H × CELL / RAMP_LEN = 1 m) và nhỏ hơn nửa bậc.
@@ -32,6 +35,11 @@ const STEP_MAX = 1.2;
 const RAMP_APRON = 3;
 /** Vách bao quanh rìa vùng chơi cao hơn tầng của ô đó chừng này (m). */
 const EDGE_H = 6;
+/** Bản vẽ (cells): độ sâu lòng nước sâu / nước nông (m), như sông. */
+const CELL_WATER_DEEP = 2.6;
+const CELL_WATER_SHALLOW = 0.3;
+/** Bản vẽ (cells): ký tự lớp mặt đất → loại địa hình (luật ở terrain.ts). */
+const CELL_SURF: Record<string, TerrainKind> = { f: "forest", w: "deep", s: "shallow", m: "mud", o: "road" };
 /** Tầng tầm nhìn của ô vách rìa: che hết. */
 const VIS_WALL = 9;
 /** Sát mép vùng chơi hơn chừng này (m) thì không đi được. */
@@ -165,6 +173,11 @@ export class GameMap {
     if (this.cols * CELL !== this.w || this.rows * CELL !== this.h) throw new Error(`Bản đồ "${def.id}": kích thước phải là bội số của ${CELL} m`);
     const rt = def.roundTop ?? 0;
     if (rt % CELL !== 0 || rt * (1 - Math.SQRT1_2) >= WALL) throw new Error(`roundTop ${rt} m: phải là bội số ${CELL} m và ≤ 12 m (phần cắt nằm trong dải sát mép)`);
+    if (def.cells) {
+      const ok = def.cells.rows.length === this.rows && def.cells.rows.every((r) => r.length === this.cols);
+      if (!ok || (def.cells.surf && (def.cells.surf.length !== this.rows || def.cells.surf.some((r) => r.length !== this.cols))))
+        throw new Error(`Bản đồ "${def.id}": lưới ô (cells) phải đúng ${this.rows} hàng × ${this.cols} cột`);
+    }
     this.edgeX = this.halfW - WALL;
     this.edgeZ = this.halfH - WALL;
     this.airX = this.halfW - AIR_MARGIN;
@@ -252,8 +265,20 @@ export class GameMap {
     return !!this.def.symmetric && (z < 0 || (z === 0 && x > 0));
   }
 
-  /** Tầng do các vùng tầng tô (chưa tính dốc, sông). */
+  /** Ký tự lưới ô (MapDef.cells) tại điểm: [lớp tầng, lớp mặt đất]. */
+  private cellChars(x: number, z: number): [string, string] {
+    const cells = this.def.cells!;
+    const c = Math.min(this.cols - 1, Math.max(0, Math.floor((x + this.halfW) / CELL)));
+    const r = Math.min(this.rows - 1, Math.max(0, Math.floor((z + this.halfH) / CELL)));
+    return [cells.rows[r][c], cells.surf ? cells.surf[r][c] : "."];
+  }
+
+  /** Tầng do các vùng tầng tô (chưa tính dốc, sông). Bản đồ dựng từ bản vẽ (cells): đọc thẳng tầng của ô. */
   private tierOf(x: number, z: number): number {
+    if (this.def.cells) {
+      const ch = this.cellChars(x, z)[0];
+      return ch === "1" || ch === "2" || ch === "3" ? Number(ch) : 0;
+    }
     let t = 0;
     for (let i = 0; i < this.tiers.length; i++) {
       const b = this.tierBox[i];
@@ -320,6 +345,20 @@ export class GameMap {
           if (dx * dx + dz * dz < b.r * b.r) {
             block = true;
             vis = tier + 1;
+          }
+        }
+        if (this.def.cells) {
+          // bản vẽ: ô đá chặn và che như mỏm đá; nước sâu chặn (lòng hồ), nước nông lội được
+          const [ch, sf] = this.cellChars(x, z);
+          if (ch === "r") {
+            block = true;
+            vis = tier + 1;
+          }
+          if (sf === "w" || sf === "s") {
+            ramp = -1;
+            vis = 0;
+            y = sf === "w" ? -CELL_WATER_DEEP : -CELL_WATER_SHALLOW;
+            if (sf === "w") block = true;
           }
         }
         if (this.inset(x, z) < WALL) {
@@ -556,6 +595,11 @@ export class GameMap {
       z = -z;
     }
     if (this.inset(x, z) < WALL) return "cliff";
+    if (this.def.cells) {
+      const [ch, sf] = this.cellChars(x, z);
+      if (ch === "r") return "cliff";
+      return CELL_SURF[sf] ?? DEFAULT_TERRAIN;
+    }
     for (const b of this.rocks) {
       const dx = x - b.x;
       const dz = z - b.z;

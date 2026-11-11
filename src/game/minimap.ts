@@ -13,11 +13,12 @@ import type { World } from "../sim/world";
 export const SIDE_COLOR = ["#3ea8ff", "#ff4d4d"];
 export const RES_COLOR = { iron: "#8fc7f5", oil: "#d17af2" };
 
-/** Màu nền theo tầng 0 / 1 / 2. */
+/** Màu nền theo tầng 0 / 1 / 2 / 3. */
 const TIER_RGB: readonly number[][] = [
   [78, 104, 52],
   [104, 124, 70],
-  [134, 144, 92]
+  [134, 144, 92],
+  [162, 160, 116]
 ];
 
 /** Ảnh nền địa hình nhìn từ trên (1 điểm ảnh = 1 m): dùng cho minimap và ảnh bản đồ ở menu. */
@@ -35,9 +36,9 @@ export function paintTerrain(map: GameMap): HTMLCanvasElement {
       const z = pz - map.halfH + 0.5;
       const h = map.terrainHeight(x, z);
       // địa hình bậc thang: tầng càng cao càng sáng, mép vách là nét sẫm (đọc như đường đồng mức)
-      const tier = Math.min(map.tierAt(x, z), 2);
+      const tier = Math.min(map.tierAt(x, z), TIER_RGB.length - 1);
       let c = TIER_RGB[tier];
-      if (map.def.ruler) c = [207 - tier * 18, 201 - tier * 18, 182 - tier * 18]; // bản đồ đang dựng: màu giấy như sân 3D
+      if (map.def.ruler?.paper) c = [207 - tier * 18, 201 - tier * 18, 182 - tier * 18]; // bản đồ đang dựng: màu giấy như sân 3D
       if (map.onRamp(x, z)) c = [150, 136, 100];
       const river = map.nearRiver(x, z);
       if (river && river.dist < river.river.half + 1 && h < 0) c = h < -1 ? [44, 98, 140] : [140, 128, 100];

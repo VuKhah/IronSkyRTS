@@ -118,10 +118,17 @@ export interface MapDef {
    */
   roundTop?: number;
   /**
-   * Thước đo (ruler.ts): ô lớn `cell` m và ô ly `minor` m căn giữa tâm, đường dẫn `guideX` / `guideZ` (m). Có thước thì mặt
+   * Thước đo (ruler.ts): ô lớn `cell` m và ô ly `minor` m căn giữa tâm, đường dẫn `guideX` / `guideZ` (m). Bật `paper` thì mặt
    * sân 3D vẽ kiểu giấy kẻ ô ly (màu trơn + lưới) để người dùng ước lượng khi dựng bản đồ. Chỉ ảnh hưởng hình và công cụ.
    */
-  ruler?: { cell: number; minor?: number; guideX?: readonly number[]; guideZ?: readonly number[] };
+  ruler?: { cell: number; minor?: number; guideX?: readonly number[]; guideZ?: readonly number[]; paper?: boolean };
+  /**
+   * Bản đồ dựng từ BẢN VẼ ĐỊA HÌNH (src/tools/bake-layout.ts): lưới ô 2 m, mỗi hàng một chuỗi, hàng đầu là phía Bắc.
+   * `rows`: "0" "1" "2" "3" tầng · "d" ô dốc (dốc thật lấy từ `ramps`) · "r" đá (chặn, che như mỏm đá).
+   * `surf`: "." cỏ · "f" rừng · "w" nước sâu (chặn) · "s" nước nông · "m" bùn · "o" đường. Có `cells` thì thay cho `tiers`,
+   * `rocks`, `regions`. Lưới phải tự đối xứng xoay 180° nếu bật `symmetric` (maps.test.ts kiểm).
+   */
+  cells?: { rows: readonly string[]; surf?: readonly string[] | null };
   /** Bộ màu / cảnh cho phần vẽ (không ảnh hưởng luật). */
   biome?: string;
 }

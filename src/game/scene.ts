@@ -7,7 +7,7 @@ import * as THREE from "three";
 import { TacticalMap } from "./tactical-map";
 import type { Side } from "../sim/content";
 import { Rng } from "../sim/fmath";
-import type { GameMap } from "../sim/maps";
+import { CELL, type GameMap } from "../sim/maps";
 import { buildRulerLines, buildTerrainMesh, WATER_Y } from "./terrain-mesh";
 import type { World } from "../sim/world";
 
@@ -77,14 +77,43 @@ export class BattleScene {
     const ruler = buildRulerLines(map); // ô ly để ước lượng khi dựng bản đồ (chỉ bản đồ có thước đo)
     if (ruler) this.scene.add(ruler);
 
+    // mặt nước: bản đồ có sông phủ một tấm cả bản đồ; bản đồ dựng từ bản vẽ (cells) chỉ trải trên đúng các ô nước (thêm một
+    // ô viền cho kín mép), để không lộ nước ở góc bo hay chỗ không có nước
+    const cells = map.def.cells;
+    let waterGeo: THREE.BufferGeometry = new THREE.PlaneGeometry(this.sizeW, this.sizeH).rotateX(-Math.PI / 2);
+    if (cells?.surf) {
+      const wet = (r: number, c: number): boolean => {
+        for (let dr = -1; dr <= 1; dr++)
+          for (let dc = -1; dc <= 1; dc++) {
+            const ch = cells.surf![r + dr]?.[c + dc];
+            if (ch === "w" || ch === "s") return true;
+          }
+        return false;
+      };
+      const pos: number[] = [];
+      for (let r = 0; r < map.rows; r++)
+        for (let c = 0; c < map.cols; ) {
+          if (!wet(r, c)) {
+            c++;
+            continue;
+          }
+          let c1 = c;
+          while (c1 < map.cols && wet(r, c1)) c1++;
+          const x0 = -map.halfW + c * CELL, x1 = -map.halfW + c1 * CELL, z0 = -map.halfH + r * CELL, z1 = z0 + CELL;
+          pos.push(x0, 0, z0, x0, 0, z1, x1, 0, z1, x0, 0, z0, x1, 0, z1, x1, 0, z0);
+          c = c1;
+        }
+      waterGeo = new THREE.BufferGeometry();
+      waterGeo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+      waterGeo.computeVertexNormals();
+    }
     this.water = new THREE.Mesh(
-      new THREE.PlaneGeometry(this.sizeW, this.sizeH),
+      waterGeo,
       new THREE.MeshStandardMaterial({ color: 0x2f6f96, roughness: 0.15, metalness: 0.2, transparent: true, opacity: 0.86 })
     );
-    this.water.rotation.x = -Math.PI / 2;
     this.water.position.y = WATER_Y;
     this.water.receiveShadow = true;
-    this.water.visible = map.def.rivers.length > 0; // không có sông thì tấm nước lộ ra ở góc bo (roundTop)
+    this.water.visible = map.def.rivers.length > 0 || !!cells?.surf; // không có nước thì tấm nước lộ ra ở góc bo (roundTop)
     this.scene.add(this.water);
 
     this.addBridges();
