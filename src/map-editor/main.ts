@@ -26,6 +26,8 @@ interface Layout {
   h: number;
   cell: number;
   rows: string[];
+  /** Lớp mặt đất, cùng cỡ `rows`: "." cỏ · "f" rừng · "w" nước sâu · "s" nước nông · "m" đầm lầy · "o" đường đất. */
+  surf?: string[];
   refs?: Ref[];
 }
 
@@ -40,19 +42,34 @@ let refs: Ref[] = [];
 let rot = 0;
 
 let grid: string[][] = Array.from({ length: ROWS }, () => Array(COLS).fill("0"));
+let surf: string[][] = Array.from({ length: ROWS }, () => Array(COLS).fill("."));
 let lastText = "";
 let dirty = false;
 let painting = false;
-const undoStack: { g: string[][]; refs: Ref[] }[] = [];
+const undoStack: { g: string[][]; s: string[][]; refs: Ref[] }[] = [];
 
 // ------------------------------------------------------------------ công cụ
-type Tool = "0" | "1" | "2" | "d" | "r" | RefKind | "delref";
+/** Công cụ lớp mặt đất: "s" + ký tự lớp (ví dụ "sf" = rừng). */
+type SurfTool = "s." | "sf" | "sw" | "ss" | "sm" | "so";
+type Tool = "0" | "1" | "2" | "d" | "r" | RefKind | "delref" | SurfTool;
 const TOOLS: { id: Tool; label: string; color?: string }[] = [
   { id: "0", label: "Tầng 0", color: "#d6d0bd" },
   { id: "1", label: "Tầng 1", color: "#a99f86" },
   { id: "2", label: "Tầng 2", color: "#7d735d" },
   { id: "d", label: "Dốc", color: "#c6b48a" },
-  { id: "r", label: "Đá", color: "#55504a" },
+  { id: "r", label: "Đá", color: "#55504a" }
+];
+/** Khối mặt đất chủ đề thảo nguyên đồi: mỗi khối là một loại địa hình game đã có luật (terrain.ts). */
+const SURF_TOOLS: { id: SurfTool; label: string; color: string }[] = [
+  { id: "sf", label: "Rừng", color: "#3f6b35" },
+  { id: "sw", label: "Nước sâu", color: "#2c6fa8" },
+  { id: "ss", label: "Nước nông", color: "#7fb6d8" },
+  { id: "sm", label: "Đầm lầy", color: "#6b5536" },
+  { id: "so", label: "Đường đất", color: "#b89a6a" },
+  { id: "s.", label: "Cỏ (xóa lớp)", color: "#d6d0bd" }
+];
+const SURF_COLOR: Record<string, string> = { f: "rgba(52, 96, 44, 0.82)", w: "#2c6fa8", s: "#7fb6d8", m: "rgba(96, 74, 46, 0.85)", o: "rgba(184, 154, 106, 0.9)" };
+const MARK_TOOLS: { id: Tool; label: string; color?: string }[] = [
   { id: "art", label: "Mốc: Pháo" },
   { id: "titan4", label: "Mốc: 4 Titan" },
   { id: "drone", label: "Mốc: tầm Drone TS" },
@@ -82,7 +99,19 @@ function buttons(host: string, items: { key: string; html: string }[], get: () =
     el.appendChild(b);
   }
 }
-buttons("tools", TOOLS.map((t) => ({ key: t.id, html: (t.color ? `<span class="sw" style="background:${t.color}"></span>` : "") + t.label })), () => tool, (k) => (tool = k as Tool));
+// ba nhóm công cụ dùng chung một lựa chọn: bấm nhóm nào cũng vẽ lại cả ba để nút sáng đúng
+const toolItems = (list: { id: Tool; label: string; color?: string }[]) =>
+  list.map((t) => ({ key: t.id, html: (t.color ? `<span class="sw" style="background:${t.color}"></span>` : "") + t.label }));
+function renderTools(): void {
+  const set = (k: string): void => {
+    tool = k as Tool;
+    renderTools();
+  };
+  buttons("tools", toolItems(TOOLS), () => tool, set);
+  buttons("surface", toolItems(SURF_TOOLS), () => tool, set);
+  buttons("marks", toolItems(MARK_TOOLS), () => tool, set);
+}
+renderTools();
 buttons("brushes", BRUSHES.map((b) => ({ key: String(b.m), html: b.label })), () => String(brush), (k) => (brush = Number(k)));
 const symBox = document.getElementById("sym") as HTMLInputElement;
 const statusEl = document.getElementById("status")!;
@@ -274,6 +303,11 @@ function draw(): void {
       const v = grid[r][c];
       g.fillStyle = COLOR[v] ?? "#c6b48a";
       g.fillRect(PAD + c * CELL * K, PAD + r * CELL * K, CELL * K + 0.5, CELL * K + 0.5);
+      const sc = SURF_COLOR[surf[r][c]];
+      if (sc) {
+        g.fillStyle = sc;
+        g.fillRect(PAD + c * CELL * K, PAD + r * CELL * K, CELL * K + 0.5, CELL * K + 0.5);
+      }
     }
   // vách: cạnh chung hai ô khác tầng (không tính ô dốc)
   g.strokeStyle = "#2a251d";
@@ -443,6 +477,11 @@ function paintAt(x: number, z: number): void {
   const [c0, r0, c1, r1] = b;
   for (let r = r0; r < r1; r++)
     for (let c = c0; c < c1; c++) {
+      if (tool[0] === "s") {
+        surf[r][c] = tool[1];
+        if (symBox.checked) surf[ROWS - 1 - r][COLS - 1 - c] = tool[1];
+        continue;
+      }
       grid[r][c] = tool;
       if (symBox.checked) grid[ROWS - 1 - r][COLS - 1 - c] = tool;
     }
@@ -488,9 +527,9 @@ cv.addEventListener("pointerdown", (e) => {
     return;
   }
   if (e.button !== 0) return;
-  undoStack.push({ g: grid.map((row) => row.slice()), refs: refs.map((f) => ({ ...f })) });
+  undoStack.push({ g: grid.map((row) => row.slice()), s: surf.map((row) => row.slice()), refs: refs.map((f) => ({ ...f })) });
   if (undoStack.length > 50) undoStack.shift();
-  if (tool === "art" || tool === "titan4" || tool === "drone" || tool === "sfac" || tool === "delref") {
+  if (MARK_TOOLS.some((m) => m.id === tool)) {
     // mốc: bấm chỗ trống = đặt; bấm vào mốc = xoay 15° (Shift: ngược lại); công cụ Xóa mốc = xóa
     const [x, z] = eventPos(e);
     const i = refAt(x, z);
@@ -500,7 +539,7 @@ cv.addEventListener("pointerdown", (e) => {
       const step = refs[i].k === "sfac" ? 90 : 15; // nhà trong game xoay theo bội 90°
       refs[i].rot = (refs[i].rot + (e.shiftKey ? -step : step) + 360) % 360;
       rot = refs[i].rot;
-    } else if (Math.abs(x) < map.halfW && Math.abs(z) < map.halfH) refs.push({ k: tool, x: Math.round(x), z: Math.round(z), rot });
+    } else if (Math.abs(x) < map.halfW && Math.abs(z) < map.halfH) refs.push({ k: tool as RefKind, x: Math.round(x), z: Math.round(z), rot });
     draw();
     void save();
     return;
@@ -532,6 +571,7 @@ function undo(): void {
   const prev = undoStack.pop();
   if (!prev) return;
   grid = prev.g;
+  surf = prev.s;
   refs = prev.refs;
   dirty = true;
   draw();
@@ -547,7 +587,7 @@ window.addEventListener("keydown", (e) => {
 
 // ------------------------------------------------------------------ lưu / nạp
 function serialize(): string {
-  const data: Layout = { w: map.w, h: map.h, cell: CELL, refs, rows: grid.map((r) => r.join("")) };
+  const data: Layout = { w: map.w, h: map.h, cell: CELL, refs, rows: grid.map((r) => r.join("")), surf: surf.map((r) => r.join("")) };
   return JSON.stringify(data, null, 0).replace(/","/g, '",\n"').replace('"rows":["', '"rows":[\n"');
 }
 
@@ -565,6 +605,7 @@ function apply(text: string): void {
   if (data.rows.length !== ROWS || data.rows[0].length !== COLS) throw new Error("layout.json không khớp kích thước bản đồ");
   grid = data.rows.map((r) => r.split("").map((v) => ("nesw".includes(v) ? "d" : v)));
   refs = data.refs ?? [];
+  surf = data.surf?.length === ROWS ? data.surf.map((r) => r.split("")) : Array.from({ length: ROWS }, () => Array(COLS).fill("."));
   lastText = text;
   draw();
 }
