@@ -132,29 +132,62 @@ function draw(): void {
       }
     }
   g.stroke();
-  // mũi tên dốc: mỗi ô 10 × 10 m (5 × 5 ô) có dốc thì vẽ một mũi tên theo hướng chiếm nhiều nhất
-  for (let r0 = 0; r0 < ROWS; r0 += 5)
-    for (let c0 = 0; c0 < COLS; c0 += 5) {
-      const n: Record<string, number> = {};
-      for (let r = r0; r < Math.min(ROWS, r0 + 5); r++) for (let c = c0; c < Math.min(COLS, c0 + 5); c++) if (MIRROR[grid[r][c]]) n[grid[r][c]] = (n[grid[r][c]] ?? 0) + 1;
-      const best = Object.keys(n).sort((a, b) => n[b] - n[a])[0];
-      if (!best || n[best] < 6) continue;
-      const cx = PAD + (c0 + 2.5) * CELL * K;
-      const cy = PAD + (r0 + 2.5) * CELL * K;
-      const a = { n: -Math.PI / 2, s: Math.PI / 2, e: 0, w: Math.PI }[best as "n"]!;
-      const L = 3.5 * K;
-      g.save();
-      g.translate(cx, cy);
-      g.rotate(a);
-      g.fillStyle = "#3b3122";
-      g.beginPath();
-      g.moveTo(L, 0);
-      g.lineTo(-L * 0.6, -L * 0.6);
-      g.lineTo(-L * 0.2, 0);
-      g.lineTo(-L * 0.6, L * 0.6);
-      g.closePath();
-      g.fill();
-      g.restore();
+  // mũi tên dốc: mỗi khối dốc (các ô liền nhau cùng hướng) một hàng mũi tên dài đúng từ chân tới đỉnh dốc,
+  // lặp theo bề ngang mỗi ~14 m
+  const seen = new Uint8Array(ROWS * COLS);
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++) {
+      const d = grid[r][c];
+      if (!MIRROR[d] || seen[r * COLS + c]) continue;
+      let c0 = c, c1 = c, r0 = r, r1 = r;
+      const q = [r * COLS + c];
+      seen[r * COLS + c] = 1;
+      while (q.length) {
+        const i = q.pop()!;
+        const cc = i % COLS;
+        const rr = (i - cc) / COLS;
+        c0 = Math.min(c0, cc); c1 = Math.max(c1, cc); r0 = Math.min(r0, rr); r1 = Math.max(r1, rr);
+        for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nc = cc + dc, nr = rr + dr;
+          if (nc < 0 || nr < 0 || nc >= COLS || nr >= ROWS || seen[nr * COLS + nc] || grid[nr][nc] !== d) continue;
+          seen[nr * COLS + nc] = 1;
+          q.push(nr * COLS + nc);
+        }
+      }
+      const x0 = PAD + c0 * CELL * K, x1 = PAD + (c1 + 1) * CELL * K;
+      const y0 = PAD + r0 * CELL * K, y1 = PAD + (r1 + 1) * CELL * K;
+      const ns = d === "n" || d === "s";
+      const len = ns ? y1 - y0 : x1 - x0; // chiều dài dốc theo hướng leo
+      const wid = ns ? x1 - x0 : y1 - y0;
+      const n = Math.max(1, Math.round(wid / (14 * K)));
+      const head = Math.min(len * 0.45, 3 * K);
+      g.strokeStyle = g.fillStyle = "#3b3122";
+      g.lineWidth = 1.6;
+      for (let k = 0; k < n; k++) {
+        const t = (k + 0.5) / n;
+        const across = ns ? x0 + wid * t : y0 + wid * t;
+        // chân → đỉnh, chừa một chút ở hai đầu
+        const m = Math.min(1.5, len * 0.1);
+        let ax: number, ay: number, bx: number, by: number;
+        if (ns) {
+          ax = bx = across;
+          [ay, by] = d === "s" ? [y0 + m, y1 - m] : [y1 - m, y0 + m];
+        } else {
+          ay = by = across;
+          [ax, bx] = d === "e" ? [x0 + m, x1 - m] : [x1 - m, x0 + m];
+        }
+        const ux = Math.sign(bx - ax), uy = Math.sign(by - ay);
+        g.beginPath();
+        g.moveTo(ax, ay);
+        g.lineTo(bx - ux * head * 0.6, by - uy * head * 0.6);
+        g.stroke();
+        g.beginPath();
+        g.moveTo(bx, by);
+        g.lineTo(bx - ux * head - uy * head * 0.55, by - uy * head - ux * head * 0.55);
+        g.lineTo(bx - ux * head + uy * head * 0.55, by - uy * head + ux * head * 0.55);
+        g.closePath();
+        g.fill();
+      }
     }
   // lưới: ô ly, ô lớn + tên, đường vàng
   const vl = (x: number): void => {
