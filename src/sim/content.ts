@@ -97,8 +97,8 @@ export interface WeaponSpec {
   /** Lộ vị trí: bắn xong thì đối phương nhìn thấy xuyên sương mù trong chừng này giây (Pháo). */
   reveal?: number;
   /**
-   * Địa lợi tầm cao: nhân phần thưởng tầm bắn do đứng trên cao (`RULES.terrain.rangePerM`, trần `rangeMax`) lên chừng này lần.
-   * Bỏ trống = 1 (như mọi quân). Pháo = 2: đứng trên đồi được gấp đôi phần cộng tầm của quân thường.
+   * Địa lợi tầm cao: nhân phần thưởng tầm bắn do đứng trên tầng cao (`RULES.terrain.rangePerTier`, trần `rangeMax`) lên chừng này
+   * lần. Bỏ trống = 1 (như mọi quân). Pháo = 2: đứng trên tầng cao được gấp đôi phần cộng tầm của quân thường.
    */
   heightBonus?: number;
   /** Độ tản (m): điểm rơi lệch ngẫu nhiên trong vòng tròn bán kính này, không bám mục tiêu (Tên Lửa Loạt). */
@@ -372,17 +372,13 @@ export const RULES = {
     struct: { normal: 0.25, ap: 1, he: 1.5 }
   } as Record<ArmorClass, Record<DmgType, number>>,
   /**
-   * Địa hình 3D chiến thuật (AGENTS.md "Nghĩa của 3D"): độ cao tính từ mặt thung lũng (0 m).
-   * Đứng cao được cộng tầm nhìn / tầm bắn theo mỗi mét, có trần. Đồi và đá che tầm nhìn của quân mặt đất.
+   * Địa hình bậc thang (11/11/2026): mặt đất có tầng 0, 1, 2 (GameMap). Đứng trên tầng cao được cộng tầm nhìn / tầm bắn theo mỗi
+   * tầng, có trần. Quân mặt đất KHÔNG nhìn thấy ô ở tầng cao hơn tầng mình đứng; tầng cao chặn tia nhìn phía sau nó.
    */
   terrain: {
-    /** Mắt quân mặt đất / công trình cao hơn mặt đất (m); điểm nhìn thấy được của mục tiêu (m). */
-    eyeUnit: 1.6,
-    eyeBuilding: 3,
-    targetHeight: 1,
-    sightPerM: 0.06,
+    sightPerTier: 0.15,
     sightMax: 0.3,
-    rangePerM: 0.05,
+    rangePerTier: 0.1,
     rangeMax: 0.2,
     /** Lên dốc chậm dần: hệ số = max(slopeMin, 1 − slopeSlow × độ dốc), độ dốc đo dọc hướng đi. Xuống dốc không nhanh hơn. */
     slopeSlow: 0.7,

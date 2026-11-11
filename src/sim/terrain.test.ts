@@ -22,7 +22,6 @@ const PATCHES: MapDef = {
     [62, -62]
   ],
   mines: [],
-  hills: [],
   rocks: [],
   rivers: [],
   regions: [
@@ -47,10 +46,20 @@ const PATCHES: MapDef = {
   ]
 };
 
-/** Bản đồ thử có một quả đồi lớn ở giữa (dốc tối đa ~0,46). */
+const square = (r: number): [number, number][] => [
+  [-r, -r],
+  [r, -r],
+  [r, r],
+  [-r, r]
+];
+
+/**
+ * Bản đồ thử có khối bậc thang ở giữa: tầng 1 là hình vuông ±30 m, tầng 2 là ±14 m. Dốc nằm trên trục z = 0: phía Tây
+ * leo về Đông, phía Đông leo về Tây, nên đi dọc trục x từ ngoài vào tâm là leo hai dốc.
+ */
 const HILL: MapDef = {
   id: "test-hill",
-  name: "Thử: đồi",
+  name: "Thử: khối bậc thang",
   blurb: "",
   size: { w: 160, h: 160 },
   bases: [
@@ -58,7 +67,16 @@ const HILL: MapDef = {
     [62, -62]
   ],
   mines: [],
-  hills: [{ x: 0, z: 0, r: 40, h: 12 }],
+  tiers: [
+    { tier: 1, poly: square(30) },
+    { tier: 2, poly: square(14) }
+  ],
+  ramps: [
+    { x: -30, z: 0, dir: "E", width: 10 },
+    { x: -14, z: 0, dir: "E", width: 10 },
+    { x: 30, z: 0, dir: "W", width: 10 },
+    { x: 14, z: 0, dir: "W", width: 10 }
+  ],
   rocks: [],
   rivers: []
 };
@@ -147,15 +165,15 @@ describe("B3a: tốc độ theo địa hình", () => {
 
   it("lên dốc chậm hơn xuống dốc; xuống dốc không nhanh hơn đất bằng", () => {
     const up = world(HILL);
-    const a = spawn(up, "lynx", -36, 0);
-    const tUp = ticksTo(up, a, -4, 0);
+    const a = spawn(up, "lynx", -40, 0);
+    const tUp = ticksTo(up, a, 0, 0);
     const down = world(HILL);
-    const b = spawn(down, "lynx", 4, 0);
-    const tDown = ticksTo(down, b, 36, 0);
-    const flat = (32 / UNITS.lynx.speed) * 10;
+    const b = spawn(down, "lynx", 0, 0);
+    const tDown = ticksTo(down, b, 40, 0);
+    const flat = (40 / UNITS.lynx.speed) * 10;
     expect(tUp).toBeGreaterThan(tDown * 1.15);
     expect(tDown).toBeLessThanOrEqual(Math.ceil(flat) + 1);
-    // dốc nhất của đồi ~0,46 → chậm nhất ~×0,68: lên dốc không chậm quá mức sàn
+    // khối dốc dốc 0,5 → chậm ~×0,65 trên 16 m dốc: lên dốc không chậm quá mức sàn
     expect(tUp).toBeLessThan(flat / RULES.terrain.slopeMin);
   });
 
@@ -180,7 +198,6 @@ const DETOUR: MapDef = {
     [70, -70]
   ],
   mines: [],
-  hills: [],
   rocks: [],
   rivers: [],
   regions: [
@@ -251,7 +268,6 @@ const WOODS: MapDef = {
     [70, -70]
   ],
   mines: [],
-  hills: [],
   rocks: [],
   rivers: [],
   regions: [
@@ -326,20 +342,20 @@ describe("B3c: rừng che tầm nhìn, nấp được", () => {
 });
 
 describe("địa lợi tầm cao (heightBonus)", () => {
-  it("đứng trên đỉnh đồi: quân thường được + rangeMax tầm bắn, Pháo (heightBonus) được nhân thêm", () => {
+  it("đứng trên tầng 2: quân thường được + rangeMax tầm bắn, Pháo (heightBonus) được nhân thêm", () => {
     const w = world(HILL);
     const T = RULES.terrain;
     const lynx = spawn(w, "lynx", 0, 0);
     const arty = spawn(w, "artillery", 4, 0);
-    expect(w.heightAt(0, 0)).toBeGreaterThan(T.rangeMax / T.rangePerM); // đỉnh đồi đủ cao để chạm trần
+    expect(w.map.tierAt(0, 0) * T.rangePerTier).toBeGreaterThanOrEqual(T.rangeMax); // tầng 2 chạm trần
     const lw = UNITS.lynx.weapon!;
     const aw = UNITS.artillery.weapon!;
     expect(w.reach(lynx, lw)).toBeCloseTo(lw.range * (1 + T.rangeMax), 6);
     expect(w.reach(arty, aw)).toBeCloseTo(aw.range * (1 + T.rangeMax * (aw.heightBonus ?? 1)), 6);
     expect(aw.heightBonus ?? 1).toBeGreaterThan(1);
-    // dưới chân đồi (mặt thung lũng 0 m) thì không ai được cộng
+    // dưới mặt đất tầng 0 thì không ai được cộng
     const low = spawn(w, "artillery", 70, 0);
-    expect(w.heightAt(70, 0)).toBe(0);
+    expect(w.map.tierAt(70, 0)).toBe(0);
     expect(w.reach(low, aw)).toBe(aw.range);
   });
 
@@ -348,11 +364,11 @@ describe("địa lợi tầm cao (heightBonus)", () => {
     const T = RULES.terrain;
     // khoảng cách nằm giữa tầm của quân thường trên đồi và tầm của Pháo trên đồi
     const far = aw.range * (1 + (T.rangeMax * (1 + (aw.heightBonus ?? 1))) / 2);
-    const shotsAt = (hx: number): number => {
+    const shotsAt = (hx: number, hz: number): number => {
       const w = world(HILL);
-      const a = spawn(w, "artillery", hx, 0);
-      spawn(w, "titan", hx + far, 0, 1);
-      spawn(w, "commander", hx + far - 8, 0); // quân soi đường: Pháo không tự nhìn xa tới vậy
+      const a = spawn(w, "artillery", hx, hz);
+      spawn(w, "titan", hx + far, hz, 1);
+      spawn(w, "commander", hx + far - 8, hz); // quân soi đường: Pháo không tự nhìn xa tới vậy
       w.step([{ side: 1, order: { t: "sbHold", side: 1, on: true } }]);
       let n = 0;
       for (let i = 0; i < sec(6); i++) {
@@ -361,7 +377,7 @@ describe("địa lợi tầm cao (heightBonus)", () => {
       }
       return n;
     };
-    expect(shotsAt(0)).toBeGreaterThan(0); // đỉnh đồi
-    expect(shotsAt(-75)).toBe(0); // mặt thung lũng: cùng khoảng cách nhưng ngoài tầm
+    expect(shotsAt(0, 0)).toBeGreaterThan(0); // tầng 2
+    expect(shotsAt(-75, 60)).toBe(0); // tầng 0: cùng khoảng cách nhưng ngoài tầm
   });
 });

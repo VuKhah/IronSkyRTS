@@ -65,11 +65,10 @@ out.push(`<clipPath id="trong-ban-do"><rect x="${PAD}" y="${PAD}" width="${map.w
 out.push(`<g shape-rendering="auto">`);
 // Viền cao nguyên (đa giác thường kéo quá mép bản đồ nên phải cắt, không thì đè lên số hàng)
 out.push(`<g clip-path="url(#trong-ban-do)">`);
-for (const p of map.plateaus) {
+for (const p of map.tiers) {
   const pts = p.poly.map(([x, z]) => `${sx(x).toFixed(1)},${sy(z).toFixed(1)}`).join(" ");
   out.push(`<polygon points="${pts}" fill="none" stroke="#fff" stroke-opacity="0.45" stroke-width="0.8" stroke-dasharray="4 3"/>`);
 }
-for (const h of map.hills) out.push(`<circle cx="${sx(h.x)}" cy="${sy(h.z)}" r="${h.r}" fill="none" stroke="#fff" stroke-opacity="0.45" stroke-width="0.8" stroke-dasharray="4 3"/>`);
 out.push(`</g>`);
 
 // Lối qua sông

@@ -10,7 +10,7 @@ import type { TerrainKind } from "./terrain";
 
 export type Vec2 = readonly [number, number];
 
-/** Đồi hoặc mỏm đá: hình tròn, độ cao ở tâm (m). */
+/** Mỏm đá: hình tròn, cao `h` mét (chỉ để vẽ và che tầm nhìn; các ô trong vòng tròn bị chặn). */
 export interface Blob {
   x: number;
   z: number;
@@ -19,13 +19,30 @@ export interface Blob {
 }
 
 /**
- * Cao nguyên / đồi cao hình bất kỳ: đa giác cao `h` mét, sườn thoải rộng `edge` mét nằm vắt qua đường viền
- * (viền là giữa sườn). Chồng nhiều cao nguyên lên nhau để làm đồi nhiều bậc.
+ * ĐỊA HÌNH BẬC THANG (người dùng chốt 11/11/2026): mặt đất gồm các tầng phẳng, tầng 0 = bề mặt, 1 = cao một bậc,
+ * 2 = cao hai bậc (mỗi bậc TIER_H mét, game-map.ts). Bản đồ vẽ theo ô lưới xây dựng 2 m: ô nào có TÂM nằm trong đa giác
+ * thì mang tầng đó, nên viền tầng luôn là bậc thang theo ô. Vùng khai báo sau đè vùng trước.
+ * Hai tầng cạnh nhau mặc định là VÁCH (không leo được); muốn lên xuống phải đặt khối dốc (`RampDef`).
  */
-export interface PlateauDef {
+export interface TierDef {
   poly: readonly Vec2[];
-  h: number;
-  edge: number;
+  tier: 1 | 2;
+}
+
+/** Hướng đi LÊN của khối dốc: N = về phía Bắc (−z), E = Đông (+x), S = Nam (+z), W = Tây (−x). */
+export type RampDir = "N" | "E" | "S" | "W";
+
+/**
+ * Khối dốc: một dạng duy nhất, dài cố định RAMP_LEN mét theo hướng leo, nối đúng hai tầng liền nhau. Ghép bề rộng tùy ý
+ * (bội số 2 m). `x, z`: tâm khối dốc (tự bám lưới). Ô ngay sau chân dốc phải là tầng thấp, ô ngay sau đỉnh dốc là tầng
+ * cao hơn một bậc (GameMap kiểm lúc dựng). Nên khoét dốc vào khối tầng cao để hai bên dốc là vách.
+ */
+export interface RampDef {
+  x: number;
+  z: number;
+  dir: RampDir;
+  /** Bề rộng (m), vuông góc với hướng leo. */
+  width: number;
 }
 
 /** Lối qua sông, đặt bằng một điểm nằm trên dòng sông. `half`: nửa bề rộng lối qua đo dọc theo sông (m). */
@@ -76,7 +93,7 @@ export interface MapDef {
   bounds?: readonly Vec2[];
   /**
    * Bộ vẽ tự đối xứng: chỉ khai báo MỘT NỬA (phía Lam), GameMap tự thêm bản xoay 180° quanh tâm, (x, z) → (-x, -z),
-   * cho căn cứ, mỏ (đổi chủ Lam ↔ Đỏ), đồi, cao nguyên, đá, vùng địa hình và lối qua sông. Thứ nằm đúng tâm không bị nhân đôi.
+   * cho căn cứ, mỏ (đổi chủ Lam ↔ Đỏ), vùng tầng, khối dốc (đổi hướng), đá, vùng địa hình và lối qua sông. Thứ nằm đúng tâm không bị nhân đôi.
    * Sông: khai báo đủ dòng chảy; sông chảy qua tâm và tự đối xứng thì chỉ lối qua được nhân đôi, sông khác được nhân đôi cả dòng.
    * Bản đồ 1 đấu 1 nên bật cờ này: công bằng có sẵn (maps.test.ts vẫn kiểm).
    */
@@ -86,9 +103,10 @@ export interface MapDef {
   mines: readonly MineDef[];
   /** Đài Liên Lạc (điểm chiếm): chiếm như mỏ; phe giữ được cộng điểm chỉ huy và nhìn xa quanh đài. Đặt chỗ cách đều hai nhà. */
   points?: readonly Vec2[];
-  hills: readonly Blob[];
-  /** Cao nguyên / đồi cao nhiều bậc (đa giác). */
-  plateaus?: readonly PlateauDef[];
+  /** Vùng tầng cao (bậc thang theo ô). Bỏ trống = cả bản đồ ở tầng 0. */
+  tiers?: readonly TierDef[];
+  /** Khối dốc nối hai tầng. */
+  ramps?: readonly RampDef[];
   /** Mỏm đá: chặn đường, che tầm nhìn. */
   rocks: readonly Blob[];
   rivers: readonly RiverDef[];

@@ -5,9 +5,17 @@
  *
  * Khai báo MỘT NỬA (`symmetric`): mỗi mục dưới đây được GameMap tự thêm bản xoay 180° (mỏ đổi chủ Lam ↔ Đỏ).
  */
-import type { MapDef } from "./types";
+import { blobPoly, rampOnEdge } from "./shapes";
+import type { MapDef, RampDir, Vec2 } from "./types";
 
 const S = 0.7071067811865476; // 1/√2: điểm trên dòng sông cách tâm v mét nằm ở (v·S, v·S)
+
+/** Ba gò cao (trước 11/11/2026 là đồi tròn thoải): vùng tầng 1 và điểm gần mép để đặt dốc, hướng leo. */
+const HILLS: { poly: Vec2[]; ramp: Vec2; dir: RampDir }[] = [
+  { poly: blobPoly(-28, 66, 13, 13, 11, 0.12, 16), ramp: [-41, 66], dir: "E" },
+  { poly: blobPoly(-70, 0, 12, 12, 12, 0.12, 16), ramp: [-70, 12], dir: "N" },
+  { poly: blobPoly(40, 62, 12, 12, 13, 0.12, 16), ramp: [28, 62], dir: "E" }
+];
 
 export const IRON_VALLEY: MapDef = {
   id: "iron-valley",
@@ -29,12 +37,9 @@ export const IRON_VALLEY: MapDef = {
   // Đài Liên Lạc trên cây cầu cánh Nam (máy tự thêm đài trên cầu cánh Bắc): hai cầu nằm đúng trung trực
   // giữa hai căn cứ nên cách đều hai nhà; giữ cầu là giữ đài
   points: [[-56 * S, -56 * S]],
-  // đồi thấp: đứng trên đồi được cộng tầm nhìn / tầm bắn, đồi che tầm nhìn
-  hills: [
-    { x: -28, z: 66, r: 13, h: 4 },
-    { x: -70, z: 0, r: 12, h: 3.5 },
-    { x: 40, z: 62, r: 12, h: 3 }
-  ],
+  // gò cao tầng 1 (bậc thang, mỗi gò một dốc): đứng trên gò được cộng tầm nhìn / tầm bắn, quân dưới thấp không thấy lên
+  tiers: HILLS.map((h) => ({ tier: 1 as const, poly: h.poly })),
+  ramps: HILLS.map((h) => rampOnEdge(h.poly, h.ramp[0], h.ramp[1], h.dir, 8)),
   // mỏm đá: chặn đường xe, tạo lối đi hẹp gần bờ sông
   rocks: [
     { x: -29.7, z: -9.9, r: 6, h: 4.5 },

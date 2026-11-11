@@ -100,24 +100,16 @@ function drawDisplay(map: GameMap): HTMLCanvasElement {
     g.restore();
   }
 
-  // cao nguyên và đồi: đường đồng mức phát sáng
+  // vùng tầng cao: đường đồng mức phát sáng, tầng càng cao càng đậm
   glow(`rgba(${CYAN}, 0.8)`, 7);
-  for (const p of map.plateaus) {
+  for (const p of map.tiers) {
     trace(p.poly);
-    g.fillStyle = "rgba(90, 170, 220, 0.07)";
+    g.fillStyle = `rgba(90, 170, 220, ${0.07 * p.tier})`;
     g.fill();
     g.strokeStyle = `rgba(${CYAN}, 0.6)`;
     g.lineWidth = 1.5;
     g.stroke();
   }
-  for (const h of map.hills)
-    for (const k of [1, 0.66, 0.33]) {
-      g.strokeStyle = `rgba(${CYAN}, 0.55)`;
-      g.lineWidth = 1.3;
-      g.beginPath();
-      g.arc(X(h.x), Y(h.z), h.r * k * s, 0, Math.PI * 2);
-      g.stroke();
-    }
   noGlow();
 
   // sông: lòng tối, viền sáng

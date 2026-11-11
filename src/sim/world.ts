@@ -11,7 +11,7 @@ import { BUILDINGS, canStrike, defaultRot, DEFAULT_FORMATION, doorDir, normRot, 
 import { assignMin } from "./assign";
 import { clamp, dcos, DEG, dist2, dsin, Rng, TAU, turnStep, turnToward, type TurnStep } from "./fmath";
 import { Grid } from "./grid";
-import { CELL, GameMap, getMap, TERRAIN, TERRAIN_KINDS } from "./maps";
+import { CELL, GameMap, getMap, MAX_TIER, TERRAIN, TERRAIN_KINDS } from "./maps";
 import { WALL } from "./maps/game-map";
 import type {
   Squad, AlertKind, Building, Command, Entity, Mine, Order, Shot, SideState, SimEvent, Target, Unit, Uplink, WinReason, Wreck } from "./types";
@@ -214,6 +214,7 @@ function newSide(cells: number): SideState {
     retreatLevel: 0,
     droneFrac: 1,
     vis: new Uint8Array(cells),
+    visAir: new Uint8Array(cells),
     explored: new Uint8Array(cells),
     known: new Set(),
     mono: 0,
@@ -258,7 +259,6 @@ export class World {
   /** Bảng ô đỗ dỡ hàng quanh Tổng Hành Dinh (tính một lần, xem `dockSlots`). */
   private docks: (readonly [number, number, number, number])[] | null = null;
   /** Độ cao mặt đất ở tâm từng ô lưới (m), tính một lần lúc tạo trận (địa hình không đổi). */
-  readonly cellH: Float64Array;
   /** Vật che tầm nhìn đứng trên mặt đất từng ô (m): rừng cao 4 m, còn lại 0 (TERRAIN.losHeight). */
   readonly cellLos: Float64Array;
   units: Unit[] = [];
@@ -295,8 +295,6 @@ export class World {
     const map = (this.map = opts.map instanceof GameMap ? opts.map : getMap(opts.map));
     const grid = (this.grid = new Grid(map));
     this.sides = [newSide(grid.size), newSide(grid.size)];
-    this.cellH = new Float64Array(grid.size);
-    for (let cz = 0; cz < grid.rows; cz++) for (let cx = 0; cx < grid.cols; cx++) this.cellH[cz * grid.cols + cx] = map.groundY(grid.centerX(cx), grid.centerZ(cz));
     this.cellLos = new Float64Array(grid.size);
     for (let i = 0; i < grid.size; i++) this.cellLos[i] = TERRAIN[TERRAIN_KINDS[grid.kind[i]]].losHeight;
     for (const m of map.mines) {
@@ -362,6 +360,8 @@ export class World {
       for (const c of e.cells) if (vis[c] === 1) return true;
       return false;
     }
+    // máy bay ở trên cao: thấy được từ mọi tầng (tầng cao chỉ che mặt đất)
+    if (e.cat === "unit" && e.alt > AIRBORNE_ALT) return this.sides[side].visAir[this.grid.index(e.x, e.z)] === 1;
     return this.cellVisible(side, e.x, e.z);
   }
 
@@ -555,7 +555,7 @@ export class World {
    * trong đệm `clearCells` của nhà khác. Không thay đổi trạng thái.
    */
   cellForbidden(side: Side, x: number, z: number, kind?: BuildingId): boolean {
-    if (this.grid.blockedAt(x, z)) return true;
+    if (this.grid.blockedAt(x, z) || this.map.rampApron(x, z)) return true;
     for (const m of this.mines) if (dist2(m.x, m.z, x, z) < 5 * 5) return true;
     let inZone = false;
     for (const b of this.buildings) {
@@ -581,13 +581,34 @@ export class World {
     return BUILDINGS[kind].tile ? this.map.inset(x, z) >= WALL : this.map.fits(x, z, hw, hd);
   }
 
+  /**
+   * Nền móng (x ± hw, z ± hd) phải nằm trọn trên MỘT mặt phẳng: mọi ô cùng độ cao, không ô nào là dốc (người dùng chốt
+   * 11/11/2026: công trình chỉ xây trên nền phẳng; ô mép vách đã bị chặn nên nhà không vắt qua vách được), và không ô nào
+   * trong vùng cấm xây quanh khối dốc (để không nhà nào bịt được lối lên xuống tầng). null = được.
+   */
+  private flatError(x: number, z: number, hw: number, hd: number): string | null {
+    const m = this.map;
+    let h: number | null = null;
+    for (const i of this.grid.cellsInRect(x, z, hw, hd)) {
+      const cx = this.grid.centerX(i % this.grid.cols);
+      const cz = this.grid.centerZ(Math.floor(i / this.grid.cols));
+      if (m.rampApron(cx, cz)) return "Không được xây trên dốc hay chắn chân, đỉnh dốc";
+      const y = m.cellY[i];
+      if (h === null) h = y;
+      else if (y !== h) return "Chỉ xây được trên nền phẳng (không vắt qua hai tầng)";
+    }
+    return null;
+  }
+
   /** null = được phép xây; ngược lại là lý do (tiếng Việt) để hiện cho người chơi. */
   canPlace(side: Side, kind: BuildingId, x: number, z: number, rotIn?: number): string | null {
     const rot = normRot(rotIn) ?? defaultRot(kind, z);
     [x, z] = this.snapBuilding(kind, x, z, rot);
     const [hw, hd] = this.blockHalf(kind, rot);
     if (!this.insideMap(kind, x, z, hw, hd)) return "Ngoài bản đồ";
-    for (const i of this.grid.cellsInRect(x, z, hw, hd)) if (this.grid.blockedIdx(i)) return "Vướng sông, đá hoặc công trình";
+    for (const i of this.grid.cellsInRect(x, z, hw, hd)) if (this.grid.blockedIdx(i)) return "Vướng sông, đá, vách hoặc công trình";
+    const flat = this.flatError(x, z, hw, hd);
+    if (flat) return flat;
     const lay = this.layoutError(kind, x, z, rot);
     if (lay) return lay;
     const big = Math.max(hw, hd);
@@ -948,7 +969,9 @@ export class World {
     [x, z] = this.snapBuilding(kind, x, z, rot);
     const [hw, hd] = this.blockHalf(kind, rot);
     if (!this.insideMap(kind, x, z, hw, hd)) return "Ngoài bản đồ";
-    for (const i of this.grid.cellsInRect(x, z, hw, hd)) if (this.grid.blockedIdx(i)) return "Vướng sông, đá, mỏ hoặc công trình";
+    for (const i of this.grid.cellsInRect(x, z, hw, hd)) if (this.grid.blockedIdx(i)) return "Vướng sông, đá, vách, mỏ hoặc công trình";
+    const flat = this.flatError(x, z, hw, hd);
+    if (flat) return flat;
     const lay = this.layoutError(kind, x, z, rot);
     if (lay) return lay;
     return null;
@@ -2674,22 +2697,6 @@ export class World {
     return false;
   }
 
-  /** Độ cao mặt đất nội suy song tuyến giữa tâm các ô (mượt hơn heightAt). Chỉ + − × ÷ nên tất định. */
-  heightSmooth(x: number, z: number): number {
-    const g = this.grid;
-    const fx = clamp((x + this.map.halfW) / CELL - 0.5, 0, g.cols - 1);
-    const fz = clamp((z + this.map.halfH) / CELL - 0.5, 0, g.rows - 1);
-    const ix = Math.min(Math.floor(fx), g.cols - 2);
-    const iz = Math.min(Math.floor(fz), g.rows - 2);
-    const tx = fx - ix;
-    const tz = fz - iz;
-    const H = this.cellH;
-    const i = iz * g.cols + ix;
-    const a = H[i] + (H[i + 1] - H[i]) * tx;
-    const b = H[i + g.cols] + (H[i + g.cols + 1] - H[i + g.cols]) * tx;
-    return a + (b - a) * tz;
-  }
-
   /** Hệ số tốc độ do địa hình của xe mặt đất đang đứng tại (x, z): loại địa hình × kiểu xe (chưa tính độ dốc). */
   terrainFactor(u: Unit): number {
     const spec = UNITS[u.kind];
@@ -2706,7 +2713,11 @@ export class World {
     if (!(k > 0)) k = 0.3;
     const T = RULES.terrain;
     const L = T.slopeProbe;
-    const grade = (this.heightSmooth(u.x + dx * L, u.z + dz * L) - this.heightSmooth(u.x, u.z)) / L;
+    // mặt tầng phẳng tuyệt đối nên chỉ trên khối dốc mới có độ dốc; điểm đo rơi vào ô mép vách thì không tính (xe không
+    // đi vào đó được, vách chặn chứ không làm chậm)
+    const ax = u.x + dx * L;
+    const az = u.z + dz * L;
+    const grade = this.map.staticBlocked(ax, az) ? 0 : (this.map.groundY(ax, az) - this.map.groundY(u.x, u.z)) / L;
     if (grade > 0) k *= Math.max(T.slopeMin, 1 - T.slopeSlow * grade);
     return k;
   }
@@ -2809,21 +2820,21 @@ export class World {
     if (src.cat === "building" || src.air === "none") {
       const T = RULES.terrain;
       const k = w.heightBonus ?? 1;
-      r *= 1 + clamp(this.heightAt(src.x, src.z) * T.rangePerM * k, 0, T.rangeMax * k);
+      r *= 1 + clamp(this.groundTier(src.x, src.z) * T.rangePerTier * k, 0, T.rangeMax * k);
     }
     return r;
   }
 
-  /** Độ cao mặt đất (m) tại ô chứa điểm (x, z). */
-  heightAt(x: number, z: number): number {
-    return this.cellH[this.grid.index(x, z)];
+  /** Tầng mặt đất (0..MAX_TIER) tại ô chứa điểm (x, z); dốc tính theo tầng chân dốc. */
+  groundTier(x: number, z: number): number {
+    return Math.min(this.map.tierAt(x, z), MAX_TIER);
   }
 
   /** Tầm nhìn thực tế: đứng cao nhìn xa hơn, đứng trong rừng / tuyết nhìn gần hơn (không áp cho máy bay). */
   private sightOf(base: number, x: number, z: number, air: boolean): number {
     if (air) return base;
     const T = RULES.terrain;
-    return base * (1 + clamp(this.heightAt(x, z) * T.sightPerM, 0, T.sightMax)) * TERRAIN[this.grid.kindAt(x, z)].sight;
+    return base * (1 + clamp(this.groundTier(x, z) * T.sightPerTier, 0, T.sightMax)) * TERRAIN[this.grid.kindAt(x, z)].sight;
   }
 
   /**
@@ -4528,7 +4539,14 @@ export class World {
 
   // ------------------------------------------------------------------ sương mù & thắng thua
 
+  /** Đánh dấu cả vòng tròn tầm nhìn là thấy (máy bay, Radar, Đài Liên Lạc: không bị tầng hay rừng che). */
   private stamp(st: SideState, x: number, z: number, sight: number): void {
+    this.stampDisc(st.vis, st, x, z, sight);
+    this.stampDisc(st.visAir, null, x, z, sight);
+  }
+
+  /** Đánh dấu vòng tròn tầm nhìn vào lưới `grid` (và vào ô đã khám phá nếu có `st`). */
+  private stampDisc(grid: Uint8Array, st: SideState | null, x: number, z: number, sight: number): void {
     const r = Math.round(sight / CELL);
     const cx = this.grid.colOf(x, z);
     const cz = this.grid.rowOf(x, z);
@@ -4540,22 +4558,22 @@ export class World {
       const nz = cz + d[k + 1];
       if (nx < 0 || nz < 0 || nx >= C || nz >= R) continue;
       const i = nz * C + nx;
-      st.vis[i] = 1;
-      st.explored[i] = 1;
+      grid[i] = 1;
+      if (st) st.explored[i] = 1;
     }
   }
 
   /**
-   * Tầm nhìn có che khuất (thuật toán đường chân trời): bắn tia từ mắt ra từng ô biên của vùng nhìn; đi dọc tia,
-   * giữ "góc ngẩng" lớn nhất của mặt đất đã gặp. Ô nào mà điểm nhìn thấy được của nó (mặt đất + targetHeight)
-   * thấp hơn góc đó thì bị đồi / đá che. Tốn ~8r × r phép tính mỗi quân thay vì r³ (mỗi ô một tia).
-   * Chỉ dùng + − × ÷ và Math.round / sqrt nên tất định.
-   *
-   * Rừng (cellLos) che tầm nhìn như vật cao 4 m đứng trên mặt đất: ô rừng đầu tiên vẫn thấy (bìa rừng), các ô sau nó
-   * bị che. Đứng TRONG rừng thì tia nhìn bỏ qua các ô rừng liền với chỗ mình đứng cho tới khi ra khỏi rừng:
-   * người trong rừng nhìn ra được, người ngoài không nhìn sâu vào được (như bụi rậm). Máy bay, Radar không bị che.
+   * Tầm nhìn của quân mặt đất / công trình theo ĐỊA HÌNH BẬC THANG (người dùng chốt 11/11/2026): bắn tia từ chỗ đứng ra
+   * từng ô biên của vùng nhìn, đi dọc tia:
+   * - ô ở tầng CAO HƠN tầng mình đứng thì không thấy, và che hết phần tia phía sau nó (vách, mỏm đá, vách rìa cũng vậy);
+   * - ô ở tầng bằng hoặc thấp hơn thì thấy: đứng trên cao nhìn xuống được hết.
+   * Rừng (cellLos) cùng tầng hoặc cao hơn chỗ đứng thì che: ô rừng đầu tiên vẫn thấy (bìa rừng), các ô sau nó bị che. Đứng
+   * TRONG rừng thì tia nhìn bỏ qua các ô rừng liền với chỗ mình đứng cho tới khi ra khỏi rừng (như bụi rậm). Rừng ở tầng
+   * thấp hơn không che người đứng trên cao. Chỉ có phép so sánh số nguyên nên tất định.
+   * Mọi ô trên tia, kể cả phần bị che, được đánh dấu vào `visAir` (máy bay trên trời thì thấy được, không bị che).
    */
-  private stampLos(st: SideState, x: number, z: number, sight: number, eye: number): void {
+  private stampLos(st: SideState, x: number, z: number, sight: number): void {
     const r = Math.round(sight / CELL);
     const cx = this.grid.colOf(x, z);
     const cz = this.grid.rowOf(x, z);
@@ -4563,30 +4581,35 @@ export class World {
     const R = this.grid.rows;
     const c0 = cz * C + cx;
     st.vis[c0] = 1;
+    st.visAir[c0] = 1;
     st.explored[c0] = 1;
-    const th = RULES.terrain.targetHeight;
-    const { off, inv, start } = rays(r);
-    const H = this.cellH;
+    const { off, start } = rays(r);
+    const A = st.visAir;
+    const V = this.map.visTier;
     const L = this.cellLos;
+    const vt = V[c0];
     const inForest = L[c0] > 0;
     for (let k = 0; k + 1 < start.length; k++) {
-      let maxSlope = -Infinity;
       let inside = inForest;
+      // tia đã bị che thì vẫn đi tiếp tới hết tầm, chỉ đánh dấu cho máy bay (một lượt thay cho tô thêm cả vòng tròn)
+      let hidden = false;
       for (let j = start[k]; j < start[k + 1]; j++) {
         const nx = cx + off[j * 2];
         const nz = cz + off[j * 2 + 1];
         if (nx < 0 || nz < 0 || nx >= C || nz >= R) break;
         const idx = nz * C + nx;
-        const h = H[idx] - eye;
-        if ((h + th) * inv[j] >= maxSlope) {
-          st.vis[idx] = 1;
-          st.explored[idx] = 1;
+        A[idx] = 1;
+        if (hidden) continue;
+        const t = V[idx];
+        if (t > vt) {
+          hidden = true;
+          continue;
         }
-        // ô này che các ô phía sau bằng mặt đất + vật che (rừng), trừ rừng liền với chỗ đứng
-        const add = L[idx];
-        if (inside && add === 0) inside = false;
-        const g = (inside ? h : h + add) * inv[j];
-        if (g > maxSlope) maxSlope = g;
+        st.vis[idx] = 1;
+        st.explored[idx] = 1;
+        if (L[idx] > 0 && t >= vt) {
+          if (!inside) hidden = true;
+        } else inside = false;
       }
     }
   }
@@ -4595,23 +4618,23 @@ export class World {
     for (const s of [0, 1] as Side[]) {
       const st = this.sides[s];
       st.vis.fill(0);
-      const T = RULES.terrain;
+      st.visAir.fill(0);
       for (const u of this.units) {
         if (u.side !== s) continue;
         const air = u.alt > AIRBORNE_ALT;
         const sight = this.sightOf(UNITS[u.kind].sight, u.x, u.z, air);
-        // máy bay ở trên cao hơn mọi đồi: không bị che
+        // máy bay ở trên cao hơn mọi tầng: không bị che
         if (air) this.stamp(st, u.x, u.z, sight);
-        else this.stampLos(st, u.x, u.z, sight, this.heightAt(u.x, u.z) + T.eyeUnit);
+        else this.stampLos(st, u.x, u.z, sight);
       }
       for (const b of this.buildings) {
         if (b.side !== s) continue;
         const spec = BUILDINGS[b.kind];
-        // Trạm Radar có điện: nhìn xuyên sương mù (và xuyên đồi) cả vùng rộng
+        // Trạm Radar có điện: nhìn xuyên sương mù (và xuyên tầng) cả vùng rộng
         if (spec.radarSight && b.active) this.stamp(st, b.x, b.z, spec.radarSight);
-        else this.stampLos(st, b.x, b.z, this.sightOf(spec.sight, b.x, b.z, false) * (b.built ? 1 : 0.6), this.heightAt(b.x, b.z) + T.eyeBuilding);
+        else this.stampLos(st, b.x, b.z, this.sightOf(spec.sight, b.x, b.z, false) * (b.built ? 1 : 0.6));
       }
-      // Đài Liên Lạc của mình: nhìn xa quanh đài (cột ăng-ten cao, không bị đồi che)
+      // Đài Liên Lạc của mình: nhìn xa quanh đài (cột ăng-ten cao, không bị tầng che)
       for (const up of this.uplinks) if (up.owner === s) this.stamp(st, up.x, up.z, RULES.uplink.sight);
       for (const b of this.buildings) if (b.side !== s && !st.known.has(b.id) && this.visibleTo(s, b)) st.known.add(b.id);
     }

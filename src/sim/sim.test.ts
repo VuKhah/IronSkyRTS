@@ -302,8 +302,10 @@ describe("lõi mô phỏng", () => {
   it("AI xây Nhà Máy Máy Bay và vòng Tường Thành mà không tự nhốt quân mình", () => {
     let blocked = 0;
     const plant = [false, false];
+    const walls = [0, 0];
     const check = (w: World): void => {
       for (const b of w.buildings) if (b.kind === "aircraft-factory" && b.built) plant[b.side] = true;
+      for (const s of [0, 1]) walls[s] = Math.max(walls[s], w.buildings.filter((b) => b.side === s && b.kind === "wall").length);
       if (w.tick % sec(20) !== 0) return;
       for (const s of [0, 1] as const) {
         const hq = w.hqOf(s);
@@ -322,11 +324,13 @@ describe("lõi mô phỏng", () => {
     };
     const { world } = runMatch(2, sec(8 * 60), 1000, undefined, check);
     for (const s of [0, 1]) {
-      const mine = world.buildings.filter((b) => b.side === s);
       // đã xây xong (còn đứng tới cuối hay không tùy giao tranh)
       expect(plant[s], `phe ${s} đã xây Nhà Máy Máy Bay`).toBe(true);
-      expect(mine.filter((b) => b.kind === "wall").length, `phe ${s} có tường`).toBeGreaterThan(10);
+      // phe thua sớm có thể chưa tới lượt xây tường (tường chỉ xây bằng Sắt dư, sau tháp và xưởng lớn); phe còn trụ thì phải có
+      const lost = (world.winner === 0 || world.winner === 1) && world.winner !== s;
+      if (!lost) expect(walls[s], `phe ${s} có tường`).toBeGreaterThan(10);
     }
+    expect(Math.max(walls[0], walls[1]), "ít nhất một phe đã xây vòng tường").toBeGreaterThan(10);
     expect(blocked).toBe(0);
   });
 

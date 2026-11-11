@@ -327,8 +327,10 @@ export interface SideState {
   droneFrac: number;
   /** Số mốc máu Xe Tư Lệnh đã tự rút (`RULES.commanderRetreat.at`): 0 = chưa rút lần nào. */
   retreatLevel: number;
-  /** Ô đang thấy (1) — tính lại mỗi tick. */
+  /** Ô đang thấy (1) — tính lại mỗi tick. Quân mặt đất chỉ thấy ô ở tầng không cao hơn tầng mình đứng. */
   vis: Uint8Array;
+  /** Ô có máy bay trong đó thì thấy được (1): mọi vùng trong tầm nhìn, không bị tầng hay rừng che — tính lại mỗi tick. */
+  visAir: Uint8Array;
   /** Ô đã từng thấy. */
   explored: Uint8Array;
   /** Công trình địch đã từng phát hiện. */

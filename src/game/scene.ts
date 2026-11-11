@@ -299,8 +299,7 @@ export class BattleScene {
     for (let i = 0; i < 1600 * area && spots.length < maxTrees; i++) {
       const x = (rng.next() * 2 - 1) * (map.halfW + SKIRT - 4);
       const z = (rng.next() * 2 - 1) * (map.halfH + SKIRT - 4);
-      let ok = map.inset(x, z) < 10;
-      for (const hl of map.hills) if (Math.hypot(x - hl.x, z - hl.z) < hl.r * 0.8) ok = ok || rng.next() < 0.5;
+      const ok = map.inset(x, z) < 10;
       if (!ok || !clear(x, z)) continue;
       spots.push({ x, z, s: 0.8 + rng.next() * 0.7 });
     }

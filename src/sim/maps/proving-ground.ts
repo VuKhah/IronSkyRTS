@@ -7,7 +7,12 @@
  * cát quanh mỏ Sắt giữa, tuyết trên đỉnh đồi. Kiểm thử chạy AI đấu AI trên bản đồ này: nếu đổi kích thước / hình dáng mà game
  * không chạy đúng thì `npm test` báo (tiêu chí của bước B1, Docs/design/MAPS_PLAN.md).
  */
+import { blobPoly } from "./shapes";
+import { rampOnEdge } from "./shapes";
 import type { MapDef } from "./types";
+
+const MESA = blobPoly(-84, -18, 12, 12, 31, 0.1, 16);
+const PEAK = blobPoly(-84, -18, 6, 6, 32, 0.1, 12);
 
 export const PROVING_GROUND: MapDef = {
   id: "proving-ground",
@@ -31,10 +36,12 @@ export const PROVING_GROUND: MapDef = {
     { res: "oil", x: 0, z: 0, owner: -1 }
   ],
   points: [[20, 55]],
-  hills: [
-    { x: -84, z: -18, r: 12, h: 3.5 },
-    { x: -26, z: 48, r: 10, h: 3 }
+  // khối tầng 1 có đỉnh tầng 2 (thử đủ hai bậc và hai loại dốc 0 → 1, 1 → 2)
+  tiers: [
+    { tier: 1, poly: MESA },
+    { tier: 2, poly: PEAK }
   ],
+  ramps: [rampOnEdge(MESA, -84, -6, "N", 8), rampOnEdge(PEAK, -78, -18, "W", 6)],
   rocks: [{ x: -50, z: -6, r: 5, h: 4 }],
   rivers: [
     {

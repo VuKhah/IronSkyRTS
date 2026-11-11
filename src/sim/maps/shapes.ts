@@ -1,7 +1,7 @@
 /**
  * Trợ giúp dựng hình cho file dữ liệu bản đồ (chạy một lần lúc nạp, tất định: chỉ + − × ÷).
  */
-import type { Vec2 } from "./types";
+import type { RampDef, RampDir, Vec2 } from "./types";
 
 /** Làm mượt đường gấp khúc bằng spline Catmull-Rom: `steps` đoạn nhỏ giữa mỗi hai điểm điều khiển. */
 export function smoothPath(pts: readonly Vec2[], steps: number): Vec2[] {
@@ -93,4 +93,31 @@ export function wobblePoly(poly: readonly Vec2[], amp: number, seed: number, ste
     }
   }
   return out;
+}
+
+/**
+ * Khối dốc đặt đúng trên mép một vùng tầng: đi từ (x, z) dọc trục leo (N/S: dọc z, E/W: dọc x), lấy chỗ cắt mép đa giác
+ * gần nhất làm tâm dốc. Dùng khi dựng bản đồ để khỏi phải tự đo tọa độ mép (nhất là mép lượn của `wobblePoly`).
+ */
+export function rampOnEdge(poly: readonly Vec2[], x: number, z: number, dir: RampDir, width: number): RampDef {
+  const ns = dir === "N" || dir === "S";
+  let best = Infinity;
+  let at = ns ? z : x;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [ax, az] = poly[j];
+    const [bx, bz] = poly[i];
+    // đường thẳng cố định x (dốc N/S) hoặc cố định z (dốc E/W) cắt cạnh AB
+    const a0 = ns ? ax : az;
+    const b0 = ns ? bx : bz;
+    const fixed = ns ? x : z;
+    if (a0 > fixed === b0 > fixed) continue;
+    const t = (fixed - a0) / (b0 - a0);
+    const v = ns ? az + (bz - az) * t : ax + (bx - ax) * t;
+    const d = Math.abs(v - (ns ? z : x));
+    if (d < best) {
+      best = d;
+      at = v;
+    }
+  }
+  return ns ? { x, z: at, dir, width } : { x: at, z, dir, width };
 }
