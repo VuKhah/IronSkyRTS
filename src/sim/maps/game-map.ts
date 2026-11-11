@@ -145,6 +145,8 @@ export class GameMap {
   private readonly cellRim: Uint8Array;
   /** Ô thuộc vùng cấm xây quanh khối dốc (cả mặt dốc). */
   private readonly cellApron: Uint8Array;
+  /** Ô mặt cầu (ô nước có cầu, xe đi được): xe đứng trên mặt cầu. Tính theo ô để khớp đúng với chỗ đi được. */
+  private readonly cellDeck: Uint8Array;
 
   /** `opts.accel = false`: tắt lưới khoang, chỉ dùng trong kiểm thử để so với cách tính đầy đủ. */
   constructor(def: MapDef, opts: { accel?: boolean } = {}) {
@@ -193,6 +195,7 @@ export class GameMap {
     this.cellBlock = new Uint8Array(n);
     this.cellRim = new Uint8Array(n);
     this.cellApron = new Uint8Array(n);
+    this.cellDeck = new Uint8Array(n);
     this.rasterize();
     this.ramps = def.symmetric ? this.rampsHalf.flatMap((r) => [r, mirrorRamp(r)]) : this.rampsHalf;
   }
@@ -323,6 +326,7 @@ export class GameMap {
         this.cellRamp[i] = ramp;
         this.cellBlock[i] = block ? 1 : 0;
         walk[i] = deck > y ? deck : y;
+        if (deck > y && !block) this.cellDeck[i] = 1;
       }
     // Vách giữa hai tầng: hai ô đi được cạnh nhau (8 hướng) lệch quá STEP_MAX thì chặn ô cao hơn. Ô cao hơn là dốc (dốc
     // nhô ra khỏi khối tầng) thì chặn ô thấp cạnh sườn dốc, để xe không leo ngang lên sườn dốc.
@@ -507,17 +511,14 @@ export class GameMap {
     return this.secondHalf(cx, cz) ? rampY(this.rampsHalf[k], -x, -z) : rampY(this.rampsHalf[k], x, z);
   }
 
-  /** Mặt cầu cho xe chạy trên cầu (null nếu không ở trên cầu). */
+  /**
+   * Mặt cầu cho xe chạy trên cầu (null nếu không ở trên cầu). Tính theo Ô: ô nước có cầu là ô đi được, nên mọi điểm xe đứng
+   * được trên cầu đều có mặt cầu (trước đây tính theo khoảng cách liên tục tới lối qua, mép cầu có chỗ đi được mà không có mặt
+   * cầu, xe tụt xuống đáy sông).
+   */
   deckHeight(x: number, z: number): number | null {
-    const b = this.bucketOf(x, z);
-    for (let ri = 0; ri < this.rivers.length; ri++) {
-      const r = this.rivers[ri];
-      const hit = this.riverHitNear(ri, x, z, b);
-      if (hit.dist >= r.def.bank + 0.5) continue;
-      const c = this.crossingOf(r, hit.along);
-      if (c && c.kind === "bridge") return DECK;
-    }
-    return null;
+    if (x <= -this.halfW || x >= this.halfW || z <= -this.halfH || z >= this.halfH) return null;
+    return this.cellDeck[this.cellIndex(x, z)] === 1 ? DECK : null;
   }
 
   /** Độ cao mặt đất xe đứng (cầu hoặc địa hình). */

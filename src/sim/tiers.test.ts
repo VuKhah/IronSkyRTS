@@ -207,3 +207,44 @@ describe("địa hình bậc thang: thân xe không lấn vào vách", () => {
     }
   });
 });
+
+describe("địa hình bậc thang: mũi xe và mặt cầu", () => {
+  it("xe chạy thẳng mũi vào chân vách: mũi xe (nửa thân dài) không chui vào vách", () => {
+    for (const kind of ["lynx", "titan", "hauler"] as UnitId[]) {
+      const w = world();
+      const u = spawn(w, kind, -46, 20);
+      // đích ngay chân vách (vách ở x = -30), xe đi về hướng Đông nên mũi chĩa thẳng vào vách
+      w.step([{ side: 0, order: { t: "move", ids: [u.id], x: -30.5, z: 20 } }]);
+      let worst = -Infinity;
+      for (let i = 0; i < sec(15); i++) {
+        w.step([]);
+        const half = UNITS[kind].halfLen ?? UNITS[kind].radius;
+        worst = Math.max(worst, u.x + Math.abs(u.hx) * half);
+      }
+      // trước khi sửa (11/11/2026): mũi Titan chui vào vách ~1,7 m (giữ cách theo bán kính 1,9 × 0,85 thay vì nửa thân 3,1)
+      expect(worst, `${kind}: mũi xe lấn vào vách`).toBeLessThan(-30 + 0.6);
+    }
+  });
+
+  it("mọi điểm xe đứng được (kể cả mép cầu) đều cao hơn đáy sông: không xe nào tụt xuống sông", () => {
+    for (const def of [...MAP_DEFS, ...DEV_MAP_DEFS]) {
+      if (def.id === "big-test") continue;
+      const m = new GameMap(def);
+      for (let r = 0; r < m.rows; r++)
+        for (let c = 0; c < m.cols; c++)
+          for (const [fx, fz] of [
+            [0.1, 0.1],
+            [0.9, 0.1],
+            [0.5, 0.5],
+            [0.1, 0.9],
+            [0.9, 0.9]
+          ]) {
+            const x = -m.halfW + (c + fx) * 2;
+            const z = -m.halfH + (r + fz) * 2;
+            if (m.staticBlocked(x, z)) continue;
+            // bãi cạn sâu nhất 0,3 m; đáy sông sâu ≥ 1,8 m
+            expect(m.groundY(x, z), `${def.id}: (${x.toFixed(1)}, ${z.toFixed(1)})`).toBeGreaterThan(-0.5);
+          }
+    }
+  });
+});

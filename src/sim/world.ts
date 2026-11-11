@@ -56,12 +56,18 @@ const MOVER_SHARE = 0.85;
  */
 const WALL_CLEAR = 0.85;
 const WALL_PUSH = 0.3;
-/** Ô cách ô bị chặn cố định hơn chừng này ô (6 m > bán kính xe to nhất 2,7 m) thì thân xe chắc chắn không chạm vách. */
+/** Đích sát vách được dời ra xa nhất chừng này (m) cho vừa thân xe (World.clearGoal). */
+const GOAL_SHIFT = 3;
+/** Ô cách ô bị chặn cố định hơn chừng này ô (≥ 5 m > nửa thân xe dài nhất 4,5 m × WALL_CLEAR) thì thân xe chắc chắn không chạm vách. */
 const WALL_FAR = 3;
 /** 16 hướng dò cách đều 22,5° (cos / sin viết sẵn thành hằng số, không gọi Math.cos trong sim); hướng đối nhau đứng liền nhau. */
 const C1 = 0.9238795325112867;
 const S1 = 0.3826834323650898;
 const R2 = 0.7071067811865476;
+/** Hướng thử khi tìm chỗ đứng rải thảm: thẳng, rồi lệch dần hai bên (cos, sin). */
+const APPROACH_DIRS: readonly (readonly [number, number])[] = [
+  [1, 0], [C1, S1], [C1, -S1], [R2, R2], [R2, -R2], [S1, C1], [S1, -C1], [0, 1], [0, -1]
+];
 const PROBES: readonly (readonly [number, number])[] = [
   [1, 0], [-1, 0], [0, 1], [0, -1],
   [R2, R2], [-R2, -R2], [R2, -R2], [-R2, R2],
@@ -2694,6 +2700,7 @@ export class World {
   private setPath(u: Unit, x: number, z: number): boolean {
     // tìm đường nhanh nhất theo kiểu xe (bánh / xích) và địa hình (B3b)
     const spec = UNITS[u.kind];
+    [x, z] = this.clearGoal(u, x, z);
     const p = this.grid.findPath(u.x, u.z, x, z, this.grid.field(spec.mobility ?? "wheel", !!spec.slowResist));
     u.path = p ?? [];
     u.pathI = 0;
@@ -2705,23 +2712,54 @@ export class World {
    * Hướng đẩy ra khỏi vách tại (x, z): tổng ngược hướng các điểm dò quanh thân (WALL_CLEAR × bán kính) rơi vào ô bị chặn
    * cố định (vách, đá, sông), chưa chuẩn hóa. (0, 0) = thân không chạm gì, hoặc hai bên chạm đều nhau (khe hẹp).
    */
-  private wallNormal(r: number, x: number, z: number): [number, number] {
-    // xa vách hơn WALL_FAR ô (lớn hơn mọi bán kính xe): khỏi dò
+  private wallNormal(u: Unit, x: number, z: number, fx = u.hx, fz = u.hz): [number, number] {
+    // xa vách hơn WALL_FAR ô (lớn hơn mọi thân xe): khỏi dò
     if (this.grid.wallDist[this.grid.index(x, z)] > WALL_FAR) return [0, 0];
+    const spec = UNITS[u.kind];
+    // điểm dò nằm trên hình elip theo thân xe: nửa rộng = bán kính, nửa dài = halfLen, trục dài theo hướng thân (fx, fz)
+    const W = spec.radius * WALL_CLEAR;
+    const L = (spec.halfLen ?? spec.radius) * WALL_CLEAR;
     let px = 0;
     let pz = 0;
-    for (const [dx, dz] of PROBES)
-      if (this.map.staticBlocked(x + dx * r, z + dz * r)) {
-        px -= dx;
-        pz -= dz;
+    for (const [c, s] of PROBES) {
+      const ox = fx * c * L - fz * s * W;
+      const oz = fz * c * L + fx * s * W;
+      if (this.map.staticBlocked(x + ox, z + oz)) {
+        px -= ox;
+        pz -= oz;
       }
+    }
     return [px, pz];
+  }
+
+  /**
+   * Đích sát vách thì dời ra cho vừa thân xe (quay theo hướng đi tới đích), mỗi bước 0,5 m theo pháp tuyến vách, tối đa
+   * GOAL_SHIFT m: thân xe không được lấn vào vách nên đích quá sát thì xe không bao giờ tới nơi.
+   */
+  private clearGoal(u: Unit, x: number, z: number): [number, number] {
+    if (u.air !== "none") return [x, z];
+    const dx = x - u.x;
+    const dz = z - u.z;
+    const d = Math.sqrt(dx * dx + dz * dz);
+    const fx = d > 1e-6 ? dx / d : u.hx;
+    const fz = d > 1e-6 ? dz / d : u.hz;
+    for (let i = 0; i < GOAL_SHIFT * 2; i++) {
+      const [px, pz] = this.wallNormal(u, x, z, fx, fz);
+      const l = Math.sqrt(px * px + pz * pz);
+      if (l < 1e-9) break;
+      const nx = x + (px / l) * 0.5;
+      const nz = z + (pz / l) * 0.5;
+      if (this.grid.blockedAt(nx, nz)) break;
+      x = nx;
+      z = nz;
+    }
+    return [x, z];
   }
 
   private tryMove(u: Unit, nx: number, nz: number): boolean {
     // thân xe không lấn sâu thêm vào vách: ở chỗ mới mà thân chạm vách thì bỏ phần bước đi hướng vào vách, chỉ giữ phần trượt
     // dọc vách (khe hẹp hai bên đều chạm thì pháp tuyến triệt tiêu, đi như cũ)
-    const [px, pz] = this.wallNormal(UNITS[u.kind].radius * WALL_CLEAR, nx, nz);
+    const [px, pz] = this.wallNormal(u, nx, nz);
     const l = Math.sqrt(px * px + pz * pz);
     if (l > 1e-9) {
       const ux = px / l;
@@ -4246,7 +4284,7 @@ export class World {
   private keepOffWalls(): void {
     for (const u of this.units) {
       if (u.hp <= 0 || u.air !== "none" || this.anchored(u)) continue;
-      const [px, pz] = this.wallNormal(UNITS[u.kind].radius * WALL_CLEAR, u.x, u.z);
+      const [px, pz] = this.wallNormal(u, u.x, u.z);
       const l = Math.sqrt(px * px + pz * pz);
       if (l < 1e-9) continue;
       const nx = u.x + (px / l) * WALL_PUSH;
@@ -4398,8 +4436,19 @@ export class World {
     const want = d > range ? Math.max(range - 2, (range + min) / 2) : min + 3;
     const ux = d > 1e-6 ? dx / d : 1;
     const uz = d > 1e-6 ? dz / d : 0;
-    const f = this.grid.nearestFree(u.tx + ux * want, u.tz + uz * want, 8);
-    return !!f && this.setPath(u, f[0], f[1]);
+    // thử hướng lùi thẳng trước, rồi lệch dần ±22,5°, ±45°…: chỗ đứng phải vừa thân xe (sát vách thì clearGoal dời ra) mà
+    // vẫn nằm trong [tầm tối thiểu, tầm]; hướng xoay theo cùng một góc nên hai phe soi gương vẫn chọn đối xứng
+    for (const [c, s] of APPROACH_DIRS) {
+      const vx = ux * c - uz * s;
+      const vz = uz * c + ux * s;
+      const f = this.grid.nearestFree(u.tx + vx * want, u.tz + vz * want, 8);
+      if (!f) continue;
+      const [gx, gz] = this.clearGoal(u, f[0], f[1]);
+      const g2 = dist2(gx, gz, u.tx, u.tz);
+      if (g2 < min * min || g2 > range * range) continue;
+      if (this.setPath(u, gx, gz)) return true;
+    }
+    return false;
   }
 
   /**

@@ -204,6 +204,11 @@ export interface UnitSpec {
   sight: number;
   /** Bán kính va chạm / chọn (m). */
   radius: number;
+  /**
+   * Nửa chiều dài thân xe mặt đất (m), đo theo mô hình (`npm run model-report`). Thân xe dài hơn bán kính va chạm nhiều (Titan
+   * rộng 3,6 m nhưng dài 6,5 m): sim giữ mũi / đuôi xe khỏi lấn vào vách theo số này. Bỏ trống = bằng `radius`.
+   */
+  halfLen?: number;
   /** Độ cao đặt thanh máu trên quân (m), chỉ dùng cho phần vẽ. Bỏ trống = theo cỡ thường. */
   barHeight?: number;
   /** Sức chiếm mỏ (0 = không chiếm được). */
@@ -523,6 +528,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     mobility: "wheel",
     sight: 16,
     radius: 1.7,
+    halfLen: 2.1,
     captureWeight: 0,
     cargo: 100,
     features: [
@@ -556,6 +562,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     mobility: "wheel",
     sight: 28,
     radius: 1.4,
+    halfLen: 2.25,
     captureWeight: 1,
     weapon: { name: "Súng máy 20mm", dmgGround: 32, dmgAir: 14, range: 15.5, cooldown: 0.65, dmgType: "normal", splash: 0, visual: "bullet", traverse: 120 },
     features: [
@@ -589,6 +596,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     mobility: "track",
     sight: 22,
     radius: 1.9,
+    halfLen: 3.1,
     captureWeight: 1,
     weapon: { name: "Pháo chính 120mm", dmgGround: 136, dmgAir: 0, range: 19.5, cooldown: 3, dmgType: "he", splash: 1, visual: "cannon", traverse: 60 },
     frontArmor: { reduce: 0.25, arc: 60 },
@@ -624,6 +632,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     mobility: "track",
     sight: 28,
     radius: 1.6,
+    halfLen: 2.3,
     captureWeight: 1,
     weapon: {
       name: "Loạt 12 tên lửa tầm nhiệt, 2 khẩu",
@@ -674,6 +683,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     mobility: "wheel",
     sight: 20,
     radius: 1.8,
+    halfLen: 2.7,
     captureWeight: 1,
     weapon: {
       name: "Dàn 24 tên lửa 122mm",
@@ -894,6 +904,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     mobility: "track",
     sight: 18,
     radius: 2.7, // mô hình phóng to ×1,5 (06/11/2026)
+    halfLen: 4.5,
     captureWeight: 1,
     weapon: {
       name: "Pháo 155mm nòng dài",
