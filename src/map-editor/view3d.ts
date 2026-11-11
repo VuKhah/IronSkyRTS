@@ -5,6 +5,7 @@
  */
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { UNITS } from "../sim/content";
 import { colName, getMap, mapRuler, TIER_H } from "../sim/maps";
 import { cellTier, rampBlocks, type RampBlock } from "./layout";
 
@@ -157,10 +158,59 @@ function build(grid: string[][], surf: string[][]): void {
     list.forEach(([x, y, z], i) => m.setMatrixAt(i, mat.makeTranslation(x, y + dy, z)));
     group.add(m);
   };
+  // mô hình đối chiếu dạng hộp (không phải mô hình thật): Titan và Pháo Tự Hành đang hạ bệ, đặt giữa vùng
+  const groundAt = (x: number, z: number): number => {
+    const c = Math.floor((x + map.halfW) / CELL);
+    const r = Math.floor((z + map.halfH) / CELL);
+    const h = corners(c, r);
+    return (h[0] + h[1] + h[2] + h[3]) / 4;
+  };
+  group.add(titanBox(cx - 12, cz, groundAt(cx - 12, cz)), artilleryBox(cx + 12, cz, groundAt(cx + 12, cz)));
   inst(new THREE.ConeGeometry(1.3, 4.5, 6), 0x2f5527, trees, 2.25);
   inst(new THREE.BoxGeometry(2, 3, 2), 0x6b6258, rocks, 1.5);
   scene.add(group);
   render();
+}
+
+// ------------------------------------------------------------------ mô hình hộp đối chiếu
+const TEAM = new THREE.MeshLambertMaterial({ color: 0x2e7fd0, flatShading: true });
+const DARK = new THREE.MeshLambertMaterial({ color: 0x1d3f63, flatShading: true });
+function boxAt(w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number): THREE.Mesh {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y + h / 2, z);
+  return m;
+}
+/** Titan: thân dài 2 × halfLen, ngang 2 × radius (content.ts), cao ~2 m + tháp pháo và nòng; mũi xe hướng Bắc. */
+function titanBox(x: number, z: number, y: number): THREE.Group {
+  const t = UNITS.titan;
+  const len = (t.halfLen ?? t.radius) * 2;
+  const wid = t.radius * 2;
+  const g = new THREE.Group();
+  g.add(boxAt(wid, 1.6, len, TEAM, 0, 0, 0), boxAt(wid * 0.62, 0.9, len * 0.45, DARK, 0, 1.6, 0.3), boxAt(0.3, 0.3, 3.6, DARK, 0, 1.9, -2.2));
+  g.position.set(x, y, z);
+  return g;
+}
+/** Pháo Tự Hành đang HẠ BỆ: thân dài 2 × halfLen; bốn càng xoè chéo cắm đất; tháp pháo nòng dài ngóc lên. */
+function artilleryBox(x: number, z: number, y: number): THREE.Group {
+  const a = UNITS.artillery;
+  const len = (a.halfLen ?? a.radius) * 2;
+  const wid = a.radius * 2 * 0.6;
+  const g = new THREE.Group();
+  g.add(boxAt(wid, 1.4, len * 0.7, TEAM, 0, 0.3, 0));
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1]) {
+      const arm = boxAt(0.7, 0.5, len * 0.45, DARK, 0, 0, 0);
+      arm.position.set(sx * wid * 0.7, 0, sz * len * 0.3);
+      arm.rotation.y = sx * sz * -0.6; // xoè ra ngoài
+      g.add(arm);
+    }
+  g.add(boxAt(3, 1.4, 3.4, DARK, 0, 1.7, 0.4));
+  const barrel = boxAt(0.4, 0.4, 8, DARK, 0, 0, 0);
+  barrel.position.set(0, 3.2, -3.4);
+  barrel.rotation.x = 0.35; // ngóc nòng
+  g.add(barrel);
+  g.position.set(x, y, z);
+  return g;
 }
 
 // ------------------------------------------------------------------ nạp bản vẽ, tự nạp lại khi file đổi
@@ -179,6 +229,7 @@ async function load(): Promise<void> {
 }
 document.getElementById("info")!.innerHTML =
   `<b>Sa bàn ${AREA}</b> · ${Math.round(A.x1 - A.x0)} × ${Math.round(A.z1 - A.z0)} m · mỗi bậc tầng cao ${TIER_H} m<br>` +
+  `Hộp xanh: Titan (trái) và Pháo Tự Hành đang hạ bệ (phải) để so cỡ<br>` +
   `Kéo chuột trái: xoay · lăn: phóng · chuột phải: dời · đổi vùng: ?area=${colName(0)}1:${colName(2)}3`;
 resize();
 void load();
