@@ -278,7 +278,7 @@ export class Stage {
     this.viewName = name;
     if (!rig) return;
     const r = rig.radius;
-    const target = new THREE.Vector3(0, r * 0.42, 0);
+    const target = new THREE.Vector3(0, aimY(rig, 0.42), 0);
     const dir = VIEW_DIRS[name].clone().normalize();
     this.camera.position.copy(target).addScaledVector(dir, r * 3.1);
     this.controls.target.copy(target);
@@ -408,7 +408,7 @@ export class Stage {
     const size = r.getSize(new THREE.Vector2());
     const w = size.x / 2;
     const h = size.y / 2;
-    const target = new THREE.Vector3(0, rig.radius * 0.42, 0);
+    const target = new THREE.Vector3(0, aimY(rig, 0.42), 0);
     this.sheetCam.aspect = w / h;
     this.sheetCam.updateProjectionMatrix();
     r.setScissorTest(true);
@@ -440,6 +440,23 @@ export class Stage {
 }
 
 /** Chụp ảnh đại diện cho danh sách bằng một renderer nhỏ riêng (tạo một lần, dùng cho mọi mô hình). */
+/**
+ * Độ cao điểm camera nhìn vào: mặc định `radius × k` (mô hình đứng trên mặt đất), nhưng mô hình treo cao (drone luôn lơ lửng
+ * ở độ cao bay) thì nhìn vào tâm phần đang hiện, không thì khung ảnh chỉ thấy mặt đất trống.
+ */
+export function aimY(rig: Rig, k: number): number {
+  rig.root.updateMatrixWorld(true);
+  const box = new THREE.Box3();
+  const visit = (o: THREE.Object3D): void => {
+    if (!o.visible) return;
+    if ((o as THREE.Mesh).isMesh) box.expandByObject(o, false);
+    else for (const c of o.children) visit(c);
+  };
+  visit(rig.root);
+  const base = rig.radius * k;
+  return box.isEmpty() ? base : Math.max(base, (box.min.y + box.max.y) / 2);
+}
+
 export class Thumbnailer {
   private renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   private scene = new THREE.Scene();
@@ -457,7 +474,7 @@ export class Thumbnailer {
     this.scene.add(rig.root);
     rig.update(0.016, 0, new Set(rig.defaultOn.filter((a) => a !== "power" && a !== "capture" && a !== "aura")));
     const r = rig.radius;
-    const target = new THREE.Vector3(0, r * 0.38, 0);
+    const target = new THREE.Vector3(0, aimY(rig, 0.38), 0);
     this.camera.position.copy(target).addScaledVector(new THREE.Vector3(1, 0.55, 1.2).normalize(), r * 1.85);
     this.camera.lookAt(target);
     this.renderer.render(this.scene, this.camera);

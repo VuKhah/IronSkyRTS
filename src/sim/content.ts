@@ -25,7 +25,7 @@ export interface Cost {
   oil: number;
 }
 
-export type UnitId = "commander" | "hauler" | "lynx" | "titan" | "skyguard" | "rocket" | "artillery" | "falcon" | "valkyrie" | "scout";
+export type UnitId = "commander" | "hauler" | "lynx" | "titan" | "skyguard" | "rocket" | "artillery" | "falcon" | "valkyrie" | "scout" | "shield";
 
 export type BuildingId =
   | "hq"
@@ -231,12 +231,18 @@ export interface UnitSpec {
    * Ngoài vùng lưới điện (vùng `zone` của công trình phe mình) tốn 1 giây pin mỗi giây bay, trong vùng thì tự sạc `charge`
    * giây pin mỗi giây. Pin còn dưới `low` (tỉ lệ) thì hậu cần tự cho bay về vùng lưới điện gần nhất. `alt`: độ cao bay (m).
    */
-  hover?: { battery: number; charge: number; alt: number; low: number };
+  hover?: { battery: number; charge: number; alt: number; low: number; draw: number };
   /**
    * Cảm tử: chỉ khi được lệnh tấn công một mục tiêu mặt đất, hoặc khi pin cạn mà có địch mặt đất trong tầm nhìn. Lao vào
    * mục tiêu rồi nổ: `dmg` sát thương loại `dmgType`, lan bán kính `splash` m.
    */
   kamikaze?: { dmg: number; splash: number; dmgType: DmgType };
+  /**
+   * Vùng khiên (Drone Khiên): quân mình trong bán kính `radius` m bị bắn (hoặc chính drone bị bắn) thì tự bật, giữ `duration`
+   * giây; mọi sát thương vào quân / công trình phe mình trong vùng bị khiên hứng trước, hứng đủ `absorb` thì vỡ sớm. Dùng xong
+   * phải sạc lại `recharge` giây trong vùng lưới điện (hậu cần tự đưa về sạc, điện sạc tính vào tiêu thụ của phe).
+   */
+  shield?: { radius: number; duration: number; absorb: number; recharge: number };
   features: string[];
   beats: EntityId[];
   fears: EntityId[];
@@ -713,7 +719,7 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     sight: 40,
     radius: 1.3,
     captureWeight: 0,
-    hover: { battery: 60, charge: 4, alt: 8, low: 0.25 },
+    hover: { battery: 60, charge: 4, alt: 8, low: 0.25, draw: 2 },
     // 3 chiếc hạ vừa một Lynx (3 × 150 × 1,25 = 562 > 510), không hạ nổi Titan (3 × 150 × 0,6 = 270 < 960)
     kamikaze: { dmg: 150, splash: 2.5, dmgType: "he" },
     features: [
@@ -725,6 +731,40 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     ],
     beats: ["lynx", "hauler"],
     fears: ["skyguard", "turret"]
+  },
+  shield: {
+    id: "shield",
+    kind: "unit",
+    name: "Drone Khiên",
+    short: "Drone Khiên",
+    code: "KHN",
+    hotkey: "K",
+    role: "Bay theo cụm quân, gặp nguy tự bật vòm khiên 12 m hứng đạn cho quân bên dưới trong 10 giây.",
+    domain: "air",
+    group: "KQ",
+    batch: 1,
+    mvp: true,
+    // số tạm (11/11/2026), chờ buổi cân bằng
+    cost: { iron: 200, oil: 40 },
+    buildTime: 8,
+    builtAt: "special-factory",
+    hp: 260,
+    armorClass: "light",
+    speed: 9,
+    sight: 22,
+    radius: 2.2,
+    captureWeight: 0,
+    hover: { battery: 120, charge: 4, alt: 6, low: 0.2, draw: 6 },
+    shield: { radius: 12, duration: 10, absorb: 900, recharge: 20 },
+    features: [
+      "Vòm khiên bán kính 12 m: quân mình bên dưới bị bắn thì tự bật, giữ 10 giây.",
+      "Khiên hứng trước mọi sát thương vào quân và công trình phe mình trong vùng; hứng đủ 900 thì vỡ sớm.",
+      "Dùng xong phải sạc lại 20 giây trong vùng lưới điện: hậu cần tự đưa drone về sạc rồi Tư lệnh điều ra lại.",
+      "Pin bay 120 giây, sạc trong vùng lưới điện; điện sạc tính vào tiêu thụ của phe (ưu tiên thấp nhất).",
+      "Không vũ khí. Đi cùng cụm quân tấn công để đỡ một đợt hỏa lực."
+    ],
+    beats: ["rocket", "artillery"],
+    fears: ["skyguard", "falcon"]
   },
   falcon: {
     id: "falcon",
@@ -953,7 +993,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
       [-7, -3, 3, 3]
     ],
     padFace: 3,
-    produces: ["rocket", "artillery", "scout"],
+    produces: ["rocket", "artillery", "scout", "shield"],
     power: -10,
     priority: 3,
     features: [

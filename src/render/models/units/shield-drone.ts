@@ -18,7 +18,6 @@ const POD = 3.15; // tâm vỏ quạt
 const ROTOR_R = 0.72;
 const FIELD_R = 12;
 const PUFFS = 30;
-const LEG = 1.15;
 
 /** Đỉnh thứ i của lục giác bán kính r ở độ cao y, đỉnh 0 chĩa về mũi (+z). */
 const hex = (i: number, r: number, y = 0): P3 => [r * Math.sin((i * Math.PI) / 3), y, r * Math.cos((i * Math.PI) / 3)];
@@ -117,14 +116,7 @@ export function buildShieldDrone(p: Palette): Rig {
     const [x, , z] = hex(i + 0.5, 0.92);
     add(part("Vòi phun khói", cyl(0.1, 0.15, 0.3, p.metal, 8, x, -0.72, z)));
   }
-  for (const i of [1, 3, 5]) {
-    const [x, , z] = hex(i, RI + 0.35);
-    const fx = x * 1.14;
-    const fz = z * 1.14;
-    add(part("Càng đáp", strut([x, -HALF_T, z], [fx, -LEG, fz], 0.11, p.hullDark)));
-    add(part("Ty giảm chấn", strut([x * 0.68, -0.3, z * 0.68], [fx, -LEG + 0.3, fz], 0.06, p.metal)));
-    add(part("Đế càng đáp", cyl(0.34, 0.4, 0.1, p.hullDark, 8, fx, -LEG, fz)));
-  }
+  // không có càng đáp: drone không cất / hạ cánh, lúc nào cũng bay (người dùng chốt 11/11/2026)
 
   // ================================================================ 5. VÙNG KHIÊN (vòm lục giác) VÀ VÙNG KHÓI, bám mặt đất
   const color = (glow.emissive as THREE.Color).getHex() || (glow.color as THREE.Color).getHex();
@@ -149,7 +141,6 @@ export function buildShieldDrone(p: Palette): Rig {
   return droneRig({
     frame,
     rotors,
-    parkY: LEG + 0.05,
     flyY: 6,
     radius: 10.5, // đủ thấy trọn vùng khiên đường kính 24 m
     ground: [field, smoke],

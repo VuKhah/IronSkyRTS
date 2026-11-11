@@ -212,6 +212,7 @@ function newSide(cells: number): SideState {
     mobilizeUntil: -1,
     mobilizeReady: 0,
     retreatLevel: 0,
+    droneFrac: 1,
     vis: new Uint8Array(cells),
     explored: new Uint8Array(cells),
     known: new Set(),
@@ -280,6 +281,8 @@ export class World {
   readonly sandbox: SandboxState | null;
   private nextId = 1;
   private commanders: [Unit | null, Unit | null] = [null, null];
+  /** Drone Khiên đang bật vòm (làm mới đầu mỗi tick, drone bật giữa tick thì tự thêm vào). */
+  private shields: Unit[] = [];
   private sold = new Set<number>();
 
   constructor(
@@ -624,6 +627,7 @@ export class World {
         st.oil = SANDBOX_RES;
       }
     for (const c of cmds) this.applyOrder(c.side, c.order);
+    this.shields = this.units.filter((u) => u.shieldUntil > this.tick && u.shieldHp > 0);
     for (const s of [0, 1] as Side[]) if (this.hqOf(s)?.built) this.sides[s].iron += RULES.hqTrickle * DT;
     this.updateBuildings();
     this.updateMines();
@@ -724,7 +728,10 @@ export class World {
       ammo2: spec.secondary?.ammo ?? 0,
       xp: 0,
       rank: 0,
-      lastHit: -1000
+      lastHit: -1000,
+      shieldHp: 0,
+      shieldUntil: -1,
+      shieldCharge: 1
     };
     this.units.push(u);
     this.byId.set(u.id, u);
@@ -2346,6 +2353,12 @@ export class World {
         else if (spec.power < 0) tier[spec.priority ?? 3] -= spec.power;
         if (spec.storage) batteries.push(b);
       }
+      // drone đang sạc trong vùng lưới điện (pin chưa đầy hoặc khiên chưa sạc xong): ưu tiên thấp nhất, cùng mức xưởng xe
+      for (const u of this.units) {
+        const H = UNITS[u.kind].hover;
+        if (!H || u.side !== s || u.hp <= 0 || !this.droneNeedsCharge(u) || !this.inGrid(s, u.x, u.z)) continue;
+        tier[3] += H.draw;
+      }
       const use = tier[1] + tier[2] + tier[3];
       const plantFull = plants.length * plantSpec.power;
       const plantCap = oilPerMwTick > 0 ? Math.min(plantFull, st.oil / oilPerMwTick) : plantFull;
@@ -2411,6 +2424,7 @@ export class World {
         b.powerFrac = frac[spec.priority ?? 3];
         b.active = spec.radarSight ? b.powerFrac >= P.radarMin : b.powerFrac > 0;
       }
+      st.droneFrac = frac[3];
       st.powerCap = hqCap + plantCap;
       st.powerUse = use;
       st.powerPending = pending;
@@ -3681,13 +3695,22 @@ export class World {
    * việc lại. Cảm tử (`spec.kamikaze`): nhiệm vụ "attack" = lao vào mục tiêu mặt đất rồi nổ; pin cạn giữa đường thì lao vào
    * địch mặt đất gần nhất đang thấy, không có thì rơi.
    */
+  /** Drone còn cần sạc: pin chưa đầy, hoặc khiên đã dùng mà chưa sạc xong. */
+  private droneNeedsCharge(u: Unit): boolean {
+    const spec = UNITS[u.kind];
+    return u.fuel < spec.hover!.battery || (!!spec.shield && u.shieldCharge < 1 && u.shieldUntil <= this.tick);
+  }
+
   private updateDrone(u: Unit): void {
     const spec = UNITS[u.kind];
     const H = spec.hover!;
     u.alt = H.alt;
     const home = this.inGrid(u.side, u.x, u.z);
-    if (home) u.fuel = Math.min(H.battery, u.fuel + H.charge * DT);
+    // sạc trong vùng lưới điện, nhanh chậm theo điện hậu cần cấp cho drone (ưu tiên thấp nhất)
+    const pw = this.sides[u.side].droneFrac;
+    if (home) u.fuel = Math.min(H.battery, u.fuel + H.charge * DT * pw);
     else if (!this.sandbox?.infiniteFuel) u.fuel -= DT;
+    if (spec.shield) this.updateShield(u, home, pw);
     // pin cạn: lao vào địch gần nhất đang thấy, không có thì rơi
     if (u.fuel <= 0) {
       u.fuel = 0;
@@ -3705,7 +3728,7 @@ export class World {
       u.rtb = true;
       this.alert(u.side, "lowfuel", u.x, u.z);
     }
-    if (u.rtb && home && u.fuel >= H.battery) u.rtb = false;
+    if (u.rtb && home && !this.droneNeedsCharge(u)) u.rtb = false;
 
     let gx = u.x;
     let gz = u.z;
@@ -3745,6 +3768,42 @@ export class World {
       u.speed = step / DT;
       u.moved = true;
     } else u.speed = 0;
+  }
+
+  /**
+   * Drone Khiên: quân mình trong vùng (hoặc chính drone) vừa trúng đạn trong 1 giây qua thì tự bật vòm; hết giờ hoặc vỡ thì
+   * tắt; đã dùng mà chưa sạc thì hậu cần tự đưa về vùng lưới điện sạc (`rtb`), sạc xong thì đứng chờ lệnh.
+   */
+  private updateShield(u: Unit, home: boolean, pw: number): void {
+    const S = UNITS[u.kind].shield!;
+    const active = u.shieldUntil > this.tick && u.shieldHp > 0;
+    if (!active && u.shieldUntil > 0 && u.shieldUntil === this.tick) {
+      this.events.push({ t: "shield", id: u.id, side: u.side, on: false, x: u.x, z: u.z });
+    }
+    if (!active && u.shieldHp <= 0 && u.shieldUntil > this.tick) u.shieldUntil = this.tick; // vỡ sớm
+    if (!active && u.shieldCharge >= 1) {
+      const recent = TICK_RATE;
+      let danger = this.tick - u.lastHit <= recent;
+      if (!danger)
+        for (const o of this.units) {
+          if (o.side !== u.side || o.hp <= 0 || this.tick - o.lastHit > recent) continue;
+          if (dist2(o.x, o.z, u.x, u.z) <= S.radius * S.radius) {
+            danger = true;
+            break;
+          }
+        }
+      if (danger) {
+        u.shieldUntil = this.tick + sec(S.duration);
+        u.shieldHp = S.absorb;
+        u.shieldCharge = 0;
+        this.shields.push(u);
+        this.events.push({ t: "shield", id: u.id, side: u.side, on: true, x: u.x, z: u.z });
+      }
+    }
+    if (u.shieldUntil <= this.tick && u.shieldCharge < 1) {
+      if (home) u.shieldCharge = Math.min(1, u.shieldCharge + (DT / S.recharge) * pw);
+      else if (!u.rtb && u.mission !== "attack") u.rtb = true;
+    }
   }
 
   /** Địch mặt đất (xe hoặc công trình) gần nhất mà phe của drone đang thấy, trong bán kính r. */
@@ -4144,6 +4203,20 @@ export class World {
     if (e.hp <= 0) return;
     const by = s.side;
     let amount = s.dmg;
+    // vòm khiên phe mình trùm lên chỗ này: khiên hứng trước (theo sát thương danh nghĩa, chưa tính giáp), vỡ thì phần dư lọt qua
+    if (this.shields.length && by !== e.side) {
+      for (const d of this.shields) {
+        if (d.side !== e.side || d.hp <= 0 || d.shieldHp <= 0 || d.shieldUntil <= this.tick) continue;
+        const r = UNITS[d.kind].shield!.radius;
+        if (dist2(d.x, d.z, e.x, e.z) > r * r) continue;
+        const take = Math.min(d.shieldHp, amount);
+        d.shieldHp -= take;
+        amount -= take;
+        this.events.push({ t: "hit", side: e.side, visual: "pulse", x: e.x, z: e.z, alt: (e.cat === "unit" ? e.alt : 0) + 2, splash: 0 });
+        if (d.shieldHp <= 0) this.events.push({ t: "shield", id: d.id, side: d.side, on: false, x: d.x, z: d.z });
+        if (amount <= 0) return;
+      }
+    }
     if (e.cat === "unit") {
       const spec = UNITS[e.kind];
       // Phòng thủ điểm: bắn chặn đạn pháo bay cầu vồng
@@ -4622,6 +4695,7 @@ export function hashWorld(w: World): number {
   for (const s of w.sides) {
     num(s.mobilizeUntil);
     num(s.retreatLevel);
+    num(s.droneFrac);
     num(s.iron);
     num(s.oil);
     num(s.mono);
@@ -4648,6 +4722,9 @@ export function hashWorld(w: World): number {
     num(u.aimZ);
     num(u.pd);
     num(u.yawRate);
+    num(u.shieldHp);
+    num(u.shieldUntil);
+    num(u.shieldCharge);
     num(u.ammo2);
     num(u.cd2);
     num(u.xp);

@@ -37,8 +37,6 @@ export function buildScoutDrone(p: Palette): Rig {
       r.g.position.set(end[0], ROTOR_Y, end[2]);
       add(r.g);
       rotors.push(r);
-      // chân đáp thẳng dưới động cơ
-      add(part("Chân đáp", cyl(0.02, 0.025, 0.42, p.metal, 5, end[0], -0.15, end[2])));
     }
 
   // ================================================================ 3. MẮT VÀ ĐẦU NỔ DƯỚI BỤNG
@@ -62,7 +60,6 @@ export function buildScoutDrone(p: Palette): Rig {
   return droneRig({
     frame,
     rotors,
-    parkY: 0.37,
     flyY: 2.8,
     radius: 2.6,
     actions: [{ id: "kamikaze", label: "Lao cảm tử" }],

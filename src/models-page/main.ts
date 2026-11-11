@@ -44,7 +44,7 @@ const CATS: Record<Tab, readonly { id: string; name: string }[]> = {
     { id: "planned", name: "Sắp có" }
   ]
 };
-const UNIT_CAT: Record<UnitId, string> = { commander: "command", hauler: "command", lynx: "armor", titan: "armor", skyguard: "fire", rocket: "fire", artillery: "fire", falcon: "air", valkyrie: "air", scout: "air" };
+const UNIT_CAT: Record<UnitId, string> = { commander: "command", hauler: "command", lynx: "armor", titan: "armor", skyguard: "fire", rocket: "fire", artillery: "fire", falcon: "air", valkyrie: "air", scout: "drone", shield: "drone" };
 const BUILDING_CAT: Record<BuildingId, string> = {
   hq: "base", factory: "base", "special-factory": "base", "aircraft-factory": "base", airfield: "base",
   "power-plant": "energy", "power-pylon": "energy", battery: "energy", "oil-extractor": "energy", "ammo-depot": "energy",

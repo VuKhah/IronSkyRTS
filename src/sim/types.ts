@@ -105,6 +105,10 @@ export interface Unit {
   ext: boolean;
   /** Máy bay: tốc độ ngoặt hiện tại (radian mỗi tick, dấu = chiều ngoặt). Tăng giảm dần cho đường bay mượt. */
   yawRate: number;
+  /** Drone Khiên: khiên còn hứng được bao nhiêu sát thương, bật tới tick nào, mức sạc 0..1 (1 = sẵn sàng). */
+  shieldHp: number;
+  shieldUntil: number;
+  shieldCharge: number;
   /** Vũ khí phụ: số tick chờ bắn tiếp và số viên còn lại của lần xuất kích này. */
   cd2: number;
   ammo2: number;
@@ -291,6 +295,8 @@ export type SimEvent =
   | { t: "mobilize"; side: Side; x: number; z: number; r: number }
   /** Xe Tư Lệnh máu thấp đang bị bắn: tự rút về (x, z). */
   | { t: "retreat"; side: Side; x: number; z: number }
+  /** Vòm khiên bật (on) hoặc vỡ / hết giờ (off) quanh drone `id`. */
+  | { t: "shield"; id: number; side: Side; on: boolean; x: number; z: number }
   | { t: "end"; winner: Side | 2; reason: WinReason };
 
 export interface SideStats {
@@ -317,6 +323,8 @@ export interface SideState {
   /** Tổng động viên (kỹ năng của Xe Tư Lệnh): còn hiệu lực tới tick nào, dùng lại được từ tick nào. */
   mobilizeUntil: number;
   mobilizeReady: number;
+  /** Tỉ lệ điện cấp cho việc sạc drone tick trước (mức ưu tiên thấp nhất), 0..1. */
+  droneFrac: number;
   /** Số mốc máu Xe Tư Lệnh đã tự rút (`RULES.commanderRetreat.at`): 0 = chưa rút lần nào. */
   retreatLevel: number;
   /** Ô đang thấy (1) — tính lại mỗi tick. */

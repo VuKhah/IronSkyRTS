@@ -4,9 +4,8 @@
  */
 import type { Faction } from "../sim/content";
 import type { Rig } from "../render/models";
-import { palette, partIfUnnamed } from "../render/models/kit";
+import { partIfUnnamed } from "../render/models/kit";
 import { buildCarrier } from "../render/models/units/carrier";
-import { buildShieldDrone } from "../render/models/units/shield-drone";
 
 /** Nhóm trong tab Quân đội (navy, drone) hoặc tab Công trình (defense, ...). */
 export type ShowcaseCat = "navy" | "drone" | "defense";
@@ -37,22 +36,6 @@ export const SHOWCASE = {
     build(faction: Faction): Rig {
       const rig = buildCarrier(faction);
       partIfUnnamed("Siêu Tàu Sân Bay", rig.root);
-      return rig;
-    }
-  },
-  "shield-drone": {
-    cat: "drone",
-    name: "Drone Khiên/Khói",
-    sub: "Chưa có luật chơi",
-    role: "Tạo vùng khiên chặn sát thương hoặc vùng khói che quân; chọn loại lúc đúc.",
-    notes: [
-      "Chỉ xem trước trong Xưởng Mô Hình, chưa có trong trận đấu.",
-      "Thân vòng benzen bọc giáp: vành lục giác dày liền khối, 6 quạt trong vỏ bọc ở 6 đỉnh, 3 tấm màu phe xen kẽ, vòng tròn sáng quanh lõi giáp.",
-      "Phạm vi 12 m. Bật khiên: vòm lục giác trùm quân bên dưới. Bật khói: khói lan ra trong cùng phạm vi."
-    ],
-    build(faction: Faction): Rig {
-      const rig = buildShieldDrone(palette(faction));
-      partIfUnnamed("Drone Khiên/Khói", rig.root);
       return rig;
     }
   }

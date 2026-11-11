@@ -18,7 +18,7 @@ export function rotor(p: Palette, r: number): Rotor {
 export interface DroneParts {
   frame: THREE.Group;
   rotors: Rotor[];
-  parkY: number;
+  /** Độ cao thân trong Xưởng Mô Hình (m); trong trận dùng độ cao của sim (`setHover`). */
   flyY: number;
   radius: number;
   actions: RigAction[];
@@ -27,27 +27,26 @@ export interface DroneParts {
   extra?: (dt: number, t: number, a: ReadonlySet<string>) => void;
 }
 
-const FLY: RigAction = { id: "fly", label: "Bay" };
-
-/** Khung drone: "Bay" nâng thân lên độ cao lơ lửng, nhún nhẹ; cánh quạt tăng tốc dần, tắt máy thì chậm lại rồi dừng. */
+/**
+ * Khung drone: drone không cất / hạ cánh (người dùng chốt 11/11/2026), lúc nào cũng lơ lửng ở độ cao bay, nhún nhẹ, cánh
+ * quạt quay đều. Gốc mô hình nằm trên mặt đất (vùng khiên, khói bám đất), thân treo ở độ cao bay.
+ */
 export function droneRig(d: DroneParts): Rig {
   const root = group(d.frame, ...(d.ground ?? []));
-  d.frame.position.y = d.parkY;
-  let spin = 0;
+  let flyY = d.flyY;
+  d.frame.position.y = flyY;
+  for (const r of d.rotors) (r.disc.material as THREE.MeshBasicMaterial).opacity = 0.28;
   return {
     root,
-    actions: [FLY, ...d.actions],
-    defaultOn: ["fly"],
+    actions: d.actions,
+    defaultOn: [],
     radius: d.radius,
+    setHover(h: number) {
+      flyY = h;
+    },
     update(dt, t, a) {
-      const on = a.has("fly");
-      spin = approach(spin, on ? 1 : 0, on ? 2.5 : 1.5, dt);
-      for (const r of d.rotors) {
-        r.g.rotation.y += spin * 60 * dt;
-        (r.disc.material as THREE.MeshBasicMaterial).opacity = spin * 0.28;
-      }
-      const y = on ? d.flyY + Math.sin(t * 1.6) * 0.12 : d.parkY;
-      d.frame.position.y = approach(d.frame.position.y, y, 2, dt);
+      for (const r of d.rotors) r.g.rotation.y += 60 * dt;
+      d.frame.position.y = approach(d.frame.position.y, flyY + Math.sin(t * 1.6) * 0.12, 2, dt);
       d.extra?.(dt, t, a);
     }
   };

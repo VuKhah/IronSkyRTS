@@ -417,6 +417,27 @@ describe("lõi mô phỏng", () => {
     expect(d.fuel).toBe(UNITS.scout.hover!.battery);
   });
 
+  it("Drone Khiên tự bật vòm khi quân bên dưới bị bắn, hứng đạn, dùng xong tự về sạc", () => {
+    const lynxLeft = (withShield: boolean): { alive: number; w: World } => {
+      const w = new World(1, { sandbox: true });
+      const c: Command[] = [];
+      for (let i = 0; i < 4; i++) c.push({ side: 0, order: { t: "sbSpawn", kind: "lynx", side: 0, x: -6 + i * 4, z: 6 } });
+      if (withShield) c.push({ side: 0, order: { t: "sbSpawn", kind: "shield", side: 0, x: 0, z: 8 } });
+      for (let i = 0; i < 3; i++) c.push({ side: 1, order: { t: "sbSpawn", kind: "titan", side: 1, x: -4 + i * 4, z: -14 } });
+      w.step(c);
+      for (let t = 0; t < sec(12); t++) w.step([]);
+      return { alive: w.units.filter((u) => u.kind === "lynx" && u.hp > 0).length, w };
+    };
+    const bare = lynxLeft(false).alive;
+    const { alive, w } = lynxLeft(true);
+    expect(alive).toBeGreaterThan(bare);
+    const d = w.units.find((u) => u.kind === "shield")!;
+    expect(d.shieldCharge).toBeLessThan(1);
+    for (let t = 0; t < sec(40); t++) w.step([]);
+    expect(d.shieldCharge).toBe(1);
+    expect(d.rtb).toBe(false);
+  });
+
   it("AI đấu AI chơi trọn một trận (≤ 25 phút) mà không có giá trị hỏng", () => {
     const { world } = runMatch(7, sec(25 * 60), 1000);
     for (const u of world.units) {

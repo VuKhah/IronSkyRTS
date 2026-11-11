@@ -385,7 +385,9 @@ export class Views {
       const rollTarget = Math.max(-0.95, Math.min(0.95, (-turn / Math.max(dt, 1e-3)) * 0.35));
       v.roll += (rollTarget - v.roll) * Math.min(1, dt * 6);
       const parked = u.air === "parked";
-      const y = this.map.groundY(x, z) + (parked || alt < 0.05 ? 0.22 : alt);
+      // drone: gốc mô hình trên mặt đất (vùng khiên bám đất), thân treo ở độ cao của sim
+      if (spec.hover) v.rig.setHover?.(alt);
+      const y = this.map.groundY(x, z) + (spec.hover ? 0 : parked || alt < 0.05 ? 0.22 : alt);
       root.position.set(x, y, z);
       // chúc mũi khi bổ nhào, ngóc mũi khi kéo lên: theo tốc độ đổi độ cao của sim
       const flying = u.air === "flying" || u.air === "returning";
@@ -397,10 +399,9 @@ export class Views {
       v.rig.setFlight?.(u.air === "launch" ? u.speed > 0 : alt > 0.6, flying ? v.roll : 0);
       if (spec.secondary) v.rig.setAmmo?.(u.ammo2);
       if (spec.weapon && (world.tick - u.lastShot) * DT < 0.25) a.add("fire");
-      if (spec.hover) {
-        a.add("fly");
-        if (u.mission === "attack" && spec.kamikaze) a.add("kamikaze");
-      }
+      if (spec.hover && u.mission === "attack" && spec.kamikaze) a.add("kamikaze");
+      // vòm khiên vẽ THEO TRẠNG THÁI sim (bật tới tick nào, còn hứng được không), không theo sự kiện: tua nhanh vẫn đúng
+      if (spec.shield && u.shieldUntil > world.tick && u.shieldHp > 0) a.add("shield");
     } else {
       v.yaw += wrap(target - v.yaw) * Math.min(1, dt * 10);
       const y = this.map.groundY(x, z);
@@ -453,7 +454,7 @@ export class Views {
     }
     v.rig.update(dt, time, a);
     const mat = viewer === null ? (u.side === 0 ? RING_MAT.own : RING_MAT.enemy) : u.side === viewer ? RING_MAT.own : RING_MAT.enemy;
-    this.setRing(v, root, selected, spec.radius, mat, u.alt > AIRBORNE_ALT ? -alt + 0.12 : 0.12);
+    this.setRing(v, root, selected, spec.radius, mat, u.alt > AIRBORNE_ALT && !spec.hover ? -alt + 0.12 : 0.12);
     if (v.ring && u.alt > AIRBORNE_ALT) v.ring.position.y = this.map.groundY(x, z) - root.position.y + 0.12;
   }
 

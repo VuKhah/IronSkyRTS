@@ -50,6 +50,8 @@ export interface Rig {
    * rig chỉ lo càng, lửa động cơ và độ nghiêng cánh.
    */
   setFlight?(airborne: boolean, roll: number): void;
+  /** Drone: độ cao thân so với mặt đất (m) do sim quyết định; gốc mô hình nằm trên mặt đất. */
+  setHover?(h: number): void;
   /** Chỉ báo mức (0..1), ví dụ % pin của Trạm Tích Điện. */
   setLevel?(k: number): void;
   /**

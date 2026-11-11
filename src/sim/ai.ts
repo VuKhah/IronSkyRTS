@@ -461,6 +461,8 @@ export class Ai {
   private pickSpecial(mine: Unit[], oil: number, armored: number): UnitId | null {
     const n = (k: UnitId): number => mine.filter((u) => u.kind === k).length;
     const combat = n("lynx") + n("titan");
+    // một Drone Khiên đi theo đợt tấn công khi đã có cụm quân đáng che (xét trước Trinh Sát: Trinh Sát hay cảm tử nên lượt nào cũng thiếu, sẽ chiếm hết lượt)
+    if (n("shield") < 1 && combat >= 3 && oil >= lotCost("shield").oil + 60) return "shield";
     // một lô Drone Trinh Sát làm mắt thần và đòn cảm tử, khi đã có chút quân chủ lực
     if (n("scout") < UNITS.scout.batch && combat >= 2) return "scout";
     const rocket = n("rocket") * 4 < combat && oil >= lotCost("rocket").oil + 80;
@@ -555,6 +557,20 @@ export class Ai {
    * Loạt, Pháo: đúng thứ 3 chiếc hạ được); không có thì bay soi trước đích của đợt tấn công. Pin yếu thì sim tự cho về sạc.
    */
   private useDrones(mine: Unit[], enemyUnits: Unit[], out: Order[]): void {
+    // Drone Khiên: bay theo trọng tâm đợt tấn công (khiên tự bật khi quân bị bắn, dùng xong sim tự đưa về sạc)
+    const wave = mine.filter((u) => this.waveIds.has(u.id) && u.air === "none");
+    if (wave.length) {
+      let cx = 0;
+      let cz = 0;
+      for (const u of wave) {
+        cx += u.x;
+        cz += u.z;
+      }
+      cx /= wave.length;
+      cz /= wave.length;
+      const guards = mine.filter((u) => u.kind === "shield" && !u.rtb && u.shieldCharge >= 1 && dist2(u.mx, u.mz, cx, cz) > 6 * 6);
+      if (guards.length) out.push({ t: "move", ids: guards.map((u) => u.id), x: cx, z: cz });
+    }
     const idle = mine.filter((u) => u.kind === "scout" && u.mission !== "attack" && !u.rtb);
     if (!idle.length) return;
     const prey = enemyUnits.filter((e) => e.air === "none" && UNITS[e.kind].armorClass === "light" && e.kind !== "commander");
@@ -571,7 +587,7 @@ export class Ai {
       }
     }
     const goal = this.waveTarget;
-    const full = idle.filter((u) => u.mission === "none" && u.fuel >= UNITS.scout.hover!.battery * 0.9);
+    const full = idle.filter((u) => u.kind === "scout" && u.mission === "none" && u.fuel >= UNITS.scout.hover!.battery * 0.9);
     if (goal && full.length) out.push({ t: "move", ids: full.map((u) => u.id), x: goal[0], z: goal[1] });
   }
 
