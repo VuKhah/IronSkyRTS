@@ -12,19 +12,28 @@
  * Khai báo MỘT NỬA (`symmetric`): GameMap tự thêm bản xoay 180° quanh tâm cho phía Đỏ.
  */
 import { blobPoly, rampOnEdge } from "./shapes";
-import type { MapDef } from "./types";
+import type { MapDef, Vec2 } from "./types";
 
 /*
  * Bước 4: địa hình thử theo ý Claude (người dùng giao 11/11/2026, chỉ tầng + dốc, chưa tô):
  * - Cao nguyên giữa (tầng 1, G4–I6) có đỉnh tầng 2 ở tâm: tách 3 tuyến Bắc / giữa / Nam; dốc lên từ phía mỗi phe.
  * - Sống đá trên đường vàng x = −52 (tầng 1, F2–F4): đất cao tiền tuyến cánh Bắc của Lam (Đỏ có bản xoay ở cánh Nam,
  *   J6–J8). Hai lối vòng: khe hẹp sát mép Bắc và hành lang giữa sống đá với cao nguyên; dốc ở cả hai mặt.
- * - Gò canh nhà (tầng 1, C6–D7): điểm quan sát cánh Nam của căn cứ Lam, dốc mặt Bắc.
+ * - Bước 5 (người dùng): cả cụm HQ nằm trên nền tầng 1 từ A3 tới D7 (bỏ gò canh nhà); 3 dốc xuống: Đông (rộng 16 m, ra
+ *   tiền tuyến), Bắc và Nam (12 m, ra hai cánh).
  */
 const CENTER = blobPoly(0, 0, 66, 38, 11, 0.1, 18);
 const CROWN = blobPoly(0, 0, 24, 14, 5, 0.08, 14);
 const RIDGE = blobPoly(-52, -80, 13, 34, 23, 0.1, 14);
-const HILL = blobPoly(-135, 80, 22, 18, 31, 0.12, 14);
+/** Nền HQ tầng 1, A3–D7: x từ mép Tây tới −105, z từ −75 tới 75; vát hai góc phía Đông. */
+const BASE: Vec2[] = [
+  [-230, -75],
+  [-117, -75],
+  [-105, -63],
+  [-105, 63],
+  [-117, 75],
+  [-230, 75]
+];
 
 export const STANDARD: MapDef = {
   id: "standard",
@@ -37,14 +46,16 @@ export const STANDARD: MapDef = {
     { tier: 1, poly: CENTER },
     { tier: 2, poly: CROWN },
     { tier: 1, poly: RIDGE },
-    { tier: 1, poly: HILL }
+    { tier: 1, poly: BASE }
   ],
   ramps: [
     rampOnEdge(CENTER, -66, 0, "E", 12),
     rampOnEdge(CROWN, -24, 0, "E", 8),
     rampOnEdge(RIDGE, -65, -70, "E", 10),
     rampOnEdge(RIDGE, -39, -95, "W", 10),
-    rampOnEdge(HILL, -135, 62, "S", 10)
+    rampOnEdge(BASE, -105, 0, "W", 16),
+    rampOnEdge(BASE, -150, -75, "S", 12),
+    rampOnEdge(BASE, -150, 75, "N", 12)
   ],
   symmetric: true,
   bases: [[-180, 0]],
