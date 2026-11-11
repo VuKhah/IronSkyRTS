@@ -6,8 +6,11 @@
  * layout.json: { w, h, cell: 2, rows: string[] }: mỗi hàng một chuỗi, mỗi ký tự một ô 2 m (hàng đầu là phía Bắc):
  *   "0" "1" "2" = tầng · "d" = ô dốc · "r" = mỏm đá (trên tầng 0). Hướng dốc không lưu: mỗi khối dốc (ô "d" liền nhau)
  *   tự lấy hướng đi LÊN về phía tầng cao hơn ở hai đầu (cùng cách khi dựng MapDef). Bản cũ "n/e/s/w" được đổi thành "d".
+ * `refs`: mốc đối chiếu cỡ thật (không phải địa hình): Pháo Tự Hành, dãy 4 Titan, tầm nhìn Drone Trinh Sát; `rot` = độ,
+ * 0 = mũi xe hướng Bắc, theo chiều kim đồng hồ. Bấm lại vào mốc để xoay 15° (Shift: ngược lại).
  * Chỉ vẽ lại khi có thay đổi, nên nhẹ máy (không như trang game 3D).
  */
+import { UNITS } from "../sim/content";
 import { colName, getMap, mapRuler } from "../sim/maps";
 
 const ID = new URLSearchParams(location.search).get("map") ?? "standard";
@@ -22,22 +25,37 @@ interface Layout {
   h: number;
   cell: number;
   rows: string[];
+  refs?: Ref[];
 }
+
+type RefKind = "art" | "titan4" | "drone";
+interface Ref {
+  k: RefKind;
+  x: number;
+  z: number;
+  rot: number;
+}
+let refs: Ref[] = [];
+let rot = 0;
 
 let grid: string[][] = Array.from({ length: ROWS }, () => Array(COLS).fill("0"));
 let lastText = "";
 let dirty = false;
 let painting = false;
-const undoStack: string[][][] = [];
+const undoStack: { g: string[][]; refs: Ref[] }[] = [];
 
 // ------------------------------------------------------------------ công cụ
-type Tool = "0" | "1" | "2" | "d" | "r";
+type Tool = "0" | "1" | "2" | "d" | "r" | RefKind | "delref";
 const TOOLS: { id: Tool; label: string; color?: string }[] = [
   { id: "0", label: "Tầng 0", color: "#d6d0bd" },
   { id: "1", label: "Tầng 1", color: "#a99f86" },
   { id: "2", label: "Tầng 2", color: "#7d735d" },
   { id: "d", label: "Dốc", color: "#c6b48a" },
-  { id: "r", label: "Đá", color: "#55504a" }
+  { id: "r", label: "Đá", color: "#55504a" },
+  { id: "art", label: "Mốc: Pháo" },
+  { id: "titan4", label: "Mốc: 4 Titan" },
+  { id: "drone", label: "Mốc: tầm Drone TS" },
+  { id: "delref", label: "Xóa mốc" }
 ];
 const BRUSHES = [
   { m: 2, label: "2 m" },
@@ -150,6 +168,68 @@ function rampDir(c0: number, r0: number, c1: number, r1: number): { dir: "n" | "
   // dốc chỉ lên đúng 1 tầng: hai đầu phải chênh đúng 1 (không vượt tầng, không lẫn tầng)
   const diff = Math.abs(useNS ? ns : ew);
   return { dir, ok: Math.abs(diff - 1) < 1e-6 };
+}
+
+/** Cỡ thân xe (m) lấy thẳng từ content.ts: dài = 2 × halfLen, ngang ≈ 2 × radius. */
+const ART = UNITS.artillery;
+const TITAN = UNITS.titan;
+const SCOUT = UNITS.scout;
+/** Khoảng cách tâm hai Titan đứng cạnh nhau trong dãy (m): thân rộng ~3,8 m + khe 2 m. */
+const TITAN_GAP = 6;
+
+function drawRef(f: Ref): void {
+  const a = (f.rot * Math.PI) / 180;
+  g.save();
+  g.translate(X(f.x), Y(f.z));
+  if (f.k === "drone") {
+    g.fillStyle = "rgba(60, 170, 255, 0.16)";
+    g.strokeStyle = "rgba(30, 120, 220, 0.9)";
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.arc(0, 0, SCOUT.sight * K, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+    g.fillStyle = "#1e78dc";
+    g.beginPath();
+    g.arc(0, 0, 3, 0, Math.PI * 2);
+    g.fill();
+    g.font = "11px system-ui, sans-serif";
+    g.fillText(`Drone TS · tầm nhìn ${SCOUT.sight} m`, 0, -SCOUT.sight * K - 7);
+    g.restore();
+    return;
+  }
+  g.rotate(a);
+  const hull = (cx: number, len: number, wid: number): void => {
+    g.fillStyle = "rgba(46, 158, 255, 0.85)";
+    g.strokeStyle = "#0b2a4a";
+    g.lineWidth = 1;
+    g.fillRect((cx - wid / 2) * K, (-len / 2) * K, wid * K, len * K);
+    g.strokeRect((cx - wid / 2) * K, (-len / 2) * K, wid * K, len * K);
+    // mũi xe: tam giác trắng ở đầu phía trước (phía Bắc khi rot = 0)
+    g.fillStyle = "#fff";
+    g.beginPath();
+    g.moveTo(cx * K, (-len / 2) * K + 1);
+    g.lineTo((cx - wid * 0.3) * K, (-len / 2 + wid * 0.45) * K);
+    g.lineTo((cx + wid * 0.3) * K, (-len / 2 + wid * 0.45) * K);
+    g.closePath();
+    g.fill();
+  };
+  if (f.k === "art") hull(0, (ART.halfLen ?? ART.radius) * 2, ART.radius * 2 * 0.9);
+  else for (let i = 0; i < 4; i++) hull((i - 1.5) * TITAN_GAP, (TITAN.halfLen ?? TITAN.radius) * 2, TITAN.radius * 2);
+  g.restore();
+  g.fillStyle = "#0b2a4a";
+  g.font = "bold 11px system-ui, sans-serif";
+  g.fillText(f.k === "art" ? "Pháo Tự Hành" : "4 Titan", X(f.x), Y(f.z) + (f.k === "art" ? 7 : 6) * K + 8);
+}
+
+/** Mốc dưới điểm (x, z), nếu có (vùng bắt: bán kính theo cỡ mốc). */
+function refAt(x: number, z: number): number {
+  for (let i = refs.length - 1; i >= 0; i--) {
+    const f = refs[i];
+    const reach = f.k === "titan4" ? 13 : f.k === "art" ? 6 : 6;
+    if ((x - f.x) ** 2 + (z - f.z) ** 2 < reach * reach) return i;
+  }
+  return -1;
 }
 
 function draw(): void {
@@ -283,6 +363,8 @@ function draw(): void {
   g.textBaseline = "middle";
   ruler.colEdges.slice(0, -1).forEach((x, i) => g.fillText(colName(i), X((x + ruler.colEdges[i + 1]) / 2), PAD / 2));
   ruler.rowEdges.slice(0, -1).forEach((z, i) => g.fillText(String(i + 1), PAD / 2, Y((z + ruler.rowEdges[i + 1]) / 2)));
+  // mốc đối chiếu
+  for (const f of refs) drawRef(f);
   // HQ
   map.bases.forEach(([x, z], i) => {
     g.fillStyle = i === 0 ? "#2e9eff" : "#f23d3d";
@@ -373,8 +455,22 @@ cv.addEventListener("pointerdown", (e) => {
     return;
   }
   if (e.button !== 0) return;
-  undoStack.push(grid.map((row) => row.slice()));
+  undoStack.push({ g: grid.map((row) => row.slice()), refs: refs.map((f) => ({ ...f })) });
   if (undoStack.length > 50) undoStack.shift();
+  if (tool === "art" || tool === "titan4" || tool === "drone" || tool === "delref") {
+    // mốc: bấm chỗ trống = đặt; bấm vào mốc = xoay 15° (Shift: ngược lại); công cụ Xóa mốc = xóa
+    const [x, z] = eventPos(e);
+    const i = refAt(x, z);
+    if (tool === "delref") {
+      if (i >= 0) refs.splice(i, 1);
+    } else if (i >= 0) {
+      refs[i].rot = (refs[i].rot + (e.shiftKey ? -15 : 15) + 360) % 360;
+      rot = refs[i].rot;
+    } else if (Math.abs(x) < map.halfW && Math.abs(z) < map.halfH) refs.push({ k: tool, x: Math.round(x), z: Math.round(z), rot });
+    draw();
+    void save();
+    return;
+  }
   painting = true;
   cv.setPointerCapture(e.pointerId);
   paintAt(...eventPos(e));
@@ -401,7 +497,8 @@ cv.addEventListener("pointercancel", endStroke);
 function undo(): void {
   const prev = undoStack.pop();
   if (!prev) return;
-  grid = prev;
+  grid = prev.g;
+  refs = prev.refs;
   dirty = true;
   draw();
   void save();
@@ -416,7 +513,7 @@ window.addEventListener("keydown", (e) => {
 
 // ------------------------------------------------------------------ lưu / nạp
 function serialize(): string {
-  const data: Layout = { w: map.w, h: map.h, cell: CELL, rows: grid.map((r) => r.join("")) };
+  const data: Layout = { w: map.w, h: map.h, cell: CELL, refs, rows: grid.map((r) => r.join("")) };
   return JSON.stringify(data, null, 0).replace(/","/g, '",\n"').replace('"rows":["', '"rows":[\n"');
 }
 
@@ -433,6 +530,7 @@ function apply(text: string): void {
   const data = JSON.parse(text) as Layout;
   if (data.rows.length !== ROWS || data.rows[0].length !== COLS) throw new Error("layout.json không khớp kích thước bản đồ");
   grid = data.rows.map((r) => r.split("").map((v) => ("nesw".includes(v) ? "d" : v)));
+  refs = data.refs ?? [];
   lastText = text;
   draw();
 }
