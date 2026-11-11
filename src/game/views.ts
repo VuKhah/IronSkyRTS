@@ -379,9 +379,9 @@ export class Views {
     a.clear();
 
     if (u.air !== "none") {
-      // máy bay: hướng bay khá mượt sẵn; nghiêng cánh theo tốc độ ngoặt
+      // máy bay: hướng bay khá mượt sẵn; nghiêng cánh theo tốc độ ngoặt. Drone đổi hướng tức thì trong sim: xoay mượt ở đây
       const turn = wrap(target - v.yaw);
-      v.yaw = target;
+      v.yaw = spec.hover ? v.yaw + turn * Math.min(1, dt * 8) : target;
       const rollTarget = Math.max(-0.95, Math.min(0.95, (-turn / Math.max(dt, 1e-3)) * 0.35));
       v.roll += (rollTarget - v.roll) * Math.min(1, dt * 6);
       const parked = u.air === "parked";
@@ -397,6 +397,10 @@ export class Views {
       v.rig.setFlight?.(u.air === "launch" ? u.speed > 0 : alt > 0.6, flying ? v.roll : 0);
       if (spec.secondary) v.rig.setAmmo?.(u.ammo2);
       if (spec.weapon && (world.tick - u.lastShot) * DT < 0.25) a.add("fire");
+      if (spec.hover) {
+        a.add("fly");
+        if (u.mission === "attack" && spec.kamikaze) a.add("kamikaze");
+      }
     } else {
       v.yaw += wrap(target - v.yaw) * Math.min(1, dt * 10);
       const y = this.map.groundY(x, z);
@@ -518,7 +522,8 @@ export class Views {
   /** Vị trí hiển thị (nội suy) của một đơn vị — cho thanh máu và chọn bằng chạm. */
   /** Máy bay đang bay: vẽ theo đường cong thay vì nối thẳng giữa hai tick. */
   static curved(u: Unit): boolean {
-    return u.air === "flying" || u.air === "returning";
+    // drone bay chậm, đổi hướng tức thì: nối thẳng là đúng (Hermite theo hướng bay sẽ vẽ đường cong lệch)
+    return (u.air === "flying" || u.air === "returning") && !UNITS[u.kind].hover;
   }
 
   /**

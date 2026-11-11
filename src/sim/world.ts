@@ -706,7 +706,7 @@ export class World {
       wreckId: 0,
       scrap: 0,
       air: spec.domain === "air" ? "parked" : "none",
-      fuel: spec.fuel?.tank ?? 0,
+      fuel: spec.fuel?.tank ?? spec.hover?.battery ?? 0,
       padB: 0,
       padI: -1,
       speed: 0,
@@ -1001,7 +1001,7 @@ export class World {
           const e = this.target(id);
           if (!e) continue;
           e.hp = e.maxHp;
-          if (e.cat === "unit") e.fuel = UNITS[e.kind].fuel?.tank ?? 0;
+          if (e.cat === "unit") e.fuel = UNITS[e.kind].fuel?.tank ?? UNITS[e.kind].hover?.battery ?? 0;
         }
         break;
       case "sbClear":
@@ -2239,6 +2239,14 @@ export class World {
 
   private orderAttack(u: Unit, t: Target): void {
     const w = UNITS[u.kind].weapon;
+    if (UNITS[u.kind].kamikaze) {
+      // drone cảm tử: chỉ lao vào mục tiêu mặt đất (xe, công trình), không đâm máy bay; tường thì không đáng một chiếc drone
+      if (t.cat === "unit" ? t.alt > AIRBORNE_ALT : BUILDINGS[t.kind].tile) return;
+      u.mission = "attack";
+      u.targetId = t.id;
+      u.rtb = false;
+      return;
+    }
     if (u.air !== "none") {
       if (!w || !this.canHit(w, t)) return;
       u.mission = "attack";
@@ -2468,7 +2476,7 @@ export class World {
     for (const u of this.units) if (u.side === b.side && u.kind !== "commander") live++;
     if (live + us.batch > RULES.unitCap) return;
     // máy bay mới cần chỗ đậu cho cả lô: không đủ bãi trống thì nhà máy tạm dừng
-    if (us.domain === "air" && this.freePads(b.side) < us.batch) return;
+    if (us.domain === "air" && !us.hover && this.freePads(b.side) < us.batch) return;
     // thiếu điện thì đúc chậm (Tổng Hành Dinh tự có điện nên không bị ảnh hưởng)
     b.prog += BUILDINGS[b.kind].power < 0 ? b.powerFrac : 1;
     if (b.prog < sec(lotTime(kind))) return;
@@ -2478,7 +2486,7 @@ export class World {
     const ids: number[] = [];
     for (let k = 0; k < us.batch; k++) {
     const offset = (k - (us.batch - 1) / 2) * (2 * us.radius + FORMATION_GAP);
-    if (us.domain === "air") {
+    if (us.domain === "air" && !us.hover) {
       // Nhà Máy Máy Bay: cả lô ra đời trong cùng tick này và giữ chỗ bãi đậu ngay (đã kiểm đủ bãi cho cả lô ở trên), nên hai
       // xưởng không bao giờ tranh một bãi. Có giếng phóng (`pads` + `launch`): chiếc k dùng giếng k mod số giếng, chiếc dùng
       // chung giếng chờ dưới giếng thêm `gap` giây mỗi lượt, rồi bay thẳng lên. Không có giếng: cất cánh thẳng ra trước cửa.
@@ -2523,6 +2531,11 @@ export class World {
       u.hx = u.phx = fhx;
       u.hz = u.phz = fhz;
       u.lot = lot;
+      // drone ráp xong ở bệ thì cất cánh tại chỗ, lơ lửng chờ lệnh
+      if (us.hover) {
+        u.air = "flying";
+        u.alt = u.palt = us.hover.alt;
+      }
       ids.push(u.id);
     }
     this.sides[b.side].stats.unitsBuilt++;
@@ -3632,8 +3645,162 @@ export class World {
     u.airT = 0;
   }
 
+  // ------------------------------------------------------------------ drone (bay lơ lửng, chạy pin)
+
+  /** Điểm (x, z) có nằm trong vùng lưới điện của phe không (vùng `zone` của công trình phe mình đã xây xong). */
+  private inGrid(side: Side, x: number, z: number): boolean {
+    for (const b of this.buildings) {
+      const zone = BUILDINGS[b.kind].zone;
+      if (!zone || b.side !== side || !b.built || b.hp <= 0) continue;
+      if (dist2(b.x, b.z, x, z) <= zone * zone) return true;
+    }
+    return false;
+  }
+
+  /** Chỗ gần nhất trong vùng lưới điện để drone về sạc: lùi vào trong vùng của công trình có vùng gần nhất 4 m. */
+  private nearestGrid(side: Side, x: number, z: number): [number, number] | null {
+    let best: [number, number] | null = null;
+    let bestD = Infinity;
+    for (const b of this.buildings) {
+      const zone = BUILDINGS[b.kind].zone;
+      if (!zone || b.side !== side || !b.built || b.hp <= 0) continue;
+      const d = Math.sqrt(dist2(b.x, b.z, x, z));
+      const edge = Math.max(0, d - (zone - 4));
+      if (edge < bestD) {
+        bestD = edge;
+        const k = d > 1e-6 ? Math.min(1, (zone - 4) / d) : 0;
+        best = [b.x + (x - b.x) * k, b.z + (z - b.z) * k];
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Drone (`spec.hover`): bay lơ lửng thẳng tới đích, không cần Sân Đáp, không đốt Dầu. `fuel` là pin (giây bay): ngoài
+   * vùng lưới điện tốn 1 giây mỗi giây, trong vùng tự sạc. Hậu cần tự cho về sạc khi pin dưới `low` (`rtb`), đầy thì nhận
+   * việc lại. Cảm tử (`spec.kamikaze`): nhiệm vụ "attack" = lao vào mục tiêu mặt đất rồi nổ; pin cạn giữa đường thì lao vào
+   * địch mặt đất gần nhất đang thấy, không có thì rơi.
+   */
+  private updateDrone(u: Unit): void {
+    const spec = UNITS[u.kind];
+    const H = spec.hover!;
+    u.alt = H.alt;
+    const home = this.inGrid(u.side, u.x, u.z);
+    if (home) u.fuel = Math.min(H.battery, u.fuel + H.charge * DT);
+    else if (!this.sandbox?.infiniteFuel) u.fuel -= DT;
+    // pin cạn: lao vào địch gần nhất đang thấy, không có thì rơi
+    if (u.fuel <= 0) {
+      u.fuel = 0;
+      const t = spec.kamikaze ? this.nearestGroundFoe(u, spec.sight) : null;
+      if (t) {
+        u.mission = "attack";
+        u.targetId = t.id;
+        u.rtb = false;
+      } else if (u.mission !== "attack") {
+        u.hp = 0;
+        u.crashed = true;
+        return;
+      }
+    } else if (!u.rtb && !home && u.mission !== "attack" && u.fuel < H.battery * H.low) {
+      u.rtb = true;
+      this.alert(u.side, "lowfuel", u.x, u.z);
+    }
+    if (u.rtb && home && u.fuel >= H.battery) u.rtb = false;
+
+    let gx = u.x;
+    let gz = u.z;
+    if (u.mission === "attack") {
+      const t = this.target(u.targetId);
+      if (!t || t.side === u.side || t.hp <= 0 || (t.cat === "unit" && t.alt > AIRBORNE_ALT) || !this.visibleTo(u.side, t)) {
+        u.mission = "none";
+        u.targetId = 0;
+      } else {
+        gx = t.x;
+        gz = t.z;
+        const reach = (t.cat === "unit" ? UNITS[t.kind].radius : Math.max(...BUILDINGS[t.kind].half)) + 1;
+        if (dist2(u.x, u.z, gx, gz) <= reach * reach) {
+          this.detonate(u);
+          return;
+        }
+      }
+    } else if (u.rtb) {
+      const g = this.nearestGrid(u.side, u.x, u.z);
+      if (g && !home) [gx, gz] = g;
+    } else if (u.mission === "move") {
+      gx = u.mx;
+      gz = u.mz;
+      if (dist2(u.x, u.z, gx, gz) < 0.25) u.mission = "none";
+    }
+    const dx = gx - u.x;
+    const dz = gz - u.z;
+    const d = Math.sqrt(dx * dx + dz * dz);
+    // lao cảm tử nhanh hơn bay thường
+    const v = spec.speed * (u.mission === "attack" ? 1.4 : 1) * (this.mobilized(u) ? 1 + RULES.abilities.mobilize.speed : 1);
+    if (d > 1e-6) {
+      const step = Math.min(d, v * DT);
+      u.x = clamp(u.x + (dx / d) * step, -this.map.airX, this.map.airX);
+      u.z = clamp(u.z + (dz / d) * step, -this.map.airZ, this.map.airZ);
+      u.hx = dx / d;
+      u.hz = dz / d;
+      u.speed = step / DT;
+      u.moved = true;
+    } else u.speed = 0;
+  }
+
+  /** Địch mặt đất (xe hoặc công trình) gần nhất mà phe của drone đang thấy, trong bán kính r. */
+  private nearestGroundFoe(u: Unit, r: number): Target | null {
+    let best: Target | null = null;
+    let bestD = r * r;
+    for (const e of this.units) {
+      if (e.side === u.side || e.hp <= 0 || e.alt > AIRBORNE_ALT || !this.visibleTo(u.side, e)) continue;
+      const d = dist2(u.x, u.z, e.x, e.z);
+      if (d < bestD) {
+        bestD = d;
+        best = e;
+      }
+    }
+    if (best) return best;
+    for (const b of this.buildings) {
+      if (b.side === u.side || b.hp <= 0 || BUILDINGS[b.kind].tile || !this.visibleTo(u.side, b)) continue;
+      const d = dist2(u.x, u.z, b.x, b.z);
+      if (d < bestD) {
+        bestD = d;
+        best = b;
+      }
+    }
+    return best;
+  }
+
+  /** Drone cảm tử nổ tại chỗ: một phát nổ lan mặt đất (giải quyết ngay trong tick này), drone mất. */
+  private detonate(u: Unit): void {
+    const k = UNITS[u.kind].kamikaze!;
+    this.shots.push({
+      side: u.side,
+      src: u.id,
+      target: 0,
+      tx: u.x,
+      tz: u.z,
+      dmg: k.dmg,
+      dmgType: k.dmgType,
+      sx: u.x,
+      sz: u.z,
+      talt: 0,
+      interceptable: false,
+      splash: k.splash,
+      hitAir: false,
+      impact: this.tick,
+      visual: "bomb"
+    });
+    u.hp = 0;
+    u.mission = "none";
+  }
+
   private updateAir(u: Unit): void {
     const spec = UNITS[u.kind];
+    if (spec.hover) {
+      this.updateDrone(u);
+      return;
+    }
     const fuel = spec.fuel!;
     const A = RULES.air;
     if (u.cooldown > 0) u.cooldown--;

@@ -1,5 +1,6 @@
 /**
- * Drone Trinh Sát, bản 1 (09/11/2026): chưa có luật chơi, chỉ xem trong Xưởng Mô Hình.
+ * Drone Trinh Sát, bản 1 (09/11/2026). Có luật chơi từ 11/11/2026 (`UNITS.scout`: bay lơ lửng, pin, cảm tử); trận vẽ "fly" khi
+ * bay và "kamikaze" khi đang lao vào mục tiêu (`Views.updateUnit`).
  * Người dùng chốt: 4 cánh quạt. Vai trò (`ARMY_DESIGN.md` #15): mắt thần tiền duyên, rẻ, có thể lao cảm tử nên mang đầu nổ dưới bụng.
  * Sải khoảng 2,6 m. Nhìn từ trên: chữ X, nóc màu phe. Bộ phận động: 4 cánh quạt, thân chúi khi lao cảm tử.
  */

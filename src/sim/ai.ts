@@ -21,9 +21,13 @@ const NO_ROOM_RETRY = sec(20);
  * nửa bề rộng cửa ngõ (m).
  */
 const WALL_FROM = sec(150);
+/** Chưa có Xưởng Xe Chuyên Dụng thì đợi tới giây này mới khoanh vòng tường. */
+const WALL_LATE = sec(300);
 const WALL_KEEP = 200;
 const WALL_MIN_R = 36;
 const GAP_HALF = 5;
+/** Tường chỉ xây trong bán kính này (m) quanh cửa ngõ chính: hai cánh ôm khe, không khoanh kín cả căn cứ. */
+const WALL_WING = 36;
 /** Hai cửa ngõ gần nhau hơn chừng này (m) thì gộp làm một. */
 const GAP_MERGE = 20;
 /** Đường tới đích dài hơn đường thẳng chừng này lần (cộng 20 m) thì đợt tấn công phá tường mở lối thay vì đi vòng. */
@@ -235,6 +239,7 @@ export class Ai {
     // 6. Kỹ năng của binh chủng (chỉ dùng thông tin phe mình có, ra lệnh như người chơi)
     this.useRockets(mine, enemyUnits, enemyBuildings, out);
     this.useAbilities(w, mine, enemyUnits, out);
+    this.useDrones(mine, enemyUnits, out);
 
     // 5. Falcon: xuất kích khi đủ dầu, ưu tiên săn Xe Vận Tải, rồi quân đang đánh vào nhà, rồi quân địch thấy được
     for (const f of mine) {
@@ -304,7 +309,7 @@ export class Ai {
     const gx = gate ? base.x + (gate[0] - base.x) * k : 0;
     const gz = gate ? base.z + (gate[1] - base.z) * k : 0;
     const keep = big + GAP_HALF + 4;
-    const cands: { ox: number; oz: number; score: number; inside: boolean }[] = [];
+    const cands: { ox: number; oz: number; score: number }[] = [];
     for (let ox = -reach; ox <= reach; ox += SPOT_STEP) {
       for (let oz = -reach; oz <= reach; oz += SPOT_STEP) {
         const d2 = ox * ox + oz * oz;
@@ -317,18 +322,14 @@ export class Ai {
         if (ring && ring.gaps.some(([px, pz]) => dist2(px, pz, x, z) < keep * keep)) continue;
         const dot = (ox * flip * cx + oz * flip * cz) / r;
         const score = gate ? Math.sqrt(dist2(x, z, gx, gz)) : r + (back ? dot * 10 : -dot * 10);
-        cands.push({ ox, oz, score, inside: !ring || r + big + 2 < ring.r });
+        cands.push({ ox, oz, score });
       }
     }
     cands.sort((a, b) => a.score - b.score || a.ox - b.ox || a.oz - b.oz);
-    // có vòng tường thì ưu tiên chỗ bên trong; hết chỗ mới ra ngoài
-    for (const pass of ring ? [true, false] : [false]) {
-      for (const c of cands) {
-        if (pass && !c.inside) continue;
-        const x = base.x + c.ox * flip;
-        const z = base.z + c.oz * flip;
-        if (w.canPlace(this.side, kind, x, z) === null) return [x, z];
-      }
+    for (const c of cands) {
+      const x = base.x + c.ox * flip;
+      const z = base.z + c.oz * flip;
+      if (w.canPlace(this.side, kind, x, z) === null) return [x, z];
     }
     this.noSpotAt[kind] = w.tick;
     return null;
@@ -343,7 +344,9 @@ export class Ai {
   private buildWalls(w: World, hq: Building, myB: Building[], spare: number, out: Order[]): number {
     if (!hq.built || w.tick < WALL_FROM) return 0;
     if (!this.wall) {
+      // đợi các nhà to nhất (Xưởng Xe Chuyên Dụng) có chỗ trước, rồi mới khoanh vòng tường
       if (!myB.some((b) => b.kind === "turret" && b.built)) return 0;
+      if (!myB.some((b) => b.kind === "special-factory") && w.tick < WALL_LATE) return 0;
       this.wall = this.planWall(w, hq, myB);
     }
     const cost = BUILDINGS.wall.cost!.iron;
@@ -358,7 +361,8 @@ export class Ai {
 
   /** Tính vòng tường một lần: bán kính, cửa ngõ, các ô tường theo thứ tự xây. */
   private planWall(w: World, hq: Building, myB: Building[]): WallPlan {
-    // bán kính: ngay ngoài nền móng xa nhất, trong vùng xây của Tổng Hành Dinh
+    // bán kính: sát mép vùng xây của Tổng Hành Dinh, để bên trong luôn còn chỗ cho nhà xây sau (vòng sát nhà xa nhất thì
+    // xưởng 11 × 11 ô xây sau không còn chỗ, AI kẹt cả trận); nhà nào đã nằm ngoài thì nới ra cho nó vào trong nếu được
     let far = 0;
     for (const b of myB) {
       if (BUILDINGS[b.kind].tile) continue;
@@ -366,7 +370,7 @@ export class Ai {
       far = Math.max(far, Math.sqrt(dist2(b.x, b.z, hq.x, hq.z)) + Math.max(hw, hd) + w.marginOf(b.kind));
     }
     const zone = BUILDINGS.hq.zone ?? 24;
-    const r = Math.max(WALL_MIN_R, Math.min(zone - 6, far + 8));
+    const r = Math.max(WALL_MIN_R, zone - 6, Math.min(zone - 2, far + 4));
     const outside = (x: number, z: number): boolean => dist2(x, z, hq.x, hq.z) >= r * r;
     // cửa ngõ: chỗ đường từ cửa Tổng Hành Dinh tới đích cắt qua vòng tròn bán kính r
     const ex = w.exitRect("hq", hq.x, hq.z, hq.rot);
@@ -420,12 +424,16 @@ export class Ai {
         for (let a = -1; a <= 1 && !edge; a++) for (let b = -1; b <= 1 && !edge; b++) if ((a || b) && outside(x + a * 2, z + b * 2)) edge = true;
         if (!edge) continue;
         if (gaps.some(([gx, gz]) => dist2(gx, gz, x, z) < GAP_HALF * GAP_HALF)) continue;
+        // chỉ hai cánh tường ôm cửa ngõ chính (phía địch tới): khoanh kín cả căn cứ thì hết chỗ xây lại xưởng bị phá
+        if (dist2(x, z, main[0], main[1]) > WALL_WING * WALL_WING) continue;
         cells.push({ x, z, i, j, score: dist2(x, z, main[0], main[1]) });
       }
     }
     // xây từ cửa ngõ chính ra hai bên; điểm bằng nhau xét theo chỉ số ô tương đối (đã soi gương theo phe)
     cells.sort((a, b) => a.score - b.score || a.i - b.i || a.j - b.j);
-    return { r, tiles: cells.map((c) => [c.x, c.z]), gaps };
+    // chỉ cửa ngõ nằm trong đoạn có tường mới cần giữ trống (cửa ở chỗ không có tường thì vốn đã thông)
+    const kept = gaps.filter(([gx, gz]) => dist2(gx, gz, main[0], main[1]) <= (WALL_WING + GAP_HALF) * (WALL_WING + GAP_HALF));
+    return { r, tiles: cells.map((c) => [c.x, c.z]), gaps: kept };
   }
 
   /** Xưởng Xe Tăng: Lynx, Titan, SkyGuard. */
@@ -453,6 +461,8 @@ export class Ai {
   private pickSpecial(mine: Unit[], oil: number, armored: number): UnitId | null {
     const n = (k: UnitId): number => mine.filter((u) => u.kind === k).length;
     const combat = n("lynx") + n("titan");
+    // một lô Drone Trinh Sát làm mắt thần và đòn cảm tử, khi đã có chút quân chủ lực
+    if (n("scout") < UNITS.scout.batch && combat >= 2) return "scout";
     const rocket = n("rocket") * 4 < combat && oil >= lotCost("rocket").oil + 80;
     const arty = armored >= 0.5 && n("artillery") * 5 < combat && oil >= lotCost("artillery").oil + 80;
     if (rocket && arty) return this.rng.next() < 0.5 ? "rocket" : "artillery";
@@ -538,6 +548,31 @@ export class Ai {
       }
     }
     return best;
+  }
+
+  /**
+   * Drone Trinh Sát: đủ 3 chiếc rảnh thì lao cảm tử vào xe nhẹ đáng giá đang thấy gần đó (Lynx, Xe Vận Tải, Xe Tên Lửa
+   * Loạt, Pháo: đúng thứ 3 chiếc hạ được); không có thì bay soi trước đích của đợt tấn công. Pin yếu thì sim tự cho về sạc.
+   */
+  private useDrones(mine: Unit[], enemyUnits: Unit[], out: Order[]): void {
+    const idle = mine.filter((u) => u.kind === "scout" && u.mission !== "attack" && !u.rtb);
+    if (!idle.length) return;
+    const prey = enemyUnits.filter((e) => e.air === "none" && UNITS[e.kind].armorClass === "light" && e.kind !== "commander");
+    if (idle.length >= 3) {
+      const c = idle[0];
+      const t = this.nearest(
+        prey.filter((e) => dist2(e.x, e.z, c.x, c.z) < 45 * 45),
+        c.x,
+        c.z
+      );
+      if (t) {
+        out.push({ t: "attack", ids: idle.map((u) => u.id), target: t.id });
+        return;
+      }
+    }
+    const goal = this.waveTarget;
+    const full = idle.filter((u) => u.mission === "none" && u.fuel >= UNITS.scout.hover!.battery * 0.9);
+    if (goal && full.length) out.push({ t: "move", ids: full.map((u) => u.id), x: goal[0], z: goal[1] });
   }
 
   /** Đích của đợt tấn công: công trình thật gần nhất đã biết (không tính ô tường: tường chỉ phá khi bị chặn, xem `breach`). */

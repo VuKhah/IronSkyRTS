@@ -6,7 +6,6 @@ import type { Faction } from "../sim/content";
 import type { Rig } from "../render/models";
 import { palette, partIfUnnamed } from "../render/models/kit";
 import { buildCarrier } from "../render/models/units/carrier";
-import { buildScoutDrone } from "../render/models/units/scout-drone";
 import { buildShieldDrone } from "../render/models/units/shield-drone";
 
 /** Nhóm trong tab Quân đội (navy, drone) hoặc tab Công trình (defense, ...). */
@@ -38,22 +37,6 @@ export const SHOWCASE = {
     build(faction: Faction): Rig {
       const rig = buildCarrier(faction);
       partIfUnnamed("Siêu Tàu Sân Bay", rig.root);
-      return rig;
-    }
-  },
-  "scout-drone": {
-    cat: "drone",
-    name: "Drone Trinh Sát",
-    sub: "Chưa có luật chơi",
-    role: "Mắt thần tiền duyên, rẻ và nhanh; có thể lao cảm tử vào mục tiêu mặt đất.",
-    notes: [
-      "Chỉ xem trước trong Xưởng Mô Hình, chưa có trong trận đấu.",
-      "4 cánh quạt, sải khoảng 2,6 m, nhìn từ trên là chữ X nóc màu phe.",
-      "Camera dưới mũi và đầu nổ cảm tử dưới bụng; bấm Lao cảm tử để xem chúi mũi, đầu nổ chớp đỏ."
-    ],
-    build(faction: Faction): Rig {
-      const rig = buildScoutDrone(palette(faction));
-      partIfUnnamed("Drone Trinh Sát", rig.root);
       return rig;
     }
   },

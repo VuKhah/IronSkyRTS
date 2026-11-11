@@ -25,7 +25,7 @@ export interface Cost {
   oil: number;
 }
 
-export type UnitId = "commander" | "hauler" | "lynx" | "titan" | "skyguard" | "rocket" | "artillery" | "falcon" | "valkyrie";
+export type UnitId = "commander" | "hauler" | "lynx" | "titan" | "skyguard" | "rocket" | "artillery" | "falcon" | "valkyrie" | "scout";
 
 export type BuildingId =
   | "hq"
@@ -226,6 +226,17 @@ export interface UnitSpec {
   diveAlt?: number;
   /** Phòng thủ điểm: chặn `charges` viên đạn pháo (interceptable); mỗi `recharge` giây hồi 1 lượt (Xe Tư Lệnh). */
   pointDefense?: { charges: number; recharge: number };
+  /**
+   * Drone bay lơ lửng (khác máy bay phản lực `fuel`): không cần Sân Đáp, không đốt Dầu, chạy bằng pin `battery` giây bay.
+   * Ngoài vùng lưới điện (vùng `zone` của công trình phe mình) tốn 1 giây pin mỗi giây bay, trong vùng thì tự sạc `charge`
+   * giây pin mỗi giây. Pin còn dưới `low` (tỉ lệ) thì hậu cần tự cho bay về vùng lưới điện gần nhất. `alt`: độ cao bay (m).
+   */
+  hover?: { battery: number; charge: number; alt: number; low: number };
+  /**
+   * Cảm tử: chỉ khi được lệnh tấn công một mục tiêu mặt đất, hoặc khi pin cạn mà có địch mặt đất trong tầm nhìn. Lao vào
+   * mục tiêu rồi nổ: `dmg` sát thương loại `dmgType`, lan bán kính `splash` m.
+   */
+  kamikaze?: { dmg: number; splash: number; dmgType: DmgType };
   features: string[];
   beats: EntityId[];
   fears: EntityId[];
@@ -680,6 +691,41 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     beats: ["skyguard", "hauler", "factory"],
     fears: ["lynx", "falcon"]
   },
+  scout: {
+    id: "scout",
+    kind: "unit",
+    name: "Drone Trinh Sát",
+    short: "Drone TS",
+    code: "UAV",
+    hotkey: "D",
+    role: "Mắt thần tiền duyên, rẻ, đúc hàng loạt; khi cần thì lao cảm tử vào xe địch.",
+    domain: "air",
+    group: "KQ",
+    batch: 3,
+    mvp: true,
+    // số tạm (11/11/2026): giá rẻ, chờ buổi cân bằng
+    cost: { iron: 50, oil: 0 },
+    buildTime: 3,
+    builtAt: "special-factory",
+    hp: 90,
+    armorClass: "light",
+    speed: 15,
+    sight: 40,
+    radius: 1.3,
+    captureWeight: 0,
+    hover: { battery: 60, charge: 4, alt: 8, low: 0.25 },
+    // 3 chiếc hạ vừa một Lynx (3 × 150 × 1,25 = 562 > 510), không hạ nổi Titan (3 × 150 × 0,6 = 270 < 960)
+    kamikaze: { dmg: 150, splash: 2.5, dmgType: "he" },
+    features: [
+      "Bay lơ lửng, nhìn xa 40 m: soi sương mù cho Pháo Tự Hành và Xe Tên Lửa Loạt bắn.",
+      "Không cần Sân Đáp, không đốt Dầu: pin 60 giây bay, tự sạc khi ở trong vùng lưới điện (quanh Tổng Hành Dinh, Nhà Máy Điện, Cột Điện).",
+      "Pin còn 25% thì tự bay về vùng lưới điện gần nhất sạc đầy.",
+      "Cảm tử: ra lệnh tấn công một xe hay công trình địch thì lao vào nổ (3 chiếc hạ được một Lynx, không đủ hạ Titan). Pin cạn giữa đường mà thấy địch thì tự lao vào.",
+      "Rất mỏng: một loạt của SkyGuard là rơi."
+    ],
+    beats: ["lynx", "hauler"],
+    fears: ["skyguard", "turret"]
+  },
   falcon: {
     id: "falcon",
     kind: "unit",
@@ -907,7 +953,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
       [-7, -3, 3, 3]
     ],
     padFace: 3,
-    produces: ["rocket", "artillery"],
+    produces: ["rocket", "artillery", "scout"],
     power: -10,
     priority: 3,
     features: [

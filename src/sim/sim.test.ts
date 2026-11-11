@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { Ai } from "./ai";
 import { dcos, dsin, Rng } from "./fmath";
 import { DEV_MAP_DEFS, MAP_DEFS } from "./maps";
-import { BUILDINGS, RULES, type BuildingId } from "./content";
+import { BUILDINGS, RULES, UNITS, type BuildingId } from "./content";
 import type { Command } from "./types";
 import { runScenario, SCENARIOS } from "./scenarios";
 import { hashWorld, sec, World } from "./world";
@@ -383,6 +383,38 @@ describe("lõi mô phỏng", () => {
     expect(retreats).toBe(1);
     expect(Math.sqrt((c.x - hq.x) ** 2 + (c.z - hq.z) ** 2)).toBeLessThan(25);
     expect(w.sides[0].retreatLevel).toBeGreaterThanOrEqual(1);
+  });
+
+  it("Drone Trinh Sát: 3 chiếc cảm tử hạ được Lynx, không hạ nổi Titan; pin yếu tự về vùng lưới điện sạc", () => {
+    for (const [victim, dies] of [
+      ["lynx", true],
+      ["titan", false]
+    ] as const) {
+      const w = new World(1, { sandbox: true });
+      const c: Command[] = [{ side: 1, order: { t: "sbSpawn", kind: victim, side: 1, x: 0, z: -20 } }];
+      for (let i = 0; i < 3; i++) c.push({ side: 0, order: { t: "sbSpawn", kind: "scout", side: 0, x: -10 + i * 3, z: 10 } });
+      w.step(c);
+      const v = w.units.find((u) => u.side === 1)!;
+      w.step([{ side: 0, order: { t: "attack", ids: w.units.filter((u) => u.kind === "scout").map((u) => u.id), target: v.id } }]);
+      for (let t = 0; t < sec(10); t++) w.step([]);
+      expect(w.units.some((u) => u.kind === "scout"), "drone nổ hết").toBe(false);
+      expect(v.hp <= 0, `${victim} ${dies ? "phải" : "không được"} bị hạ`).toBe(dies);
+    }
+    const w = new World(1, { sandbox: true });
+    w.step([
+      { side: 0, order: { t: "sbFuel", on: false } },
+      { side: 0, order: { t: "sbSpawn", kind: "scout", side: 0, x: -50, z: 50 } }
+    ]);
+    const d = w.units.find((u) => u.kind === "scout")!;
+    w.step([{ side: 0, order: { t: "move", ids: [d.id], x: 40, z: -40 } }]);
+    let wentHome = false;
+    for (let t = 0; t < sec(120); t++) {
+      w.step([]);
+      if (d.rtb) wentHome = true;
+    }
+    expect(wentHome).toBe(true);
+    expect(d.hp).toBeGreaterThan(0);
+    expect(d.fuel).toBe(UNITS.scout.hover!.battery);
   });
 
   it("AI đấu AI chơi trọn một trận (≤ 25 phút) mà không có giá trị hỏng", () => {

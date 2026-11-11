@@ -29,7 +29,9 @@ describe("content", () => {
     for (const u of Object.values(UNITS)) {
       expect(u.hp).toBeGreaterThan(0);
       if (u.weapon) expect(u.weapon.cooldown).toBeGreaterThan(0);
-      if (u.domain === "air") expect(u.fuel, `${u.id} là máy bay nên phải có bình dầu`).toBeDefined();
+      // máy bay phản lực có bình dầu (Sân Đáp nạp); drone bay lơ lửng chạy pin (sạc trong vùng lưới điện): phải có đúng một thứ
+      if (u.domain === "air") expect(!!u.fuel !== !!u.hover, `${u.id} là máy bay nên phải có bình dầu hoặc pin (không cả hai)`).toBe(true);
+      if (u.kamikaze) expect(u.hover, `${u.id} cảm tử phải là drone`).toBeDefined();
     }
   });
 
