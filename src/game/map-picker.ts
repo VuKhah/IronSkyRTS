@@ -4,7 +4,7 @@
  * trên link thắng lựa chọn đã nhớ.
  */
 import type { Side } from "../sim/content";
-import { DEFAULT_MAP_ID, DEV_MAP_DEFS, getMap, MAP_DEFS, type GameMap } from "../sim/maps";
+import { DEV_MAP_DEFS, getMap, MAP_DEFS, MENU_MAP_ID, type GameMap } from "../sim/maps";
 import { paintTerrain, RES_COLOR, SIDE_COLOR } from "./minimap";
 
 const KEY = "ironsky.pick";
@@ -28,9 +28,9 @@ export function loadPick(): Pick {
   const q = new URLSearchParams(location.search);
   const fromUrl = q.get("map");
   if (fromUrl && DEV_MAP_DEFS.some((d) => d.id === fromUrl)) return { map: fromUrl, side: q.get("side") === "1" ? 1 : 0 };
-  const map = fromUrl ?? saved.map ?? DEFAULT_MAP_ID;
+  const map = fromUrl ?? saved.map ?? MENU_MAP_ID;
   const side = q.has("side") ? (q.get("side") === "1" ? 1 : 0) : saved.side === 1 ? 1 : 0;
-  return { map: MAP_DEFS.some((d) => d.id === map) ? map : DEFAULT_MAP_ID, side };
+  return { map: MAP_DEFS.some((d) => d.id === map) ? map : MENU_MAP_ID, side };
 }
 
 export function savePick(p: Pick): void {

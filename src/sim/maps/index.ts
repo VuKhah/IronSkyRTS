@@ -6,14 +6,22 @@ import { BIG_TEST } from "./big-test";
 import { GameMap } from "./game-map";
 import { IRON_VALLEY } from "./iron-valley";
 import { PROVING_GROUND } from "./proving-ground";
+import { STANDARD } from "./standard";
 import { TWO_CROSSINGS } from "./two-crossings";
 import type { MapDef } from "./types";
 
-/** Bản đồ chơi được (hiện ở menu chọn bản đồ). */
-export const MAP_DEFS: readonly MapDef[] = [IRON_VALLEY, TWO_CROSSINGS];
-/** Bản đồ kiểm thử: không hiện ở menu, mở bằng `?map=<mã>`, vẫn được maps.test.ts kiểm như mọi bản đồ. */
-export const DEV_MAP_DEFS: readonly MapDef[] = [PROVING_GROUND, BIG_TEST];
+/** Bản đồ chơi được (hiện ở menu chọn bản đồ). Từ 11/11/2026 chỉ còn Bản Đồ Chuẩn; bản đầu danh sách là mặc định của menu. */
+export const MAP_DEFS: readonly MapDef[] = [STANDARD];
+/**
+ * Bản đồ kiểm thử: không hiện ở menu, mở bằng `?map=<mã>`, vẫn được maps.test.ts kiểm như mọi bản đồ.
+ * Iron Valley và Two Crossings rời menu 11/11/2026 (người dùng: "các bản đồ trước bỏ tất") nhưng còn ở đây vì hàng trăm
+ * kiểm thử dựng trận trên tọa độ của chúng; xóa hẳn khi kiểm thử đã chuyển sang bản đồ chuẩn.
+ */
+export const DEV_MAP_DEFS: readonly MapDef[] = [IRON_VALLEY, TWO_CROSSINGS, PROVING_GROUND, BIG_TEST];
+/** Bản đồ mặc định của SIM khi không truyền `map` (kiểm thử, công cụ Node). Menu dùng `MENU_MAP_ID`. */
 export const DEFAULT_MAP_ID = IRON_VALLEY.id;
+/** Bản đồ mặc định của menu chọn bản đồ. */
+export const MENU_MAP_ID = MAP_DEFS[0].id;
 
 const CACHE = new Map<string, GameMap>();
 

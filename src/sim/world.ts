@@ -352,8 +352,10 @@ export class World {
       const pz = dx;
       this.spawnUnit("commander", s, hx + dx * 9, hz + dz * 9);
       this.spawnUnit("lynx", s, hx + dx * 9 + px * 5, hz + dz * 9 + pz * 5);
-      const home = this.mines.find((m) => m.owner === s)!;
-      for (let i = 0; i < 2; i++) this.spawnUnit("hauler", s, (hx + home.x) / 2 + px * (i * 3.5 - 1.75), (hz + home.z) / 2 + pz * (i * 3.5 - 1.75));
+      // xe vận tải đứng giữa nhà và mỏ nhà; bản đồ chưa có mỏ nhà (đang dựng) thì đứng sau nhà, phía xa tiền tuyến
+      const home = this.mines.find((m) => m.owner === s);
+      const [mx, mz] = home ? [(hx + home.x) / 2, (hz + home.z) / 2] : [hx - dx * 9, hz - dz * 9];
+      for (let i = 0; i < 2; i++) this.spawnUnit("hauler", s, mx + px * (i * 3.5 - 1.75), mz + pz * (i * 3.5 - 1.75));
     }
     this.updateFog();
   }
