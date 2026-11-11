@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { Ai } from "./ai";
 import { dcos, dsin, Rng } from "./fmath";
 import { DEV_MAP_DEFS, MAP_DEFS } from "./maps";
-import { BUILDINGS, type BuildingId } from "./content";
+import { BUILDINGS, RULES, type BuildingId } from "./content";
 import type { Command } from "./types";
 import { runScenario, SCENARIOS } from "./scenarios";
 import { hashWorld, sec, World } from "./world";
@@ -358,6 +358,31 @@ describe("lõi mô phỏng", () => {
     // chỉ phá đủ mở lối rồi tiến vào (trước đây tấn công-di chuyển dừng bắn từng ô tường trong tầm)
     expect(walls0 - w.buildings.filter((b) => b.kind === "wall").length).toBeLessThanOrEqual(8);
     expect(w.hqOf(0)?.hp ?? 0).toBeLessThan(BUILDINGS.hq.hp);
+  });
+
+  it("Xe Tư Lệnh bị bắn tụt máu qua mốc thì tự rút về sau Tổng Hành Dinh, mỗi mốc một lần", () => {
+    const w = new World(1, { sandbox: true });
+    w.step([{ side: 0, order: { t: "sbSpawn", kind: "commander", side: 0, x: -10, z: 10 } }]);
+    const c = w.commanderOf(0)!;
+    const hq = w.hqOf(0)!;
+    const cmds: Command[] = [];
+    for (let i = 0; i < 3; i++) cmds.push({ side: 1, order: { t: "sbSpawn", kind: "lynx", side: 1, x: 6 + i * 3, z: -6, gx: -10, gz: 10, go: "amove" } });
+    w.step(cmds);
+    let retreatAt = -1;
+    let retreats = 0;
+    for (let t = 0; t < sec(30) && c.hp > 0; t++) {
+      w.step([]);
+      for (const e of w.events)
+        if (e.t === "retreat" && e.side === 0) {
+          retreats++;
+          if (retreatAt < 0) retreatAt = c.hp / c.maxHp;
+        }
+    }
+    expect(retreatAt).toBeGreaterThan(0.4);
+    expect(retreatAt).toBeLessThan(RULES.commanderRetreat.at[0]);
+    expect(retreats).toBe(1);
+    expect(Math.sqrt((c.x - hq.x) ** 2 + (c.z - hq.z) ** 2)).toBeLessThan(25);
+    expect(w.sides[0].retreatLevel).toBeGreaterThanOrEqual(1);
   });
 
   it("AI đấu AI chơi trọn một trận (≤ 25 phút) mà không có giá trị hỏng", () => {

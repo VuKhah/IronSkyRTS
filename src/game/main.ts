@@ -423,6 +423,12 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
             sfx.ui("horn");
           } else if (visible(e.x, e.z)) sfx.ui("horn");
           break;
+        case "retreat":
+          if (e.side === me) {
+            hud.alert("Xe Tư Lệnh máu thấp: tự rút về sau Tổng Hành Dinh", "bad");
+            ctrl.lastAlert = { x: e.x, z: e.z };
+          }
+          break;
         case "salvage":
           if (visible(e.x, e.z)) overlay.float(e.x, map.groundY(e.x, e.z) + 2, e.z, `+${e.value} Sắt`, e.side === 0 ? "#8fd0ff" : "#ff9a8f");
           if (e.side === me) sfx.ui("salvage");

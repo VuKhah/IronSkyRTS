@@ -211,6 +211,7 @@ function newSide(cells: number): SideState {
     oil: RULES.startOil,
     mobilizeUntil: -1,
     mobilizeReady: 0,
+    retreatLevel: 0,
     vis: new Uint8Array(cells),
     explored: new Uint8Array(cells),
     known: new Set(),
@@ -635,6 +636,7 @@ export class World {
     this.separate();
     this.resolveShots();
     this.veteranRegen();
+    this.commanderRetreat();
     this.cleanup();
     this.updateWrecks();
     this.updateFog();
@@ -4012,6 +4014,36 @@ export class World {
     if (e.hp <= 0) this.sides[by].stats.kills++;
   }
 
+  /**
+   * Xe Tư Lệnh tự rút khi máu thấp (`RULES.commanderRetreat`): mất xe là thua trận, nên "bộ phận hậu cần" tự kéo xe về sau
+   * Tổng Hành Dinh khi xe đang bị bắn mà máu tụt qua một mốc. Chỉ ra lệnh một lần mỗi mốc: người chơi muốn đưa xe ra lại
+   * thì xe nghe theo, không bị giành quyền lái mỗi tick.
+   */
+  private commanderRetreat(): void {
+    const R = RULES.commanderRetreat;
+    for (const side of [0, 1] as Side[]) {
+      const c = this.commanders[side];
+      const st = this.sides[side];
+      if (!c || c.hp <= 0) continue;
+      const frac = c.hp / c.maxHp;
+      // hồi máu qua mốc + rearm: mốc đó dùng lại được
+      while (st.retreatLevel > 0 && frac > R.at[st.retreatLevel - 1] + R.rearm) st.retreatLevel--;
+      if (st.retreatLevel >= R.at.length || frac >= R.at[st.retreatLevel]) continue;
+      if (this.tick - c.lastHit > R.hitWithin * TICK_RATE) continue;
+      while (st.retreatLevel < R.at.length && frac < R.at[st.retreatLevel]) st.retreatLevel++;
+      // chỗ rút: sau Tổng Hành Dinh (phía xa giữa bản đồ); mất nhà rồi thì về góc căn cứ ban đầu
+      const hq = this.hqOf(side);
+      const [hx, hz] = hq ? [hq.x, hq.z] : this.map.bases[side];
+      const [dx, dz] = dirToCenter(hx, hz);
+      const back = hq ? Math.max(...this.blockHalf("hq", hq.rot)) + R.back : 0;
+      const x = hx - dx * back;
+      const z = hz - dz * back;
+      if (dist2(c.x, c.z, hx, hz) < R.home * R.home) continue;
+      this.orderMove(side, [c.id], x, z, "move");
+      this.events.push({ t: "retreat", side, x, z });
+    }
+  }
+
   // ------------------------------------------------------------------ kỹ năng của binh chủng: rải thảm, tổng động viên
 
   /** null = ra lệnh rải thảm được; ngược lại là lý do (tiếng Việt) để giao diện hiện cho người chơi. */
@@ -4422,6 +4454,7 @@ export function hashWorld(w: World): number {
   num(w.tick);
   for (const s of w.sides) {
     num(s.mobilizeUntil);
+    num(s.retreatLevel);
     num(s.iron);
     num(s.oil);
     num(s.mono);

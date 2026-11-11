@@ -403,6 +403,12 @@ export const RULES = {
     /** Tổng động viên (Xe Tư Lệnh): quân trong bán kính hào quang chạy nhanh hơn `speed`, bắn nhanh hơn `fireRate`. */
     mobilize: { cooldown: 60, duration: 10, speed: 0.3, fireRate: 0.2 }
   },
+  /**
+   * Xe Tư Lệnh tự rút (hậu cần tự lo, người chơi không phải canh): đang bị bắn (trúng trong `hitWithin` giây) mà máu tụt
+   * qua một mốc trong `at` (tỉ lệ máu) thì tự chạy về sau Tổng Hành Dinh. Mỗi mốc kích một lần; hồi máu qua mốc + `rearm`
+   * thì mốc dùng lại được. Số tạm (11/11/2026).
+   */
+  commanderRetreat: { at: [0.5, 0.25] as readonly number[], hitWithin: 1, rearm: 0.15, home: 15, back: 8 },
   sellRefund: 0.5,
   queueMax: 5,
   captureRadius: 8,

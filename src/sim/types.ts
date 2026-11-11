@@ -289,6 +289,8 @@ export type SimEvent =
   /** Một xe rải thảm bắt đầu xả loạt mới từ (x, z) nhắm vào vùng quanh (tx, tz) (cho tiếng rít báo động, số liệu). */
   | { t: "salvo"; id: number; side: Side; x: number; z: number; tx: number; tz: number }
   | { t: "mobilize"; side: Side; x: number; z: number; r: number }
+  /** Xe Tư Lệnh máu thấp đang bị bắn: tự rút về (x, z). */
+  | { t: "retreat"; side: Side; x: number; z: number }
   | { t: "end"; winner: Side | 2; reason: WinReason };
 
 export interface SideStats {
@@ -315,6 +317,8 @@ export interface SideState {
   /** Tổng động viên (kỹ năng của Xe Tư Lệnh): còn hiệu lực tới tick nào, dùng lại được từ tick nào. */
   mobilizeUntil: number;
   mobilizeReady: number;
+  /** Số mốc máu Xe Tư Lệnh đã tự rút (`RULES.commanderRetreat.at`): 0 = chưa rút lần nào. */
+  retreatLevel: number;
   /** Ô đang thấy (1) — tính lại mỗi tick. */
   vis: Uint8Array;
   /** Ô đã từng thấy. */
