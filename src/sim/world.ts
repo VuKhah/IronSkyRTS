@@ -48,6 +48,26 @@ const AIR_FORMATION_GAP = 18;
 const SQUAD_RESHAPE_EXTRA = 8;
 /** Va chạm giữa xe đang chạy và xe đứng yên: phần lực đẩy xe chạy phải chịu (xe đứng chịu phần còn lại). */
 const MOVER_SHARE = 0.85;
+/**
+ * Đẩy khỏi vách (địa hình bậc thang, 11/11/2026): tâm xe đã không vào được ô bị chặn, nhưng thân xe còn lấn vào vách / đá /
+ * sông tới gần một bán kính (đo: Titan bán kính 1,9 m sát vách còn 1,0 m). Mỗi tick dò 8 điểm quanh thân ở chừng này lần bán
+ * kính; điểm nào rơi vào ô bị chặn cố định thì đẩy xe ngược lại, tối đa WALL_PUSH m mỗi tick. Đẩy chứ không cấm bước: ở khe
+ * hẹp hai bên đẩy triệt tiêu nhau nên xe vẫn đi giữa khe, không kẹt ở chỗ A* cho là đi được.
+ */
+const WALL_CLEAR = 0.85;
+const WALL_PUSH = 0.3;
+/** Ô cách ô bị chặn cố định hơn chừng này ô (6 m > bán kính xe to nhất 2,7 m) thì thân xe chắc chắn không chạm vách. */
+const WALL_FAR = 3;
+/** 16 hướng dò cách đều 22,5° (cos / sin viết sẵn thành hằng số, không gọi Math.cos trong sim); hướng đối nhau đứng liền nhau. */
+const C1 = 0.9238795325112867;
+const S1 = 0.3826834323650898;
+const R2 = 0.7071067811865476;
+const PROBES: readonly (readonly [number, number])[] = [
+  [1, 0], [-1, 0], [0, 1], [0, -1],
+  [R2, R2], [-R2, -R2], [R2, -R2], [-R2, R2],
+  [C1, S1], [-C1, -S1], [S1, C1], [-S1, -C1],
+  [-S1, C1], [S1, -C1], [-C1, S1], [C1, -S1]
+];
 /** Ô cửa ra trước cửa nhà có xe chạy ra: rộng × sâu (m). Loang tìm bãi trống trong ± `EXIT_ESCAPE` ô, hoặc đủ `EXIT_ROOM` ô. */
 const EXIT_W = 4;
 const EXIT_D = 2;
@@ -659,6 +679,7 @@ export class World {
       else this.updateGround(u);
     }
     this.separate();
+    this.keepOffWalls();
     this.resolveShots();
     this.veteranRegen();
     this.commanderRetreat();
@@ -2680,7 +2701,39 @@ export class World {
     return p !== null;
   }
 
+  /**
+   * Hướng đẩy ra khỏi vách tại (x, z): tổng ngược hướng các điểm dò quanh thân (WALL_CLEAR × bán kính) rơi vào ô bị chặn
+   * cố định (vách, đá, sông), chưa chuẩn hóa. (0, 0) = thân không chạm gì, hoặc hai bên chạm đều nhau (khe hẹp).
+   */
+  private wallNormal(r: number, x: number, z: number): [number, number] {
+    // xa vách hơn WALL_FAR ô (lớn hơn mọi bán kính xe): khỏi dò
+    if (this.grid.wallDist[this.grid.index(x, z)] > WALL_FAR) return [0, 0];
+    let px = 0;
+    let pz = 0;
+    for (const [dx, dz] of PROBES)
+      if (this.map.staticBlocked(x + dx * r, z + dz * r)) {
+        px -= dx;
+        pz -= dz;
+      }
+    return [px, pz];
+  }
+
   private tryMove(u: Unit, nx: number, nz: number): boolean {
+    // thân xe không lấn sâu thêm vào vách: ở chỗ mới mà thân chạm vách thì bỏ phần bước đi hướng vào vách, chỉ giữ phần trượt
+    // dọc vách (khe hẹp hai bên đều chạm thì pháp tuyến triệt tiêu, đi như cũ)
+    const [px, pz] = this.wallNormal(UNITS[u.kind].radius * WALL_CLEAR, nx, nz);
+    const l = Math.sqrt(px * px + pz * pz);
+    if (l > 1e-9) {
+      const ux = px / l;
+      const uz = pz / l;
+      const vx = nx - u.x;
+      const vz = nz - u.z;
+      const dot = vx * ux + vz * uz;
+      if (dot < 0) {
+        nx -= ux * dot;
+        nz -= uz * dot;
+      }
+    }
     if (!this.grid.blockedAt(nx, nz)) {
       u.x = nx;
       u.z = nz;
@@ -4189,6 +4242,22 @@ export class World {
   }
 
   /** Quân đã hạ bệ xong (chân chống cắm đất): đứng chết tại chỗ, xe khác tông vào không xô được. */
+  /** Đẩy xe mặt đất ra khỏi vách / đá / sông khi thân xe lấn vào (xem WALL_CLEAR). Tổng hai hướng đối nhau triệt tiêu đúng số. */
+  private keepOffWalls(): void {
+    for (const u of this.units) {
+      if (u.hp <= 0 || u.air !== "none" || this.anchored(u)) continue;
+      const [px, pz] = this.wallNormal(UNITS[u.kind].radius * WALL_CLEAR, u.x, u.z);
+      const l = Math.sqrt(px * px + pz * pz);
+      if (l < 1e-9) continue;
+      const nx = u.x + (px / l) * WALL_PUSH;
+      const nz = u.z + (pz / l) * WALL_PUSH;
+      if (!this.grid.blockedAt(nx, nz)) {
+        u.x = nx;
+        u.z = nz;
+      }
+    }
+  }
+
   private anchored(u: Unit): boolean {
     const dep = UNITS[u.kind].weapon?.deploy;
     return !!dep && u.still >= sec(dep.time);

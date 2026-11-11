@@ -175,3 +175,35 @@ describe("địa hình bậc thang: dựng bản đồ", () => {
     }
   });
 });
+
+describe("địa hình bậc thang: thân xe không lấn vào vách", () => {
+  /** Khoảng cách từ (x, z) tới ô bị chặn cố định gần nhất (dò 32 hướng, bước 5 cm). */
+  const gap = (w: World, x: number, z: number): number => {
+    let best = 9;
+    for (let k = 0; k < 32; k++) {
+      const a = (k / 32) * Math.PI * 2;
+      for (let d = 0; d < 9; d += 0.05)
+        if (w.map.staticBlocked(x + Math.cos(a) * d, z + Math.sin(a) * d)) {
+          best = Math.min(best, d);
+          break;
+        }
+    }
+    return best;
+  };
+
+  it("chạy dọc chân vách (đích sát vách 1 m) mà thân xe vẫn cách vách gần đủ bán kính, và vẫn tới nơi", () => {
+    for (const kind of ["lynx", "titan"] as UnitId[]) {
+      const w = world();
+      const u = spawn(w, kind, -34, -40);
+      w.step([{ side: 0, order: { t: "move", ids: [u.id], x: -31, z: 40 } }]);
+      let min = 9;
+      for (let i = 0; i < sec(30); i++) {
+        w.step([]);
+        min = Math.min(min, gap(w, u.x, u.z));
+      }
+      // trước khi sửa (11/11/2026): Titan bán kính 1,9 m sát vách còn 1,0 m (thân lấn vào vách gần nửa)
+      expect(min, `${kind}: khoảng hở nhỏ nhất`).toBeGreaterThan(UNITS[kind].radius * 0.75);
+      expect(Math.abs(u.z - 40), `${kind} tới nơi`).toBeLessThan(2.5);
+    }
+  });
+});

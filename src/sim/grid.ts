@@ -66,6 +66,8 @@ export class Grid {
   readonly occ: Uint8Array;
   /** Loại địa hình từng ô: chỉ số trong TERRAIN_KINDS. */
   readonly kind: Uint8Array;
+  /** Khoảng cách (số ô, kiểu bàn cờ vua, trần 255) tới ô bị chặn cố định gần nhất, tính một lần: xe xa vách khỏi dò thân. */
+  readonly wallDist: Uint8Array;
   private fields = new Map<string, SpeedField>();
   private readonly halfW: number;
   private readonly halfH: number;
@@ -104,6 +106,34 @@ export class Grid {
         // loại địa hình không đi được (nước sâu, vách núi) cũng chặn, phòng khi bản đồ tô vùng như vậy
         this.terrain[i] = map.staticBlocked(x, z) || TERRAIN[kind].speed.wheel === 0 ? 1 : 0;
       }
+    // loang từ mọi ô bị chặn cố định (và mép lưới)
+    this.wallDist = new Uint8Array(n).fill(255);
+    const q: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const cx = i % this.cols;
+      const cz = (i - cx) / this.cols;
+      if (this.terrain[i] || cx === 0 || cz === 0 || cx === this.cols - 1 || cz === this.rows - 1) {
+        this.wallDist[i] = 0;
+        q.push(i);
+      }
+    }
+    for (let h = 0; h < q.length; h++) {
+      const i = q[h];
+      const cx = i % this.cols;
+      const cz = (i - cx) / this.cols;
+      const d = this.wallDist[i] + 1;
+      if (d >= 255) continue;
+      for (let dz = -1; dz <= 1; dz++)
+        for (let dx = -1; dx <= 1; dx++) {
+          const x = cx + dx;
+          const z = cz + dz;
+          if (x < 0 || z < 0 || x >= this.cols || z >= this.rows) continue;
+          const j = z * this.cols + x;
+          if (this.wallDist[j] <= d) continue;
+          this.wallDist[j] = d;
+          q.push(j);
+        }
+    }
   }
 
   /** Loại địa hình của ô chứa điểm (x, z). */

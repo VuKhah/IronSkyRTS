@@ -12,7 +12,7 @@ import { BUILDINGS, doorDir, FACTION_OF, RULES, rotOffset, UNITS, type Side, lot
 import type { GameMap } from "../sim/maps";
 import type { Building, Mine, Target, Unit, Uplink, Wreck } from "../sim/types";
 import { AIRBORNE_ALT, DT, type World } from "../sim/world";
-import { CELL } from "../sim/maps";
+import { CELL, RAMP_LEN, TIER_H } from "../sim/maps";
 
 /** 4 hướng ô bên cạnh (tường nối hình). */
 const DIRS4: readonly [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -439,8 +439,15 @@ export class Views {
       const fx = Math.sin(v.yaw);
       const fz = Math.cos(v.yaw);
       const L = spec.radius;
-      const pitch = Math.atan2(this.map.groundY(x - fx * L, z - fz * L) - this.map.groundY(x + fx * L, z + fz * L), L * 2);
-      const roll = Math.atan2(this.map.groundY(x + fz * L, z - fx * L) - this.map.groundY(x - fz * L, z + fx * L), L * 2);
+      // địa hình bậc thang: điểm lấy mẫu rơi sang tầng khác (chênh hơn mức mặt dốc có thể chênh trên quãng L) là mép vách,
+      // xe không đứng lên đó: coi như cùng độ cao với chỗ xe đứng, để xe chỉ nghiêng trên khối dốc
+      const lim = (L * TIER_H) / RAMP_LEN + 0.3;
+      const h = (sx: number, sz: number): number => {
+        const g = this.map.groundY(sx, sz);
+        return Math.abs(g - y) > lim ? y : g;
+      };
+      const pitch = Math.atan2(h(x - fx * L, z - fz * L) - h(x + fx * L, z + fz * L), L * 2);
+      const roll = Math.atan2(h(x + fz * L, z - fx * L) - h(x - fz * L, z + fx * L), L * 2);
       root.position.set(x, y, z);
       root.rotation.set(pitch, v.yaw, roll, "YXZ");
       if (u.moved || u.px !== u.x || u.pz !== u.z) a.add("move");
