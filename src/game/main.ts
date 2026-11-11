@@ -6,7 +6,7 @@
 import * as THREE from "three";
 import type Stats from "stats-gl";
 import { BUILDINGS, FACTION_OF, RES_NAME, RULES, SIDE_NAME, UNITS, type EntityId, type Side, type UnitId } from "../sim/content";
-import type { SideStats, SimEvent } from "../sim/types";
+import type { SimEvent } from "../sim/types";
 import { TICK_RATE } from "../sim/world";
 import { buildModel, disposeRig } from "../render/models";
 import { Thumbnailer } from "../models-page/stage";
@@ -19,6 +19,7 @@ import { Hud } from "./hud";
 import { attachGestures } from "./input";
 import { Match, type Mode } from "./match";
 import { loadPick, mountPicker, pickerHtml, type Pick } from "./map-picker";
+import { award, loadCareer, MEDALS, rankOf, saveCareer, type Award } from "./career";
 import { Minimap } from "./minimap";
 import { guardLandscape } from "./rotate-guard";
 import { Overlay } from "./overlay";
@@ -52,12 +53,26 @@ const HELP = `
     <tr><td>Phím</td><td>A tấn công-di chuyển · S dừng · B máy bay về sân · H Tổng Hành Dinh · F1 Xe Tư Lệnh · Ctrl+1..5 lưu nhóm, 1..5 gọi nhóm · Z X C G N V đúc nhanh · T rải thảm · R tổng động viên · Space tới chỗ vừa báo động · P tạm dừng.</td></tr>
   </table>`;
 
+/** Dòng quân hàm ở menu (chưa chơi trận nào thì không hiện). */
+function menuCareerHtml(): string {
+  const c = loadCareer();
+  if (!c.games) return "";
+  const r = rankOf(c.xp);
+  const kinds = MEDALS.filter((m) => (c.medals[m.id] ?? 0) > 0).length;
+  return `<div class="career menu-career">
+      <div class="career-head"><b>${r.name}</b><span>${c.wins} thắng / ${c.games} trận · huy chương ${kinds}/${MEDALS.length}</span></div>
+      <div class="career-bar"><i style="width:${Math.round(r.progress * 100)}%"></i></div>
+      <small>${r.next ? `Còn ${r.toNext} điểm lên ${r.next}` : "Quân hàm cao nhất"}</small>
+    </div>`;
+}
+
 function showMenu(): void {
   app.innerHTML = `
     <div class="screen">
       <div class="card">
         <h1>IRON SKY</h1>
         <p>Tư Lệnh Chiến Thuật &amp; Hậu Cần · bản v1 (MVP). Hai đạo quân tranh mỏ Sắt và giàn Dầu, chỉ huy cả sư đoàn trong trận không quá 20 phút.</p>
+        ${menuCareerHtml()}
         ${pickerHtml()}
         <button class="menu-btn primary" data-go="vsai">Chơi với AI<small data-vs>Bạn là Liên Minh Lam, đối đầu Tập Đoàn Đỏ</small></button>
         <button class="menu-btn" data-go="aivai">Xem AI đấu AI<small>Hai AI đánh nhau, có nút tăng tốc ×1 ×2 ×4</small></button>
@@ -105,19 +120,21 @@ function makeThumbs(ids: readonly EntityId[], side: Side): Map<string, string> {
   return out;
 }
 
-/** Huy chương sau trận: thành tích đáng nhớ (cho người chơi lý do chơi lại theo cách khác). */
-const MEDALS: { icon: string; name: string; why: string; got: (s: SideStats, won: boolean, secs: number) => boolean }[] = [
-  { icon: "🎖️", name: "Lão tướng", why: "Có quân lên cựu binh cấp 3", got: (s) => s.topRank >= 3 },
-  { icon: "🚀", name: "Mưa thép", why: "Xe Tên Lửa Loạt xả từ 5 loạt", got: (s) => s.salvos >= 5 },
-  { icon: "🔧", name: "Thợ trục vớt", why: "Kéo về từ 300 Sắt trong xác quân", got: (s) => s.salvaged >= 300 },
-  { icon: "📡", name: "Người giữ cầu", why: "Giữ Đài Liên Lạc tổng cộng từ 3 phút", got: (s) => s.uplinkTime >= 180 },
-  { icon: "⚡", name: "Thần tốc", why: "Thắng trong vòng 8 phút", got: (_s, won, secs) => won && secs < 480 },
-  { icon: "🛡️", name: "Thép", why: "Thắng mà chỉ mất tối đa 3 quân", got: (s, won) => won && s.unitsLost <= 3 }
-];
-function medalsHtml(s: SideStats, won: boolean, secs: number): string {
-  const got = MEDALS.filter((m) => m.got(s, won, secs));
+function medalsHtml(got: typeof MEDALS): string {
   if (!got.length) return "";
   return `<div class="medals">${got.map((m) => `<span class="medal" title="${m.why}">${m.icon} ${m.name}</span>`).join("")}</div>`;
+}
+
+/** Khối tiến trình ở màn kết thúc: điểm vừa nhận, quân hàm, thanh tiến độ, thăng cấp. */
+function careerHtml(a: Award): string {
+  const up = a.after.index > a.before.index;
+  const r = a.after;
+  return `<div class="career">
+      <div class="career-head"><b>${r.name}</b><span>+${a.xp} điểm</span></div>
+      <div class="career-bar"><i style="width:${Math.round(r.progress * 100)}%"></i></div>
+      <small>${r.next ? `Còn ${r.toNext} điểm lên ${r.next}` : "Quân hàm cao nhất"} · ${a.career.wins} thắng / ${a.career.games} trận</small>
+      ${up ? `<div class="career-up">⭐ Thăng cấp: ${a.before.name} → ${r.name}</div>` : ""}
+    </div>`;
 }
 
 const REASON: Record<string, string> = {
@@ -325,6 +342,12 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
     const secs = Math.floor(world.tick / TICK_RATE);
     // người xem AI đấu AI: số liệu của phe thắng (hòa thì phe Lam)
     const p: Side = me ?? (w === 0 || w === 1 ? w : 0);
+    // tiến trình: chỉ trận tự chơi với AI từ đầu (không tính xem AI đấu AI, Phòng Thử Nghiệm, trận tua / tự chơi để thử)
+    const q = new URLSearchParams(location.search);
+    const counts = mode === "vsai" && me !== null && !q.has("skip") && !q.has("script");
+    const prog = counts ? award(loadCareer(), { outcome: draw ? "draw" : won ? "win" : "loss", secs, stats: s[p].stats }) : null;
+    if (prog) saveCareer(prog.career);
+    const earned = prog ? prog.medals : MEDALS.filter((m) => m.got(s[p].stats, me !== null && won, secs));
     screenEl = document.createElement("div");
     screenEl.className = "screen";
     screenEl.innerHTML = `<div class="card">
@@ -342,7 +365,8 @@ function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Sid
         <div><b>${s[p].stats.salvos}</b><span>Loạt tên lửa</span></div>
         <div><b>${Math.floor(s[p].stats.uplinkTime / 60)}:${String(Math.floor(s[p].stats.uplinkTime % 60)).padStart(2, "0")}</b><span>Giữ Đài Liên Lạc</span></div>
       </div>
-      ${medalsHtml(s[p].stats, me !== null && won, secs)}
+      ${medalsHtml(earned)}
+      ${prog ? careerHtml(prog) : ""}
       <button class="menu-btn primary" data-a="again">${me === null ? "Xem trận khác" : "Chơi lại"}</button>
       <button class="menu-btn" data-a="watch">${me === null ? "Tự chơi với AI" : "Xem AI đấu AI"}</button>
       <button class="menu-btn" data-a="close">Xem lại chiến trường</button>
