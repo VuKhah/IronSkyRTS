@@ -113,3 +113,45 @@ export function rampBlocks(grid: string[][]): { blocks: RampBlock[]; owner: Int3
     }
   return { blocks, owner, bad };
 }
+
+/** Một khối dốc chuẩn: 5 × 5 ô (10 × 10 m), lên đúng 1 bậc (người dùng chốt 11/11/2026). */
+export const RAMP_CELLS = 5;
+
+/**
+ * LUẬT DỐC (người dùng chốt 11/11/2026), trả lý do sai đầu tiên hoặc null nếu đúng:
+ * 1. Khối dốc là hình chữ nhật, lên đúng 1 tầng.
+ * 2. Dài đúng 10 m theo hướng leo; rộng là bội số 10 m (ghép nhiều khối 10 × 10 cạnh nhau theo bề ngang).
+ * 3. Không nối dốc theo chiều leo: ngay trên đỉnh có chiếu nghỉ phẳng sâu 10 m, ngang bề rộng dốc, cùng tầng đỉnh dốc.
+ * 4. Dốc không lộ thiên: ít nhất một bên hông dựa trọn vào khối cao (≥ tầng đỉnh dốc) hoặc đá.
+ * `landing`: khung ô chiếu nghỉ (để vẽ).
+ */
+export function rampRule(
+  grid: string[][],
+  b: { c0: number; r0: number; c1: number; r1: number },
+  count: number
+): { error: string | null; landing: [number, number, number, number] | null } {
+  const rd = rampDirOf(grid, b.c0, b.r0, b.c1, b.r1);
+  if (!rd) return { error: "hai đầu dốc cùng tầng", landing: null };
+  const { c0, r0, c1, r1 } = b;
+  const ns = rd.dir === "n" || rd.dir === "s";
+  const len = ns ? r1 - r0 + 1 : c1 - c0 + 1;
+  const wid = ns ? c1 - c0 + 1 : r1 - r0 + 1;
+  const high = rd.low + 1;
+  const L = RAMP_CELLS;
+  const landing: [number, number, number, number] =
+    rd.dir === "e" ? [c1 + 1, r0, c1 + L, r1] : rd.dir === "w" ? [c0 - L, r0, c0 - 1, r1] : rd.dir === "s" ? [c0, r1 + 1, c1, r1 + L] : [c0, r0 - L, c1, r0 - 1];
+  if (!rd.ok) return { error: "dốc phải lên đúng 1 tầng", landing };
+  if (count !== (r1 - r0 + 1) * (c1 - c0 + 1)) return { error: "khối dốc phải là hình chữ nhật", landing };
+  if (len !== L) return { error: `dốc phải dài 10 m (đang ${len * 2} m)`, landing };
+  if (wid % L !== 0) return { error: `bề rộng phải là bội số 10 m (đang ${wid * 2} m)`, landing };
+  for (let r = landing[1]; r <= landing[3]; r++)
+    for (let c = landing[0]; c <= landing[2]; c++)
+      if (cellTier(grid, c, r) !== high || grid[r]?.[c] === "r") return { error: "trên đỉnh dốc phải có chiếu nghỉ phẳng 10 m", landing };
+  const solid = (c: number, r: number): boolean => grid[r]?.[c] === "r" || cellTier(grid, c, r) >= high;
+  const side = (cells: [number, number][]): boolean => cells.every(([c, r]) => solid(c, r));
+  const span = (a: number, z: number): number[] => Array.from({ length: z - a + 1 }, (_, i) => a + i);
+  const sideA = ns ? span(r0, r1).map((r): [number, number] => [c0 - 1, r]) : span(c0, c1).map((c): [number, number] => [c, r0 - 1]);
+  const sideB = ns ? span(r0, r1).map((r): [number, number] => [c1 + 1, r]) : span(c0, c1).map((c): [number, number] => [c, r1 + 1]);
+  if (!side(sideA) && !side(sideB)) return { error: "dốc lộ thiên: một bên hông phải dựa vào khối cao hoặc đá", landing };
+  return { error: null, landing };
+}

@@ -13,7 +13,7 @@
  */
 import { BUILDINGS, UNITS } from "../sim/content";
 import { colName, getMap, mapRuler } from "../sim/maps";
-import { cellTier, rampDirOf } from "./layout";
+import { cellTier, RAMP_CELLS, rampDirOf, rampRule } from "./layout";
 
 const ID = new URLSearchParams(location.search).get("map") ?? "standard";
 const map = getMap(ID);
@@ -58,7 +58,7 @@ const TOOLS: { id: Tool; label: string; color?: string }[] = [
   { id: "1", label: "Tầng 1", color: "#a99f86" },
   { id: "2", label: "Tầng 2", color: "#7d735d" },
   { id: "3", label: "Tầng 3", color: "#55493a" },
-  { id: "d", label: "Dốc", color: "#c6b48a" },
+  { id: "d", label: "Dốc 10×10", color: "#c6b48a" },
   { id: "r", label: "Đá", color: "#55504a" }
 ];
 /** Khối mặt đất chủ đề thảo nguyên đồi: mỗi khối là một loại địa hình game đã có luật (terrain.ts). */
@@ -119,6 +119,7 @@ buttons("brushes", BRUSHES.map((b) => ({ key: String(b.m), html: b.label })), ()
 const symBox = document.getElementById("sym") as HTMLInputElement;
 const statusEl = document.getElementById("status")!;
 const hoverEl = document.getElementById("hover")!;
+const ruleEl = document.getElementById("rules")!;
 
 // ------------------------------------------------------------------ vẽ
 const cv = document.getElementById("cv") as HTMLCanvasElement;
@@ -300,14 +301,17 @@ function draw(): void {
   // mũi tên dốc: mỗi khối dốc (các ô dốc liền nhau) một hàng mũi tên dài đúng từ chân tới đỉnh dốc, lặp theo bề ngang
   // mỗi ~14 m; hướng tự suy: phía nào tầng cao hơn là phía đỉnh. Hai đầu bằng tầng, hay chênh khác đúng 1 tầng: viền đỏ.
   const seen = new Uint8Array(ROWS * COLS);
+  const errors: string[] = [];
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++) {
       if (!isRamp(grid[r][c]) || seen[r * COLS + c]) continue;
       let c0 = c, c1 = c, r0 = r, r1 = r;
+      let count = 0;
       const q = [r * COLS + c];
       seen[r * COLS + c] = 1;
       while (q.length) {
         const i = q.pop()!;
+        count++;
         const cc = i % COLS;
         const rr = (i - cc) / COLS;
         c0 = Math.min(c0, cc); c1 = Math.max(c1, cc); r0 = Math.min(r0, rr); r1 = Math.max(r1, rr);
@@ -321,19 +325,30 @@ function draw(): void {
       const x0 = PAD + c0 * CELL * K, x1 = PAD + (c1 + 1) * CELL * K;
       const y0 = PAD + r0 * CELL * K, y1 = PAD + (r1 + 1) * CELL * K;
       const rd = rampDir(c0, r0, c1, r1);
-      if (!rd || !rd.ok) {
+      // luật dốc (layout.ts rampRule): sai thì viền + mũi tên đỏ và ghi lý do; chiếu nghỉ vẽ nét đứt
+      const rule = rampRule(grid, { c0, r0, c1, r1 }, count);
+      if (rule.landing) {
+        const [lc0, lr0, lc1, lr1] = rule.landing;
+        g.setLineDash([4, 3]);
+        g.strokeStyle = rule.error ? "#e0402a" : "#3b3122";
+        g.lineWidth = 1;
+        g.strokeRect(PAD + lc0 * CELL * K, PAD + lr0 * CELL * K, (lc1 - lc0 + 1) * CELL * K, (lr1 - lr0 + 1) * CELL * K);
+        g.setLineDash([]);
+      }
+      if (rule.error) {
+        errors.push(`${cellLabel(-map.halfW + (c0 + 0.5) * CELL, -map.halfH + (r0 + 0.5) * CELL).split(" ·")[0]}: ${rule.error}`);
         g.strokeStyle = "#e0402a";
         g.lineWidth = 2;
         g.strokeRect(x0, y0, x1 - x0, y1 - y0);
-        if (!rd) continue;
       }
+      if (!rd) continue;
       const d = rd.dir;
       const ns = d === "n" || d === "s";
       const len = ns ? y1 - y0 : x1 - x0; // chiều dài dốc theo hướng leo
       const wid = ns ? x1 - x0 : y1 - y0;
       const n = Math.max(1, Math.round(wid / (14 * K)));
       const head = Math.min(len * 0.45, 3 * K);
-      g.strokeStyle = g.fillStyle = rd.ok ? "#3b3122" : "#e0402a";
+      g.strokeStyle = g.fillStyle = rule.error ? "#e0402a" : "#3b3122";
       g.lineWidth = 1.6;
       for (let k = 0; k < n; k++) {
         const t = (k + 0.5) / n;
@@ -361,6 +376,8 @@ function draw(): void {
         g.fill();
       }
     }
+  ruleEl.textContent = errors.length ? `⚠ ${errors.length} dốc sai luật: ${errors.slice(0, 4).join(" · ")}${errors.length > 4 ? " …" : ""}` : "Mọi dốc đúng luật";
+  ruleEl.style.color = errors.length ? "#ff8a73" : "#8fd19e";
   // lưới: ô ly, ô lớn + tên, đường vàng
   const vl = (x: number): void => {
     g.beginPath();
@@ -435,6 +452,21 @@ function brushRect(x: number, z: number): [number, number, number, number] | nul
   return [c0, r0, Math.max(c0 + 1, c1), Math.max(r0 + 1, r1)];
 }
 
+/** Công cụ Dốc: đóng một khối dốc chuẩn 5 × 5 ô (10 × 10 m) có tâm ở ô dưới con trỏ (bấm, không kéo). */
+function stampRamp(x: number, z: number): void {
+  const cc = Math.floor((x + map.halfW) / CELL);
+  const rr = Math.floor((z + map.halfH) / CELL);
+  const h = (RAMP_CELLS - 1) / 2;
+  for (let r = rr - h; r <= rr + h; r++)
+    for (let c = cc - h; c <= cc + h; c++) {
+      if (r < 0 || c < 0 || r >= ROWS || c >= COLS) continue;
+      grid[r][c] = "d";
+      if (symBox.checked) grid[ROWS - 1 - r][COLS - 1 - c] = "d";
+    }
+  dirty = true;
+  draw();
+}
+
 function paintAt(x: number, z: number): void {
   const b = brushRect(x, z);
   if (!b) return;
@@ -505,6 +537,11 @@ cv.addEventListener("pointerdown", (e) => {
       rot = refs[i].rot;
     } else if (Math.abs(x) < map.halfW && Math.abs(z) < map.halfH) refs.push({ k: tool as RefKind, x: Math.round(x), z: Math.round(z), rot });
     draw();
+    void save();
+    return;
+  }
+  if (tool === "d") {
+    stampRamp(...eventPos(e));
     void save();
     return;
   }
