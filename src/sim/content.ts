@@ -909,25 +909,27 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     weapon: {
       name: "Pháo 155mm nòng dài",
       traverse: 25,
-      dmgGround: 150,
+      // người dùng 11/11/2026 (bản đồ Cao Nguyên Ba Bậc): tăng mạnh tầm và sát thương một viên để pháo trên núi chữ L nả
+      // được vào sân giữa; một viên vào Titan = 320 × 1,5 (xuyên giáp vào giáp nặng) = 480, nửa máu Titan. Vẫn là số tạm.
+      dmgGround: 320,
       dmgAir: 0,
-      range: 38,
+      range: 90,
       cooldown: 5,
       dmgType: "ap",
       splash: 1.5,
       breach: true,
       visual: "cannon",
-      minRange: 10,
+      minRange: 25,
       reveal: 2,
       heightBonus: 2,
       deploy: { time: 2, range: 0, dmg: 0, required: true }
     },
     features: [
-      "Tầm bắn 38m, xa nhất trên mặt đất; cần quân khác nhìn thấy mục tiêu hộ.",
-      "Phải hạ bệ chữ X và duỗi nòng 2 giây mới bắn được; không bắn được mục tiêu gần hơn 10m.",
+      "Tầm bắn 90m, xa nhất trên mặt đất; cần quân khác nhìn thấy mục tiêu hộ.",
+      "Phải hạ bệ chữ X và duỗi nòng 2 giây mới bắn được; không bắn được mục tiêu gần hơn 25m.",
       "Mỗi phát bắn lộ vị trí 2 giây xuyên sương mù.",
       "Địa lợi tầm cao: đứng trên đồi được gấp đôi phần cộng tầm bắn của quân thường (tối đa +40%).",
-      "Một viên xuyên giáp, công phá: khắc Titan và tháp phòng thủ."
+      "Một viên xuyên giáp, công phá: hai viên hạ một Titan; khắc tháp phòng thủ."
     ],
     beats: ["titan", "turret"],
     fears: ["lynx", "falcon"]
