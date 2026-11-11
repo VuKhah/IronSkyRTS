@@ -155,7 +155,8 @@ const ALERT_TEXT: Record<string, (n: number) => string> = {
   powerShort: (n) => `Hậu cần: thiếu ${n} MW — đã cắt điện nhà xưởng / Sân Đáp trước, giữ điện cho phòng thủ`,
   powerForecast: (n) => `Hậu cần: xây xong sẽ thiếu ${n} MW — cần thêm Nhà Máy Điện`,
   oilLow: (n) => `Hậu cần: Dầu cho Nhà Máy Điện chỉ còn khoảng ${n} giây!`,
-  batteryLow: (n) => `Hậu cần: pin dự trữ chỉ còn khoảng ${n} giây!`
+  batteryLow: (n) => `Hậu cần: pin dự trữ chỉ còn khoảng ${n} giây!`,
+  droneLow: () => "Hậu cần: drone hỗ trợ sắp cạn năng lượng (đưa vào vùng lưới điện để nạp)"
 };
 
 function startGame(mode: Mode, seed: number, skip = 0, mapId?: string, side: Side = 0): void {

@@ -25,7 +25,7 @@ export interface Cost {
   oil: number;
 }
 
-export type UnitId = "commander" | "hauler" | "lynx" | "titan" | "skyguard" | "rocket" | "artillery" | "falcon" | "valkyrie" | "scout" | "shield";
+export type UnitId = "commander" | "hauler" | "lynx" | "titan" | "skyguard" | "rocket" | "artillery" | "falcon" | "valkyrie" | "scout" | "shield" | "repair";
 
 export type BuildingId =
   | "hq"
@@ -227,22 +227,33 @@ export interface UnitSpec {
   /** Phòng thủ điểm: chặn `charges` viên đạn pháo (interceptable); mỗi `recharge` giây hồi 1 lượt (Xe Tư Lệnh). */
   pointDefense?: { charges: number; recharge: number };
   /**
-   * Drone bay lơ lửng (khác máy bay phản lực `fuel`): không cần Sân Đáp, không đốt Dầu, chạy bằng pin `battery` giây bay.
-   * Ngoài vùng lưới điện (vùng `zone` của công trình phe mình) tốn 1 giây pin mỗi giây bay, trong vùng thì tự sạc `charge`
-   * giây pin mỗi giây. Pin còn dưới `low` (tỉ lệ) thì hậu cần tự cho bay về vùng lưới điện gần nhất. `alt`: độ cao bay (m).
+   * Drone bay lơ lửng (khác máy bay phản lực `fuel`): không cất / hạ cánh, không cần Sân Đáp, không đốt Dầu, bay không giới
+   * hạn (người dùng chốt 11/11/2026). `alt`: độ cao bay (m). `draw`: điện (MW) khi đang nạp năng lượng trong vùng lưới điện.
    */
-  hover?: { battery: number; charge: number; alt: number; low: number; draw: number };
+  hover?: { alt: number; draw: number };
   /**
-   * Cảm tử: chỉ khi được lệnh tấn công một mục tiêu mặt đất, hoặc khi pin cạn mà có địch mặt đất trong tầm nhìn. Lao vào
-   * mục tiêu rồi nổ: `dmg` sát thương loại `dmgType`, lan bán kính `splash` m.
+   * Kho năng lượng của drone hỗ trợ (Khiên, Sửa Chữa…), giữ trong `Unit.fuel`: dùng cho khả năng của nó, bay thì không tốn.
+   * Nạp `charge` mỗi giây khi ở trong vùng lưới điện (sau này: đơn vị tiếp năng lượng chở tới tiền tuyến). Drone không tự
+   * bay về nạp (phải ở lại tiền tuyến); còn dưới `low` (tỉ lệ) thì hậu cần báo trước cho Tư lệnh.
+   */
+  energy?: { max: number; charge: number; low: number };
+  /**
+   * Cảm tử: chỉ khi được lệnh tấn công một mục tiêu mặt đất. Lao vào mục tiêu rồi nổ: `dmg` sát thương loại `dmgType`, lan
+   * bán kính `splash` m.
    */
   kamikaze?: { dmg: number; splash: number; dmgType: DmgType };
   /**
-   * Vùng khiên (Drone Khiên): quân mình trong bán kính `radius` m bị bắn (hoặc chính drone bị bắn) thì tự bật, giữ `duration`
-   * giây; mọi sát thương vào quân / công trình phe mình trong vùng bị khiên hứng trước, hứng đủ `absorb` thì vỡ sớm. Dùng xong
-   * phải sạc lại `recharge` giây trong vùng lưới điện (hậu cần tự đưa về sạc, điện sạc tính vào tiêu thụ của phe).
+   * Vòm khiên (Drone Khiên): khó bị câu (người dùng 11/11/2026). Khi tắt, drone cộng dồn sát thương danh nghĩa mà quân / công
+   * trình phe mình trong `radius` m phải nhận (phai một nửa sau mỗi `fade` giây); vượt `trigger` và còn ít nhất `minStart`
+   * năng lượng thì bật. Đang bật: hứng trước mọi sát thương vào phe mình trong vùng, tốn `perDmg` năng lượng mỗi điểm sát
+   * thương hứng được và `drain` mỗi giây; không hứng phát nào trong `idleOff` giây thì tự tắt, giữ phần năng lượng còn lại.
    */
-  shield?: { radius: number; duration: number; absorb: number; recharge: number };
+  shield?: { radius: number; trigger: number; fade: number; minStart: number; drain: number; perDmg: number; idleOff: number };
+  /**
+   * Hàn sửa (Drone Sửa Chữa): mỗi lúc sửa một mục tiêu phe mình trong `radius` m (Xe Tư Lệnh trước, rồi xe / máy bay hỏng
+   * nặng nhất theo tỉ lệ, cuối cùng mới tới công trình), `rate` máu mỗi giây, tốn `perHp` năng lượng mỗi điểm máu.
+   */
+  repair?: { radius: number; rate: number; perHp: number };
   features: string[];
   beats: EntityId[];
   fears: EntityId[];
@@ -719,14 +730,13 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     sight: 40,
     radius: 1.3,
     captureWeight: 0,
-    hover: { battery: 60, charge: 4, alt: 8, low: 0.25, draw: 2 },
+    hover: { alt: 8, draw: 0 },
     // 3 chiếc hạ vừa một Lynx (3 × 150 × 1,25 = 562 > 510), không hạ nổi Titan (3 × 150 × 0,6 = 270 < 960)
     kamikaze: { dmg: 150, splash: 2.5, dmgType: "he" },
     features: [
       "Bay lơ lửng, nhìn xa 40 m: soi sương mù cho Pháo Tự Hành và Xe Tên Lửa Loạt bắn.",
-      "Không cần Sân Đáp, không đốt Dầu: pin 60 giây bay, tự sạc khi ở trong vùng lưới điện (quanh Tổng Hành Dinh, Nhà Máy Điện, Cột Điện).",
-      "Pin còn 25% thì tự bay về vùng lưới điện gần nhất sạc đầy.",
-      "Cảm tử: ra lệnh tấn công một xe hay công trình địch thì lao vào nổ (3 chiếc hạ được một Lynx, không đủ hạ Titan). Pin cạn giữa đường mà thấy địch thì tự lao vào.",
+      "Không cất / hạ cánh, không cần Sân Đáp, không đốt Dầu: bay mãi không cần về nạp.",
+      "Cảm tử: ra lệnh tấn công một xe hay công trình địch thì lao vào nổ (3 chiếc hạ được một Lynx, không đủ hạ Titan).",
       "Rất mỏng: một loạt của SkyGuard là rơi."
     ],
     beats: ["lynx", "hauler"],
@@ -754,17 +764,54 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     sight: 22,
     radius: 2.2,
     captureWeight: 0,
-    hover: { battery: 120, charge: 4, alt: 6, low: 0.2, draw: 6 },
-    shield: { radius: 12, duration: 10, absorb: 900, recharge: 20 },
+    hover: { alt: 6, draw: 6 },
+    energy: { max: 1000, charge: 50, low: 0.25 },
+    shield: { radius: 12, trigger: 150, fade: 1.5, minStart: 200, drain: 25, perDmg: 1, idleOff: 3 },
     features: [
-      "Vòm khiên bán kính 12 m: quân mình bên dưới bị bắn thì tự bật, giữ 10 giây.",
-      "Khiên hứng trước mọi sát thương vào quân và công trình phe mình trong vùng; hứng đủ 900 thì vỡ sớm.",
-      "Dùng xong phải sạc lại 20 giây trong vùng lưới điện: hậu cần tự đưa drone về sạc rồi Tư lệnh điều ra lại.",
-      "Pin bay 120 giây, sạc trong vùng lưới điện; điện sạc tính vào tiêu thụ của phe (ưu tiên thấp nhất).",
-      "Không vũ khí. Đi cùng cụm quân tấn công để đỡ một đợt hỏa lực."
+      "Vòm khiên bán kính 12 m, ở lại tiền tuyến làm lớp giáp cho cả cụm quân.",
+      "Khó bị câu: chỉ bật khi quân bên dưới hứng hỏa lực thật (cộng dồn từ 150 sát thương trở lên), một phát lẻ không đủ.",
+      "Đang bật thì hứng trước mọi sát thương vào quân và công trình phe mình trong vùng; tốn năng lượng theo sát thương hứng và theo thời gian bật.",
+      "Hết bị bắn 3 giây thì tự tắt, giữ phần năng lượng còn lại cho lần sau.",
+      "Kho năng lượng 1000, không tự bay về nạp; nạp trong vùng lưới điện (sau này: đơn vị tiếp năng lượng chở tới). Sắp cạn thì hậu cần báo.",
+      "Không vũ khí, bay mãi không cần về nạp."
     ],
     beats: ["rocket", "artillery"],
     fears: ["skyguard", "falcon"]
+  },
+  repair: {
+    id: "repair",
+    kind: "unit",
+    name: "Drone Sửa Chữa",
+    short: "Drone Sửa",
+    code: "SUA",
+    hotkey: "J",
+    role: "Bay theo mũi thọc sâu, hàn sửa xe tại trận; ưu tiên cứu Xe Tư Lệnh.",
+    domain: "air",
+    group: "KQ",
+    batch: 1,
+    mvp: true,
+    // số tạm (11/11/2026), chờ buổi cân bằng
+    cost: { iron: 120, oil: 20 },
+    buildTime: 6,
+    builtAt: "special-factory",
+    hp: 200,
+    armorClass: "light",
+    speed: 10,
+    sight: 20,
+    radius: 1.8,
+    captureWeight: 0,
+    hover: { alt: 5, draw: 4 },
+    energy: { max: 800, charge: 40, low: 0.25 },
+    repair: { radius: 10, rate: 30, perHp: 1 },
+    features: [
+      "Tia hàn sửa xe phe mình trong vùng 10 m, 30 máu mỗi giây, mỗi lúc một xe.",
+      "Ưu tiên Xe Tư Lệnh, rồi tới xe hỏng nặng nhất; không còn xe nào hỏng thì sửa công trình.",
+      "Kho năng lượng 800 (1 năng lượng mỗi điểm máu sửa), không tự bay về nạp; nạp trong vùng lưới điện (sau này: đơn vị tiếp năng lượng chở tới). Sắp cạn thì hậu cần báo.",
+      "Máu mỏng, không vũ khí: để sau tuyến giáp.",
+      "Bay mãi không cần về nạp, không cất / hạ cánh."
+    ],
+    beats: [],
+    fears: ["skyguard", "falcon", "lynx"]
   },
   falcon: {
     id: "falcon",
@@ -993,7 +1040,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
       [-7, -3, 3, 3]
     ],
     padFace: 3,
-    produces: ["rocket", "artillery", "scout", "shield"],
+    produces: ["rocket", "artillery", "scout", "shield", "repair"],
     power: -10,
     priority: 3,
     features: [

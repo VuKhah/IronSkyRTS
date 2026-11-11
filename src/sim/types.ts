@@ -105,10 +105,10 @@ export interface Unit {
   ext: boolean;
   /** Máy bay: tốc độ ngoặt hiện tại (radian mỗi tick, dấu = chiều ngoặt). Tăng giảm dần cho đường bay mượt. */
   yawRate: number;
-  /** Drone Khiên: khiên còn hứng được bao nhiêu sát thương, bật tới tick nào, mức sạc 0..1 (1 = sẵn sàng). */
-  shieldHp: number;
-  shieldUntil: number;
-  shieldCharge: number;
+  /** Drone Khiên: vòm đang bật (1/0), số tick liền không hứng phát nào, mức nguy hiểm đang đo (sát thương danh nghĩa, phai dần). */
+  shieldOn: number;
+  shieldIdle: number;
+  threat: number;
   /** Vũ khí phụ: số tick chờ bắn tiếp và số viên còn lại của lần xuất kích này. */
   cd2: number;
   ammo2: number;
@@ -272,7 +272,7 @@ export interface Command {
   order: Order;
 }
 
-export type AlertKind = "commander" | "base" | "hauler" | "lowfuel" | "nooil" | "mineLost" | "powerShort" | "powerForecast" | "oilLow" | "batteryLow" | "uplinkLost";
+export type AlertKind = "commander" | "base" | "hauler" | "lowfuel" | "nooil" | "mineLost" | "powerShort" | "powerForecast" | "oilLow" | "batteryLow" | "uplinkLost" | "droneLow";
 export type WinReason = "commander" | "buildings" | "monopoly" | "timeout";
 
 export type SimEvent =

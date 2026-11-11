@@ -354,7 +354,10 @@ export class Overlay {
       const showFuel = isAir && spec.fuel && (viewer === null || u.side === viewer) && (sel || u.air !== "parked" || u.fuel < spec.fuel.tank * RULES.air.takeoffMin);
       // dàn phóng đang nạp đạn (của ta): vạch cam dưới thanh máu, đầy là bắn được loạt mới
       const reload = canStrike(u.kind) && (viewer === null || u.side === viewer) && u.cooldown > 0 && u.burst === 0;
-      const bars = sel || u.hp < u.maxHp || showFuel || reload;
+      // drone hỗ trợ (của ta): vạch xanh năng lượng, hiện khi chọn hoặc khi đã hao
+      const E = spec.energy;
+      const showEnergy = !!E && (viewer === null || u.side === viewer) && (sel || u.fuel < E.max);
+      const bars = sel || u.hp < u.maxHp || showFuel || reload || showEnergy;
       if (!bars && u.rank === 0) continue;
       const [x, y, z] = Views.displayPos(world.map, u, alpha);
       const p = cam.project(x, y + (spec.barHeight ?? (isAir ? 2.2 : 3.4)), z, w, h);
@@ -369,6 +372,10 @@ export class Overlay {
         this.bar(p.x, p.y + 5, bw, f, f <= RULES.air.bingo ? "#ff6b5e" : "#d17af2");
       }
       if (reload) this.bar(p.x, p.y + 5, bw, 1 - u.cooldown / (spec.weapon!.cooldown * RULES.tickRate), "#ffb547");
+      if (showEnergy && E) {
+        const f = u.fuel / E.max;
+        this.bar(p.x, p.y + 5, bw, f, f < E.low ? "#ff6b5e" : "#5fd3ff");
+      }
       if (u.kind === "commander") {
         g.fillStyle = SIDE_COLOR[u.side];
         g.font = "bold 11px 'Be Vietnam Pro', sans-serif";

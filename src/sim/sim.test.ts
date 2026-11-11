@@ -385,7 +385,7 @@ describe("lõi mô phỏng", () => {
     expect(w.sides[0].retreatLevel).toBeGreaterThanOrEqual(1);
   });
 
-  it("Drone Trinh Sát: 3 chiếc cảm tử hạ được Lynx, không hạ nổi Titan; pin yếu tự về vùng lưới điện sạc", () => {
+  it("Drone Trinh Sát: 3 chiếc cảm tử hạ được Lynx, không hạ nổi Titan; bay mãi không cần về nạp", () => {
     for (const [victim, dies] of [
       ["lynx", true],
       ["titan", false]
@@ -407,35 +407,73 @@ describe("lõi mô phỏng", () => {
     ]);
     const d = w.units.find((u) => u.kind === "scout")!;
     w.step([{ side: 0, order: { t: "move", ids: [d.id], x: 40, z: -40 } }]);
-    let wentHome = false;
     for (let t = 0; t < sec(120); t++) {
       w.step([]);
-      if (d.rtb) wentHome = true;
+      expect(d.rtb).toBe(false);
     }
-    expect(wentHome).toBe(true);
     expect(d.hp).toBeGreaterThan(0);
-    expect(d.fuel).toBe(UNITS.scout.hover!.battery);
+    expect(Math.abs(d.x - 40) + Math.abs(d.z + 40)).toBeLessThan(1);
   });
 
-  it("Drone Khiên tự bật vòm khi quân bên dưới bị bắn, hứng đạn, dùng xong tự về sạc", () => {
-    const lynxLeft = (withShield: boolean): { alive: number; w: World } => {
+  it("Drone Khiên: một khẩu lẻ không câu được khiên; hỏa lực thật thì bật, hứng đạn, ở lại tiền tuyến", () => {
+    const fight = (shooter: "lynx" | "titan", n: number, withShield: boolean): { alive: number; w: World; on: number } => {
       const w = new World(1, { sandbox: true });
       const c: Command[] = [];
       for (let i = 0; i < 4; i++) c.push({ side: 0, order: { t: "sbSpawn", kind: "lynx", side: 0, x: -6 + i * 4, z: 6 } });
       if (withShield) c.push({ side: 0, order: { t: "sbSpawn", kind: "shield", side: 0, x: 0, z: 8 } });
-      for (let i = 0; i < 3; i++) c.push({ side: 1, order: { t: "sbSpawn", kind: "titan", side: 1, x: -4 + i * 4, z: -14 } });
+      for (let i = 0; i < n; i++) c.push({ side: 1, order: { t: "sbSpawn", kind: shooter, side: 1, x: -4 + i * 4, z: -14 } });
       w.step(c);
-      for (let t = 0; t < sec(12); t++) w.step([]);
-      return { alive: w.units.filter((u) => u.kind === "lynx" && u.hp > 0).length, w };
+      let on = 0;
+      for (let t = 0; t < sec(12); t++) {
+        w.step([]);
+        for (const e of w.events) if (e.t === "shield" && e.on) on++;
+      }
+      return { alive: w.units.filter((u) => u.kind === "lynx" && u.hp > 0 && u.side === 0).length, w, on };
     };
-    const bare = lynxLeft(false).alive;
-    const { alive, w } = lynxLeft(true);
+    // một Lynx địch bắn tỉa liên tục vào Titan đứng dưới khiên: khiên không bật (trước đây phát đầu tiên đã câu mất cả khiên)
+    {
+      const w = new World(1, { sandbox: true });
+      w.step([
+        { side: 0, order: { t: "sbSpawn", kind: "titan", side: 0, x: 0, z: 6 } },
+        { side: 0, order: { t: "sbSpawn", kind: "shield", side: 0, x: 0, z: 8 } },
+        { side: 1, order: { t: "sbSpawn", kind: "lynx", side: 1, x: 0, z: -8 } }
+      ]);
+      const d = w.units.find((u) => u.kind === "shield")!;
+      for (let t = 0; t < sec(8); t++) {
+        w.step([]);
+        expect(d.shieldOn).toBe(0);
+      }
+      expect(w.sides[1].stats.damageDealt, "Lynx phải thực sự bắn trúng").toBeGreaterThan(50);
+    }
+    const bare = fight("titan", 3, false).alive;
+    const { alive, w, on } = fight("titan", 3, true);
+    expect(on).toBeGreaterThan(0);
     expect(alive).toBeGreaterThan(bare);
     const d = w.units.find((u) => u.kind === "shield")!;
-    expect(d.shieldCharge).toBeLessThan(1);
-    for (let t = 0; t < sec(40); t++) w.step([]);
-    expect(d.shieldCharge).toBe(1);
-    expect(d.rtb).toBe(false);
+    expect(d.rtb, "drone khiên không tự bay về nạp").toBe(false);
+    expect(Math.abs(d.x) + Math.abs(d.z - 8)).toBeLessThan(1);
+  });
+
+  it("Drone Sửa Chữa hàn xe trong vùng, Xe Tư Lệnh trước, máu tăng đúng bằng năng lượng tiêu", () => {
+    const w = new World(1, { sandbox: true });
+    w.step([
+      { side: 0, order: { t: "sbSpawn", kind: "titan", side: 0, x: -4, z: 0 } },
+      { side: 0, order: { t: "sbSpawn", kind: "commander", side: 0, x: 4, z: 0 } },
+      { side: 0, order: { t: "sbSpawn", kind: "repair", side: 0, x: 0, z: 2 } }
+    ]);
+    const titan = w.units.find((u) => u.kind === "titan")!;
+    const cmd = w.units.find((u) => u.kind === "commander")!;
+    const d = w.units.find((u) => u.kind === "repair")!;
+    titan.hp = 200;
+    cmd.hp = cmd.maxHp - 60;
+    w.step([]);
+    expect(d.targetId, "Tư Lệnh trước").toBe(cmd.id);
+    const e0 = d.fuel;
+    const h0 = titan.hp + cmd.hp;
+    for (let t = 0; t < sec(10); t++) w.step([]);
+    expect(cmd.hp).toBe(cmd.maxHp);
+    expect(titan.hp).toBeGreaterThan(200);
+    expect(titan.hp + cmd.hp - h0).toBeCloseTo((e0 - d.fuel) / UNITS.repair.repair!.perHp, 6);
   });
 
   it("AI đấu AI chơi trọn một trận (≤ 25 phút) mà không có giá trị hỏng", () => {

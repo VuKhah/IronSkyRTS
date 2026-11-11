@@ -40,7 +40,11 @@ interface View {
   /** Các miệng nòng và ống vừa dùng, để đường đạn xuất phát đúng chỗ. */
   muzzles: THREE.Object3D[];
   muzzleCursor: number;
+  /** Drone Sửa Chữa: tia hàn tới mục tiêu đang sửa (tạo khi cần). */
+  beam?: THREE.Line;
 }
+
+const BEAM_MAT = new THREE.LineBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.85 });
 
 function muzzlesOf(rig: Rig): THREE.Object3D[] {
   if (rig.muzzlePoints) return rig.muzzlePoints;
@@ -342,6 +346,10 @@ export class Views {
       if (v.seen === f) continue;
       this.scene.remove(v.rig.root);
       disposeRig(v.rig);
+      if (v.beam) {
+        this.scene.remove(v.beam);
+        v.beam.geometry.dispose();
+      }
       map.delete(id);
     }
   }
@@ -357,6 +365,26 @@ export class Views {
       v.ring.material = mat;
       v.ring.position.y = y;
     }
+  }
+
+  /** Tia hàn của Drone Sửa Chữa: từ dưới bụng drone tới mục tiêu đang sửa, chập chờn theo nhịp hàn (vẽ theo trạng thái sim). */
+  private drawBeam(world: World, u: Unit, v: View, x: number, y: number, z: number, time: number): void {
+    const t = UNITS[u.kind].repair && u.targetId ? world.target(u.targetId) : null;
+    if (!t) {
+      if (v.beam) v.beam.visible = false;
+      return;
+    }
+    if (!v.beam) {
+      v.beam = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), BEAM_MAT);
+      v.beam.frustumCulled = false;
+      this.scene.add(v.beam);
+    }
+    const ty = this.map.groundY(t.x, t.z) + (t.cat === "unit" && t.alt > AIRBORNE_ALT ? t.alt : 1);
+    const pos = v.beam.geometry.attributes.position as THREE.BufferAttribute;
+    pos.setXYZ(0, x, y - 0.4, z);
+    pos.setXYZ(1, t.x, ty, t.z);
+    pos.needsUpdate = true;
+    v.beam.visible = Math.sin(time * 31) > -0.2;
   }
 
   private aimAt(world: World, x: number, z: number, yaw: number, targetId: number): number | null {
@@ -401,7 +429,9 @@ export class Views {
       if (spec.weapon && (world.tick - u.lastShot) * DT < 0.25) a.add("fire");
       if (spec.hover && u.mission === "attack" && spec.kamikaze) a.add("kamikaze");
       // vòm khiên vẽ THEO TRẠNG THÁI sim (bật tới tick nào, còn hứng được không), không theo sự kiện: tua nhanh vẫn đúng
-      if (spec.shield && u.shieldUntil > world.tick && u.shieldHp > 0) a.add("shield");
+      if (spec.shield && u.shieldOn) a.add("shield");
+      if (spec.repair && u.targetId) a.add("repair");
+      this.drawBeam(world, u, v, x, this.map.groundY(x, z) + alt, z, time);
     } else {
       v.yaw += wrap(target - v.yaw) * Math.min(1, dt * 10);
       const y = this.map.groundY(x, z);
