@@ -6,11 +6,12 @@
  * layout.json: { w, h, cell: 2, rows: string[] }: mỗi hàng một chuỗi, mỗi ký tự một ô 2 m (hàng đầu là phía Bắc):
  *   "0" "1" "2" = tầng · "d" = ô dốc · "r" = mỏm đá (trên tầng 0). Hướng dốc không lưu: mỗi khối dốc (ô "d" liền nhau)
  *   tự lấy hướng đi LÊN về phía tầng cao hơn ở hai đầu (cùng cách khi dựng MapDef). Bản cũ "n/e/s/w" được đổi thành "d".
- * `refs`: mốc đối chiếu cỡ thật (không phải địa hình): Pháo Tự Hành, dãy 4 Titan, tầm nhìn Drone Trinh Sát; `rot` = độ,
- * 0 = mũi xe hướng Bắc, theo chiều kim đồng hồ. Bấm lại vào mốc để xoay 15° (Shift: ngược lại).
+ * `refs`: mốc đối chiếu cỡ thật (không phải địa hình): Pháo Tự Hành, dãy 4 Titan, tầm nhìn Drone Trinh Sát, Xưởng Xe
+ * Chuyên Dụng; `rot` = độ, 0 = mũi xe / cửa xưởng hướng Bắc, theo chiều kim đồng hồ. Bấm lại vào mốc để xoay 15° (xưởng 90°),
+ * Shift: ngược lại.
  * Chỉ vẽ lại khi có thay đổi, nên nhẹ máy (không như trang game 3D).
  */
-import { UNITS } from "../sim/content";
+import { BUILDINGS, UNITS } from "../sim/content";
 import { colName, getMap, mapRuler } from "../sim/maps";
 
 const ID = new URLSearchParams(location.search).get("map") ?? "standard";
@@ -28,7 +29,7 @@ interface Layout {
   refs?: Ref[];
 }
 
-type RefKind = "art" | "titan4" | "drone";
+type RefKind = "art" | "titan4" | "drone" | "sfac";
 interface Ref {
   k: RefKind;
   x: number;
@@ -55,6 +56,7 @@ const TOOLS: { id: Tool; label: string; color?: string }[] = [
   { id: "art", label: "Mốc: Pháo" },
   { id: "titan4", label: "Mốc: 4 Titan" },
   { id: "drone", label: "Mốc: tầm Drone TS" },
+  { id: "sfac", label: "Mốc: Xưởng Chuyên Dụng" },
   { id: "delref", label: "Xóa mốc" }
 ];
 const BRUSHES = [
@@ -174,6 +176,8 @@ function rampDir(c0: number, r0: number, c1: number, r1: number): { dir: "n" | "
 const ART = UNITS.artillery;
 const TITAN = UNITS.titan;
 const SCOUT = UNITS.scout;
+/** Xưởng Xe Chuyên Dụng: thân 2 × half (m), nền móng thêm viền 1 ô (2 m) mỗi bên (content.ts). */
+const SFAC = BUILDINGS["special-factory"];
 /** Khoảng cách tâm hai Titan đứng cạnh nhau trong dãy (m): thân rộng ~3,8 m + khe 2 m. */
 const TITAN_GAP = 6;
 
@@ -199,6 +203,35 @@ function drawRef(f: Ref): void {
     return;
   }
   g.rotate(a);
+  if (f.k === "sfac") {
+    const [hx, hz] = SFAC.half;
+    const fx = hx + CELL;
+    const fz = hz + CELL;
+    // nền móng (nét đứt), thân xưởng, cửa ra ở cạnh trước (phía Bắc khi rot = 0)
+    g.setLineDash([5, 3]);
+    g.strokeStyle = "#0b2a4a";
+    g.lineWidth = 1;
+    g.strokeRect(-fx * K, -fz * K, fx * 2 * K, fz * 2 * K);
+    g.setLineDash([]);
+    g.fillStyle = "rgba(46, 158, 255, 0.55)";
+    g.fillRect(-hx * K, -hz * K, hx * 2 * K, hz * 2 * K);
+    g.strokeRect(-hx * K, -hz * K, hx * 2 * K, hz * 2 * K);
+    g.fillStyle = "#0b2a4a";
+    g.fillRect(-hx * 0.45 * K, -hz * K - 1, hx * 0.9 * K, 1.2 * K);
+    g.beginPath();
+    g.moveTo(0, (-fz - 4) * K);
+    g.lineTo(-2.2 * K, (-fz - 1) * K);
+    g.lineTo(2.2 * K, (-fz - 1) * K);
+    g.closePath();
+    g.fill();
+    g.restore();
+    g.fillStyle = "#0b2a4a";
+    g.font = "bold 11px system-ui, sans-serif";
+    g.fillText("Xưởng Chuyên Dụng", X(f.x), Y(f.z) - 6);
+    g.font = "11px system-ui, sans-serif";
+    g.fillText(`${hx * 2}×${hz * 2} m · nền ${fx * 2}×${fz * 2} m`, X(f.x), Y(f.z) + 8);
+    return;
+  }
   const hull = (cx: number, len: number, wid: number): void => {
     g.fillStyle = "rgba(46, 158, 255, 0.85)";
     g.strokeStyle = "#0b2a4a";
@@ -226,7 +259,7 @@ function drawRef(f: Ref): void {
 function refAt(x: number, z: number): number {
   for (let i = refs.length - 1; i >= 0; i--) {
     const f = refs[i];
-    const reach = f.k === "titan4" ? 13 : f.k === "art" ? 6 : 6;
+    const reach = f.k === "titan4" ? 13 : f.k === "sfac" ? 11 : 6;
     if ((x - f.x) ** 2 + (z - f.z) ** 2 < reach * reach) return i;
   }
   return -1;
@@ -457,14 +490,15 @@ cv.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return;
   undoStack.push({ g: grid.map((row) => row.slice()), refs: refs.map((f) => ({ ...f })) });
   if (undoStack.length > 50) undoStack.shift();
-  if (tool === "art" || tool === "titan4" || tool === "drone" || tool === "delref") {
+  if (tool === "art" || tool === "titan4" || tool === "drone" || tool === "sfac" || tool === "delref") {
     // mốc: bấm chỗ trống = đặt; bấm vào mốc = xoay 15° (Shift: ngược lại); công cụ Xóa mốc = xóa
     const [x, z] = eventPos(e);
     const i = refAt(x, z);
     if (tool === "delref") {
       if (i >= 0) refs.splice(i, 1);
     } else if (i >= 0) {
-      refs[i].rot = (refs[i].rot + (e.shiftKey ? -15 : 15) + 360) % 360;
+      const step = refs[i].k === "sfac" ? 90 : 15; // nhà trong game xoay theo bội 90°
+      refs[i].rot = (refs[i].rot + (e.shiftKey ? -step : step) + 360) % 360;
       rot = refs[i].rot;
     } else if (Math.abs(x) < map.halfW && Math.abs(z) < map.halfH) refs.push({ k: tool, x: Math.round(x), z: Math.round(z), rot });
     draw();
