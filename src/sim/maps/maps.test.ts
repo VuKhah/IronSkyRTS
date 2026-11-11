@@ -60,7 +60,7 @@ describe.each([...MAP_DEFS, ...DEV_MAP_DEFS].map((d) => [d.id]))("bản đồ %s
       }
   });
 
-  it("căn cứ không bị chặn, mọi mỏ đi tới được từ cả hai nhà", () => {
+  it("căn cứ không bị chặn, mọi mỏ và mọi ô đi được đều tới được từ cả hai nhà", () => {
     const cell = (x: number, z: number): number => {
       const c = Math.min(m.cols - 1, Math.max(0, Math.floor((x + m.halfW) / CELL)));
       const r = Math.min(m.rows - 1, Math.max(0, Math.floor((z + m.halfH) / CELL)));
@@ -93,6 +93,12 @@ describe.each([...MAP_DEFS, ...DEV_MAP_DEFS].map((d) => [d.id]))("bản đồ %s
         }
       }
       for (const mine of m.mines) expect(seen[cell(mine.x, mine.z)], `mỏ (${mine.x}, ${mine.z}) không đi tới được từ (${bx}, ${bz})`).toBe(1);
+      // mọi ô đi được đều tới được từ nhà: vùng cao thiếu dốc (hay dốc bị mất khi soi gương) là lộ ngay.
+      // Chỉ áp cho bản đồ chơi được: bản đồ kiểm thử cũ còn vài túi ô lẻ (khe giữa đá và bờ sông), sắp bỏ nên không sửa.
+      if (!MAP_DEFS.some((d) => d.id === id)) continue;
+      let island = -1;
+      for (let i = 0; i < open.length && island < 0; i++) if (open[i] && !seen[i]) island = i;
+      if (island >= 0) expect.fail(`ô (${cx(island % m.cols)}, ${cz(Math.floor(island / m.cols))}) đi được nhưng không tới được từ nhà (${bx}, ${bz})`);
     }
   });
 });

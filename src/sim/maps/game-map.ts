@@ -130,7 +130,11 @@ export class GameMap {
   private readonly accel: Accel | null;
   private readonly regionBox: (Box | null)[];
   private readonly tierBox: Box[];
-  /** Khối dốc khai báo (chưa soi gương): lưới ô chỉ tính ở nửa phía Lam rồi soi sang. */
+  /**
+   * Khối dốc dùng để dựng lưới ô. Bản đồ đối xứng: gồm cả dốc khai báo lẫn bản xoay 180° của chúng, vì lưới chỉ tính ở nửa
+   * thứ nhất (z ≥ 0) rồi soi sang: trước 11/11/2026 chỉ có dốc khai báo, nên dốc khai báo ở nửa Bắc bị mất hẳn và dốc vắt qua
+   * z = 0 chỉ còn nửa bề rộng (gặp khi dựng Bản Đồ Chuẩn: sống đá không có dốc nào).
+   */
   private readonly rampsHalf: Ramp[];
   // ---- lưới ô dựng một lần lúc vào trận (cols × rows, chỉ số i = hàng × cols + cột)
   /** Độ cao mặt đất ở tâm ô (m); ô sông là đáy sông; ô dốc là độ cao ở tâm ô. */
@@ -189,7 +193,8 @@ export class GameMap {
     this.regionBox = this.regions.map((g) => (g.poly ? polyBox(g.poly) : null));
     this.tierBox = this.tiers.map((t) => polyBox(t.poly));
     this.accel = opts.accel === false ? null : this.buildAccel();
-    this.rampsHalf = (def.ramps ?? []).map((r) => this.snapRamp(r));
+    const declared = (def.ramps ?? []).map((r) => this.snapRamp(r));
+    this.rampsHalf = def.symmetric ? declared.flatMap((r) => [r, mirrorRamp(r)]) : declared;
     const n = this.cols * this.rows;
     this.cellY = new Float64Array(n);
     this.visTier = new Int8Array(n);
@@ -199,7 +204,7 @@ export class GameMap {
     this.cellApron = new Uint8Array(n);
     this.cellDeck = new Uint8Array(n);
     this.rasterize();
-    this.ramps = def.symmetric ? this.rampsHalf.flatMap((r) => [r, mirrorRamp(r)]) : this.rampsHalf;
+    this.ramps = this.rampsHalf;
   }
 
   private buildAccel(): Accel {
