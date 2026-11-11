@@ -4,7 +4,8 @@
  * người dùng tô thì trang tự lưu; Claude sửa file thì trang tự nạp lại (hỏi file mỗi 2 giây khi không đang tô).
  *
  * layout.json: { w, h, cell: 2, rows: string[] }: mỗi hàng một chuỗi, mỗi ký tự một ô 2 m (hàng đầu là phía Bắc):
- *   "0" "1" "2" = tầng · "n" "e" "s" "w" = ô dốc, chữ là hướng đi LÊN · "r" = mỏm đá (trên tầng 0).
+ *   "0" "1" "2" = tầng · "d" = ô dốc · "r" = mỏm đá (trên tầng 0). Hướng dốc không lưu: mỗi khối dốc (ô "d" liền nhau)
+ *   tự lấy hướng đi LÊN về phía tầng cao hơn ở hai đầu (cùng cách khi dựng MapDef). Bản cũ "n/e/s/w" được đổi thành "d".
  * Chỉ vẽ lại khi có thay đổi, nên nhẹ máy (không như trang game 3D).
  */
 import { colName, getMap, mapRuler } from "../sim/maps";
@@ -30,17 +31,13 @@ let painting = false;
 const undoStack: string[][][] = [];
 
 // ------------------------------------------------------------------ công cụ
-type Tool = "0" | "1" | "2" | "n" | "e" | "s" | "w" | "r" | "x";
+type Tool = "0" | "1" | "2" | "d" | "r";
 const TOOLS: { id: Tool; label: string; color?: string }[] = [
   { id: "0", label: "Tầng 0", color: "#d6d0bd" },
   { id: "1", label: "Tầng 1", color: "#a99f86" },
   { id: "2", label: "Tầng 2", color: "#7d735d" },
-  { id: "n", label: "Dốc ↑" },
-  { id: "e", label: "Dốc →" },
-  { id: "s", label: "Dốc ↓" },
-  { id: "w", label: "Dốc ←" },
-  { id: "r", label: "Đá", color: "#55504a" },
-  { id: "x", label: "Xóa dốc" }
+  { id: "d", label: "Dốc", color: "#c6b48a" },
+  { id: "r", label: "Đá", color: "#55504a" }
 ];
 const BRUSHES = [
   { m: 2, label: "2 m" },
@@ -49,7 +46,7 @@ const BRUSHES = [
 ];
 let tool: Tool = "1";
 let brush = 10;
-const MIRROR: Record<string, string> = { n: "s", s: "n", e: "w", w: "e" };
+const isRamp = (v: string | undefined): boolean => v === "d";
 
 function buttons(host: string, items: { key: string; html: string }[], get: () => string, set: (k: string) => void): void {
   const el = document.getElementById(host)!;
@@ -99,6 +96,37 @@ function tierAt(c: number, r: number): number {
   return -1;
 }
 
+/**
+ * Hướng đi LÊN của khối dốc chiếm khung ô [c0, c1] × [r0, r1]: so tầng trung bình của dải ô ngay ngoài bốn cạnh, trục nào
+ * hai đầu chênh tầng thì leo theo trục đó về phía cao hơn; cả hai trục đều chênh thì leo theo cạnh ngắn. Không chênh: null.
+ */
+function rampDir(c0: number, r0: number, c1: number, r1: number): "n" | "e" | "s" | "w" | null {
+  const avg = (cells: [number, number][]): number => {
+    let s = 0, n = 0;
+    for (const [c, r] of cells) {
+      if (c < 0 || r < 0 || c >= COLS || r >= ROWS) continue;
+      const t = tierAt(c, r);
+      if (t < 0) continue;
+      s += t;
+      n++;
+    }
+    return n ? s / n : NaN;
+  };
+  const span = (a: number, b: number): number[] => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+  const N = avg(span(c0, c1).map((c) => [c, r0 - 1]));
+  const S = avg(span(c0, c1).map((c) => [c, r1 + 1]));
+  const W = avg(span(r0, r1).map((r) => [c0 - 1, r]));
+  const E = avg(span(r0, r1).map((r) => [c1 + 1, r]));
+  const ns = isNaN(N) || isNaN(S) ? 0 : N - S;
+  const ew = isNaN(E) || isNaN(W) ? 0 : E - W;
+  const okNS = Math.abs(ns) >= 0.25;
+  const okEW = Math.abs(ew) >= 0.25;
+  if (!okNS && !okEW) return null;
+  // hai trục đều chênh (ví dụ dốc nằm giữa vách đồi và nền): leo theo cạnh ngắn của khối
+  const useNS = okNS && okEW ? r1 - r0 <= c1 - c0 : okNS;
+  return useNS ? (ns > 0 ? "n" : "s") : ew > 0 ? "e" : "w";
+}
+
 function draw(): void {
   g.fillStyle = "#121a24";
   g.fillRect(0, 0, cv.width, cv.height);
@@ -133,13 +161,12 @@ function draw(): void {
       }
     }
   g.stroke();
-  // mũi tên dốc: mỗi khối dốc (các ô liền nhau cùng hướng) một hàng mũi tên dài đúng từ chân tới đỉnh dốc,
-  // lặp theo bề ngang mỗi ~14 m
+  // mũi tên dốc: mỗi khối dốc (các ô dốc liền nhau) một hàng mũi tên dài đúng từ chân tới đỉnh dốc, lặp theo bề ngang
+  // mỗi ~14 m; hướng tự suy: phía nào tầng cao hơn là phía đỉnh. Không suy được (hai đầu bằng tầng) thì viền đỏ.
   const seen = new Uint8Array(ROWS * COLS);
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++) {
-      const d = grid[r][c];
-      if (!MIRROR[d] || seen[r * COLS + c]) continue;
+      if (!isRamp(grid[r][c]) || seen[r * COLS + c]) continue;
       let c0 = c, c1 = c, r0 = r, r1 = r;
       const q = [r * COLS + c];
       seen[r * COLS + c] = 1;
@@ -150,13 +177,20 @@ function draw(): void {
         c0 = Math.min(c0, cc); c1 = Math.max(c1, cc); r0 = Math.min(r0, rr); r1 = Math.max(r1, rr);
         for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           const nc = cc + dc, nr = rr + dr;
-          if (nc < 0 || nr < 0 || nc >= COLS || nr >= ROWS || seen[nr * COLS + nc] || grid[nr][nc] !== d) continue;
+          if (nc < 0 || nr < 0 || nc >= COLS || nr >= ROWS || seen[nr * COLS + nc] || !isRamp(grid[nr][nc])) continue;
           seen[nr * COLS + nc] = 1;
           q.push(nr * COLS + nc);
         }
       }
       const x0 = PAD + c0 * CELL * K, x1 = PAD + (c1 + 1) * CELL * K;
       const y0 = PAD + r0 * CELL * K, y1 = PAD + (r1 + 1) * CELL * K;
+      const d = rampDir(c0, r0, c1, r1);
+      if (!d) {
+        g.strokeStyle = "#e0402a";
+        g.lineWidth = 2;
+        g.strokeRect(x0, y0, x1 - x0, y1 - y0);
+        continue;
+      }
       const ns = d === "n" || d === "s";
       const len = ns ? y1 - y0 : x1 - x0; // chiều dài dốc theo hướng leo
       const wid = ns ? x1 - x0 : y1 - y0;
@@ -262,33 +296,14 @@ function brushRect(x: number, z: number): [number, number, number, number] | nul
   return [c0, r0, Math.max(c0 + 1, c1), Math.max(r0 + 1, r1)];
 }
 
-/** Xóa dốc ở ô (c, r): ô trở về tầng ở phía đỉnh dốc (đi theo hướng leo tới ô đầu tiên không phải dốc). */
-function unramp(c: number, r: number): void {
-  const d = grid[r][c];
-  if (!MIRROR[d]) return;
-  const [dc, dr] = { n: [0, -1], s: [0, 1], e: [1, 0], w: [-1, 0] }[d as "n"]!;
-  let cc = c, rr = r;
-  while (cc >= 0 && rr >= 0 && cc < COLS && rr < ROWS && MIRROR[grid[rr][cc]]) {
-    cc += dc;
-    rr += dr;
-  }
-  const top = cc >= 0 && rr >= 0 && cc < COLS && rr < ROWS ? grid[rr][cc] : "0";
-  grid[r][c] = top === "r" ? "0" : top;
-}
-
 function paintAt(x: number, z: number): void {
   const b = brushRect(x, z);
   if (!b) return;
   const [c0, r0, c1, r1] = b;
   for (let r = r0; r < r1; r++)
     for (let c = c0; c < c1; c++) {
-      if (tool === "x") {
-        unramp(c, r);
-        if (symBox.checked) unramp(COLS - 1 - c, ROWS - 1 - r);
-        continue;
-      }
       grid[r][c] = tool;
-      if (symBox.checked) grid[ROWS - 1 - r][COLS - 1 - c] = MIRROR[tool] ?? tool;
+      if (symBox.checked) grid[ROWS - 1 - r][COLS - 1 - c] = tool;
     }
   dirty = true;
   draw();
@@ -365,7 +380,7 @@ async function save(): Promise<void> {
 function apply(text: string): void {
   const data = JSON.parse(text) as Layout;
   if (data.rows.length !== ROWS || data.rows[0].length !== COLS) throw new Error("layout.json không khớp kích thước bản đồ");
-  grid = data.rows.map((r) => r.split(""));
+  grid = data.rows.map((r) => r.split("").map((v) => ("nesw".includes(v) ? "d" : v)));
   lastText = text;
   draw();
 }
