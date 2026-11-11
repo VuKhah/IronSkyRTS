@@ -13,6 +13,7 @@
  */
 import { BUILDINGS, UNITS } from "../sim/content";
 import { colName, getMap, mapRuler } from "../sim/maps";
+import { cellTier, rampDirOf } from "./layout";
 
 const ID = new URLSearchParams(location.search).get("map") ?? "standard";
 const map = getMap(ID);
@@ -157,49 +158,9 @@ const X = (x: number): number => PAD + (x + map.halfW) * K;
 const Y = (z: number): number => PAD + (z + map.halfH) * K;
 const COLOR: Record<string, string> = { "0": "#d6d0bd", "1": "#a99f86", "2": "#7d735d", r: "#55504a" };
 
-/** Tầng của ô (ô dốc: tầng chân dốc, đoán theo ô ngay sau chân dốc). */
-function tierAt(c: number, r: number): number {
-  const v = grid[r]?.[c];
-  if (v === undefined) return 0;
-  if (v === "0" || v === "r") return 0;
-  if (v === "1" || v === "2") return Number(v);
-  return -1;
-}
-
-/**
- * Hướng đi LÊN của khối dốc chiếm khung ô [c0, c1] × [r0, r1]: so tầng trung bình của dải ô ngay ngoài bốn cạnh, trục nào
- * hai đầu chênh tầng thì leo theo trục đó về phía cao hơn; cả hai trục đều chênh thì leo theo cạnh ngắn. Không chênh: null.
- * `ok`: hai đầu chênh đúng 1 tầng (luật: dốc chỉ lên một tầng, không vượt tầng).
- */
-function rampDir(c0: number, r0: number, c1: number, r1: number): { dir: "n" | "e" | "s" | "w"; ok: boolean } | null {
-  const avg = (cells: [number, number][]): number => {
-    let s = 0, n = 0;
-    for (const [c, r] of cells) {
-      if (c < 0 || r < 0 || c >= COLS || r >= ROWS) continue;
-      const t = tierAt(c, r);
-      if (t < 0) continue;
-      s += t;
-      n++;
-    }
-    return n ? s / n : NaN;
-  };
-  const span = (a: number, b: number): number[] => Array.from({ length: b - a + 1 }, (_, i) => a + i);
-  const N = avg(span(c0, c1).map((c) => [c, r0 - 1]));
-  const S = avg(span(c0, c1).map((c) => [c, r1 + 1]));
-  const W = avg(span(r0, r1).map((r) => [c0 - 1, r]));
-  const E = avg(span(r0, r1).map((r) => [c1 + 1, r]));
-  const ns = isNaN(N) || isNaN(S) ? 0 : N - S;
-  const ew = isNaN(E) || isNaN(W) ? 0 : E - W;
-  const okNS = Math.abs(ns) >= 0.25;
-  const okEW = Math.abs(ew) >= 0.25;
-  if (!okNS && !okEW) return null;
-  // hai trục đều chênh (ví dụ dốc nằm giữa vách đồi và nền): leo theo cạnh ngắn của khối
-  const useNS = okNS && okEW ? r1 - r0 <= c1 - c0 : okNS;
-  const dir = useNS ? (ns > 0 ? "n" : "s") : ew > 0 ? "e" : "w";
-  // dốc chỉ lên đúng 1 tầng: hai đầu phải chênh đúng 1 (không vượt tầng, không lẫn tầng)
-  const diff = Math.abs(useNS ? ns : ew);
-  return { dir, ok: Math.abs(diff - 1) < 1e-6 };
-}
+/** Tầng của ô (ô dốc: −1). Đọc bản vẽ dùng chung với trang 3D: layout.ts. */
+const tierAt = (c: number, r: number): number => cellTier(grid, c, r);
+const rampDir = (c0: number, r0: number, c1: number, r1: number) => rampDirOf(grid, c0, r0, c1, r1);
 
 /** Cỡ thân xe (m) lấy thẳng từ content.ts: dài = 2 × halfLen, ngang ≈ 2 × radius. */
 const ART = UNITS.artillery;
