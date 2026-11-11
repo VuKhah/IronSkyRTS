@@ -301,7 +301,9 @@ describe("lõi mô phỏng", () => {
 
   it("AI xây Nhà Máy Máy Bay và vòng Tường Thành mà không tự nhốt quân mình", () => {
     let blocked = 0;
+    const plant = [false, false];
     const check = (w: World): void => {
+      for (const b of w.buildings) if (b.kind === "aircraft-factory" && b.built) plant[b.side] = true;
       if (w.tick % sec(20) !== 0) return;
       for (const s of [0, 1] as const) {
         const hq = w.hqOf(s);
@@ -321,10 +323,41 @@ describe("lõi mô phỏng", () => {
     const { world } = runMatch(2, sec(8 * 60), 1000, undefined, check);
     for (const s of [0, 1]) {
       const mine = world.buildings.filter((b) => b.side === s);
-      expect(mine.some((b) => b.kind === "aircraft-factory"), `phe ${s} có Nhà Máy Máy Bay`).toBe(true);
+      // đã xây xong (còn đứng tới cuối hay không tùy giao tranh)
+      expect(plant[s], `phe ${s} đã xây Nhà Máy Máy Bay`).toBe(true);
       expect(mine.filter((b) => b.kind === "wall").length, `phe ${s} có tường`).toBeGreaterThan(10);
     }
     expect(blocked).toBe(0);
+  });
+
+  it("tường khép kín được vào mép bản đồ; AI phá tường mở lối, quân không tự bắn tường", () => {
+    const w = new World(1, { sandbox: true });
+    const hq = w.hqOf(0)!;
+    const [cx, cz] = w.snapBuilding("wall", hq.x, hq.z);
+    const cmds: Command[] = [];
+    // tường chữ L chạy tới tận mép bản đồ, vây góc căn cứ Lam (mỏ Sắt và giàn Dầu nhà nằm bên trong)
+    for (let k = -40; k <= 18; k++)
+      for (const [x, z] of [
+        [cx + 36, cz - 2 * k],
+        [cx + 2 * k, cz - 36]
+      ])
+        if (w.canPlace(0, "wall", x, z) === null) cmds.push({ side: 0, order: { t: "sbSpawn", kind: "wall", side: 0, x, z } });
+    for (let i = 0; i < 6; i++) cmds.push({ side: 1, order: { t: "sbSpawn", kind: "titan", side: 1, x: hq.x + 50 + (i % 3) * 4, z: hq.z - 50 + Math.floor(i / 3) * 4 } });
+    w.step(cmds);
+    const walls0 = w.buildings.filter((b) => b.kind === "wall").length;
+    const titan = w.units.find((u) => u.side === 1)!;
+    expect(w.grid.findPath(titan.x, titan.z, hq.x, hq.z), "tường kín, không còn đường").toBeNull();
+    const ai = new Ai(1, 1);
+    let wallOrders = 0;
+    for (let t = 0; t < sec(150) && w.hqOf(0); t++) {
+      const o = ai.think(w);
+      for (const x of o) if (x.t === "attack" && w.buildings.find((b) => b.id === x.target)?.kind === "wall") wallOrders++;
+      w.step(o.map((order) => ({ side: 1 as const, order })));
+    }
+    expect(wallOrders).toBeGreaterThan(0);
+    // chỉ phá đủ mở lối rồi tiến vào (trước đây tấn công-di chuyển dừng bắn từng ô tường trong tầm)
+    expect(walls0 - w.buildings.filter((b) => b.kind === "wall").length).toBeLessThanOrEqual(8);
+    expect(w.hqOf(0)?.hp ?? 0).toBeLessThan(BUILDINGS.hq.hp);
   });
 
   it("AI đấu AI chơi trọn một trận (≤ 25 phút) mà không có giá trị hỏng", () => {

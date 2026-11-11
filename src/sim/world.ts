@@ -12,6 +12,7 @@ import { assignMin } from "./assign";
 import { clamp, dcos, DEG, dist2, dsin, Rng, TAU, turnStep, turnToward, type TurnStep } from "./fmath";
 import { Grid } from "./grid";
 import { CELL, GameMap, getMap, TERRAIN, TERRAIN_KINDS } from "./maps";
+import { WALL } from "./maps/game-map";
 import type {
   Squad, AlertKind, Building, Command, Entity, Mine, Order, Shot, SideState, SimEvent, Target, Unit, Uplink, WinReason, Wreck } from "./types";
 
@@ -567,12 +568,21 @@ export class World {
     return !inZone;
   }
 
+  /**
+   * Nền móng có nằm trong vùng chơi không. Tường lát đúng một ô lưới: ô nào xe đi được (tâm ô cách mép ≥ WALL, như
+   * `staticBlocked`) thì đặt được, để tường khép kín được vào mép bản đồ (trước đây còn hở một dải 2 m sát mép cho xe
+   * lách qua). Nhà to thì cả nền móng phải cách mép thêm 1 m.
+   */
+  private insideMap(kind: BuildingId, x: number, z: number, hw: number, hd: number): boolean {
+    return BUILDINGS[kind].tile ? this.map.inset(x, z) >= WALL : this.map.fits(x, z, hw, hd);
+  }
+
   /** null = được phép xây; ngược lại là lý do (tiếng Việt) để hiện cho người chơi. */
   canPlace(side: Side, kind: BuildingId, x: number, z: number, rotIn?: number): string | null {
     const rot = normRot(rotIn) ?? defaultRot(kind, z);
     [x, z] = this.snapBuilding(kind, x, z, rot);
     const [hw, hd] = this.blockHalf(kind, rot);
-    if (!this.map.fits(x, z, hw, hd)) return "Ngoài bản đồ";
+    if (!this.insideMap(kind, x, z, hw, hd)) return "Ngoài bản đồ";
     for (const i of this.grid.cellsInRect(x, z, hw, hd)) if (this.grid.blockedIdx(i)) return "Vướng sông, đá hoặc công trình";
     const lay = this.layoutError(kind, x, z, rot);
     if (lay) return lay;
@@ -928,7 +938,7 @@ export class World {
     const rot = normRot(rotIn) ?? defaultRot(kind, z);
     [x, z] = this.snapBuilding(kind, x, z, rot);
     const [hw, hd] = this.blockHalf(kind, rot);
-    if (!this.map.fits(x, z, hw, hd)) return "Ngoài bản đồ";
+    if (!this.insideMap(kind, x, z, hw, hd)) return "Ngoài bản đồ";
     for (const i of this.grid.cellsInRect(x, z, hw, hd)) if (this.grid.blockedIdx(i)) return "Vướng sông, đá, mỏ hoặc công trình";
     const lay = this.layoutError(kind, x, z, rot);
     if (lay) return lay;
@@ -2787,7 +2797,10 @@ export class World {
     return base * (1 + clamp(this.heightAt(x, z) * T.sightPerM, 0, T.sightMax)) * TERRAIN[this.grid.kindAt(x, z)].sight;
   }
 
-  /** Chọn mục tiêu: giữ mục tiêu cũ nếu còn hợp lệ, nếu không thì chọn gần nhất (ưu tiên quân có vũ khí, rồi mới tới công trình). */
+  /**
+   * Chọn mục tiêu: giữ mục tiêu cũ nếu còn hợp lệ (kể cả ô tường được ra lệnh đánh), nếu không thì chọn gần nhất (ưu tiên
+   * quân có vũ khí, rồi mới tới công trình; không tự chọn ô tường).
+   */
   private acquireFrom(self: Target, side: Side, x: number, z: number, w: WeaponSpec, range: number, current: number): Target | null {
     const cur = this.target(current);
     if (cur && cur.side !== side && this.canHit(w, cur) && this.visibleTo(side, cur)) {
@@ -2810,7 +2823,9 @@ export class World {
       }
     }
     for (const b of this.buildings) {
-      if (b.side === side || b.hp <= 0 || !this.canHit(w, b)) continue;
+      // tường không tự bắn: nó không bắn ai, tự nhắm vào thì quân tấn công-di chuyển dừng bắn từng ô (giáp Công sự, rất lâu)
+      // dù lối đã mở; muốn phá tường thì ra lệnh tấn công thẳng vào ô đó (AI: `breach`)
+      if (b.side === side || b.hp <= 0 || BUILDINGS[b.kind].tile || !this.canHit(w, b)) continue;
       const r = range + Math.max(BUILDINGS[b.kind].half[0], BUILDINGS[b.kind].half[1]);
       const d2 = dist2(x, z, b.x, b.z);
       if (d2 > r * r || (w.minRange && d2 < w.minRange * w.minRange) || !this.visibleTo(side, b)) continue;

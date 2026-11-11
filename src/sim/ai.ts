@@ -26,6 +26,8 @@ const WALL_MIN_R = 36;
 const GAP_HALF = 5;
 /** Hai cửa ngõ gần nhau hơn chừng này (m) thì gộp làm một. */
 const GAP_MERGE = 20;
+/** Đường tới đích dài hơn đường thẳng chừng này lần (cộng 20 m) thì đợt tấn công phá tường mở lối thay vì đi vòng. */
+const BREACH_DETOUR = 1.8;
 interface WallPlan {
   r: number;
   tiles: [number, number][];
@@ -206,7 +208,9 @@ export class Ai {
     if (free.length >= waveSize && w.tick - this.lastWave > sec(20)) {
       const t = this.attackTarget(w, base, enemyBuildings);
       for (const u of free) this.waveIds.add(u.id);
-      out.push({ t: "amove", ids: free.map((u) => u.id), x: t[0], z: t[1], formation: "attack" });
+      const wall = this.breach(w, free, t, enemyBuildings);
+      if (wall) out.push({ t: "attack", ids: free.map((u) => u.id), target: wall.id });
+      else out.push({ t: "amove", ids: free.map((u) => u.id), x: t[0], z: t[1], formation: "attack" });
       this.wave++;
       this.waveBonus = this.rng.int(3);
       this.lastWave = w.tick;
@@ -216,7 +220,9 @@ export class Ai {
     if (waveIdle.length && w.tick % sec(3) < 5) {
       const t = this.attackTarget(w, base, enemyBuildings);
       this.waveTarget = t;
-      out.push({ t: "amove", ids: waveIdle.map((u) => u.id), x: t[0], z: t[1] });
+      const wall = this.breach(w, waveIdle, t, enemyBuildings);
+      if (wall) out.push({ t: "attack", ids: waveIdle.map((u) => u.id), target: wall.id });
+      else out.push({ t: "amove", ids: waveIdle.map((u) => u.id), x: t[0], z: t[1] });
     }
 
     // 4e. Xe Tư Lệnh: ở gần nhà, ra trận cùng quân khi căn cứ bị đánh
@@ -496,8 +502,51 @@ export class Ai {
     return best;
   }
 
+  /**
+   * Phá tường: đợt quân không có đường tới đích (bị tường vây kín) hoặc đường vòng dài gần gấp đôi đường thẳng thì đánh ô
+   * tường đã thấy nằm gần đường thẳng nhất (quân → tường → đích ngắn nhất). Tường vỡ, quân rảnh tay, lượt sau tiến tiếp.
+   * Chỉ xét tường phe mình đã phát hiện (không nhìn xuyên sương mù); chưa thấy tường nào thì cứ tiến lại gần cho thấy.
+   */
+  private breach(w: World, group: Unit[], t: [number, number], known: Building[]): Building | null {
+    const walls = known.filter((b) => BUILDINGS[b.kind].tile && b.hp > 0);
+    if (!walls.length) return null;
+    const lead = group.find((u) => UNITS[u.kind].domain === "ground");
+    if (!lead) return null;
+    const spec = UNITS[lead.kind];
+    const path = w.grid.findPath(lead.x, lead.z, t[0], t[1], w.grid.field(spec.mobility ?? "wheel", !!spec.slowResist));
+    const straight = Math.sqrt(dist2(lead.x, lead.z, t[0], t[1]));
+    if (path) {
+      let len = 0;
+      let px = lead.x;
+      let pz = lead.z;
+      for (let i = 0; i < path.length; i += 2) {
+        len += Math.sqrt(dist2(px, pz, path[i], path[i + 1]));
+        px = path[i];
+        pz = path[i + 1];
+      }
+      // đích là công trình nên A* dừng ở ô trống gần nó nhất: còn xa đích thì coi như bị chặn
+      const reached = dist2(px, pz, t[0], t[1]) < 16 * 16;
+      if (reached && len < straight * BREACH_DETOUR + 20) return null;
+    }
+    let best: Building | null = null;
+    let bestD = Infinity;
+    for (const b of walls) {
+      const d = Math.sqrt(dist2(lead.x, lead.z, b.x, b.z)) + Math.sqrt(dist2(b.x, b.z, t[0], t[1]));
+      if (d < bestD || (d === bestD && best && b.id < best.id)) {
+        best = b;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  /** Đích của đợt tấn công: công trình thật gần nhất đã biết (không tính ô tường: tường chỉ phá khi bị chặn, xem `breach`). */
   private attackTarget(w: World, base: Building, known: Building[]): [number, number] {
-    const b = this.nearest(known, base.x, base.z);
+    const b = this.nearest(
+      known.filter((k) => !BUILDINGS[k.kind].tile),
+      base.x,
+      base.z
+    );
     if (b) return [b.x, b.z];
     const m = this.nearestMine(
       w.mines.filter((x) => x.owner === 1 - this.side),
