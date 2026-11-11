@@ -46,7 +46,10 @@ export function paintTerrain(map: GameMap): HTMLCanvasElement {
         const t = TERRAIN[kind].color;
         c = [c[0] * (1 - k) + ((t >> 16) & 255) * k, c[1] * (1 - k) + ((t >> 8) & 255) * k, c[2] * (1 - k) + (t & 255) * k];
       }
-      if (map.inset(x, z) < 5 || map.rimAt(x, z)) c = [70, 66, 60];
+      if (map.rimAt(x, z)) c = [70, 66, 60];
+      // thành bản đồ màu vôi; ngoài thành (góc bo) là đất tối
+      const inset = map.inset(x, z);
+      if (inset < 5) c = inset < -3 ? [56, 66, 46] : [226, 219, 200];
       const i = (pz * W + px) * 4;
       img.data[i] = c[0];
       img.data[i + 1] = c[1];

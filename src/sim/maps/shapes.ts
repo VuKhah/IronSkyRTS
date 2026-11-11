@@ -1,6 +1,7 @@
 /**
  * Trợ giúp dựng hình cho file dữ liệu bản đồ (chạy một lần lúc nạp, tất định: chỉ + − × ÷).
  */
+import { dcos, dsin } from "../fmath";
 import type { RampDef, RampDir, Vec2 } from "./types";
 
 /** Làm mượt đường gấp khúc bằng spline Catmull-Rom: `steps` đoạn nhỏ giữa mỗi hai điểm điều khiển. */
@@ -39,6 +40,26 @@ export function symmetricRiver(half: readonly Vec2[], steps: number): Vec2[] {
   const mid = (half.length - 1) * steps;
   const first = smooth.slice(0, mid);
   return [...first, [0, 0], ...first.slice().reverse().map(([x, z]): Vec2 => [-x, -z])];
+}
+
+/**
+ * Hình chữ nhật bo tròn bốn góc, tâm (0, 0), nửa cạnh hw × hh, bán kính góc r, mỗi góc `seg` đoạn. Dùng làm `bounds`.
+ * Hai góc đối nhau là ảnh xoay 180° đúng từng bit (dùng chung một bộ cos / sin), nên bản đồ `symmetric` vẫn đối xứng tuyệt đối.
+ */
+export function roundedRect(hw: number, hh: number, r: number, seg = 8): Vec2[] {
+  const arc: [number, number][] = [];
+  for (let k = 0; k <= seg; k++) {
+    const a = (k / seg) * (Math.PI / 2);
+    arc.push([dcos(a), dsin(a)]);
+  }
+  const ax = hw - r;
+  const az = hh - r;
+  const out: Vec2[] = [];
+  for (const [c, s] of arc) out.push([ax + r * c, az + r * s]); // Đông Nam
+  for (const [c, s] of arc) out.push([-ax - r * s, az + r * c]); // Tây Nam
+  for (const [c, s] of arc) out.push([-ax - r * c, -az - r * s]); // Tây Bắc
+  for (const [c, s] of arc) out.push([ax + r * s, -az - r * c]); // Đông Bắc
+  return out;
 }
 
 /** Đa giác méo tự nhiên quanh tâm (cx, cz), bán trục rx / rz, độ méo `irr` (0..1), xoay `rot` (bội của 90° cho đơn giản). Tất định theo `seed`. */

@@ -388,6 +388,15 @@ export class GameMap {
     return this.cellRim[this.cellIndex(x, z)] === 1;
   }
 
+  /**
+   * Độ cao để VẼ mặt đất: như terrainHeight nhưng bỏ phần nâng của dải vách rìa (EDGE_H). Thành bản đồ được phần vẽ dựng
+   * bằng lưới riêng chạy mượt theo đường viền (terrain-mesh.ts `buildBorderMesh`); sim vẫn chặn các ô đó như cũ.
+   */
+  drawGroundY(x: number, z: number): number {
+    const y = this.terrainHeight(x, z);
+    return this.inset(x, z) < WALL ? y - EDGE_H : y;
+  }
+
   // ------------------------------------------------------------------ hình dáng vùng chơi
 
   /** Khoảng cách (m) từ điểm vào tới mép vùng chơi: dương ở trong, âm ở ngoài. */

@@ -8,7 +8,7 @@ import { TacticalMap } from "./tactical-map";
 import type { Side } from "../sim/content";
 import { Rng } from "../sim/fmath";
 import type { GameMap } from "../sim/maps";
-import { buildTerrainMesh, WATER_Y } from "./terrain-mesh";
+import { BERM_OUT, buildBorderMesh, buildTerrainMesh, WATER_Y } from "./terrain-mesh";
 import type { World } from "../sim/world";
 
 /** Địa hình vẽ rộng hơn vùng chơi chừng này (m) mỗi bên, để mép bản đồ không lộ khoảng trống. */
@@ -74,6 +74,11 @@ export class BattleScene {
     terrain.castShadow = true;
     terrain.receiveShadow = true;
     this.scene.add(terrain);
+    // thành bản đồ: con đê màu vôi chạy mượt theo viền (side Double: hướng vòng tam giác tùy chiều đường viền)
+    const border = new THREE.Mesh(buildBorderMesh(map), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0, side: THREE.DoubleSide }));
+    border.castShadow = true;
+    border.receiveShadow = true;
+    this.scene.add(border);
 
     this.water = new THREE.Mesh(
       new THREE.PlaneGeometry(this.sizeW, this.sizeH),
@@ -182,7 +187,7 @@ export class BattleScene {
     for (let i = 0; i < 1600 * area && spots.length < maxTrees; i++) {
       const x = (rng.next() * 2 - 1) * (map.halfW + SKIRT - 4);
       const z = (rng.next() * 2 - 1) * (map.halfH + SKIRT - 4);
-      const ok = map.inset(x, z) < 10;
+      const ok = map.inset(x, z) < BERM_OUT - 1.5; // chỉ ngoài thành bản đồ, không mọc xuyên con đê
       if (!ok || !clear(x, z)) continue;
       spots.push({ x, z, s: 0.8 + rng.next() * 0.7 });
     }
@@ -208,7 +213,7 @@ export class BattleScene {
     const q = new THREE.Quaternion();
     const sc = new THREE.Vector3();
     spots.forEach((p, i) => {
-      const y = map.terrainHeight(p.x, p.z);
+      const y = map.drawGroundY(p.x, p.z);
       sc.setScalar(p.s);
       m.compose(new THREE.Vector3(p.x, y + 2.6 * p.s, p.z), q, sc);
       foliage.setMatrixAt(i, m);

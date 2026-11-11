@@ -3,7 +3,9 @@
  * đều làm vách thành sườn xiên răng cưa).
  * - Mặt tầng: các ô liền nhau cùng độ cao gộp thành hình chữ nhật lớn (gộp theo hàng rồi theo cột) để ít tam giác.
  * - Mặt dốc: mỗi ô dốc một tấm nghiêng, độ cao bốn góc lấy từ GameMap.terrainHeight.
- * - Vách: mặt đứng dựng đúng trên cạnh chung của hai ô lệch độ cao (cả sườn dốc nhô ra, bờ sông, vách rìa).
+ * - Vách: mặt đứng dựng đúng trên cạnh chung của hai ô lệch độ cao (cả sườn dốc nhô ra, bờ sông).
+ * - Thành bản đồ (11/11/2026, người dùng: "mềm hơn, màu vôi"): KHÔNG dựng theo ô mà là lưới riêng `buildBorderMesh` chạy mượt
+ *   theo đường viền, mặt cắt như con đê (chân thoải, đỉnh tròn). Sim vẫn chặn dải ô sát mép như cũ.
  * Màu mặt đất (cỏ, đường, rừng, cát, mép vách…) nằm trong một texture 1 điểm ảnh / m phủ theo tọa độ (x, z), nên gộp hình
  * không làm mất chi tiết màu. Vách dùng vật liệu đá riêng (màu theo đỉnh). Hai nhóm vật liệu: 0 = mặt, 1 = vách.
  * Chỉ để vẽ, không ảnh hưởng luật.
@@ -57,7 +59,8 @@ export function buildTerrainMesh(map: GameMap, skirt: number): TerrainMesh {
         corner[i * 4 + 2] = map.terrainHeight(ax + CELL - e, az + CELL - e);
         corner[i * 4 + 3] = map.terrainHeight(ax + e, az + CELL - e);
       } else {
-        const h = map.terrainHeight(mx, mz);
+        // dải vách rìa không nâng lên ở đây: thành bản đồ vẽ bằng lưới mượt riêng (buildBorderMesh)
+        const h = map.drawGroundY(mx, mz);
         corner.fill(h, i * 4, i * 4 + 4);
       }
     }
@@ -226,8 +229,6 @@ function groundTexture(map: GameMap, x0: number, z0: number, W: number, H: numbe
         const dz = z - r.z;
         if (dx * dx + dz * dz < (r.r + 1.2) * (r.r + 1.2)) col.copy(rock).lerp(cliff, noise);
       }
-      const inset = map.inset(x, z);
-      if (inset < 6) col.lerp(cliff, Math.min(1, (6 - inset) / 6));
       const o = (j * nx + i) * 4;
       // texture lưu theo không gian màu sRGB (giống màu đỉnh cũ đã qua chuyển đổi của Color)
       col.convertLinearToSRGB();
@@ -244,4 +245,122 @@ function groundTexture(map: GameMap, x0: number, z0: number, W: number, H: numbe
   tex.anisotropy = 4;
   tex.needsUpdate = true;
   return tex;
+}
+
+/** Thành bản đồ: cao (m), chân trong (m tính từ mép vùng chơi vào trong), đỉnh từ / tới, chân ngoài (âm = ngoài mép). */
+const BERM_H = 4.5;
+const BERM_IN = 4.5;
+const BERM_TOP_IN = -2;
+const BERM_TOP_OUT = -4;
+export const BERM_OUT = -12;
+/** Màu vôi: đỉnh trắng ngà, chân ngả xám ấm cho liền với cỏ. */
+const LIME_TOP = 0xebe5d3;
+const LIME_TOE = 0xc9bfa6;
+
+/** Độ cao mặt cắt con đê tại khoảng cách d tới mép (dương = trong vùng chơi): hai sườn smoothstep, đỉnh phẳng. */
+function bermProfile(d: number): number {
+  const ss = (t: number): number => {
+    const u = Math.max(0, Math.min(1, t));
+    return u * u * (3 - 2 * u);
+  };
+  if (d >= BERM_TOP_IN) return BERM_H * ss((BERM_IN - d) / (BERM_IN - BERM_TOP_IN));
+  if (d >= BERM_TOP_OUT) return BERM_H;
+  return BERM_H * ss((d - BERM_OUT) / (BERM_TOP_OUT - BERM_OUT));
+}
+
+/**
+ * Lưới thành bản đồ: chạy theo đường viền (`bounds`, không có thì hình chữ nhật), mỗi điểm trên viền đẩy vào / ra theo pháp
+ * tuyến trung bình của hai cạnh kề (nhân hệ số góc vát để sườn đều bề dày ở chỗ gấp). Lưới có chỉ số và dùng chung đỉnh để
+ * pháp tuyến mượt: thành trông tròn trịa, không còn bậc theo ô 2 m. Màu theo đỉnh (vôi), chỉ để vẽ.
+ */
+export function buildBorderMesh(map: GameMap): THREE.BufferGeometry {
+  const src: readonly (readonly [number, number])[] = map.def.bounds ?? [
+    [-map.halfW, -map.halfH],
+    [map.halfW, -map.halfH],
+    [map.halfW, map.halfH],
+    [-map.halfW, map.halfH]
+  ];
+  // chia cạnh dài thành đoạn ≤ 3 m cho màu loang và bóng đổ mịn
+  const pts: [number, number][] = [];
+  for (let i = 0; i < src.length; i++) {
+    const a = src[i];
+    const b = src[(i + 1) % src.length];
+    const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 3));
+    for (let k = 0; k < n; k++) pts.push([a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n]);
+  }
+  const N = pts.length;
+  let area = 0;
+  for (let i = 0; i < N; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % N];
+    area += a[0] * b[1] - b[0] * a[1];
+  }
+  const inward = area > 0 ? 1 : -1; // (x, z) với z hướng Nam: diện tích dương = đi theo chiều kim đồng hồ khi nhìn từ trên
+  // pháp tuyến hướng vào trong của từng cạnh, rồi của từng đỉnh (trung bình, chia cos nửa góc)
+  const en: [number, number][] = [];
+  for (let i = 0; i < N; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % N];
+    const dx = b[0] - a[0];
+    const dz = b[1] - a[1];
+    const l = Math.hypot(dx, dz) || 1;
+    en.push([(-dz / l) * inward, (dx / l) * inward]);
+  }
+  const vn: [number, number][] = [];
+  for (let i = 0; i < N; i++) {
+    const p = en[(i + N - 1) % N];
+    const q = en[i];
+    let nx = p[0] + q[0];
+    let nz = p[1] + q[1];
+    const l = Math.hypot(nx, nz) || 1;
+    nx /= l;
+    nz /= l;
+    const k = 1 / Math.max(0.5, nx * q[0] + nz * q[1]);
+    vn.push([nx * k, nz * k]);
+  }
+  // các vòng mặt cắt: dày ở hai sườn, thưa ở đỉnh; vòng đầu / cuối lún dưới mặt đất để không hở chân
+  const ring: number[] = [BERM_IN + 0.6];
+  for (let d = BERM_IN; d > BERM_TOP_IN; d -= 0.75) ring.push(d);
+  ring.push(BERM_TOP_IN, (BERM_TOP_IN + BERM_TOP_OUT) / 2, BERM_TOP_OUT);
+  for (let d = BERM_TOP_OUT - 1; d > BERM_OUT; d -= 1.25) ring.push(d);
+  ring.push(BERM_OUT, BERM_OUT - 0.6);
+  const M = ring.length;
+  const pos = new Float32Array(N * M * 3);
+  const col = new Float32Array(N * M * 3);
+  const top = new THREE.Color(LIME_TOP);
+  const toe = new THREE.Color(LIME_TOE);
+  const c = new THREE.Color();
+  for (let i = 0; i < N; i++) {
+    const [px, pz] = pts[i];
+    const [nx, nz] = vn[i];
+    for (let j = 0; j < M; j++) {
+      const d = ring[j];
+      const x = px + nx * d;
+      const z = pz + nz * d;
+      const edge = j === 0 || j === M - 1;
+      const h = edge ? -0.3 : bermProfile(d);
+      const o = (i * M + j) * 3;
+      pos[o] = x;
+      pos[o + 1] = h;
+      pos[o + 2] = z;
+      // vôi loang nhẹ dọc thành, chân ngả màu đất
+      const n = 0.97 + 0.03 * Math.sin(x * 0.31 + z * 0.23) * Math.sin(x * 0.07 - z * 0.11);
+      c.copy(toe).lerp(top, Math.min(1, Math.max(0, h / BERM_H) ** 0.6)).multiplyScalar(n);
+      col[o] = c.r;
+      col[o + 1] = c.g;
+      col[o + 2] = c.b;
+    }
+  }
+  const idx: number[] = [];
+  for (let i = 0; i < N; i++) {
+    const a = i * M;
+    const b = ((i + 1) % N) * M;
+    for (let j = 0; j + 1 < M; j++) idx.push(a + j, b + j, a + j + 1, a + j + 1, b + j, b + j + 1);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
 }

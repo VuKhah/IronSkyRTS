@@ -4,10 +4,12 @@
  * 777 × 480 bàn trước), 437 không chia hết cho ô 2 m nên lấy 436.
  *
  * Đang dựng cùng người dùng từng bước nhỏ. Bước 1: chỉ có mặt đất phẳng; căn cứ đặt TẠM ở giữa mép Tây / Đông
- * (cần cho kiểm thử và để vào chơi thử), chưa có mỏ, tầng cao, sông.
+ * (cần cho kiểm thử và để vào chơi thử), chưa có mỏ, tầng cao, sông. Bước 2: thành bản đồ "mềm hơn" (bo góc 30 m,
+ * phần vẽ dựng thành như con đê màu vôi, terrain-mesh.ts `buildBorderMesh`).
  *
  * Khai báo MỘT NỬA (`symmetric`): GameMap tự thêm bản xoay 180° quanh tâm cho phía Đỏ.
  */
+import { roundedRect } from "./shapes";
 import type { MapDef } from "./types";
 
 export const STANDARD: MapDef = {
@@ -15,6 +17,7 @@ export const STANDARD: MapDef = {
   name: "Bản Đồ Chuẩn",
   blurb: "Bản đồ chính thức đang dựng: mặt đất 436 × 270 m.",
   size: { w: 436, h: 270 },
+  bounds: roundedRect(218, 135, 30),
   symmetric: true,
   bases: [[-180, 0]],
   mines: [],
