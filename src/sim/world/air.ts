@@ -1,0 +1,592 @@
+/** Không quân và drone: sân bay, nhiên liệu, pin, bay, bổ nhào, Drone Khiên, sửa chữa, cảm tử. */
+import { BUILDINGS, doorDir, RULES, UNITS, type Side, type UnitSpec } from "../content";
+import { clamp, dcos, DEG, dist2, dsin } from "../fmath";
+import type { Building, Target, Unit } from "../types";
+import { TICK_RATE, DT, sec, AIRBORNE_ALT, STEER_SOFT_COS, STEER_SOFT_SIN, STEER_RAMP, BOMB_FALL, cosDeg } from "./shared";
+import { World } from "./core";
+
+
+// ------------------------------------------------------------------ không quân
+
+function padPosOf(this: World, u: Unit): [number, number] | null {
+  if (!u.padB) return null;
+  const b = this.byId.get(u.padB);
+  if (!b || b.cat !== "building" || b.hp <= 0 || !b.built) {
+    u.padB = 0;
+    u.padI = -1;
+    return null;
+  }
+  return this.padPos(b, u.padI);
+}
+
+/** Sân Đáp (đã xây xong) còn bãi trống gần (x, z) nhất của một phe, kèm số thứ tự bãi trống đầu tiên. */
+function nearestFreePad(this: World, side: Side, x: number, z: number): { b: Building; i: number } | null {
+  let best: Building | null = null;
+  let bi = -1;
+  let bd = Infinity;
+  for (const b of this.buildings) {
+    if (b.side !== side || b.kind !== "airfield" || !b.built || b.hp <= 0) continue;
+    const i = b.pads.indexOf(0);
+    if (i < 0) continue;
+    const d = dist2(x, z, b.x, b.z);
+    if (d < bd) {
+      bd = d;
+      best = b;
+      bi = i;
+    }
+  }
+  return best ? { b: best, i: bi } : null;
+}
+
+/** Phe này còn bãi đậu trống không (Nhà Máy Máy Bay chỉ đúc khi có; HUD và AI cũng hỏi). */
+/** Số bãi đậu còn trống của phe trên các Sân Đáp đã xây xong. */
+function freePads(this: World, side: Side): number {
+  let n = 0;
+  for (const b of this.buildings) if (b.side === side && b.kind === "airfield" && b.built && b.hp > 0) for (const p of b.pads) if (p === 0) n++;
+  return n;
+}
+
+function hasFreePad(this: World, side: Side): boolean {
+  return this.nearestFreePad(side, 0, 0) !== null;
+}
+
+function ensurePad(this: World, u: Unit): [number, number] | null {
+  const p = this.padPosOf(u);
+  if (p) return p;
+  const slot = this.nearestFreePad(u.side, u.x, u.z);
+  if (!slot) return null;
+  slot.b.pads[slot.i] = u.id;
+  u.padB = slot.b.id;
+  u.padI = slot.i;
+  return this.padPos(slot.b, slot.i);
+}
+
+function releasePad(this: World, u: Unit): void {
+  if (!u.padB) return;
+  const b = this.byId.get(u.padB);
+  if (b && b.cat === "building") {
+    const i = b.pads.indexOf(u.id);
+    if (i >= 0) b.pads[i] = 0;
+  }
+  u.padB = 0;
+  u.padI = -1;
+}
+
+/** Khoảng cách tới bãi đậu của mình (hoặc sân còn bãi trống gần nhất, không giữ chỗ). null = không còn sân nào. */
+function homeDistance(this: World, u: Unit): number | null {
+  const p = this.padPosOf(u);
+  if (p) return Math.sqrt(dist2(u.x, u.z, p[0], p[1]));
+  let best = Infinity;
+  for (const b of this.buildings) {
+    if (b.side !== u.side || b.kind !== "airfield" || !b.built || b.hp <= 0 || b.pads.indexOf(0) < 0) continue;
+    best = Math.min(best, dist2(u.x, u.z, b.x, b.z));
+  }
+  return best === Infinity ? null : Math.sqrt(best);
+}
+
+/** Lượng dầu cần để bay về và hạ cánh, cộng 25% dự phòng. */
+function fuelToReturn(this: World, u: Unit, spec: UnitSpec): number {
+  const d = this.homeDistance(u);
+  if (d === null) return 0;
+  return (d / spec.speed + 3) * spec.fuel!.burn * 1.25;
+}
+
+/**
+ * Đốt dầu. Máy bay luôn giữ một phần "dầu dự trữ" đủ bay về: khi cạn mà vẫn còn sân để về
+ * thì không rơi mà bay về hạ cánh. Chỉ rơi khi không còn Sân Đáp nào của phe mình.
+ * Trả về false nếu vừa rơi.
+ */
+function burn(this: World, u: Unit, spec: UnitSpec): boolean {
+  if (!this.sandbox?.infiniteFuel) u.fuel -= spec.fuel!.burn * DT;
+  if (u.fuel > 0) return true;
+  u.fuel = 0;
+  if (this.homeDistance(u) !== null || u.air === "landing") {
+    if (u.air === "flying" || u.air === "takeoff" || u.air === "launch") {
+      u.rtb = true;
+      u.air = "returning";
+    }
+    return true;
+  }
+  u.hp = 0;
+  u.crashed = true;
+  return false;
+}
+
+function takeoff(this: World, u: Unit): void {
+  let tx = u.mx;
+  let tz = u.mz;
+  const t = this.target(u.targetId);
+  if (u.mission === "attack" && t) {
+    tx = t.x;
+    tz = t.z;
+  }
+  const dx = tx - u.x;
+  const dz = tz - u.z;
+  const l = Math.sqrt(dx * dx + dz * dz);
+  if (l > 1) {
+    u.hx = dx / l;
+    u.hz = dz / l;
+  }
+  u.air = "takeoff";
+  u.airT = 0;
+}
+
+// ------------------------------------------------------------------ drone (bay lơ lửng, chạy pin)
+
+/** Điểm (x, z) có nằm trong vùng lưới điện của phe không (vùng `zone` của công trình phe mình đã xây xong). */
+function inGrid(this: World, side: Side, x: number, z: number): boolean {
+  for (const b of this.buildings) {
+    const zone = BUILDINGS[b.kind].zone;
+    if (!zone || b.side !== side || !b.built || b.hp <= 0) continue;
+    if (dist2(b.x, b.z, x, z) <= zone * zone) return true;
+  }
+  return false;
+}
+
+/** Chỗ gần nhất trong vùng lưới điện để drone về sạc: lùi vào trong vùng của công trình có vùng gần nhất 4 m. */
+function nearestGrid(this: World, side: Side, x: number, z: number): [number, number] | null {
+  let best: [number, number] | null = null;
+  let bestD = Infinity;
+  for (const b of this.buildings) {
+    const zone = BUILDINGS[b.kind].zone;
+    if (!zone || b.side !== side || !b.built || b.hp <= 0) continue;
+    const d = Math.sqrt(dist2(b.x, b.z, x, z));
+    const edge = Math.max(0, d - (zone - 4));
+    if (edge < bestD) {
+      bestD = edge;
+      const k = d > 1e-6 ? Math.min(1, (zone - 4) / d) : 0;
+      best = [b.x + (x - b.x) * k, b.z + (z - b.z) * k];
+    }
+  }
+  return best;
+}
+
+/** Drone hỗ trợ còn cần nạp năng lượng (kho chưa đầy). */
+function droneNeedsCharge(this: World, u: Unit): boolean {
+  const E = UNITS[u.kind].energy;
+  return !!E && u.fuel < E.max;
+}
+
+/**
+ * Drone (`spec.hover`): bay lơ lửng thẳng tới đích; không cất / hạ cánh, không Sân Đáp, không Dầu, bay không giới hạn.
+ * Drone hỗ trợ (`spec.energy`) giữ năng lượng trong `fuel`: nạp trong vùng lưới điện (nhanh chậm theo điện hậu cần cấp,
+ * ưu tiên thấp nhất), không tự bay về nạp vì phải ở lại tiền tuyến; sắp cạn thì báo trước cho Tư lệnh. Lệnh B (về sân) =
+ * bay về vùng lưới điện gần nhất. Cảm tử (`spec.kamikaze`): nhiệm vụ "attack" = lao vào mục tiêu mặt đất rồi nổ.
+ */
+function updateDrone(this: World, u: Unit): void {
+  const spec = UNITS[u.kind];
+  u.alt = spec.hover!.alt;
+  const home = this.inGrid(u.side, u.x, u.z);
+  const E = spec.energy;
+  if (E) {
+    const before = u.fuel;
+    if (home) u.fuel = Math.min(E.max, u.fuel + E.charge * DT * this.sides[u.side].droneFrac);
+    if (spec.shield) this.updateShield(u);
+    if (spec.repair) this.updateRepair(u);
+    if (u.fuel < E.max * E.low && before >= E.max * E.low) this.alert(u.side, "droneLow", u.x, u.z);
+  }
+  if (u.rtb && home && !this.droneNeedsCharge(u)) u.rtb = false;
+
+  let gx = u.x;
+  let gz = u.z;
+  if (u.mission === "attack" && spec.kamikaze) {
+    const t = this.target(u.targetId);
+    if (!t || t.side === u.side || t.hp <= 0 || (t.cat === "unit" && t.alt > AIRBORNE_ALT) || !this.visibleTo(u.side, t)) {
+      u.mission = "none";
+      u.targetId = 0;
+    } else {
+      gx = t.x;
+      gz = t.z;
+      const reach = (t.cat === "unit" ? UNITS[t.kind].radius : Math.max(...BUILDINGS[t.kind].half)) + 1;
+      if (dist2(u.x, u.z, gx, gz) <= reach * reach) {
+        this.detonate(u);
+        return;
+      }
+    }
+  } else if (u.rtb) {
+    const g = this.nearestGrid(u.side, u.x, u.z);
+    if (g && !home) [gx, gz] = g;
+  } else if (u.mission === "move") {
+    gx = u.mx;
+    gz = u.mz;
+    if (dist2(u.x, u.z, gx, gz) < 0.25) u.mission = "none";
+  }
+  const dx = gx - u.x;
+  const dz = gz - u.z;
+  const d = Math.sqrt(dx * dx + dz * dz);
+  // lao cảm tử nhanh hơn bay thường
+  const v = spec.speed * (u.mission === "attack" ? 1.4 : 1) * (this.mobilized(u) ? 1 + RULES.abilities.mobilize.speed : 1);
+  if (d > 1e-6) {
+    const step = Math.min(d, v * DT);
+    u.x = clamp(u.x + (dx / d) * step, -this.map.airX, this.map.airX);
+    u.z = clamp(u.z + (dz / d) * step, -this.map.airZ, this.map.airZ);
+    u.hx = dx / d;
+    u.hz = dz / d;
+    u.speed = step / DT;
+    u.moved = true;
+  } else u.speed = 0;
+}
+
+/**
+ * Drone Khiên: mức nguy hiểm (`threat`, sát thương danh nghĩa phe mình hứng trong vùng, cộng ở `damage`) phai một nửa sau
+ * mỗi `fade` giây. Tắt mà nguy hiểm vượt `trigger` và còn đủ `minStart` năng lượng thì bật; đang bật thì tốn `drain` mỗi
+ * giây, không hứng phát nào trong `idleOff` giây hoặc hết năng lượng thì tắt (giữ phần còn lại).
+ */
+function updateShield(this: World, u: Unit): void {
+  const S = UNITS[u.kind].shield!;
+  u.threat *= Math.pow(0.5, DT / S.fade);
+  if (u.threat < 1e-3) u.threat = 0;
+  if (u.shieldOn) {
+    u.fuel = Math.max(0, u.fuel - S.drain * DT);
+    u.shieldIdle++;
+    if (u.fuel <= 0 || u.shieldIdle >= sec(S.idleOff)) this.shieldOff(u);
+  } else if (u.threat >= S.trigger && u.fuel >= S.minStart) {
+    u.shieldOn = 1;
+    u.shieldIdle = 0;
+    u.threat = 0;
+    this.events.push({ t: "shield", id: u.id, side: u.side, on: true, x: u.x, z: u.z });
+  }
+}
+
+function shieldOff(this: World, u: Unit): void {
+  u.shieldOn = 0;
+  u.shieldIdle = 0;
+  this.events.push({ t: "shield", id: u.id, side: u.side, on: false, x: u.x, z: u.z });
+}
+
+/**
+ * Drone Sửa Chữa: chọn một mục tiêu phe mình trong vùng (Xe Tư Lệnh trước, rồi quân hỏng nặng nhất theo tỉ lệ, cuối cùng
+ * công trình), hàn `rate` máu mỗi giây, tốn `perHp` năng lượng mỗi điểm máu. `targetId` giữ mục tiêu đang hàn (phần vẽ tia).
+ */
+function updateRepair(this: World, u: Unit): void {
+  const R = UNITS[u.kind].repair!;
+  const r2 = R.radius * R.radius;
+  let best: Target | null = null;
+  let bestScore = Infinity;
+  if (u.fuel >= R.perHp) {
+    for (const o of this.units) {
+      if (o.side !== u.side || o === u || o.hp <= 0 || o.hp >= o.maxHp || dist2(o.x, o.z, u.x, u.z) > r2) continue;
+      if (o.air === "parked" || World.sheltered(o)) continue;
+      const score = (o.kind === "commander" ? -1 : 0) + o.hp / o.maxHp;
+      if (score < bestScore || (score === bestScore && best && o.id < best.id)) {
+        bestScore = score;
+        best = o;
+      }
+    }
+    if (!best)
+      for (const b of this.buildings) {
+        if (b.side !== u.side || !b.built || b.hp <= 0 || b.hp >= b.maxHp) continue;
+        const reach = R.radius + Math.max(...BUILDINGS[b.kind].half);
+        if (dist2(b.x, b.z, u.x, u.z) > reach * reach) continue;
+        const score = 1 + b.hp / b.maxHp;
+        if (score < bestScore || (score === bestScore && best && b.id < best.id)) {
+          bestScore = score;
+          best = b;
+        }
+      }
+  }
+  if (!best) {
+    u.targetId = 0;
+    return;
+  }
+  const heal = Math.min(R.rate * DT, best.maxHp - best.hp, u.fuel / R.perHp);
+  best.hp += heal;
+  u.fuel -= heal * R.perHp;
+  u.targetId = best.id;
+}
+
+/** Drone cảm tử nổ tại chỗ: một phát nổ lan mặt đất (giải quyết ngay trong tick này), drone mất. */
+function detonate(this: World, u: Unit): void {
+  const k = UNITS[u.kind].kamikaze!;
+  this.shots.push({
+    side: u.side,
+    src: u.id,
+    target: 0,
+    tx: u.x,
+    tz: u.z,
+    dmg: k.dmg,
+    dmgType: k.dmgType,
+    sx: u.x,
+    sz: u.z,
+    talt: 0,
+    interceptable: false,
+    splash: k.splash,
+    hitAir: false,
+    impact: this.tick,
+    visual: "bomb"
+  });
+  u.hp = 0;
+  u.mission = "none";
+}
+
+function updateAir(this: World, u: Unit): void {
+  const spec = UNITS[u.kind];
+  if (spec.hover) {
+    this.updateDrone(u);
+    return;
+  }
+  const fuel = spec.fuel!;
+  const A = RULES.air;
+  if (u.cooldown > 0) u.cooldown--;
+  if (u.cd2 > 0) u.cd2--;
+  switch (u.air) {
+    case "parked": {
+      u.alt = 0;
+      u.speed = 0;
+      const pad = this.padPosOf(u);
+      if (pad) {
+        u.x = pad[0];
+        u.z = pad[1];
+        const st = this.sides[u.side];
+        const field = this.byId.get(u.padB);
+        const pw = field && field.cat === "building" ? field.powerFrac : 1;
+        if (u.fuel < fuel.tank) {
+          // thiếu điện thì bơm dầu chậm
+          const want = Math.min(A.refuelRate * DT * pw, fuel.tank - u.fuel);
+          const got = Math.min(want, st.oil / A.oilPerLiter);
+          if (got > 1e-9) {
+            u.fuel += got;
+            st.oil -= got * A.oilPerLiter;
+          } else if (pw > 0) this.alert(u.side, "nooil", u.x, u.z);
+        }
+        if (u.hp < u.maxHp) u.hp = Math.min(u.maxHp, u.hp + A.repairRate * DT * pw);
+        // nạp lại vũ khí phụ (tên lửa) khi đậu
+        if (spec.secondary) u.ammo2 = spec.secondary.ammo;
+      }
+      if (u.mission !== "none" && u.fuel >= fuel.tank * A.takeoffMin) this.takeoff(u);
+      return;
+    }
+    case "takeoff": {
+      u.airT++;
+      const T = sec(1.6);
+      const k = u.airT / T;
+      u.speed = spec.speed * Math.min(1, 0.2 + k);
+      u.alt = A.cruiseAlt * k * k;
+      u.x += u.hx * u.speed * DT;
+      u.z += u.hz * u.speed * DT;
+      if (!this.burn(u, spec)) return;
+      if (u.airT >= T) {
+        u.air = "flying";
+        u.alt = A.cruiseAlt;
+      }
+      return;
+    }
+    case "launch": {
+      // 1) chờ dưới giếng (airT < 0) · 2) bay thẳng lên tới cao hơn sàn `clear` · 3) tăng tốc ra trước, lên độ bay
+      const L = A.launch;
+      u.airT++;
+      if (u.airT <= 0) {
+        u.speed = 0;
+        return;
+      }
+      const rise = sec(L.rise);
+      const out = sec(L.climbOut);
+      if (u.airT <= rise) {
+        u.speed = 0;
+        u.alt += u.ax / rise; // ax = quãng bay thẳng lên, đặt lúc xuất xưởng
+      } else {
+        const k = (u.airT - rise) / out;
+        u.speed = spec.speed * Math.min(1, 0.15 + 0.85 * k);
+        u.alt += (A.cruiseAlt - u.alt) / Math.max(1, rise + out - u.airT + 1);
+        u.x += u.hx * u.speed * DT;
+        u.z += u.hz * u.speed * DT;
+      }
+      if (!this.burn(u, spec)) return;
+      if (u.airT >= rise + out) {
+        u.air = "flying";
+        u.alt = A.cruiseAlt;
+      }
+      return;
+    }
+    case "flying":
+    case "returning":
+      this.fly(u, spec);
+      return;
+    case "landing": {
+      const pad = this.padPosOf(u);
+      if (!pad) {
+        u.air = "returning";
+        u.alt = Math.max(u.alt, 4);
+        return;
+      }
+      u.airT++;
+      const T = sec(1.6);
+      const k = Math.min(1, u.airT / T);
+      u.x = u.ax + (pad[0] - u.ax) * k;
+      u.z = u.az + (pad[1] - u.az) * k;
+      u.alt = A.cruiseAlt * (1 - k) * (1 - k);
+      u.speed = spec.speed * (1 - k);
+      if (k >= 1) {
+        u.air = "parked";
+        u.alt = 0;
+        u.speed = 0;
+        u.mission = "none";
+        u.rtb = false;
+        u.targetId = 0;
+        u.autoTarget = 0;
+        // đậu quay mũi theo hướng Sân Đáp (mô hình: +z), xoay theo nấc xoay của công trình
+        const ab = this.byId.get(u.padB);
+        const [phx, phz] = doorDir(ab && ab.cat === "building" ? ab.rot : 0);
+        u.hx = phx;
+        u.hz = phz;
+        u.yawRate = 0;
+      }
+      return;
+    }
+    default:
+      return;
+  }
+}
+
+function fly(this: World, u: Unit, spec: UnitSpec): void {
+  if (!this.burn(u, spec)) return;
+  const fuel = spec.fuel!;
+  const A = RULES.air;
+  const w = spec.weapon!;
+  // Mức Bingo động: 24% bình, hoặc lượng dầu đủ bay về sân nếu sân ở xa hơn
+  if (u.air === "flying" && (u.rtb || u.fuel <= Math.max(fuel.tank * A.bingo, this.fuelToReturn(u, spec)))) {
+    if (!u.rtb) this.alert(u.side, "lowfuel", u.x, u.z);
+    u.rtb = true;
+    u.air = "returning";
+  }
+  let dx = 0;
+  let dz = 0;
+  let tgt: Target | null = null;
+  let wantAlt: number = A.cruiseAlt;
+  if (u.air === "returning") {
+    const pad = this.ensurePad(u);
+    if (pad) {
+      dx = pad[0] - u.x;
+      dz = pad[1] - u.z;
+      if (dx * dx + dz * dz < 100) {
+        u.air = "landing";
+        u.airT = 0;
+        u.ax = u.x;
+        u.az = u.z;
+        return;
+      }
+    } else {
+      const hq = this.hqOf(u.side);
+      [dx, dz] = this.loiter(u, hq ? hq.x : 0, hq ? hq.z : 0);
+    }
+  } else {
+    if (u.mission === "attack") {
+      const t = this.target(u.targetId);
+      if (t && t.side !== u.side && this.canHit(w, t) && this.visibleTo(u.side, t)) tgt = t;
+      else {
+        u.mission = "move";
+        u.mx = clamp(u.x, -this.map.airX, this.map.airX);
+        u.mz = clamp(u.z, -this.map.airZ, this.map.airZ);
+        u.targetId = 0;
+      }
+    }
+    if (!tgt) {
+      tgt = this.acquireFrom(u, u.side, u.mx, u.mz, w, 26, u.autoTarget);
+      u.autoTarget = tgt ? tgt.id : 0;
+    }
+    if (tgt) {
+      dx = tgt.x - u.x;
+      dz = tgt.z - u.z;
+      // Lượt bổ nhào: bay qua mục tiêu thì giữ thẳng hướng lấy khoảng cách rồi mới quay lại.
+      // Nếu cứ quay mũi về mục tiêu với bán kính ngoặt giới hạn, máy bay sẽ bay vòng tròn quanh nó mãi
+      // mà không chĩa được mũi vào để bắn.
+      const d = Math.sqrt(dx * dx + dz * dz);
+      const turnR = spec.speed / (fuel.turnRate * DEG);
+      const facing = d > 1e-6 ? (u.hx * dx + u.hz * dz) / d : 1;
+      if (!u.ext && d < turnR * 1.5 && facing < 0.3) u.ext = true;
+      // chỉ kéo ra đủ để lúc quay lại mục tiêu nằm ngoài vòng ngoặt (không rơi vào bay vòng tròn), không hơn
+      if (u.ext && d >= Math.max(turnR * 1.8, 8)) u.ext = false;
+      if (u.ext) {
+        dx = u.hx;
+        dz = u.hz;
+      }
+      // Bổ nhào: đang lao vào mục tiêu mặt đất (mũi hướng về nó, đã gần) thì hạ độ cao; kéo ra thì lên lại
+      if (spec.diveAlt && !u.ext && !this.isAirborne(tgt) && facing >= 0.5 && d <= w.range + 12) wantAlt = spec.diveAlt;
+    } else {
+      u.ext = false;
+      [dx, dz] = this.loiter(u, u.mx, u.mz);
+    }
+  }
+  if (Math.abs(u.x) > this.map.airX || Math.abs(u.z) > this.map.airZ) {
+    dx = -u.x;
+    dz = -u.z;
+  }
+  this.steerAir(u, dx, dz, fuel.turnRate);
+  u.speed = spec.speed;
+  // máy bay không bay ra ngoài bản đồ (cách mép 2 m)
+  u.x = clamp(u.x + u.hx * u.speed * DT, -this.map.halfW + 2, this.map.halfW - 2);
+  u.z = clamp(u.z + u.hz * u.speed * DT, -this.map.halfH + 2, this.map.halfH - 2);
+  const climb = A.climbRate * DT;
+  u.alt += clamp(wantAlt - u.alt, -climb, climb);
+  if (w.carpet) {
+    // Rải thảm: đã bắt đầu loạt thì thả nốt dọc đường bay; loạt mới chỉ bắt đầu khi bom sẽ rơi trúng mục tiêu
+    if (u.cooldown === 0) {
+      if (u.burst > 0) this.dropBomb(u, w);
+      else if (tgt && !this.isAirborne(tgt)) {
+        const lead = u.speed * BOMB_FALL;
+        const r = w.splash + this.radiusOf(tgt);
+        if (dist2(u.x + u.hx * lead, u.z + u.hz * lead, tgt.x, tgt.z) <= r * r) this.dropBomb(u, w);
+      }
+    }
+  } else if (tgt) {
+    const tx = tgt.x - u.x;
+    const tz = tgt.z - u.z;
+    const d = Math.sqrt(tx * tx + tz * tz);
+    // chỉ bắn khi mũi máy bay hướng về mục tiêu (lượt bổ nhào)
+    if (d <= w.range + this.radiusOf(tgt) && u.hx * tx + u.hz * tz >= cosDeg(w.fireArc ?? 37) * d) this.tryFire(u, w, tgt);
+  }
+  const w2 = spec.secondary;
+  if (w2 && tgt && u.ammo2 > 0 && u.cd2 === 0 && this.canHit(w2, tgt)) {
+    const tx = tgt.x - u.x;
+    const tz = tgt.z - u.z;
+    const d = Math.sqrt(tx * tx + tz * tz);
+    if (d <= w2.range + this.radiusOf(tgt) && u.hx * tx + u.hz * tz >= cosDeg(w2.fireArc ?? 37) * d) this.fireSecondary(u, w2, tgt, d);
+  }
+}
+
+/**
+ * Lái máy bay về hướng (dx, dz) cho mượt: tốc độ ngoặt tăng giảm dần (gia tốc góc), như phải nghiêng cánh
+ * dần mới vào vòng được. Lệch nhiều thì ngoặt hết cỡ, gần đúng hướng thì nắn nhẹ theo độ lệch.
+ * Không dùng góc: độ lệch lấy từ tích vô hướng / tích có hướng, xoay bằng dsin/dcos tự viết (tất định).
+ */
+function steerAir(this: World, u: Unit, dx: number, dz: number, turnRateDeg: number): void {
+  const l = Math.sqrt(dx * dx + dz * dz);
+  const maxR = turnRateDeg * DEG * DT;
+  let want = 0;
+  if (l > 1e-6) {
+    const nx = dx / l;
+    const nz = dz / l;
+    const dot = u.hx * nx + u.hz * nz;
+    const cross = u.hx * nz - u.hz * nx;
+    const dir = cross >= 0 ? 1 : -1;
+    // trong vùng ±30° thì sin(lệch) = cross, ngoặt tỉ lệ theo độ lệch; ngoài vùng thì ngoặt hết cỡ
+    want = dot >= STEER_SOFT_COS ? clamp(cross / STEER_SOFT_SIN, -1, 1) * maxR : dir * maxR;
+  }
+  const acc = maxR / (STEER_RAMP * TICK_RATE);
+  u.yawRate += clamp(want - u.yawRate, -acc, acc);
+  const c = dcos(u.yawRate);
+  const s = dsin(u.yawRate);
+  const hx = u.hx * c - u.hz * s;
+  const hz = u.hx * s + u.hz * c;
+  const hl = Math.sqrt(hx * hx + hz * hz) || 1;
+  u.hx = hx / hl;
+  u.hz = hz / hl;
+}
+
+/** Hướng bay vòng chờ quanh (cx, cz): xa thì bay thẳng tới, gần thì bay tiếp tuyến bán kính ~11 m. */
+function loiter(this: World, u: Unit, cx: number, cz: number): [number, number] {
+  const dx = cx - u.x;
+  const dz = cz - u.z;
+  const d = Math.sqrt(dx * dx + dz * dz);
+  if (d > 16 || d < 1e-6) return [dx, dz];
+  const k = (d - 11) / 11;
+  return [-dz / d + (dx / d) * k, dx / d + (dz / d) * k];
+}
+
+const methods = { padPosOf, nearestFreePad, freePads, hasFreePad, ensurePad, releasePad, homeDistance, fuelToReturn, burn, takeoff, inGrid, nearestGrid, droneNeedsCharge, updateDrone, updateShield, shieldOff, updateRepair, detonate, updateAir, fly, steerAir, loiter };
+type Methods = typeof methods;
+declare module "./core" {
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  interface World extends Methods {}
+}
+Object.assign(World.prototype, methods);
