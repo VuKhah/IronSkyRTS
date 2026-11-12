@@ -312,3 +312,37 @@ describe("chỗ đứng khai thác quanh mỏ (12/11/2026)", () => {
     }
   });
 });
+
+describe("xe cắt ngang nhau không lồng thân (12/11/2026)", () => {
+  // Ảnh người dùng 12/11: hai Xe Vận Tải cắt ngang nhau trước Tổng Hành Dinh, mũi xe này chui vào hông xe kia gần 1 m
+  // (va chạm theo hình tròn bán kính = nửa bề ngang). Giờ xe ngoài đội hình va chạm theo hình chữ nhật đúng thân.
+  it("hai Xe Vận Tải đi vuông góc qua cùng một điểm: thân không lồng quá 0,3 m, cả hai tới nơi", () => {
+    const w = world();
+    const a = spawn(w, "hauler", -70, -50);
+    const b = spawn(w, "hauler", -50, -70);
+    a.manual = b.manual = true;
+    w.step([
+      { side: 0, order: { t: "move", ids: [a.id], x: -30, z: -50 } },
+      { side: 0, order: { t: "move", ids: [b.id], x: -50, z: -30 } }
+    ]);
+    const H = UNITS.hauler;
+    let worst = 0;
+    for (let t = 0; t < sec(30); t++) {
+      w.step([]);
+      // độ lồng của hai hình chữ nhật thân thật (bán kính × 1, halfLen × 1) theo trục tách tốt nhất
+      let ov = Infinity;
+      for (const u of [a, b])
+        for (const [ux, uz] of [
+          [u.hx, u.hz],
+          [u.hz, -u.hx]
+        ]) {
+          const r = (v: Unit): number => (H.halfLen ?? H.radius) * Math.abs(v.hx * ux + v.hz * uz) + H.radius * Math.abs(v.hz * ux - v.hx * uz);
+          ov = Math.min(ov, r(a) + r(b) - Math.abs((b.x - a.x) * ux + (b.z - a.z) * uz));
+        }
+      worst = Math.max(worst, ov);
+    }
+    expect(worst, "thân lồng nhau").toBeLessThan(0.3 + 2 * 0.15 * H.radius);
+    expect(Math.hypot(a.x + 30, a.z + 50)).toBeLessThan(2.5);
+    expect(Math.hypot(b.x + 50, b.z + 30)).toBeLessThan(2.5);
+  });
+});

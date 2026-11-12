@@ -295,20 +295,82 @@ function shove(w: World, u: Unit, dx: number, dz: number): [number, number] {
   return [u.x - ox, u.z - oz];
 }
 
+/** Thân xe để tính va chạm: nửa bề ngang = bán kính × 0,85, nửa chiều dài = halfLen × 0,9 (thùng / giáp hơi tròn góc). */
+const BODY_W = 0.85;
+const BODY_L = 0.9;
+const BODIES = new Map<string, readonly [number, number, number]>();
+/** [nửa ngang, nửa dài, nửa đường chéo] của thân xe (tính một lần cho mỗi loại quân). */
+function bodyOf(u: Unit): readonly [number, number, number] {
+  let b = BODIES.get(u.kind);
+  if (!b) {
+    const s = UNITS[u.kind];
+    const w = s.radius * BODY_W;
+    const l = Math.max(s.halfLen ?? s.radius, s.radius) * BODY_L;
+    b = [w, l, Math.sqrt(w * w + l * l)];
+    BODIES.set(u.kind, b);
+  }
+  return b;
+}
+
+/**
+ * Hai thân xe hình chữ nhật xoay theo hướng thân có lồng nhau không (phép tách trục, SAT: hai hình lồi không chạm nhau khi và
+ * chỉ khi có một trục, ở đây là một trong bốn cạnh, mà hình chiếu của chúng lên trục đó rời nhau). Trả về [độ lồng nhỏ nhất,
+ * hướng đẩy x, hướng đẩy z] (hướng từ a sang b, theo trục có độ lồng nhỏ nhất); độ lồng ≤ 0 là không chạm.
+ */
+function boxOverlap(a: Unit, ba: readonly number[], b: Unit, bb: readonly number[], dx: number, dz: number): [number, number, number] {
+  let best = Infinity;
+  let bx = 0;
+  let bz = 0;
+  for (let k = 0; k < 4; k++) {
+    const u = k < 2 ? a : b;
+    // trục: hướng thân hoặc vuông góc thân của a rồi của b
+    const ux = k % 2 === 0 ? u.hx : u.hz;
+    const uz = k % 2 === 0 ? u.hz : -u.hx;
+    const ca = a.hx * ux + a.hz * uz;
+    const sa = a.hz * ux - a.hx * uz;
+    const cb = b.hx * ux + b.hz * uz;
+    const sb = b.hz * ux - b.hx * uz;
+    const ra = ba[1] * (ca < 0 ? -ca : ca) + ba[0] * (sa < 0 ? -sa : sa);
+    const rb = bb[1] * (cb < 0 ? -cb : cb) + bb[0] * (sb < 0 ? -sb : sb);
+    const dist = dx * ux + dz * uz;
+    const ov = ra + rb - (dist < 0 ? -dist : dist);
+    if (ov <= 0) return [ov, 0, 0];
+    if (ov < best) {
+      best = ov;
+      bx = dist < 0 ? -ux : ux;
+      bz = dist < 0 ? -uz : uz;
+    }
+  }
+  return [best, bx, bz];
+}
+
+/** 1 = a nhường b (a rỗng, b đang chở hàng), −1 = b nhường a, 0 = ngang nhau. */
+function yieldsTo(a: Unit, b: Unit): number {
+  const la = a.cargo > 0 || a.scrap > 0;
+  const lb = b.cargo > 0 || b.scrap > 0;
+  return la === lb ? 0 : lb ? 1 : -1;
+}
+
 function separate(this: World): void {
   const g: Unit[] = [];
   for (const u of this.units) if (u.air === "none" && u.hp > 0) g.push(u);
   for (let i = 0; i < g.length; i++) {
     const a = g[i];
     const ra = UNITS[a.kind].radius;
+    const ba = bodyOf(a);
     for (let j = i + 1; j < g.length; j++) {
       const b = g[j];
       const rb = UNITS[b.kind].radius;
-      // Va chạm theo hình tròn bán kính = nửa bề ngang (tính theo thân dài thật thì phải đổi cả khoảng hàng của đội hình:
-      // để cho bước ORCA). Hai xe cùng chạy thì nhìn xa thêm PASS_LOOK để kịp lách trước khi chạm.
+      const bb = bodyOf(b);
+      // Hai xe CÙNG MỘT ĐỘI HÌNH: va chạm theo hình tròn bán kính = nửa bề ngang × 0,8, vì khoảng hàng của đội hình đang tính
+      // theo bán kính (tính theo thân dài thì Pháo 9 m kẹt giữa hai Titan đoạn hậu; đổi cùng lúc với ORCA). Còn lại (Xe Vận
+      // Tải, xe lẻ, xe khác đội): theo HÌNH CHỮ NHẬT đúng thân xe, không thì mũi xe chui vào hông xe kia gần 1 m khi cắt ngang.
+      const sameSq = a.squad !== 0 && a.squad === b.squad;
       const both = a.moved && b.moved;
       const min = (ra + rb) * 0.8;
-      const reach = both ? ra + rb + PASS_LOOK : min;
+      const touch = sameSq ? min : ba[2] + bb[2];
+      // hai xe cùng chạy thì nhìn xa thêm PASS_LOOK để kịp lách trước khi chạm
+      const reach = both ? Math.max(touch, ra + rb + PASS_LOOK) : touch;
       const dx = b.x - a.x;
       const dz = b.z - a.z;
       if (dx >= reach || dx <= -reach || dz >= reach || dz <= -reach) continue;
@@ -332,7 +394,17 @@ function separate(this: World): void {
       // hai xe cùng chạy NGƯỢC CHIỀU, xe kia ở phía trước mỗi xe. Đi thẳng hàng trên cùng một đường A* là chuyện thường (xe
       // ra mỏ và xe về nhà đi chung một lối): khi đó lực đẩy dọc đường nối hai tâm triệt tiêu đúng bằng phần vừa tiến, kẹt mãi
       const headOn = both && a.hx * b.hx + a.hz * b.hz < HEAD_ON_COS && dx * a.hx + dz * a.hz > 0 && -dx * b.hx - dz * b.hz > 0;
-      if (d >= min) {
+      // độ lồng (over) và hướng đẩy (nx, nz: từ a sang b)
+      let over = min - d;
+      if (!sameSq) {
+        const c = boxOverlap(a, ba, b, bb, dx, dz);
+        over = c[0];
+        if (over > 0) {
+          nx = c[1];
+          nz = c[2];
+        }
+      }
+      if (over <= 0) {
         // chưa chạm: tài xế thấy nhau từ xa thì cùng lách sang bên, chỉ khi giữ nguyên làn thì sẽ tông
         if (!headOn || pa || pb) continue;
         const lat = dx * a.hz - dz * a.hx;
@@ -346,22 +418,28 @@ function separate(this: World): void {
       // xe đang chạy nhường xe đã đứng yên: xe chạy chịu phần lớn lực đẩy (lách qua), xe đã vào hàng chỉ xê dịch chút ít
       // (vẫn nhường một chút để khe hẹp nới dần, xe chạy không kẹt mãi). Hai xe cùng chạy hoặc cùng đứng thì chia đều.
       // Quân ĐÃ HẠ BỆ (chân chống cắm đất) thì không bị xô chút nào: xe kia chịu trọn; hai quân cùng hạ bệ thì không ai nhích.
-      const wa = pa ? 0 : pb ? 1 : a.moved === b.moved ? 0.5 : a.moved ? MOVER_SHARE : 1 - MOVER_SHARE;
-      const over = min - d;
-      // xe chạy gặp xe đứng, hoặc hai xe chạy đối đầu: ngoài đẩy ra còn LÁCH SANG BÊN (vuông góc hướng chạy, phía xa xe kia)
-      const aSide = !pa && ((a.moved && !b.moved) || headOn);
-      const bSide = !pb && ((b.moved && !a.moved) || headOn);
+      // Hai xe cùng chạy mà một xe đang CHỞ HÀNG, xe kia rỗng: xe rỗng nhường như xe chạy nhường xe đứng (luật đường hẹp
+      // của tài xế; đối xứng hai phe vì chỉ xét hàng trên xe). Hai xe đối đầu ở một góc sát vách: xe bị vách chặn không lách
+      // được, đường đi lại kéo cả hai về cùng một điểm góc, giằng co mãi nếu chia đều.
+      const ya = a.moved === b.moved ? yieldsTo(a, b) : 0;
+      const wa = pa ? 0 : pb ? 1 : ya > 0 ? MOVER_SHARE : ya < 0 ? 1 - MOVER_SHARE : a.moved === b.moved ? 0.5 : a.moved ? MOVER_SHARE : 1 - MOVER_SHARE;
+      // xe chạy gặp xe đứng, hoặc hai xe chạy đối đầu: ngoài đẩy ra còn LÁCH SANG BÊN (vuông góc hướng chạy, phía xa xe kia);
+      // đối đầu mà có xe được ưu tiên thì xe đó giữ làn, xe nhường lách
+      const aSide = !pa && ((a.moved && !b.moved) || (headOn && ya >= 0));
+      const bSide = !pb && ((b.moved && !a.moved) || (headOn && ya <= 0));
       const [lax, laz] = aSide ? sideStep(a, dx, dz) : [0, 0];
       const [lbx, lbz] = bSide ? sideStep(b, -dx, -dz) : [0, 0];
-      // đẩy qua tryMove: sát vách thì trượt dọc vách thay vì bỏ cả cú đẩy (trước đây cả hai đứng im lồng vào nhau); phần xe
-      // này không nhích được thì xe kia gánh (trừ quân đã hạ bệ)
-      const pushA = over * wa;
-      const [mxa, mza] = shove(this, a, -nx * pushA + lax * over, -nz * pushA + laz * over);
-      const lackA = pushA + (mxa * nx + mza * nz); // phần đẩy dọc pháp tuyến a chưa đi được
-      const pushB = over * (1 - wa) + (pb ? 0 : lackA > 0 ? lackA : 0);
-      const [mxb, mzb] = shove(this, b, nx * pushB + lbx * over, nz * pushB + lbz * over);
-      const lackB = pushB - (mxb * nx + mzb * nz);
-      if (lackB > 1e-6 && !pa && lackA <= 1e-6) shove(this, a, -nx * lackB, -nz * lackB);
+      // Đẩy qua tryMove: sát vách thì trượt dọc vách thay vì bỏ cả cú đẩy (trước đây cả hai đứng im lồng vào nhau). Hai cú đẩy
+      // tính từ cùng một trạng thái; phần xe này không đi được (cả đẩy dọc lẫn lách ngang) thì xe kia đi bù theo hướng ngược
+      // lại, một lượt cho cả hai chiều, nên đổi vai a / b (thứ tự mã xe) ra cùng kết quả. Quân đã hạ bệ không bị bù.
+      const dax = -nx * over * wa + lax * over;
+      const daz = -nz * over * wa + laz * over;
+      const dbx = nx * over * (1 - wa) + lbx * over;
+      const dbz = nz * over * (1 - wa) + lbz * over;
+      const [mxa, mza] = shove(this, a, dax, daz);
+      const [mxb, mzb] = shove(this, b, dbx, dbz);
+      if (!pb) shove(this, b, mxa - dax, mza - daz);
+      if (!pa) shove(this, a, mxb - dbx, mzb - dbz);
     }
   }
 }

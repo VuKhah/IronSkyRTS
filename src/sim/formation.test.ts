@@ -267,7 +267,8 @@ describe("quân đã hạ bệ không bị xô (người dùng 10/11/2026)", () 
     for (let t = 0; t < sec(20) && lx.order !== "idle"; t++) {
       w.step([]);
       const d = Math.sqrt((lx.x - sg.x) ** 2 + (lx.z - sg.z) ** 2);
-      if (d < UNITS.lynx.radius + UNITS.skyguard.radius) touched = true;
+      // chạm theo thân thật (xe lẻ va chạm theo hình chữ nhật từ 12/11/2026): tâm gần hơn tổng nửa chiều dài hai xe
+      if (d < (UNITS.lynx.halfLen ?? UNITS.lynx.radius) + (UNITS.skyguard.halfLen ?? UNITS.skyguard.radius)) touched = true;
       expect([sg.x, sg.z]).toEqual([sx, sz]);
     }
     expect(touched).toBe(true); // phép thử có ý nghĩa: hai xe thật sự chạm nhau
