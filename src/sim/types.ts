@@ -206,9 +206,30 @@ export interface Mine {
   /** Với mỏ đã có chủ: độ "giữ" (1 = vững). Với mỏ trung lập: tiến độ chiếm của capSide. */
   cap: number;
   capSide: Side | -1;
-  /** Id các Xe Vận Tải đang được giao mỏ này (tối đa RULES.mineSlots). */
+  /**
+   * Chỗ khai thác thứ i giữ Xe Vận Tải nào (id, 0 = trống); cùng độ dài với `spots`. Mỗi xe giữ cố định chỗ của mình (trước
+   * 12/11/2026 chỗ đánh theo thứ tự trong danh sách nên một xe rời đi là xe khác bị đổi chỗ giữa đường).
+   */
   slots: number[];
+  /** Các khối quặng / giếng và chỗ đỗ của bãi (tính một lần lúc tạo trận, xem RULES.field). */
+  spots: MineSpot[];
+  /** Ô bị chặn bởi các khối của bãi. */
   cells: number[];
+  /** Bán kính ngoài của bãi (m, tới đuôi xe đỗ xa nhất): vùng cấm xây, vòng chiếm, vòng vẽ. */
+  radius: number;
+}
+
+/** Một điểm khai thác của bãi tài nguyên: khối quặng / giếng (1 ô) và chỗ đỗ của Xe Vận Tải ngay phía ngoài nó. */
+export interface MineSpot {
+  /** Tâm khối quặng / giếng (m). */
+  x: number;
+  z: number;
+  /** Tâm chỗ đỗ (m). */
+  px: number;
+  pz: number;
+  /** Hướng xe đỗ (vector đơn vị, mũi vào khối). */
+  fx: number;
+  fz: number;
 }
 
 export type Entity = Unit | Building | Mine;

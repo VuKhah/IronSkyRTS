@@ -24,6 +24,7 @@
  *   air.ts       Không quân và drone: sân bay, nhiên liệu, pin, bay, bổ nhào, Drone Khiên, sửa chữa, cảm tử.
  *   abilities.ts Kỹ năng của binh chủng: rải thảm, pháo phóng loạt, tổng động viên.
  *   lifecycle.ts Xác quân, dọn thực thể chết, sương mù, thắng thua.
+ *   field.ts     Bãi tài nguyên: khối quặng / giếng Dầu và chỗ đỗ Xe Vận Tải quanh tâm mỏ.
  *   hash.ts      hashWorld
  * Mỗi file nhóm viết hàm thường với `this: World` rồi gắn vào World.prototype; `declare module "./core"` khai báo kiểu
  * cho các hàm đó. Mọi nơi khác chỉ import từ file này ("./world"), không import thẳng "./world/core" (sẽ thiếu hàm).
@@ -44,3 +45,4 @@ import "./world/hauler";
 import "./world/air";
 import "./world/abilities";
 import "./world/lifecycle";
+import "./world/field";

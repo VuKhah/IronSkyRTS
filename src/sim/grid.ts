@@ -68,6 +68,15 @@ export class Grid {
   readonly kind: Uint8Array;
   /** Khoảng cách (số ô, kiểu bàn cờ vua, trần 255) tới ô bị chặn cố định gần nhất, tính một lần: xe xa vách khỏi dò thân. */
   readonly wallDist: Uint8Array;
+  /**
+   * Khoảng trống (m) từ tâm từng ô tới mép ô bị chặn gần nhất (vách, đá, nước sâu, nhà, khối quặng) hoặc mép bản đồ; 0 ở ô bị
+   * chặn. Xe nửa bề ngang w chỉ đi được ô có khoảng trống ≥ w (cách các game RTS "phồng" vật cản lên bằng cỡ đơn vị). Tính
+   * lại (lười) khi bản đồ chiếm chỗ đổi: xây / phá nhà. Đọc qua `clearance()`.
+   */
+  private clear: Float32Array;
+  private clearDirty = true;
+  private nearX: Int16Array;
+  private nearZ: Int16Array;
   private fields = new Map<string, SpeedField>();
   private readonly halfW: number;
   private readonly halfH: number;
@@ -95,6 +104,9 @@ export class Grid {
     this.closedGen = new Uint32Array(n);
     this.heapNode = new Int32Array(n * 8);
     this.heapF = new Float64Array(n * 8);
+    this.clear = new Float32Array(n);
+    this.nearX = new Int16Array(n);
+    this.nearZ = new Int16Array(n);
     const index = new Map<TerrainKind, number>(TERRAIN_KINDS.map((k, i) => [k, i]));
     for (let cz = 0; cz < this.rows; cz++)
       for (let cx = 0; cx < this.cols; cx++) {
@@ -265,6 +277,85 @@ export class Grid {
 
   block(cells: readonly number[], delta: 1 | -1): void {
     for (const i of cells) this.occ[i] = Math.max(0, this.occ[i] + delta);
+    if (cells.length) this.clearDirty = true;
+  }
+
+  /** Khoảng trống (m) của ô chứa (x, z); xem `clear`. */
+  clearanceAt(x: number, z: number): number {
+    if (x <= -this.halfW || x >= this.halfW || z <= -this.halfH || z >= this.halfH) return 0;
+    return this.clearance()[this.index(x, z)];
+  }
+
+  /**
+   * Bảng khoảng trống, tính lại nếu bản đồ chiếm chỗ vừa đổi. Loang từ mọi ô bị chặn và mép bản đồ, mỗi ô nhớ ô chặn gần nhất
+   * (cách "lan truyền ô gần nhất" của biến đổi khoảng cách); khoảng cách đo từ tâm ô tới mép ô chặn đó. Thứ tự loang cố định
+   * nên tất định.
+   */
+  clearance(): Float32Array {
+    if (!this.clearDirty) return this.clear;
+    this.clearDirty = false;
+    const C = this.cols;
+    const R = this.rows;
+    const d2 = new Float64Array(this.size).fill(Infinity);
+    const q: number[] = [];
+    // khoảng cách (ô) từ tâm ô (cx, cz) tới mép ô (ox, oz): bình phương
+    const gap2 = (cx: number, cz: number, ox: number, oz: number): number => {
+      const ax = Math.max(0, Math.abs(cx - ox) - 0.5);
+      const az = Math.max(0, Math.abs(cz - oz) - 0.5);
+      return ax * ax + az * az;
+    };
+    for (let i = 0; i < this.size; i++) {
+      const cx = i % C;
+      const cz = (i - cx) / C;
+      if (this.blockedIdx(i)) {
+        d2[i] = 0;
+        this.nearX[i] = cx;
+        this.nearZ[i] = cz;
+        q.push(i);
+        continue;
+      }
+      // mép bản đồ: coi như có ô chặn ngay bên ngoài
+      if (cx === 0 || cz === 0 || cx === C - 1 || cz === R - 1) {
+        const opts: [number, number][] = [
+          [-1, cz],
+          [C, cz],
+          [cx, -1],
+          [cx, R]
+        ];
+        for (const [ox, oz] of opts) {
+          const v = gap2(cx, cz, ox, oz);
+          if (v < d2[i]) {
+            d2[i] = v;
+            this.nearX[i] = ox;
+            this.nearZ[i] = oz;
+          }
+        }
+        q.push(i);
+      }
+    }
+    for (let h = 0; h < q.length; h++) {
+      const i = q[h];
+      const cx = i % C;
+      const cz = (i - cx) / C;
+      const ox = this.nearX[i];
+      const oz = this.nearZ[i];
+      for (let dz = -1; dz <= 1; dz++)
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dz === 0) continue;
+          const x = cx + dx;
+          const z = cz + dz;
+          if (x < 0 || z < 0 || x >= C || z >= R) continue;
+          const j = z * C + x;
+          const v = gap2(x, z, ox, oz);
+          if (v + 1e-9 >= d2[j]) continue;
+          d2[j] = v;
+          this.nearX[j] = ox;
+          this.nearZ[j] = oz;
+          q.push(j);
+        }
+    }
+    for (let i = 0; i < this.size; i++) this.clear[i] = Math.sqrt(d2[i]) * CELL;
+    return this.clear;
   }
 
   /**
@@ -418,6 +509,18 @@ export class Grid {
       gz = f[1];
       t = this.index(gx, gz);
     }
+    // Tìm cho một xe cụ thể (nửa bề ngang `half` > 0,7 m): đi theo bảng khoảng trống (xem `clear`). Đích nằm trong chỗ hẹp hơn
+    // thân xe thì dời tới ô gần nhất vừa thân.
+    const sized = half > 0.7;
+    const clr = sized ? this.clearance() : null;
+    if (clr && clr[t] < half) {
+      const f = this.nearestFree(gx, gz, 6, (x, z) => this.clearanceAt(x, z) >= half);
+      if (f) {
+        gx = f[0];
+        gz = f[1];
+        t = this.index(gx, gz);
+      }
+    }
     if (s === t) return [gx, gz];
     // Đi thẳng luôn nếu đường thẳng đi được và không băng qua ô chậm hơn hai đầu (và cỏ). Bản đồ có ô nhanh hơn cỏ
     // (đường cái) thì vẫn tìm, vì vòng theo đường có thể nhanh hơn; tìm xong sẽ so với đi thẳng (dưới).
@@ -468,8 +571,16 @@ export class Grid {
         if (this.blockedIdx(ni) || this.closedGen[ni] === gen) continue;
         // không cắt góc: đi chéo thì hai ô cạnh phải trống
         if (dx !== 0 && dz !== 0 && (this.blockedIdx(cz * C + nx) || this.blockedIdx(nz * C + cx))) continue;
+        // xe cụ thể: ô hẹp hơn thân là chặn (trừ vài ô quanh chỗ đứng và quanh đích, để xe đang đỗ sát vách / nhà ra được),
+        // ô càng sát vật cản càng tính như chậm hơn ("hành lang": đường đi giữa lối, không men sát vách / nhà)
+        let corr = 1;
+        if (clr) {
+          const m = clr[ni] - half;
+          if (m < 0 && Math.max(Math.abs(nx - (s % C)), Math.abs(nz - Math.floor(s / C))) > 2 && Math.max(Math.abs(nx - tx), Math.abs(nz - tz)) > 1) continue;
+          corr = m < 1 ? 0.4 : m < 2 ? 0.6 : m < 3 ? 0.85 : 1;
+        }
         // chính sách "nhanh nhất": thời gian đi vào ô = quãng đường ÷ hệ số tốc độ của ô
-        const ng = this.g[cur] + (K ? cost / K[ni] : cost);
+        const ng = this.g[cur] + (K ? cost / K[ni] : cost) / corr;
         if (this.openGen[ni] === gen && ng >= this.g[ni]) continue;
         this.openGen[ni] = gen;
         this.g[ni] = ng;

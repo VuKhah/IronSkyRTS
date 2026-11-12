@@ -6,7 +6,7 @@
  * - khối dốc khai báo sai (không nối hai tầng liền nhau) thì dựng bản đồ báo lỗi ngay.
  */
 import { describe, expect, it } from "vitest";
-import { UNITS, type Side, type UnitId } from "./content";
+import { RULES, UNITS, type Side, type UnitId } from "./content";
 import { DEV_MAP_DEFS, GameMap, MAP_DEFS, RAMP_LEN, TIER_H, type MapDef } from "./maps";
 import type { Unit } from "./types";
 import { sec, World } from "./world";
@@ -276,40 +276,50 @@ describe("xe ngược chiều qua nhau (12/11/2026)", () => {
     });
 });
 
-describe("chỗ đứng khai thác quanh mỏ (12/11/2026)", () => {
-  // Lỗi 11/11/2026: mỏ Dầu (±97, ±40) của Cao Nguyên Ba Bậc sát chân vách, chỗ đứng rơi lên đỉnh vách; xe đứng mãi phía trên mỏ.
-  const w = new World(1, { sandbox: true, map: "standard" });
-  it("mọi chỗ đứng cùng tầng với mỏ, không trên dốc, trong tầm khai thác", () => {
-    for (const m of w.mines)
-      for (let i = 0; i < 3; i++) {
-        const fake = { id: 1e6 + i } as Unit;
-        const keep = m.slots;
-        m.slots = [1e6, 1e6 + 1, 1e6 + 2];
-        const [x, z] = w.slotPos(m, fake);
-        m.slots = keep;
-        const at = `mỏ (${m.x}, ${m.z}) chỗ ${i}: (${x.toFixed(1)}, ${z.toFixed(1)})`;
-        expect(w.map.tierAt(x, z), at).toBe(w.map.tierAt(m.x, m.z));
-        expect(w.map.onRamp(x, z), at).toBe(false);
-        expect(Math.hypot(x - m.x, z - m.z), at).toBeLessThan(7);
+describe("bãi tài nguyên (12/11/2026)", () => {
+  // Người dùng 12/11: mỏ không còn là một khối mà là một bãi, nhiều điểm tiếp xúc hơn. Lỗi cũ 11/11: mỏ Dầu sát chân vách nhận
+  // chỗ đứng trên đỉnh vách, xe đứng mãi phía trên mỏ. Giờ mỗi khối quặng / giếng có một chỗ đỗ được kiểm vừa thân xe.
+  const maps = [...MAP_DEFS, ...DEV_MAP_DEFS].filter((d) => d.id !== "big-test");
+  for (const def of maps)
+    it(`${def.id}: mọi bãi đủ khối, chỗ đỗ cùng tầng, vừa thân xe, không chồng nhau, hai bãi đối xứng bố trí đối xứng`, () => {
+      const w = new World(1, { sandbox: true, map: def.id });
+      const H = UNITS.hauler;
+      for (const m of w.mines) {
+        const at = `mỏ (${m.x}, ${m.z})`;
+        expect(m.spots.length, `${at}: số khối`).toBeGreaterThanOrEqual(RULES.field.minDeposits);
+        expect(m.slots.length).toBe(m.spots.length);
+        for (const p of m.spots) {
+          expect(w.map.tierAt(p.px, p.pz), `${at}: chỗ đỗ cùng tầng`).toBe(w.map.tierAt(m.x, m.z));
+          expect(w.map.onRamp(p.px, p.pz)).toBe(false);
+          expect(w.grid.blockedAt(p.x, p.z), `${at}: khối chặn đường`).toBe(true);
+          const probe = { kind: "hauler", air: "none", hx: p.fx, hz: p.fz } as Unit;
+          expect(w.bodyContact(probe, p.px, p.pz)[2], `${at}: xe đỗ không chạm vật cản`).toBe(0);
+        }
+        // hai xe đỗ cạnh nhau không chồng thân (tâm cách nhau ít nhất một bề ngang xe)
+        for (let i = 0; i < m.spots.length; i++)
+          for (let j = i + 1; j < m.spots.length; j++)
+            expect(Math.hypot(m.spots[i].px - m.spots[j].px, m.spots[i].pz - m.spots[j].pz), at).toBeGreaterThan(2 * H.radius);
+        // đối xứng qua tâm: tập chỗ đỗ của bãi đối xứng = tập chỗ đỗ của bãi này xoay 180° (bãi đúng tâm thì so với chính nó)
+        const o = w.mines.find((k) => k.x === -m.x && k.z === -m.z);
+        if (!o) continue;
+        const key = (x: number, z: number): string => `${Math.round(x * 100)},${Math.round(z * 100)}`;
+        const mine = m.spots.map((p) => key(-p.px, -p.pz)).sort();
+        const twin = o.spots.map((p) => key(p.px, p.pz)).sort();
+        expect(twin, `${at}: đối xứng`).toEqual(mine);
       }
-  });
-  it("hai mỏ đối xứng qua tâm có chỗ đứng đối xứng qua tâm", () => {
-    for (const m of w.mines) {
-      const o = w.mines.find((k) => k.x === -m.x && k.z === -m.z);
-      if (!o) continue;
-      for (let i = 0; i < 3; i++) {
-        const fake = { id: 1e6 + i } as Unit;
-        const ids = [1e6, 1e6 + 1, 1e6 + 2];
-        const [km, ko] = [m.slots, o.slots];
-        m.slots = ids;
-        o.slots = ids;
-        const [x, z] = w.slotPos(m, fake);
-        const [x2, z2] = w.slotPos(o, fake);
-        m.slots = km;
-        o.slots = ko;
-        expect([x2, z2], `mỏ (${m.x}, ${m.z}) chỗ ${i}`).toEqual([-x, -z]);
-      }
-    }
+    });
+
+  it("Xe Vận Tải giữ đúng chỗ của mình: xe khác rời bãi thì không ai bị đổi chỗ", () => {
+    const w = new World(1, { sandbox: true, map: "standard" });
+    const m = w.mines.find((k) => k.owner === 0 && k.spots.length >= 3)!;
+    const hs = [0, 1, 2].map((i) => spawn(w, "hauler", m.x + 18 + i * 4, m.z));
+    for (const h of hs) w.step([{ side: 0, order: { t: "harvest", ids: [h.id], mine: m.id } }]);
+    const before = hs.map((h) => m.slots.indexOf(h.id));
+    expect(before.every((i) => i >= 0)).toBe(true);
+    w.step([{ side: 0, order: { t: "sbRemove", ids: [hs[0].id] } }]);
+    for (let t = 0; t < 5; t++) w.step([]);
+    expect(m.slots.indexOf(hs[1].id)).toBe(before[1]);
+    expect(m.slots.indexOf(hs[2].id)).toBe(before[2]);
   });
 });
 

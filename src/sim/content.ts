@@ -447,7 +447,15 @@ export const RULES = {
   mineAmount: { iron: 6000, oil: 3000 } as Record<Res, number>,
   haulerMineRate: 20,
   haulerUnload: 1.5,
-  mineSlots: 3,
+  /**
+   * BÃI TÀI NGUYÊN (người dùng 12/11/2026: mỏ không còn là một khối mà là một bãi, nhiều điểm tiếp xúc hơn). Mỗi bãi tối đa
+   * `deposits` khối quặng / giếng Dầu (1 ô 2 × 2 m, chặn đường) rải trong bán kính `spread` m quanh tâm, cách nhau ít nhất
+   * `minGap` m; mỗi khối một chỗ đỗ, Xe Vận Tải đỗ mũi vào khối, đầu xe cách khối `gap` m, thân hai xe đỗ cách nhau ít nhất
+   * 2 × `parkPad` m. Bãi phải có ít nhất `minDeposits` khối (kiểm thử bản đồ; 3 = bằng mỏ khối cũ, chỉ ở bậc núi hẹp). Bố trí: world/field.ts. Số tạm.
+   */
+  field: { deposits: 6, spread: 6, minGap: 3.9, gap: 0.5, parkPad: 0.3, minDeposits: 3 },
+  /** Số Xe Vận Tải tối đa cùng khai thác một bãi = số khối của bãi (tối đa field.deposits). */
+  mineSlots: 6,
   air: {
     cruiseAlt: 12,
     /** Tốc độ lên / xuống độ cao (m/s) khi bổ nhào và kéo lên. */

@@ -77,9 +77,12 @@ export class World {
         cap: m.owner >= 0 ? 1 : 0,
         capSide: m.owner,
         slots: [],
-        cells: this.grid.cellsInRect(m.x, m.z, 1.9, 1.9)
+        spots: [],
+        cells: [],
+        radius: 0
       };
-      this.grid.block(mine.cells, 1);
+      // bãi tài nguyên: khối quặng / giếng và chỗ đỗ quanh tâm (world/field.ts)
+      this.layoutField(mine);
       this.mines.push(mine);
       this.byId.set(mine.id, mine);
     }

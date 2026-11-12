@@ -194,7 +194,7 @@ export class Controller implements GestureHandlers {
       const [hw, hd] = rotHalf(b.kind, b.rot);
       if (Math.abs(g.x - b.x) <= hw + 0.6 && Math.abs(g.z - b.z) <= hd + 0.6) return b;
     }
-    for (const m of this.world.mines) if (Math.hypot(g.x - m.x, g.z - m.z) < 4.6) return m;
+    for (const m of this.world.mines) if (Math.hypot(g.x - m.x, g.z - m.z) < m.radius) return m;
     return null;
   }
 

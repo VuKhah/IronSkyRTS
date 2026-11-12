@@ -17,6 +17,8 @@ interface Ref {
   x: number;
   z: number;
   own?: number;
+  /** Trữ lượng riêng (mặc định RULES.mineAmount), ví dụ bãi gộp từ hai mỏ. */
+  amount?: number;
 }
 const src = JSON.parse(readFileSync(`Docs/maps/${ID}/layout.json`, "utf8")) as { w: number; h: number; rows: string[]; surf?: string[]; refs?: Ref[] };
 const grid = src.rows.map((r) => r.split("").map((v) => ("nesw".includes(v) ? "d" : v)));
@@ -49,7 +51,7 @@ if (errors.length) throw new Error(`Bản vẽ còn dốc sai luật:\n${errors.
 // ---- mỏ: phía Lam (x < 0) và mỏ nằm đúng trục giữa ở nửa z > 0; GameMap thêm bản xoay (đổi chủ Lam ↔ Đỏ)
 const mines = (src.refs ?? [])
   .filter((f) => (f.k === "oil" || f.k === "iron") && (f.x < 0 || (f.x === 0 && f.z > 0)))
-  .map((f) => ({ res: f.k as "oil" | "iron", x: f.x, z: f.z, owner: (f.own ?? -1) as 0 | 1 | -1 }));
+  .map((f) => ({ res: f.k as "oil" | "iron", x: f.x, z: f.z, owner: (f.own ?? -1) as 0 | 1 | -1, ...(f.amount ? { amount: f.amount } : {}) }));
 
 mkdirSync(dirname(OUT), { recursive: true });
 const out = { w: src.w, h: src.h, rows: src.rows.map((r) => r.replace(/[nesw]/g, "d")), surf: src.surf ?? null, ramps, mines };

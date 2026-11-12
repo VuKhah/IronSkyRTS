@@ -301,9 +301,8 @@
 "x":-97,"z":-40,"owner":-1},{"res":"oil",
 "x":0,"z":98,"owner":-1},{"res":"iron",
 "x":-206,"z":30,"owner":0},{"res":"iron",
-"x":-81,"z":-106,"owner":-1},{"res":"iron",
-"x":-30,"z":-21,"owner":-1},{"res":"iron",
+"x":-53,"z":-111,"owner":-1},{"res":"iron",
+"x":-8,"z":-27,"owner":-1},{"res":"iron",
 "x":-158,"z":-122,"owner":-1},{"res":"oil",
 "x":-150,"z":92,"owner":-1},{"res":"iron",
-"x":-208,"z":-130,"owner":-1},{"res":"iron",
-"x":-189,"z":-110,"owner":-1}]}
+"x":-188,"z":-120,"owner":-1,"amount":12000}]}

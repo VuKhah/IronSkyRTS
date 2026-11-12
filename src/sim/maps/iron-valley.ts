@@ -27,12 +27,12 @@ export const IRON_VALLEY: MapDef = {
   mines: [
     // Sắt: mỏ nhà + mỏ tiền tuyến
     { res: "iron", x: -66, z: 30, owner: 0 },
-    { res: "iron", x: -2, z: 34, owner: -1 },
+    { res: "iron", x: 16, z: 50, owner: -1 }, // dời từ (−2, 34) ngày 12/11/2026: bãi tài nguyên rộng hơn khối mỏ cũ, đè lên bãi thử dọc sông
     // giàn Dầu giữa sông (đúng tâm nên chỉ có một) + giàn đầu cầu cánh
     { res: "oil", x: 0, z: 0, owner: -1 },
     { res: "oil", x: -44.5, z: -20.5, owner: -1 },
     // giàn Dầu nhà: đủ khởi động điện và máy bay, cạn sớm nên vẫn phải ra tranh giàn giữa bản đồ
-    { res: "oil", x: -42, z: 68, owner: 0, amount: 1200 }
+    { res: "oil", x: -74, z: 70, owner: 0, amount: 1200 } // dời từ (−42, 68) ngày 12/11/2026: chỗ cũ nép giữa nhà và gò, không đủ chỗ cho bãi tài nguyên
   ],
   // Đài Liên Lạc trên cây cầu cánh Nam (máy tự thêm đài trên cầu cánh Bắc): hai cầu nằm đúng trung trực
   // giữa hai căn cứ nên cách đều hai nhà; giữ cầu là giữ đài

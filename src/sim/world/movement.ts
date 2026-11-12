@@ -2,7 +2,7 @@
 import { RULES, UNITS } from "../content";
 import { dist2, turnToward } from "../fmath";
 import type { Target, Unit } from "../types";
-import { DT, sec, MOVER_SHARE, WALL_CLEAR, WALL_PUSH, GOAL_SHIFT, WALL_FAR, PROBES, PIVOT_COS, ALIGNED_COS, TMP, traverseStep } from "./shared";
+import { DT, sec, MOVER_SHARE, WALL_PUSH, GOAL_SHIFT, PIVOT_COS, ALIGNED_COS, TMP, traverseStep } from "./shared";
 import { World } from "./core";
 
 /** Hai xe cùng chạy coi là "ngược chiều" khi góc giữa hai hướng thân lớn hơn 120° (cos < −0,5). */
@@ -13,10 +13,14 @@ const PASS_LOOK = 6;
 const PASS_STEER = 0.15;
 /** Bán kính chấp nhận của điểm qua giữa đường (m). */
 const WAYPOINT_R = 2.5;
+/** Điểm dò thân xe nằm ở chừng này lần kích thước thân thật (chừa 5% cho góc bo / sai số lưới 2 m). */
+const BODY_PROBE = 0.95;
+/** Số lần đẩy ra khỏi vật cản tối đa trong một tick (× WALL_PUSH m). */
+const STATIC_ITERS = 6;
 
-/** Nửa bề ngang thân xe dùng khi tìm / nối tắt đường (cùng cỡ với điểm dò vách `wallNormal`); máy bay: 0,7 m như cũ. */
+/** Nửa bề ngang thân xe dùng khi tìm / nối tắt đường (cùng cỡ với điểm dò thân `bodyContact`); máy bay: 0,7 m như cũ. */
 function pathHalf(u: Unit): number {
-  return u.air === "none" ? Math.max(0.7, UNITS[u.kind].radius * WALL_CLEAR) : 0.7;
+  return u.air === "none" ? Math.max(0.71, UNITS[u.kind].radius * BODY_PROBE) : 0.7;
 }
 
 
@@ -88,10 +92,10 @@ function setPath(this: World, u: Unit, x: number, z: number): boolean {
   // tìm đường nhanh nhất theo kiểu xe (bánh / xích) và địa hình (B3b)
   const spec = UNITS[u.kind];
   [x, z] = this.clearGoal(u, x, z);
-  // Đường đi giữa lối ("hành lang": ô sát vách coi như chậm) và đoạn nối tắt chừa đủ nửa bề ngang thân xe; trước 12/11/2026
-  // đường men sát vách từng ô và nối tắt sát góc, thân xe quẹt mép dốc rồi trượt dọc mép, mũi quay vào vách (người dùng thấy
-  // ở dốc B7 của Cao Nguyên Ba Bậc)
-  const p = this.grid.findPath(u.x, u.z, x, z, this.grid.corridor(spec.mobility ?? "wheel", !!spec.slowResist), pathHalf(u));
+  // Tìm theo bảng khoảng trống của lưới cho đúng bề ngang xe (`findPath` với half): không qua lối hẹp hơn thân, ô càng sát vật
+  // cản (vách, nhà, khối quặng) càng tính như chậm nên đường đi giữa lối, đoạn nối tắt chừa đủ nửa bề ngang thân. Trước
+  // 12/11/2026 đường men sát vách từng ô và nối tắt sát góc: thân xe quẹt mép dốc rồi mũi quay vào vách (dốc B7)
+  const p = this.grid.findPath(u.x, u.z, x, z, this.grid.field(spec.mobility ?? "wheel", !!spec.slowResist), pathHalf(u));
   u.path = p ?? [];
   u.pathI = 0;
   u.stuck = 0;
@@ -99,27 +103,59 @@ function setPath(this: World, u: Unit, x: number, z: number): boolean {
 }
 
 /**
- * Hướng đẩy ra khỏi vách tại (x, z): tổng ngược hướng các điểm dò quanh thân (WALL_CLEAR × bán kính) rơi vào ô bị chặn
- * cố định (vách, đá, sông), chưa chuẩn hóa. (0, 0) = thân không chạm gì, hoặc hai bên chạm đều nhau (khe hẹp).
+ * Điểm dò thân xe (theo khung thân: [dọc, ngang, dọc, ngang, …]): chu vi HÌNH CHỮ NHẬT nửa ngang = bán kính × BODY_PROBE,
+ * nửa dài = halfLen × BODY_PROBE, cách nhau không quá 1,2 m (không ô 2 m nào lọt giữa hai điểm). Trước 12/11/2026 là hình
+ * elip ở 85% kích thước: hụt bốn góc xe và mũi, xe lún vào vách gần 0,5 m, và chỉ hỏi địa hình nên lún vào nhà tới nửa thân.
  */
-function wallNormal(this: World, u: Unit, x: number, z: number, fx = u.hx, fz = u.hz): [number, number] {
-  // xa vách hơn WALL_FAR ô (lớn hơn mọi thân xe): khỏi dò
-  if (this.grid.wallDist[this.grid.index(x, z)] > WALL_FAR) return [0, 0];
-  const spec = UNITS[u.kind];
-  // điểm dò nằm trên hình elip theo thân xe: nửa rộng = bán kính, nửa dài = halfLen, trục dài theo hướng thân (fx, fz)
-  const W = spec.radius * WALL_CLEAR;
-  const L = (spec.halfLen ?? spec.radius) * WALL_CLEAR;
+const PROBE_CACHE = new Map<string, Float64Array>();
+function probesOf(kind: string): Float64Array {
+  let p = PROBE_CACHE.get(kind);
+  if (p) return p;
+  const s = UNITS[kind as keyof typeof UNITS];
+  const W = s.radius * BODY_PROBE;
+  const L = Math.max(s.halfLen ?? s.radius, s.radius) * BODY_PROBE;
+  const pts: number[] = [];
+  const nl = Math.max(2, Math.ceil((2 * L) / 1.2));
+  const nw = Math.max(2, Math.ceil((2 * W) / 1.2));
+  // bốn cạnh, đi vòng; mỗi cạnh lấy điểm đầu (góc) và các điểm giữa
+  for (let i = 0; i < nl; i++) pts.push(-L + (2 * L * i) / nl, W, L - (2 * L * i) / nl, -W);
+  for (let i = 0; i < nw; i++) pts.push(L, W - (2 * W * i) / nw, -L, -W + (2 * W * i) / nw);
+  p = new Float64Array(pts);
+  PROBE_CACHE.set(kind, p);
+  return p;
+}
+
+/**
+ * Thân xe đặt ở (x, z), mũi theo (fx, fz), chạm vật cản không: [hướng đẩy ra x, z (chưa chuẩn hóa), số điểm dò chạm]. Vật cản
+ * là mọi ô bị chặn của lưới (vách, đá, nước sâu, nhà, khối quặng). Hướng đẩy = tổng ngược hướng các điểm chạm; (0, 0) mà số
+ * điểm chạm > 0 là bị kẹp đều hai bên (khe hẹp).
+ */
+function bodyContact(this: World, u: Unit, x: number, z: number, fx = u.hx, fz = u.hz): [number, number, number] {
+  if (u.air !== "none") return [0, 0, 0];
+  const p = probesOf(u.kind);
+  // xa vật cản hơn cả nửa đường chéo thân (+ 1,5 m vì khoảng trống đo ở tâm ô): khỏi dò
+  const s = UNITS[u.kind];
+  const L = Math.max(s.halfLen ?? s.radius, s.radius);
+  if (this.grid.clearanceAt(x, z) > L + s.radius * 0.5 + 1.5) return [0, 0, 0];
   let px = 0;
   let pz = 0;
-  for (const [c, s] of PROBES) {
-    const ox = fx * c * L - fz * s * W;
-    const oz = fz * c * L + fx * s * W;
-    if (this.map.staticBlocked(x + ox, z + oz)) {
+  let hits = 0;
+  for (let i = 0; i < p.length; i += 2) {
+    const ox = fx * p[i] - fz * p[i + 1];
+    const oz = fz * p[i] + fx * p[i + 1];
+    if (this.grid.blockedAt(x + ox, z + oz)) {
       px -= ox;
       pz -= oz;
+      hits++;
     }
   }
-  return [px, pz];
+  return [px, pz, hits];
+}
+
+/** Hướng đẩy ra khỏi vật cản tại (x, z) (xem `bodyContact`), chưa chuẩn hóa; (0, 0) = thân không chạm gì. */
+function wallNormal(this: World, u: Unit, x: number, z: number, fx = u.hx, fz = u.hz): [number, number] {
+  const c = this.bodyContact(u, x, z, fx, fz);
+  return [c[0], c[1]];
 }
 
 /**
@@ -146,10 +182,14 @@ function clearGoal(this: World, u: Unit, x: number, z: number): [number, number]
   return [x, z];
 }
 
+/**
+ * Bước xe tới (nx, nz), vật cản là RÀNG BUỘC CỨNG (12/11/2026): thân ở chỗ mới chạm vật cản thì bỏ phần bước đi hướng vào vật
+ * cản (trượt dọc vách / tường nhà); rồi chỉ nhận chỗ mới khi tâm không vào ô chặn VÀ thân không chạm nhiều điểm hơn chỗ cũ
+ * (đang lún sẵn thì bước nào bớt lún cũng được, để tự thoát). Không được thì thử riêng từng trục. Trước đây chỉ cấm tâm xe vào
+ * ô chặn, thân thì chỉ bị đẩy ra dần 0,3 m mỗi tick.
+ */
 function tryMove(this: World, u: Unit, nx: number, nz: number): boolean {
-  // thân xe không lấn sâu thêm vào vách: ở chỗ mới mà thân chạm vách thì bỏ phần bước đi hướng vào vách, chỉ giữ phần trượt
-  // dọc vách (khe hẹp hai bên đều chạm thì pháp tuyến triệt tiêu, đi như cũ)
-  const [px, pz] = this.wallNormal(u, nx, nz);
+  const [px, pz, hNew] = this.bodyContact(u, nx, nz);
   const l = Math.sqrt(px * px + pz * pz);
   if (l > 1e-9) {
     const ux = px / l;
@@ -162,16 +202,18 @@ function tryMove(this: World, u: Unit, nx: number, nz: number): boolean {
       nz -= uz * dot;
     }
   }
-  if (!this.grid.blockedAt(nx, nz)) {
+  const hNow = hNew > 0 ? this.bodyContact(u, u.x, u.z)[2] : 0;
+  const ok = (x: number, z: number): boolean => !this.grid.blockedAt(x, z) && (hNew === 0 && x === nx && z === nz ? true : this.bodyContact(u, x, z)[2] <= hNow);
+  if (ok(nx, nz)) {
     u.x = nx;
     u.z = nz;
     return true;
   }
-  if (!this.grid.blockedAt(nx, u.z)) {
+  if (ok(nx, u.z)) {
     u.x = nx;
     return true;
   }
-  if (!this.grid.blockedAt(u.x, nz)) {
+  if (ok(u.x, nz)) {
     u.z = nz;
     return true;
   }
@@ -471,17 +513,22 @@ function separate(this: World): void {
   }
 }
 
-/** Quân đã hạ bệ xong (chân chống cắm đất): đứng chết tại chỗ, xe khác tông vào không xô được. */
-/** Đẩy xe mặt đất ra khỏi vách / đá / sông khi thân xe lấn vào (xem WALL_CLEAR). Tổng hai hướng đối nhau triệt tiêu đúng số. */
+/**
+ * Bước cuối mỗi tick (sau khi các xe đẩy nhau, quay thân): ĐẨY HẲN thân xe mặt đất ra khỏi vật cản, lặp tối đa
+ * STATIC_ITERS lần × WALL_PUSH m trong cùng tick, tới khi hết chạm (vật cản tĩnh giải cuối cùng, như các game RTS: xe khác xô
+ * mạnh tới đâu thì vị trí cuối tick vẫn không nằm trong vách / nhà). Bị kẹp đều hai bên (hướng đẩy triệt tiêu) thì thôi.
+ */
 function keepOffWalls(this: World): void {
   for (const u of this.units) {
     if (u.hp <= 0 || u.air !== "none" || this.anchored(u)) continue;
-    const [px, pz] = this.wallNormal(u, u.x, u.z);
-    const l = Math.sqrt(px * px + pz * pz);
-    if (l < 1e-9) continue;
-    const nx = u.x + (px / l) * WALL_PUSH;
-    const nz = u.z + (pz / l) * WALL_PUSH;
-    if (!this.grid.blockedAt(nx, nz)) {
+    for (let k = 0; k < STATIC_ITERS; k++) {
+      const [px, pz, hits] = this.bodyContact(u, u.x, u.z);
+      if (hits === 0) break;
+      const l = Math.sqrt(px * px + pz * pz);
+      if (l < 1e-9) break;
+      const nx = u.x + (px / l) * WALL_PUSH;
+      const nz = u.z + (pz / l) * WALL_PUSH;
+      if (this.grid.blockedAt(nx, nz) || this.bodyContact(u, nx, nz)[2] > hits) break;
       u.x = nx;
       u.z = nz;
     }
@@ -493,7 +540,7 @@ function anchored(this: World, u: Unit): boolean {
   return !!dep && u.still >= sec(dep.time);
 }
 
-const methods = { turnHull, stepToward, setIdle, halt, setPath, wallNormal, clearGoal, tryMove, terrainFactor, moveFactor, follow, chase, separate, keepOffWalls, anchored };
+const methods = { turnHull, stepToward, setIdle, halt, setPath, bodyContact, wallNormal, clearGoal, tryMove, terrainFactor, moveFactor, follow, chase, separate, keepOffWalls, anchored };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

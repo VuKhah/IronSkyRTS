@@ -16,7 +16,7 @@ import { CELL, RAMP_LEN, TIER_H } from "../sim/maps";
 
 /** 4 hướng ô bên cạnh (tường nối hình). */
 const DIRS4: readonly [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-import { buildModel, buildNode, disposeRig, type NodeRig, type Rig } from "../render/models";
+import { buildField, buildModel, disposeRig, type NodeRig, type Rig } from "../render/models";
 import { bakeObject, bakeStatic } from "../render/models/bake";
 
 const wrap = (a: number): number => {
@@ -228,7 +228,8 @@ export class Views {
     for (const m of world.mines) {
       let v = this.mines.get(m.id);
       if (!v) {
-        const node = buildNode(m.res);
+        // bãi tài nguyên: khối quặng / giếng ở đúng ô sim đã chặn (Mine.spots), vòng chủ theo bán kính bãi
+        const node = buildField(m.res, m.spots.map((p) => ({ x: p.x - m.x, z: p.z - m.z, fx: p.fx, fz: p.fz })), m.radius);
         bakeObject(node.root, (check) => {
           for (let i = 0; i < 30; i++) {
             node.setOwner(i % 2 === 0 ? 0 : 1);
@@ -554,7 +555,7 @@ export class Views {
     v.node.setOwner(m.owner);
     v.node.setAmount(m.amount / m.max);
     v.node.update(dt, time);
-    this.setRing(v, v.node.root, selected, 3.6, RING_MAT.neutral, 0.14);
+    this.setRing(v, v.node.root, selected, m.radius + 0.6, RING_MAT.neutral, 0.14);
   }
 
   /** Vị trí hiển thị (nội suy) của một đơn vị — cho thanh máu và chọn bằng chạm. */

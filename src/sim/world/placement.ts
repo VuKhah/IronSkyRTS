@@ -167,7 +167,8 @@ function layoutError(this: World, kind: BuildingId, x: number, z: number, rot: n
  */
 function cellForbidden(this: World, side: Side, x: number, z: number, kind?: BuildingId): boolean {
   if (this.grid.blockedAt(x, z) || this.map.rampApron(x, z)) return true;
-  for (const m of this.mines) if (dist2(m.x, m.z, x, z) < 5 * 5) return true;
+  // trong bãi tài nguyên (tới đuôi xe đỗ) không xây
+  for (const m of this.mines) if (dist2(m.x, m.z, x, z) < m.radius * m.radius) return true;
   let inZone = false;
   for (const b of this.buildings) {
     if (b.hp <= 0) continue;
@@ -223,7 +224,7 @@ function canPlace(this: World, side: Side, kind: BuildingId, x: number, z: numbe
   const lay = this.layoutError(kind, x, z, rot);
   if (lay) return lay;
   const big = Math.max(hw, hd);
-  for (const m of this.mines) if (dist2(m.x, m.z, x, z) < (5 + big) * (5 + big)) return "Quá gần mỏ";
+  for (const m of this.mines) if (dist2(m.x, m.z, x, z) < (m.radius + big) * (m.radius + big)) return "Quá gần mỏ";
   for (const u of this.units) {
     if (u.air !== "none" && u.air !== "parked") continue;
     const r = UNITS[u.kind].radius;

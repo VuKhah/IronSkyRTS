@@ -2,11 +2,14 @@
 import { BUILDINGS, RULES, UNITS, type Side } from "../content";
 import { dist2 } from "../fmath";
 import type { Building, Mine, Unit, Wreck } from "../types";
-import { DT, sec, SLOT_OFFSETS, SALVAGE_RETRIES, DOCK_PER_SIDE, DOCK_GAP, DOCK_OUT } from "./shared";
+import { DT, sec, SALVAGE_RETRIES, DOCK_PER_SIDE, DOCK_GAP, DOCK_OUT } from "./shared";
 import { World } from "./core";
 
-/** Chỗ đứng khai thác cách tâm mỏ tối đa chừng này (m): đi hết đường mà còn trong 7 m là bắt đầu khai thác. */
-const MINE_REACH = 6.5;
+/** Tới cách tâm chỗ đỗ chừng này (m) là bắt đầu khai thác; đi hết đường mà còn trong MINE_NEAR m cũng được. */
+const MINE_ARRIVE = 1.2;
+const MINE_NEAR = 3;
+/** Tới nơi mà vẫn chưa vào được chỗ đỗ sau chừng này lần tìm đường lại thì nhả chỗ, chọn lại (không lặp mãi). */
+const MINE_RETRIES = 5;
 
 
 // ------------------------------------------------------------------ Xe Vận Tải
@@ -21,22 +24,26 @@ function releaseMine(this: World, u: Unit): void {
   const e = this.byId.get(u.mineId);
   if (e && e.cat === "mine") {
     const i = e.slots.indexOf(u.id);
-    if (i >= 0) e.slots.splice(i, 1);
+    if (i >= 0) e.slots[i] = 0;
   }
   u.mineId = 0;
+}
+
+/** Bãi `m` còn chỗ cho xe `u` không (đã giữ chỗ, hoặc còn chỗ trống). */
+function mineHasRoom(m: Mine, u: Unit): boolean {
+  return m.slots.includes(u.id) || m.slots.includes(0);
 }
 
 function assignMine(this: World, u: Unit, preferred: number): boolean {
   const st = this.sides[u.side];
   let best: Mine | null = null;
   const pref = this.byId.get(preferred);
-  if (pref && pref.cat === "mine" && pref.owner === u.side && pref.amount > 0 && (pref.slots.length < RULES.mineSlots || pref.slots.includes(u.id))) best = pref;
+  if (pref && pref.cat === "mine" && pref.owner === u.side && pref.amount > 0 && mineHasRoom(pref, u)) best = pref;
   else if (preferred) return false;
   else {
     let bestD = Infinity;
     for (const m of this.mines) {
-      if (m.owner !== u.side || m.amount <= 0) continue;
-      if (m.slots.length >= RULES.mineSlots && !m.slots.includes(u.id)) continue;
+      if (m.owner !== u.side || m.amount <= 0 || !mineHasRoom(m, u)) continue;
       let d = dist2(u.x, u.z, m.x, m.z);
       // thiếu Dầu thì ưu tiên giàn Dầu
       if (m.res === "oil" && st.oil < 150) d *= 0.35;
@@ -49,35 +56,42 @@ function assignMine(this: World, u: Unit, preferred: number): boolean {
   if (!best) return false;
   if (u.mineId !== best.id) {
     this.releaseMine(u);
-    best.slots.push(u.id);
+    // nhận chỗ trống có chỗ đỗ gần xe nhất (hòa thì chỗ đánh số nhỏ hơn: thứ tự chỗ đã lật đối xứng theo nửa bản đồ)
+    let pick = -1;
+    let pd = Infinity;
+    for (let i = 0; i < best.slots.length; i++) {
+      if (best.slots[i] !== 0) continue;
+      const d = dist2(u.x, u.z, best.spots[i].px, best.spots[i].pz);
+      if (d < pd) {
+        pd = d;
+        pick = i;
+      }
+    }
+    if (pick < 0) return false;
+    best.slots[pick] = u.id;
     u.mineId = best.id;
+    u.hTimer = 0;
   }
   if (u.cargo > 0 && u.cargoRes !== best.res) this.toDock(u);
   else this.goMine(u, best);
   return true;
 }
 
-/**
- * Chỗ đứng khai thác thứ i quanh mỏ. Chỗ định sẵn bị chặn thì lấy ô trống gần nhất, nhưng chỉ nhận ô CÙNG TẦNG với mỏ và
- * trong tầm khai thác (MINE_REACH). Trước đây (lỗi 11/11/2026) mỏ Dầu sát chân vách có thể nhận ô trên đỉnh vách: xe leo
- * lên đứng ngay phía trên mỏ, không với tới, bỏ cuộc rồi lại nhận đúng chỗ đó, đứng mãi.
- */
-function slotPos(this: World, m: Mine, u: Unit): [number, number] {
-  const i = Math.max(0, m.slots.indexOf(u.id)) % SLOT_OFFSETS.length;
-  // bản đồ đối xứng qua tâm: mỏ ở nửa kia dùng bảng chỗ đứng lật ngược (trước đây cùng một hướng cho mọi mỏ, nên mỏ đối
-  // xứng của hai phe có chỗ đứng không đối xứng; luật công bằng số 4)
-  const s = m.z > 0 || (m.z === 0 && m.x < 0) ? 1 : -1;
-  const ox = SLOT_OFFSETS[i][0] * s;
-  const oz = SLOT_OFFSETS[i][1] * s;
-  const tier = this.map.tierAt(m.x, m.z);
-  const ok = (x: number, z: number): boolean =>
-    this.map.tierAt(x, z) === tier && !this.map.onRamp(x, z) && dist2(x, z, m.x, m.z) <= MINE_REACH * MINE_REACH;
-  return this.grid.nearestFree(m.x + ox, m.z + oz, 4, ok) ?? this.grid.nearestFree(m.x + ox, m.z + oz, 4) ?? [m.x + ox, m.z + oz];
+/** Chỗ đỗ của xe `u` ở bãi `m` (chỗ nó đang giữ) và hướng đỗ: [x, z, hướng x, hướng z]. */
+function slotPos(this: World, m: Mine, u: Unit): [number, number, number, number] {
+  const i = m.slots.indexOf(u.id);
+  const sp = m.spots[i >= 0 ? i : 0];
+  if (!sp) return [m.x, m.z, u.hx, u.hz];
+  return [sp.px, sp.pz, sp.fx, sp.fz];
 }
 
 function goMine(this: World, u: Unit, m: Mine): void {
   u.hState = "toMine";
-  const [x, z] = this.slotPos(m, u);
+  const [x, z, fx, fz] = this.slotPos(m, u);
+  u.tx = x;
+  u.tz = z;
+  u.faceX = fx;
+  u.faceZ = fz;
   this.setPath(u, x, z);
 }
 
@@ -297,20 +311,26 @@ function updateHauler(this: World, u: Unit): void {
         u.hState = "idle";
         return;
       }
-      if (dist2(u.x, u.z, m.x, m.z) <= 4.8 * 4.8) {
+      // tới đúng chỗ đỗ của mình thì khai thác
+      if (dist2(u.x, u.z, u.tx, u.tz) <= MINE_ARRIVE * MINE_ARRIVE) {
         u.hState = "mining";
         this.halt(u);
         return;
       }
       if (this.follow(u)) {
-        if (dist2(u.x, u.z, m.x, m.z) <= 7 * 7) {
+        if (dist2(u.x, u.z, u.tx, u.tz) <= MINE_NEAR * MINE_NEAR) {
           u.hState = "mining";
           this.halt(u);
+        } else if (++u.hTimer > MINE_RETRIES) {
+          // chỗ này không vào được (bị chắn): nhả chỗ, hậu cần chọn lại bãi / chỗ khác
+          this.releaseMine(u);
+          u.hState = "idle";
         } else this.goMine(u, m);
       }
       return;
     }
     case "mining": {
+      this.turnHull(u, u.faceX, u.faceZ); // vừa khai thác vừa xoay thân cho mũi vào khối quặng / giếng
       const m = this.mineOf(u);
       if (!m) {
         this.releaseMine(u);

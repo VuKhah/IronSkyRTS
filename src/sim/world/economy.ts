@@ -252,9 +252,10 @@ function produce(this: World, b: Building): void {
 function updateMines(this: World): void {
   for (const m of this.mines) {
     const prev = m.owner;
-    const now = this.captureStep(m);
+    // bãi rộng hơn mỏ khối cũ: vòng chiếm phủ tới chỗ đỗ của bãi
+    const now = this.captureStep(m, Math.max(RULES.captureRadius, m.radius - 1));
     if (now === null) continue;
-    m.slots = [];
+    m.slots.fill(0);
     if (now === -1) this.alert(prev as Side, "mineLost", m.x, m.z);
     this.events.push({ t: "captured", mine: m.id, res: m.res, side: now, prev: now === -1 ? prev : -1 });
   }
@@ -273,8 +274,8 @@ function updateMines(this: World): void {
  * Chiếm (mỏ, Đài Liên Lạc): xe mặt đất có sức chiếm trong bán kính đẩy tiến độ; hai phe cùng có mặt thì giằng co;
  * không ai thì chủ cũ tự hồi, chiếm dở thì phai dần. Trả về chủ mới khi đổi chủ (-1 = vừa bị giành thành trung lập), không đổi thì null.
  */
-function captureStep(this: World, m: { x: number; z: number; owner: Side | -1; cap: number; capSide: Side | -1 }): Side | -1 | null {
-  const R2 = RULES.captureRadius * RULES.captureRadius;
+function captureStep(this: World, m: { x: number; z: number; owner: Side | -1; cap: number; capSide: Side | -1 }, radius: number = RULES.captureRadius): Side | -1 | null {
+  const R2 = radius * radius;
   const step = 1 / sec(RULES.captureSeconds);
   let w0 = 0;
   let w1 = 0;

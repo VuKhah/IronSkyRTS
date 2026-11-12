@@ -7,6 +7,28 @@ import type { Squad, Target, Unit } from "../types";
 import { DT, sec, FORMATION_GAP, SQUAD_CATCHUP, AIR_FORMATION_GAP, SQUAD_RESHAPE_EXTRA, SQUAD_MIN_TURN_R, SQUAD_PIVOT_COS, PIVOT_COS, ALIGNED_COS, SQUAD_LAG, SQUAD_LOOK, SQUAD_FAR, SQUAD_FORM_MAX, SQUAD_DIRECT, SQUAD_SETTLE_MAX, SQUAD_PIVOT_MAX, SQUAD_WIDEN_CHECKS, SHIFT_OFFSETS, SLOT_NUDGE, TMP, traverseStep } from "./shared";
 import { World } from "./core";
 
+/** Ô đội hình phải có khoảng trống ≥ bán kính xe × chừng này (cùng cỡ điểm dò thân `bodyContact`). */
+const SLOT_BODY = 0.95;
+/** Độ dạt ngang thử khi chốt hình đội ở đích (m), thứ tự cố định: giữa trước, rồi lệch dần hai bên. */
+const SETTLE_SHIFTS = [0, 2, -2, 4, -4, 6, -6, 8, -8, 10, -10];
+
+/** Bán kính vòng quét khi xe xoay tại chỗ: nửa đường chéo thân × SLOT_BODY. */
+function turnRadius(u: Unit): number {
+  const s = UNITS[u.kind];
+  const L = Math.max(s.halfLen ?? s.radius, s.radius);
+  return Math.sqrt(L * L + s.radius * s.radius) * SLOT_BODY;
+}
+
+/** Bán kính xoay tại chỗ lớn nhất trong đội. */
+function squadTurnR(this: World, sq: Squad): number {
+  let r = 0;
+  for (const id of sq.ids) {
+    const u = this.byId.get(id);
+    if (u && u.cat === "unit") r = Math.max(r, turnRadius(u));
+  }
+  return r;
+}
+
 
 /**
  * Đội hình hiện tại của một nhóm xe: kiểu được nhiều xe nhất (ghép hai sư đoàn khác kiểu thì theo bên đông hơn, bằng nhau
@@ -172,18 +194,21 @@ function formation(this: World, units: readonly Unit[], x: number, z: number): {
     row.sort((a, b) => lat(a) - lat(b) || a.id - b.id);
     row.forEach((u, i) => {
       const s = (i - (row.length - 1) / 2) * spacing;
-      slots.set(u.id, this.freeSlot(x + rx * s + fx * f, z + rz * s + fz * f, rx, rz, fx, fz, used));
+      slots.set(u.id, this.freeSlot(x + rx * s + fx * f, z + rz * s + fz * f, rx, rz, fx, fz, used, undefined, turnRadius(u)));
     });
   });
   return { slots, fx, fz };
 }
 
 /** Ô trống gần (x, z) nhất chưa có xe nào trong đội hình nhận (dò theo khung đội hình, bước 1 ô lưới). */
-function freeSlot(this: World, x: number, z: number, rx: number, rz: number, fx: number, fz: number, used: Set<number>, from?: readonly [number, number]): [number, number] {
+function freeSlot(this: World, x: number, z: number, rx: number, rz: number, fx: number, fz: number, used: Set<number>, from?: readonly [number, number], half = 0): [number, number] {
   for (const [i, j] of SLOT_NUDGE) {
     const px = x + (rx * i + fx * j) * CELL;
     const pz = z + (rz * i + fz * j) * CELL;
     if (!this.map.fits(px, pz, 1, 1) || this.grid.blockedAt(px, pz)) continue;
+    // ô phải vừa cả thân xe (khoảng trống ≥ nửa bề ngang): vật cản là ràng buộc cứng từ 12/11/2026, ô sát vách / nhà thì xe
+    // không đứng tới được và chen vào xe bên cạnh
+    if (half > 0 && this.grid.clearanceAt(px, pz) < half) continue;
     // phải cùng một khoảng trống với tâm đội hình (không nhảy sang bờ sông bên kia hay sau vách đá)
     if (from && !this.grid.los(from[0], from[1], px, pz)) continue;
     const c = this.grid.index(px, pz);
@@ -191,7 +216,7 @@ function freeSlot(this: World, x: number, z: number, rx: number, rz: number, fx:
     used.add(c);
     return [px, pz];
   }
-  const f = this.grid.nearestFree(x, z, 8) ?? [x, z];
+  const f = (half > 0 ? this.grid.nearestFree(x, z, 8, (cx, cz) => this.grid.clearanceAt(cx, cz) >= half && !used.has(this.grid.index(cx, cz))) : null) ?? this.grid.nearestFree(x, z, 8) ?? [x, z];
   used.add(this.grid.index(f[0], f[1]));
   return f;
 }
@@ -404,7 +429,7 @@ function squadDirect(this: World, sq: Squad, units: readonly Unit[], wx: number,
     const [sx, sz] = this.squadSlot(sq, i);
     const ccx = sq.x - sq.hx * (sq.depth / 2);
     const ccz = sq.z - sq.hz * (sq.depth / 2);
-    const [fx, fz] = this.freeSlot(sx, sz, rx, rz, sq.hx, sq.hz, used, [ccx, ccz]);
+    const [fx, fz] = this.freeSlot(sx, sz, rx, rz, sq.hx, sq.hz, used, [ccx, ccz], sq.rMax * SLOT_BODY);
     if (this.grid.blockedAt(fx, fz) || !this.grid.los(ccx, ccz, fx, fz)) {
       sq.phase = "form";
       return false;
@@ -425,7 +450,7 @@ function squadFits(this: World, sq: Squad): boolean {
   if (this.grid.blockedAt(cx, cz)) return false;
   for (let i = 0; i < sq.ids.length; i++) {
     const [sx, sz] = this.squadSlot(sq, i);
-    if (this.grid.blockedAt(sx, sz) || this.map.inset(sx, sz) < 1 || !this.grid.los(cx, cz, sx, sz)) return false;
+    if (this.grid.blockedAt(sx, sz) || this.map.inset(sx, sz) < 1 || this.grid.clearanceAt(sx, sz) < sq.rMax * SLOT_BODY || !this.grid.los(cx, cz, sx, sz)) return false;
   }
   return true;
 }
@@ -943,6 +968,9 @@ function stepSquad(this: World, sq: Squad): void {
  * tâm ở đích, quay theo hướng đang đi). Xe còn ở xa (đuôi cột chưa qua cầu…) tự tìm đường về ô của mình.
  */
 function squadSettle(this: World, sq: Squad, speed: number): void {
+  // ô dừng phải đủ chỗ cho xe XOAY TẠI CHỖ (tới nơi xe nào cũng xoay về hướng đội hình): khoảng trống ≥ nửa đường chéo thân
+  // xe lớn nhất của đội, không thì đuôi xe quét vào vách / nhà và bị đẩy ra khỏi ô (vật cản là ràng buộc cứng từ 12/11/2026)
+  const turnR = this.squadTurnR(sq);
   sq.settleMax = sec(SQUAD_SETTLE_MAX + sq.depth / speed);
   sq.phase = "settle";
   sq.phaseT = 0;
@@ -953,7 +981,7 @@ function squadSettle(this: World, sq: Squad, speed: number): void {
     let ok = true;
     for (let i = 0; i < sq.ids.length && ok; i++) {
       const [sx, sz] = this.squadSlot(sq, i);
-      ok = !this.grid.blockedAt(sx, sz) && this.map.inset(sx, sz) >= 1;
+      ok = !this.grid.blockedAt(sx, sz) && this.map.inset(sx, sz) >= 1 && this.grid.clearanceAt(sx, sz) >= sq.rMax * SLOT_BODY;
     }
     if (ok) return;
   }
@@ -971,21 +999,41 @@ function squadSettle(this: World, sq: Squad, speed: number): void {
     sq.x = sq.goalX + sq.hx * (sq.depth / 2);
     sq.z = sq.goalZ + sq.hz * (sq.depth / 2);
   };
+  // hai lượt: hình đội mà mọi ô đủ chỗ xoay tại chỗ; không có thì hình đội mà mọi ô chỉ cần vừa nửa bề ngang thân (sát bờ sông,
+  // đầu cầu…); vẫn không có mới co thành hàng một. Một lượt duy nhất với điều kiện xoay thì đội tới đầu cầu co thành hàng một
+  // dài 66 m, đuôi hàng nằm lại bên kia sông.
+  const halfW = sq.rMax * SLOT_BODY;
   let c = sq.colsMax;
-  for (; c > 1; c--) {
-    sq.cols = c;
-    this.squadLayout(sq);
-    place();
-    let ok = true;
-    for (let i = 0; i < sq.ids.length && ok; i++) {
+  // với mỗi số cột, thử dạt cả khối sang ngang 0, ±2, ±4, ±6 m trước khi bớt cột (đích sát vật cản thì dạt ra, đừng co hàng)
+  let shift = 0;
+  const fits = (need: number): boolean => {
+    for (let i = 0; i < sq.ids.length; i++) {
       const [sx, sz] = this.squadSlot(sq, i);
-      ok = !this.grid.blockedAt(sx, sz) && this.map.inset(sx, sz) >= 1;
+      if (this.grid.blockedAt(sx, sz) || this.map.inset(sx, sz) < 1 || this.grid.clearanceAt(sx, sz) < need) return false;
     }
-    if (ok) break;
+    return true;
+  };
+  search: for (const need of [turnR, halfW]) {
+    for (c = sq.colsMax; c > 1; c--) {
+      sq.cols = c;
+      this.squadLayout(sq);
+      for (const d of SETTLE_SHIFTS) {
+        place();
+        sq.x += sq.hz * d;
+        sq.z -= sq.hx * d;
+        if (fits(need)) {
+          shift = d;
+          break search;
+        }
+      }
+    }
   }
+  if (c < 2) c = 1;
   sq.cols = c;
   this.squadLayout(sq);
   place();
+  sq.x += sq.hz * shift;
+  sq.z -= sq.hx * shift;
   // vừa giãn lại hàng (cột qua chỗ hẹp xong): chia ô ở đích theo phân công tối ưu, không ai chạy chéo
   if (c !== was) {
     this.squadAssign(sq);
@@ -1150,7 +1198,7 @@ function squadLag(this: World, sq: Squad, i: number, u: Unit): [number, number, 
   return [Math.sqrt(dist2(u.x, u.z, sx, sz)), hx, hz, sx, sz];
 }
 
-const methods = { formationOf, airSlots, orderMove, formation, freeSlot, arrive, createSquad, squadDirect, squadFits, squadAssign, squadAdopt, squadArrange, squadLayout, squadFlanks, squadRanks, squadSpeed, speedOf, squadSlot, trailAt, squadAfterPivot, squadMarch, slowestMobility, squadById, squadReady, leaveSquad, disbandSquad, updateSquads, stepSquad, squadSettle, squadFit, freeSide, squadMember, squadLag };
+const methods = { formationOf, airSlots, orderMove, formation, freeSlot, arrive, createSquad, squadDirect, squadFits, squadAssign, squadAdopt, squadArrange, squadLayout, squadFlanks, squadRanks, squadSpeed, speedOf, squadSlot, trailAt, squadAfterPivot, squadMarch, slowestMobility, squadById, squadReady, leaveSquad, disbandSquad, updateSquads, stepSquad, squadSettle, squadFit, freeSide, squadMember, squadLag, squadTurnR };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

@@ -6,7 +6,7 @@ import type { Rig } from "./kit";
 
 export type { Rig, RigAction } from "./kit";
 export { disposeRig } from "./kit";
-export { buildNode, type NodeRig } from "./nodes";
+export { buildField, buildNode, type FieldDeposit, type NodeRig } from "./nodes";
 
 /**
  * Một điểm vào duy nhất: chiến trường và Xưởng Mô Hình đều gọi hàm này.

@@ -339,11 +339,12 @@ describe("lõi mô phỏng", () => {
     const hq = w.hqOf(0)!;
     const [cx, cz] = w.snapBuilding("wall", hq.x, hq.z);
     const cmds: Command[] = [];
-    // tường chữ L chạy tới tận mép bản đồ, vây góc căn cứ Lam (mỏ Sắt và giàn Dầu nhà nằm bên trong)
-    for (let k = -40; k <= 18; k++)
+    // tường chữ L chạy tới tận mép bản đồ, vây góc căn cứ Lam (mỏ Sắt và giàn Dầu nhà nằm bên trong). Cách nhà 42 m: bãi tài
+    // nguyên (12/11/2026) rộng ~11 m quanh tâm mỏ và trong bãi không được xây, tường gần hơn thì hở đúng chỗ bãi Sắt nhà
+    for (let k = -40; k <= 21; k++)
       for (const [x, z] of [
-        [cx + 36, cz - 2 * k],
-        [cx + 2 * k, cz - 36]
+        [cx + 42, cz - 2 * k],
+        [cx + 2 * k, cz - 42]
       ])
         if (w.canPlace(0, "wall", x, z) === null) cmds.push({ side: 0, order: { t: "sbSpawn", kind: "wall", side: 0, x, z } });
     for (let i = 0; i < 6; i++) cmds.push({ side: 1, order: { t: "sbSpawn", kind: "titan", side: 1, x: hq.x + 50 + (i % 3) * 4, z: hq.z - 50 + Math.floor(i / 3) * 4 } });
