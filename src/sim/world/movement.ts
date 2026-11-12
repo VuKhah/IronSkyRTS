@@ -11,6 +11,13 @@ const HEAD_ON_COS = -0.5;
 const PASS_LOOK = 6;
 /** Lách sang bên mỗi tick khi chưa chạm (m; 1,5 m/s, chậm hơn nhiều so với tốc độ chạy). */
 const PASS_STEER = 0.15;
+/** Bán kính chấp nhận của điểm qua giữa đường (m). */
+const WAYPOINT_R = 2.5;
+
+/** Nửa bề ngang thân xe dùng khi tìm / nối tắt đường (cùng cỡ với điểm dò vách `wallNormal`); máy bay: 0,7 m như cũ. */
+function pathHalf(u: Unit): number {
+  return u.air === "none" ? Math.max(0.7, UNITS[u.kind].radius * WALL_CLEAR) : 0.7;
+}
 
 
 /**
@@ -81,7 +88,10 @@ function setPath(this: World, u: Unit, x: number, z: number): boolean {
   // tìm đường nhanh nhất theo kiểu xe (bánh / xích) và địa hình (B3b)
   const spec = UNITS[u.kind];
   [x, z] = this.clearGoal(u, x, z);
-  const p = this.grid.findPath(u.x, u.z, x, z, this.grid.field(spec.mobility ?? "wheel", !!spec.slowResist));
+  // Đường đi giữa lối ("hành lang": ô sát vách coi như chậm) và đoạn nối tắt chừa đủ nửa bề ngang thân xe; trước 12/11/2026
+  // đường men sát vách từng ô và nối tắt sát góc, thân xe quẹt mép dốc rồi trượt dọc mép, mũi quay vào vách (người dùng thấy
+  // ở dốc B7 của Cao Nguyên Ba Bậc)
+  const p = this.grid.findPath(u.x, u.z, x, z, this.grid.corridor(spec.mobility ?? "wheel", !!spec.slowResist), pathHalf(u));
   u.path = p ?? [];
   u.pathI = 0;
   u.stuck = 0;
@@ -203,6 +213,23 @@ function follow(this: World, u: Unit): boolean {
     u.still = Math.min(u.still, sec(dep.time)) - 1;
     u.packing = true;
     return false;
+  }
+  // Điểm qua giữa đường có BÁN KÍNH CHẤP NHẬN: tới gần trong WAYPOINT_R và từ đây nhìn thẳng được (bằng cả thân xe) tới điểm
+  // kế tiếp thì coi như đã qua. Không thì hai xe cùng nhắm đúng một điểm (chân dốc: đường "hành lang" của mọi xe qua cùng
+  // một ô) đẩy nhau chia đôi rồi quay vòng quanh điểm đó mãi.
+  // Đoạn cắt thẳng cũng không được băng qua ô chậm hơn điểm bỏ qua và điểm kế tiếp (không thì bánh xe quệt vào bùn mà A* vừa
+  // tránh), như bước kéo thẳng đường trong findPath.
+  while ((u.pathI + 1) * 2 < u.path.length) {
+    const wx = u.path[u.pathI * 2];
+    const wz = u.path[u.pathI * 2 + 1];
+    const nx = u.path[u.pathI * 2 + 2];
+    const nz = u.path[u.pathI * 2 + 3];
+    if (dist2(u.x, u.z, wx, wz) > WAYPOINT_R * WAYPOINT_R) break;
+    if (!this.grid.los(u.x, u.z, nx, nz, pathHalf(u))) break;
+    const f = this.grid.field(spec.mobility ?? "wheel", !!spec.slowResist);
+    const need = Math.min(f.k[this.grid.index(wx, wz)], f.k[this.grid.index(nx, nz)]);
+    if (this.grid.minSpeedAlong(f, u.x, u.z, nx, nz) < need) break;
+    u.pathI++;
   }
   // tốc độ theo địa hình và độ dốc, đo theo hướng tới điểm kế tiếp trên đường
   const fdx = u.path[u.pathI * 2] - u.x;

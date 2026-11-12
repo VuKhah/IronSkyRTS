@@ -346,3 +346,39 @@ describe("xe cắt ngang nhau không lồng thân (12/11/2026)", () => {
     expect(Math.hypot(b.x + 50, b.z + 30)).toBeLessThan(2.5);
   });
 });
+
+describe("xe không quẹt mép dốc khi lên / xuống chéo (12/11/2026)", () => {
+  // Người dùng thấy ở dốc B7: xe quẹt mép khi lên / xuống dốc, trượt dọc mép rồi mũi quay vào vách. Gốc: đường nối tắt chỉ
+  // chừa ±0,7 m quanh tâm xe và A* men sát vách. Đo trên Pháo (thân rộng nhất): trước khi sửa 374 tick chạm vách giữa đường.
+  it("Pháo đi chéo qua mọi dốc nửa Tây của Cao Nguyên Ba Bậc: thân chạm vách giữa đường dưới 120 tick tổng cộng", () => {
+    const w = new World(1, { sandbox: true, map: "standard" });
+    let touch = 0;
+    for (const r of w.map.ramps.filter((k) => k.x0 < 0)) {
+      const cx = (r.x0 + r.x1) / 2;
+      const cz = (r.z0 + r.z1) / 2;
+      const along = r.dir === "N" || r.dir === "S";
+      const lo = r.dir === "N" || r.dir === "W" ? 1 : -1;
+      for (const sgn of [1, -1]) {
+        const a: [number, number] = along ? [cx + 14 * sgn, cz + lo * 16] : [cx + lo * 16, cz + 14 * sgn];
+        const b: [number, number] = along ? [cx - 14 * sgn, cz - lo * 16] : [cx - lo * 16, cz - 14 * sgn];
+        for (const [p, q] of [
+          [a, b],
+          [b, a]
+        ]) {
+          if (w.grid.blockedAt(p[0], p[1]) || w.grid.blockedAt(q[0], q[1])) continue;
+          w.step([{ side: 0, order: { t: "sbClear" } }]);
+          const u = spawn(w, "artillery", p[0], p[1]);
+          u.manual = true;
+          w.step([{ side: 0, order: { t: "move", ids: [u.id], x: q[0], z: q[1] } }]);
+          for (let t = 0; t < sec(40) && u.order !== "idle"; t++) {
+            w.step([]);
+            if (Math.hypot(u.x - p[0], u.z - p[1]) < 4 || Math.hypot(u.x - q[0], u.z - q[1]) < 4) continue;
+            const [px, pz] = w.wallNormal(u, u.x, u.z);
+            if (px !== 0 || pz !== 0) touch++;
+          }
+        }
+      }
+    }
+    expect(touch).toBeLessThan(120);
+  });
+});

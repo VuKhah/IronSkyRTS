@@ -161,15 +161,16 @@ export class Grid {
   }
 
   /**
-   * Hệ số tốc độ "hành lang" cho người dẫn đầu đội hình: như `field` nhưng ô càng sát vật cản cố định (sông, đá, vách, mép
+   * Hệ số tốc độ "hành lang" cho người dẫn đầu đội hình và cho xe tự tìm đường (từ 12/11/2026, không thì xe lẻ men sát vách
+   * từng ô, thân quẹt mép dốc): như `field` nhưng ô càng sát vật cản cố định (sông, đá, vách, mép
    * bản đồ) càng bị coi là chậm, nên đường A* đi giữa khoảng trống thay vì men sát vật cản (đội hình khỏi phải co / dạt vô
    * cớ). Hệ số chỉ giảm, không tăng, nên heuristic A* vẫn đúng. Tính một lần rồi giữ lại cả trận.
    */
-  corridor(mob: Mobility): SpeedField {
-    const key = `${mob}#corridor`;
+  corridor(mob: Mobility, slowResist = false): SpeedField {
+    const key = `${mob}${slowResist ? "+" : ""}#corridor`;
     let f = this.fields.get(key);
     if (!f) {
-      const base = this.field(mob, false);
+      const base = this.field(mob, slowResist);
       // khoảng cách (số ô, kiểu bàn cờ vua) tới ô bị chặn gần nhất: loang từ mọi ô chặn và mép lưới
       const d = new Int32Array(this.size).fill(-1);
       const q: number[] = [];
@@ -332,20 +333,29 @@ export class Grid {
     return t;
   }
 
-  /** Đường thẳng từ A tới B có đi được không (kiểm tra cả hai mép, để xe không cạ vào vách). */
-  los(x0: number, z0: number, x1: number, z1: number): boolean {
+  /**
+   * Một dải rộng 2 × `half` m từ A tới B có đi được hết không. `half` = nửa bề ngang của xe: trước 12/11/2026 dải chỉ rộng
+   * ±0,7 m cho mọi xe, nên đường kéo thẳng sát góc vách, thân Titan (nửa ngang 1,9 m) quẹt vào mép dốc, trượt dọc mép mà mũi
+   * cứ quay vào vách. Dò theo các đường song song cách nhau không quá 0,7 m (không lọt qua vách mỏng).
+   */
+  los(x0: number, z0: number, x1: number, z1: number, half = 0.7): boolean {
     const dx = x1 - x0;
     const dz = z1 - z0;
     const d = Math.sqrt(dx * dx + dz * dz);
     if (d < 1e-6) return !this.blockedAt(x0, z0);
     const steps = Math.ceil(d / (CELL * 0.35));
-    const ox = (-dz / d) * 0.7;
-    const oz = (dx / d) * 0.7;
+    const lanes = Math.max(1, Math.ceil(half / 0.7));
+    const px = -dz / d;
+    const pz = dx / d;
     for (let i = 0; i <= steps; i++) {
       const k = i / steps;
       const x = x0 + dx * k;
       const z = z0 + dz * k;
-      if (this.blockedAt(x, z) || this.blockedAt(x + ox, z + oz) || this.blockedAt(x - ox, z - oz)) return false;
+      if (this.blockedAt(x, z)) return false;
+      for (let l = 1; l <= lanes; l++) {
+        const o = (half * l) / lanes;
+        if (this.blockedAt(x + px * o, z + pz * o) || this.blockedAt(x - px * o, z - pz * o)) return false;
+      }
     }
     return true;
   }
@@ -387,8 +397,9 @@ export class Grid {
    * Tìm đường từ (x0, z0) tới (x1, z1). Trả về dãy điểm [x, z, x, z, …] (không gồm điểm xuất phát),
    * hoặc null nếu không có đường. Đích bị chặn thì đi tới ô trống gần đích nhất.
    * `f`: hệ số tốc độ theo ô của kiểu xe (field()): có thì tìm đường nhanh nhất, không có thì đường ngắn nhất.
+   * `half`: nửa bề ngang của xe, cho bước kéo thẳng (xem `los`): đoạn nối tắt phải chừa đủ chỗ cho cả thân xe.
    */
-  findPath(x0: number, z0: number, x1: number, z1: number, f?: SpeedField): number[] | null {
+  findPath(x0: number, z0: number, x1: number, z1: number, f?: SpeedField, half = 0.7): number[] | null {
     // chiều của bài toán: bài toán soi gương (−A → −B) luôn rơi vào chiều kia và xét 8 hướng theo thứ tự soi gương
     const flip = canonPair(x0, z0, x1, z1) ? 1 : -1;
     let s = this.index(x0, z0);
@@ -410,7 +421,7 @@ export class Grid {
     if (s === t) return [gx, gz];
     // Đi thẳng luôn nếu đường thẳng đi được và không băng qua ô chậm hơn hai đầu (và cỏ). Bản đồ có ô nhanh hơn cỏ
     // (đường cái) thì vẫn tìm, vì vòng theo đường có thể nhanh hơn; tìm xong sẽ so với đi thẳng (dưới).
-    const straight = this.los(x0, z0, gx, gz);
+    const straight = this.los(x0, z0, gx, gz, half);
     if (straight) {
       if (!f) return [gx, gz];
       const need = Math.min(1, f.k[s], f.k[t]);
@@ -486,8 +497,10 @@ export class Grid {
     const n = pts.length / 2;
     while (i < n) {
       let j = i;
+      // dải rộng bằng thân xe (đã thử hạ dần độ rộng ở lối hẹp: đường lại sát góc, quẹt vách nhiều gấp 6; zíc zắc theo ô còn
+      // đỡ hơn)
       for (let k = Math.min(n - 1, i + 14); k > i; k--) {
-        if (!this.los(ax, az, pts[k * 2], pts[k * 2 + 1])) continue;
+        if (!this.los(ax, az, pts[k * 2], pts[k * 2 + 1], half)) continue;
         if (K) {
           let spanMin = K[this.index(ax, az)];
           for (let q = i; q <= k; q++) spanMin = Math.min(spanMin, K[cells[q + 1]]);
