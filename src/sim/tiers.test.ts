@@ -326,17 +326,18 @@ describe("bãi tài nguyên (12/11/2026)", () => {
 describe("xe cắt ngang nhau không lồng thân (12/11/2026)", () => {
   // Ảnh người dùng 12/11: hai Xe Vận Tải cắt ngang nhau trước Tổng Hành Dinh, mũi xe này chui vào hông xe kia gần 1 m
   // (va chạm theo hình tròn bán kính = nửa bề ngang). Giờ xe ngoài đội hình va chạm theo hình chữ nhật đúng thân.
-  it("hai Xe Vận Tải đi vuông góc qua cùng một điểm: thân không lồng quá 0,3 m, cả hai tới nơi", () => {
+  /** Hai Xe Vận Tải đi từ A tới A2 và từ B tới B2: độ lồng thân thật lớn nhất (m, âm = khe hở nhỏ nhất), cả hai có tới nơi. */
+  const pass = (A: readonly [number, number], A2: readonly [number, number], B: readonly [number, number], B2: readonly [number, number]): number => {
     const w = world();
-    const a = spawn(w, "hauler", -70, -50);
-    const b = spawn(w, "hauler", -50, -70);
+    const a = spawn(w, "hauler", A[0], A[1]);
+    const b = spawn(w, "hauler", B[0], B[1]);
     a.manual = b.manual = true;
     w.step([
-      { side: 0, order: { t: "move", ids: [a.id], x: -30, z: -50 } },
-      { side: 0, order: { t: "move", ids: [b.id], x: -50, z: -30 } }
+      { side: 0, order: { t: "move", ids: [a.id], x: A2[0], z: A2[1] } },
+      { side: 0, order: { t: "move", ids: [b.id], x: B2[0], z: B2[1] } }
     ]);
     const H = UNITS.hauler;
-    let worst = 0;
+    let worst = -Infinity;
     for (let t = 0; t < sec(30); t++) {
       w.step([]);
       // độ lồng của hai hình chữ nhật thân thật (bán kính × 1, halfLen × 1) theo trục tách tốt nhất
@@ -351,9 +352,17 @@ describe("xe cắt ngang nhau không lồng thân (12/11/2026)", () => {
         }
       worst = Math.max(worst, ov);
     }
-    expect(worst, "thân lồng nhau").toBeLessThan(0.3 + 2 * 0.15 * H.radius);
-    expect(Math.hypot(a.x + 30, a.z + 50)).toBeLessThan(2.5);
-    expect(Math.hypot(b.x + 50, b.z + 30)).toBeLessThan(2.5);
+    expect(Math.hypot(a.x - A2[0], a.z - A2[1]), "xe A tới nơi").toBeLessThan(2.5);
+    expect(Math.hypot(b.x - B2[0], b.z - B2[1]), "xe B tới nơi").toBeLessThan(2.5);
+    return worst;
+  };
+  it("hai Xe Vận Tải đi vuông góc qua cùng một điểm: thân thật lồng dưới 0,2 m, cả hai tới nơi", () => {
+    // né xe chủ động (12/11/2026): tầm với tính theo thân thật (mũi xe này vào hông xe kia = nửa dài + nửa ngang), trước đó
+    // tính theo bán kính nên chỉ thấy sắp va khi đã cách 2 m: lồng 0,47 m
+    expect(pass([-70, -50], [-30, -50], [-50, -70], [-50, -30]), "thân lồng nhau").toBeLessThan(0.2);
+  });
+  it("hai Xe Vận Tải đối đầu lệch làn 1 m: lách sang bên từ xa, thân thật không chạm", () => {
+    expect(pass([-70, -50], [-30, -50], [-30, -49], [-70, -49]), "thân chạm nhau").toBeLessThan(0);
   });
 });
 

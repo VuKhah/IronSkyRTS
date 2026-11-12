@@ -11,6 +11,22 @@ const HEAD_ON_COS = -0.5;
 const PASS_LOOK = 6;
 /** Lách sang bên mỗi tick khi chưa chạm (m; 1,5 m/s, chậm hơn nhiều so với tốc độ chạy). */
 const PASS_STEER = 0.15;
+/** Né xe chủ động: nhìn trước chừng này giây theo vận tốc hiện tại. */
+const AVOID_T = 2.5;
+/** Xét cặp xe trong chừng này mét (đủ cho hai xe 5 m/s lao vào nhau trong AVOID_T giây). */
+const AVOID_LOOK = 26;
+/** Hai xe đi qua nhau phải cách tâm ít nhất (tổng nửa bề ngang) × chừng này, không thì coi là sắp va. */
+const AVOID_R = 1.35;
+/** Lực lái tối đa so với hướng muốn đi (1 = lệch tối đa 45°). */
+const AVOID_GAIN = 1.1;
+/** Xe phải nhường phanh tới chừng này phần tốc độ khi va chạm sắp xảy ra ngay. */
+const AVOID_BRAKE = 0.6;
+/** Hai vận tốc lệch nhau dưới 45° (cos² > 0,5) là cùng chiều (bám đuôi), không phải cắt ngang. */
+const SAME_COS2 = 0.5;
+/** Xe bám đuôi (cùng chiều, xe kia ngay phía trước) phanh tới chừng này phần tốc độ. */
+const FOLLOW_BRAKE = 0.35;
+/** Lực lái nhỏ dần khi cách đích dưới chừng này mét. */
+const AVOID_FADE = 9;
 /** Bán kính chấp nhận của điểm qua giữa đường (m). */
 const WAYPOINT_R = 2.5;
 /** Điểm dò thân xe nằm ở chừng này lần kích thước thân thật (chừa 5% cho góc bo / sai số lưới 2 m). */
@@ -46,6 +62,31 @@ function turnHull(this: World, u: Unit, dx: number, dz: number): boolean {
   return u.hx * dx + u.hz * dz >= PIVOT_COS;
 }
 
+/**
+ * Hướng đi khi né xe (vector đơn vị) = hướng muốn đi (dx, dz) + lực lái `avX/avZ` × AVOID_GAIN, lực lái nhỏ dần khi cách đích
+ * (gx, gz) dưới AVOID_FADE m (để xe vẫn đỗ đúng chỗ đỗ / ô đội hình). Không có lực lái đáng kể thì [0, 0].
+ */
+function steer(this: World, u: Unit, dx: number, dz: number, gx: number, gz: number): [number, number] {
+  const a2 = u.avX * u.avX + u.avZ * u.avZ;
+  if (a2 < 0.0025) return [0, 0];
+  const dg = Math.sqrt(dist2(u.x, u.z, gx, gz));
+  const fade = dg >= AVOID_FADE ? 1 : dg <= 3 ? 0 : (dg - 3) / (AVOID_FADE - 3);
+  if (fade <= 0) return [0, 0];
+  const k = AVOID_GAIN * fade;
+  const sx = dx + u.avX * k;
+  const sz = dz + u.avZ * k;
+  const l = Math.sqrt(sx * sx + sz * sz);
+  return l < 1e-6 ? [0, 0] : [sx / l, sz / l];
+}
+
+/** Hệ số phanh né xe, nhạt dần về 1 khi cách đích (gx, gz) dưới AVOID_FADE m (xe vào chỗ đỗ / ô đội hình dứt khoát). */
+function brakeNear(this: World, u: Unit, gx: number, gz: number): number {
+  if (u.brake >= 1) return 1;
+  const dg = Math.sqrt(dist2(u.x, u.z, gx, gz));
+  const fade = dg >= AVOID_FADE ? 1 : dg <= 3 ? 0 : (dg - 3) / (AVOID_FADE - 3);
+  return 1 - (1 - u.brake) * fade;
+}
+
 /** Đi thẳng về (x, z) cách d mét, không quá tốc độ của xe; quân cố định thì thu bệ trước. */
 function stepToward(this: World, u: Unit, x: number, z: number, d: number): void {
   if (d < 0.05) return;
@@ -59,12 +100,20 @@ function stepToward(this: World, u: Unit, x: number, z: number, d: number): void
     }
     return;
   }
-  const dx = (x - u.x) / d;
-  const dz = (z - u.z) / d;
+  let dx = (x - u.x) / d;
+  let dz = (z - u.z) / d;
+  // né xe chủ động (xem `steer`): chỉ khi còn đi xa, nhích chỉnh hàng thì thôi
+  if (d >= 3) {
+    const [sx, sz] = this.steer(u, dx, dz, x, z);
+    if (sx !== 0 || sz !== 0) {
+      dx = sx;
+      dz = sz;
+    }
+  }
   // đi xa (từ 3 m): quay thân về hướng đi trước, lệch nhiều thì xoay tại chỗ; nhích chỉnh hàng thì khỏi quay thân
   if (d >= 3 && !this.turnHull(u, dx, dz)) return;
   const rally = this.mobilized(u) ? 1 + RULES.abilities.mobilize.speed : 1;
-  const step = Math.min(this.speedOf(u) * DT * rally * this.moveFactor(u, dx, dz), d);
+  const step = Math.min(this.speedOf(u) * DT * rally * this.moveFactor(u, dx, dz) * this.brakeNear(u, x, z), d);
   const ox = u.x;
   const oz = u.z;
   this.tryMove(u, u.x + dx * step, u.z + dz * step);
@@ -277,13 +326,29 @@ function follow(this: World, u: Unit): boolean {
   const fdx = u.path[u.pathI * 2] - u.x;
   const fdz = u.path[u.pathI * 2 + 1] - u.z;
   const fd = Math.sqrt(fdx * fdx + fdz * fdz);
-  // lệch hướng nhiều: đứng lại xoay tại chỗ (chưa chạy, không tính là kẹt)
-  if (fd > 1e-6 && !this.turnHull(u, fdx / fd, fdz / fd)) return false;
-  const rally = this.mobilized(u) ? 1 + RULES.abilities.mobilize.speed : 1;
-  const full = this.speedOf(u) * DT * rally * (fd > 1e-6 ? this.moveFactor(u, fdx / fd, fdz / fd) : this.moveFactor(u, 0, 0));
-  let step = full;
   const ox = u.x;
   const oz = u.z;
+  const rally = this.mobilized(u) ? 1 + RULES.abilities.mobilize.speed : 1;
+  // Né xe chủ động: có lực lái (dự đoán va chạm ở cuối tick trước) thì hướng đi = hướng tới điểm kế tiếp + lực lái; xe quay thân
+  // theo hướng đó rồi chạy (không trượt ngang), tốc độ nhân hệ số phanh. Gần đích thì lực lái nhỏ dần để vẫn đỗ đúng chỗ.
+  const gx = u.path[u.path.length - 2];
+  const gz = u.path[u.path.length - 1];
+  const brake = this.brakeNear(u, gx, gz);
+  const [sx, sz] = this.steer(u, fd > 1e-6 ? fdx / fd : u.hx, fd > 1e-6 ? fdz / fd : u.hz, gx, gz);
+  if (sx !== 0 || sz !== 0) {
+    if (!this.turnHull(u, sx, sz)) return false;
+    const full = this.speedOf(u) * DT * rally * this.moveFactor(u, sx, sz) * brake;
+    this.tryMove(u, u.x + sx * full, u.z + sz * full);
+    const moved2 = dist2(ox, oz, u.x, u.z);
+    u.moved = u.moved || moved2 > 1e-6;
+    if (moved2 < full * full * 0.04) u.stuck++;
+    else if (u.stuck > 0) u.stuck--;
+    return false;
+  }
+  // lệch hướng nhiều: đứng lại xoay tại chỗ (chưa chạy, không tính là kẹt)
+  if (fd > 1e-6 && !this.turnHull(u, fdx / fd, fdz / fd)) return false;
+  const full = this.speedOf(u) * DT * rally * (fd > 1e-6 ? this.moveFactor(u, fdx / fd, fdz / fd) : this.moveFactor(u, 0, 0)) * brake;
+  let step = full;
   while (step > 1e-9 && u.pathI * 2 < u.path.length) {
     const wx = u.path[u.pathI * 2];
     const wz = u.path[u.pathI * 2 + 1];
@@ -420,9 +485,91 @@ function yieldsTo(a: Unit, b: Unit): number {
   return la === lb ? 0 : lb ? 1 : -1;
 }
 
+/**
+ * NÉ XE CHỦ ĐỘNG (12/11/2026): hai xe CÙNG PHE (không cùng đội hình, ít nhất một xe đang chạy) theo vận tốc tick này có sắp đi sát nhau
+ * không: thời điểm gần nhau nhất t (giây) trong [0, AVOID_T] (đã qua lúc gần nhất thì t = 0, tức khoảng cách lúc này), khoảng
+ * cách tâm lúc đó < (tổng tầm với thân thật theo hướng hai tâm: nửa bề ngang khi đối đầu, nửa dài + nửa ngang khi cắt ngang) ×
+ * AVOID_R. Có thì mỗi
+ * xe đang chạy nhận lực lái sang bên, về phía xa chỗ xe kia sẽ có mặt lúc t (thẳng hàng thì giữ bên phải, `sideStep`), mạnh dần
+ * khi t nhỏ và khi càng sát; xe phải nhường (rỗng gặp xe chở hàng, `yieldsTo`) phanh thêm. Xe đứng yên là vật cản: chỉ xe chạy
+ * lái vòng. Dùng ở tick sau (`steer`), như tài xế thấy trước rồi bẻ lái, không đợi chạm mới đẩy.
+ */
+function avoidPair(this: World, a: Unit, b: Unit, dx: number, dz: number, ba: readonly [number, number, number], bb: readonly [number, number, number]): void {
+  const vax = a.moved ? (a.x - a.px) / DT : 0;
+  const vaz = a.moved ? (a.z - a.pz) / DT : 0;
+  const vbx = b.moved ? (b.x - b.px) / DT : 0;
+  const vbz = b.moved ? (b.z - b.pz) / DT : 0;
+  const wx = vbx - vax;
+  const wz = vbz - vaz;
+  const w2 = wx * wx + wz * wz;
+  if (w2 < 0.04) return;
+  // đã qua lúc gần nhau nhất (t ≤ 0) mà hai thân vẫn còn sát (trong vòng R): vẫn né theo khoảng cách lúc này. Không thì xe
+  // phanh chờ xe kia cắt ngang qua, vừa tới lúc gần nhất là thôi phanh, lao vào hông / đuôi xe kia
+  const t = Math.max(0, -(dx * wx + dz * wz) / w2);
+  if (t > AVOID_T) return;
+  const cx = dx + wx * t;
+  const cz = dz + wz * t;
+  const c2 = cx * cx + cz * cz;
+  // tầm với của THÂN THẬT theo hướng hai tâm lúc gần nhau nhất: đối đầu lệch ngang thì là nửa bề ngang, cắt ngang (mũi xe này
+  // vào hông xe kia) thì là nửa thân dài + nửa bề ngang. Tính theo bán kính thì cắt ngang chỉ thấy sắp va khi đã cách 2 m
+  const cl = Math.sqrt(c2);
+  const [nx, nz] = cl > 1e-6 ? [cx / cl, cz / cl] : [a.hz, -a.hx];
+  const reachOf = (u: Unit, bd: readonly [number, number, number]): number =>
+    bd[1] * Math.abs(u.hx * nx + u.hz * nz) + bd[0] * Math.abs(u.hz * nx - u.hx * nz);
+  const R = (reachOf(a, ba) + reachOf(b, bb)) * AVOID_R;
+  if (c2 >= R * R) return;
+  const k = (1 - t / AVOID_T) * 0.6 + (1 - Math.sqrt(c2) / R) * 0.4;
+  const y = yieldsTo(a, b);
+  // cùng chiều (góc hai vận tốc < 45°): không bẻ lái, xe phía sau phanh bám đuôi
+  const va2 = vax * vax + vaz * vaz;
+  const vb2 = vbx * vbx + vbz * vbz;
+  const dot = vax * vbx + vaz * vbz;
+  const same = va2 > 0 && vb2 > 0 && dot > 0 && dot * dot > SAME_COS2 * va2 * vb2;
+  // (ox, oz): từ xe u tới xe kia lúc này; u chỉ phản ứng khi xe kia ở PHÍA TRƯỚC nó (tài xế nhìn đường trước mặt)
+  const push = (u: Unit, ox: number, oz: number, px: number, pz: number, yields: boolean): void => {
+    if (!u.moved || this.anchored(u)) return;
+    // chỉ phản ứng khi xe kia nằm trong NÓN 60° PHÍA TRƯỚC mũi (|góc| < 60°): xe chạy song song sát bên hay xe phía sau thì
+    // không né (không thì bẻ lái qua lại mãi, "nhảy múa" của các thuật toán né va chạm)
+    const ahead = ox * u.hx + oz * u.hz;
+    if (ahead <= 0 || ahead * ahead < 0.25 * (ox * ox + oz * oz)) return;
+    if (same) {
+      // bám đuôi: phanh nhẹ (hai xe hội tụ về cùng một điểm không phải phanh gấp)
+      u.brake = Math.min(u.brake, 1 - FOLLOW_BRAKE * k);
+      return;
+    }
+    const [lx, lz] = sideStep(u, px, pz);
+    u.avX += lx * k;
+    u.avZ += lz * k;
+    if (yields) u.brake = Math.min(u.brake, 1 - AVOID_BRAKE * k);
+  };
+  push(a, dx, dz, cx, cz, y > 0);
+  push(b, -dx, -dz, -cx, -cz, y < 0);
+}
+
 function separate(this: World): void {
   const g: Unit[] = [];
-  for (const u of this.units) if (u.air === "none" && u.hp > 0) g.push(u);
+  for (const u of this.units) {
+    // lực lái / phanh vừa dùng xong ở tick này: tính lại từ đầu
+    u.avX = 0;
+    u.avZ = 0;
+    u.brake = 1;
+    if (u.air === "none" && u.hp > 0) g.push(u);
+  }
+  // NÉ XE: một lượt riêng, đọc vị trí và vận tốc lúc mọi xe vừa đi xong, TRƯỚC mọi cú đẩy va chạm. Gộp vào vòng đẩy bên dưới
+  // thì cặp sau đọc vị trí đã bị cặp trước xô, kết quả đổi theo thứ tự mã xe (đảo thứ tự thả xe thì lệch một chuyến hàng).
+  // Chỉ né quân mình, khác đội hình (giao thông của một phe); xe địch thì lao vào giao chiến, chạm thì luật đẩy lo (né cả xe
+  // địch thì Lynx lao tới bắn lại bẻ lái tránh chính mục tiêu đứng chắn trước mặt)
+  for (let i = 0; i < g.length; i++) {
+    const a = g[i];
+    for (let j = i + 1; j < g.length; j++) {
+      const b = g[j];
+      if (!(a.moved || b.moved) || a.side !== b.side || (a.squad !== 0 && a.squad === b.squad)) continue;
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      if (dx >= AVOID_LOOK || dx <= -AVOID_LOOK || dz >= AVOID_LOOK || dz <= -AVOID_LOOK || dx * dx + dz * dz >= AVOID_LOOK * AVOID_LOOK) continue;
+      this.avoidPair(a, b, dx, dz, bodyOf(a), bodyOf(b));
+    }
+  }
   for (let i = 0; i < g.length; i++) {
     const a = g[i];
     const ra = UNITS[a.kind].radius;
@@ -439,12 +586,12 @@ function separate(this: World): void {
       const min = (ra + rb) * 0.8;
       const touch = sameSq ? min : ba[2] + bb[2];
       // hai xe cùng chạy thì nhìn xa thêm PASS_LOOK để kịp lách trước khi chạm
-      const reach = both ? Math.max(touch, ra + rb + PASS_LOOK) : touch;
+      const near = both ? Math.max(touch, ra + rb + PASS_LOOK) : touch;
       const dx = b.x - a.x;
       const dz = b.z - a.z;
-      if (dx >= reach || dx <= -reach || dz >= reach || dz <= -reach) continue;
+      if (dx >= near || dx <= -near || dz >= near || dz <= -near) continue;
       const d2 = dx * dx + dz * dz;
-      if (d2 >= reach * reach) continue;
+      if (d2 >= near * near) continue;
       let d = Math.sqrt(d2);
       let nx: number;
       let nz: number;
@@ -540,7 +687,7 @@ function anchored(this: World, u: Unit): boolean {
   return !!dep && u.still >= sec(dep.time);
 }
 
-const methods = { turnHull, stepToward, setIdle, halt, setPath, bodyContact, wallNormal, clearGoal, tryMove, terrainFactor, moveFactor, follow, chase, separate, keepOffWalls, anchored };
+const methods = { turnHull, stepToward, setIdle, halt, setPath, bodyContact, wallNormal, clearGoal, tryMove, terrainFactor, moveFactor, follow, chase, separate, keepOffWalls, anchored, steer, avoidPair, brakeNear };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

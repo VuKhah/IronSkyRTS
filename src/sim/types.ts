@@ -70,6 +70,13 @@ export interface Unit {
   repathAt: number;
   stuck: number;
   moved: boolean;
+  /**
+   * Né xe chủ động (12/11/2026): lực lái sang bên (vector, cộng vào hướng muốn đi) và hệ số tốc độ (1 = không phanh) tính ở cuối
+   * tick trước từ dự đoán va chạm (`separate`), dùng ở tick này khi xe đi theo đường / tới ô.
+   */
+  avX: number;
+  avZ: number;
+  brake: number;
   /** Đang đuổi theo mục tiêu (đường đi đang trỏ tới mục tiêu, không phải tới đích lệnh). */
   chasing: boolean;
   /** Hướng quay mặt khi tới đích / khi về lại chỗ đứng (0, 0 = giữ hướng đang đi). */

@@ -375,7 +375,8 @@ describe("lõi mô phỏng", () => {
     w.step(cmds);
     let retreatAt = -1;
     let retreats = 0;
-    for (let t = 0; t < sec(30) && c.hp > 0; t++) {
+    // 35 s: từ 12/11/2026 ba Lynx cùng phe né nhau chủ động, không chen chúc nên vào tầm chậm hơn ~2,5 s
+    for (let t = 0; t < sec(35) && c.hp > 0; t++) {
       w.step([]);
       for (const e of w.events)
         if (e.t === "retreat" && e.side === 0) {
