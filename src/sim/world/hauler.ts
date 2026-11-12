@@ -5,6 +5,9 @@ import type { Building, Mine, Unit, Wreck } from "../types";
 import { DT, sec, SLOT_OFFSETS, SALVAGE_RETRIES, DOCK_PER_SIDE, DOCK_GAP, DOCK_OUT } from "./shared";
 import { World } from "./core";
 
+/** Chỗ đứng khai thác cách tâm mỏ tối đa chừng này (m): đi hết đường mà còn trong 7 m là bắt đầu khai thác. */
+const MINE_REACH = 6.5;
+
 
 // ------------------------------------------------------------------ Xe Vận Tải
 
@@ -54,10 +57,22 @@ function assignMine(this: World, u: Unit, preferred: number): boolean {
   return true;
 }
 
+/**
+ * Chỗ đứng khai thác thứ i quanh mỏ. Chỗ định sẵn bị chặn thì lấy ô trống gần nhất, nhưng chỉ nhận ô CÙNG TẦNG với mỏ và
+ * trong tầm khai thác (MINE_REACH). Trước đây (lỗi 11/11/2026) mỏ Dầu sát chân vách có thể nhận ô trên đỉnh vách: xe leo
+ * lên đứng ngay phía trên mỏ, không với tới, bỏ cuộc rồi lại nhận đúng chỗ đó, đứng mãi.
+ */
 function slotPos(this: World, m: Mine, u: Unit): [number, number] {
   const i = Math.max(0, m.slots.indexOf(u.id)) % SLOT_OFFSETS.length;
-  const [ox, oz] = SLOT_OFFSETS[i];
-  return this.grid.nearestFree(m.x + ox, m.z + oz, 4) ?? [m.x + ox, m.z + oz];
+  // bản đồ đối xứng qua tâm: mỏ ở nửa kia dùng bảng chỗ đứng lật ngược (trước đây cùng một hướng cho mọi mỏ, nên mỏ đối
+  // xứng của hai phe có chỗ đứng không đối xứng; luật công bằng số 4)
+  const s = m.z > 0 || (m.z === 0 && m.x < 0) ? 1 : -1;
+  const ox = SLOT_OFFSETS[i][0] * s;
+  const oz = SLOT_OFFSETS[i][1] * s;
+  const tier = this.map.tierAt(m.x, m.z);
+  const ok = (x: number, z: number): boolean =>
+    this.map.tierAt(x, z) === tier && !this.map.onRamp(x, z) && dist2(x, z, m.x, m.z) <= MINE_REACH * MINE_REACH;
+  return this.grid.nearestFree(m.x + ox, m.z + oz, 4, ok) ?? this.grid.nearestFree(m.x + ox, m.z + oz, 4) ?? [m.x + ox, m.z + oz];
 }
 
 function goMine(this: World, u: Unit, m: Mine): void {

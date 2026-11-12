@@ -5,6 +5,13 @@ import type { Target, Unit } from "../types";
 import { DT, sec, MOVER_SHARE, WALL_CLEAR, WALL_PUSH, GOAL_SHIFT, WALL_FAR, PROBES, PIVOT_COS, ALIGNED_COS, TMP, traverseStep } from "./shared";
 import { World } from "./core";
 
+/** Hai xe cùng chạy coi là "ngược chiều" khi góc giữa hai hướng thân lớn hơn 120° (cos < −0,5). */
+const HEAD_ON_COS = -0.5;
+/** Xe ngược chiều thấy nhau từ cách mép thân chừng này (m) thì bắt đầu lách. */
+const PASS_LOOK = 6;
+/** Lách sang bên mỗi tick khi chưa chạm (m; 1,5 m/s, chậm hơn nhiều so với tốc độ chạy). */
+const PASS_STEER = 0.15;
+
 
 /**
  * Quay thân xe về hướng (dx, dz) với tốc độ `turnRate` độ/giây: xoay tại chỗ (người dùng chốt 06/11/2026, mọi xe mặt đất).
@@ -268,6 +275,26 @@ function chase(this: World, u: Unit, t: Target): void {
 
 // ------------------------------------------------------------------ va chạm, đạn, dọn xác
 
+/**
+ * Hướng lách của xe m khi xe kia ở lệch (ox, oz) so với nó: vuông góc hướng thân, về phía xa xe kia. Thẳng hàng tuyệt đối thì
+ * GIỮ BÊN PHẢI (cùng một quy ước cho mọi xe, mọi phe): hai xe ngược chiều cùng giữ phải thì tự lệch về hai phía, qua được nhau.
+ * Trước đây hòa thì chọn theo chẵn / lẻ của mã xe, không đối xứng giữa hai phe.
+ */
+function sideStep(m: Unit, ox: number, oz: number): [number, number] {
+  const lo = ox * m.hz - oz * m.hx; // xe kia lệch về bên (+) hay (−) hướng chạy
+  const sg = lo > 1e-9 ? -1 : 1;
+  return [m.hz * sg, -m.hx * sg];
+}
+
+/** Đẩy xe đi (dx, dz) qua tryMove (trượt dọc vách, không lấn vào vách); trả về quãng thật sự đi được. */
+function shove(w: World, u: Unit, dx: number, dz: number): [number, number] {
+  if (dx * dx + dz * dz < 1e-12) return [0, 0];
+  const ox = u.x;
+  const oz = u.z;
+  w.tryMove(u, u.x + dx, u.z + dz);
+  return [u.x - ox, u.z - oz];
+}
+
 function separate(this: World): void {
   const g: Unit[] = [];
   for (const u of this.units) if (u.air === "none" && u.hp > 0) g.push(u);
@@ -276,58 +303,65 @@ function separate(this: World): void {
     const ra = UNITS[a.kind].radius;
     for (let j = i + 1; j < g.length; j++) {
       const b = g[j];
-      const min = (ra + UNITS[b.kind].radius) * 0.8;
+      const rb = UNITS[b.kind].radius;
+      // Va chạm theo hình tròn bán kính = nửa bề ngang (tính theo thân dài thật thì phải đổi cả khoảng hàng của đội hình:
+      // để cho bước ORCA). Hai xe cùng chạy thì nhìn xa thêm PASS_LOOK để kịp lách trước khi chạm.
+      const both = a.moved && b.moved;
+      const min = (ra + rb) * 0.8;
+      const reach = both ? ra + rb + PASS_LOOK : min;
       const dx = b.x - a.x;
       const dz = b.z - a.z;
-      if (dx >= min || dx <= -min || dz >= min || dz <= -min) continue;
+      if (dx >= reach || dx <= -reach || dz >= reach || dz <= -reach) continue;
       const d2 = dx * dx + dz * dz;
-      if (d2 >= min * min) continue;
+      if (d2 >= reach * reach) continue;
       let d = Math.sqrt(d2);
       let nx: number;
       let nz: number;
       if (d < 1e-6) {
-        nx = (a.id + b.id) % 2 === 0 ? 1 : -1;
-        nz = 0;
+        // trùng tâm: tách theo hướng vuông góc thân xe a (không phụ thuộc mã xe hay phe)
+        nx = a.hz;
+        nz = -a.hx;
         d = 0;
       } else {
         nx = dx / d;
         nz = dz / d;
       }
-      // xe đang chạy nhường xe đã đứng yên: xe chạy chịu phần lớn lực đẩy (lách qua), xe đã vào hàng chỉ xê dịch chút ít
-      // (vẫn nhường một chút để khe hẹp nới dần, xe chạy không kẹt mãi). Hai xe cùng chạy hoặc cùng đứng thì chia đều.
-      // Quân ĐÃ HẠ BỆ (chân chống cắm đất) thì không bị xô chút nào: xe kia chịu trọn; hai quân cùng hạ bệ thì không ai nhích.
       const pa = this.anchored(a);
       const pb = this.anchored(b);
       if (pa && pb) continue;
+      // hai xe cùng chạy NGƯỢC CHIỀU, xe kia ở phía trước mỗi xe. Đi thẳng hàng trên cùng một đường A* là chuyện thường (xe
+      // ra mỏ và xe về nhà đi chung một lối): khi đó lực đẩy dọc đường nối hai tâm triệt tiêu đúng bằng phần vừa tiến, kẹt mãi
+      const headOn = both && a.hx * b.hx + a.hz * b.hz < HEAD_ON_COS && dx * a.hx + dz * a.hz > 0 && -dx * b.hx - dz * b.hz > 0;
+      if (d >= min) {
+        // chưa chạm: tài xế thấy nhau từ xa thì cùng lách sang bên, chỉ khi giữ nguyên làn thì sẽ tông
+        if (!headOn || pa || pb) continue;
+        const lat = dx * a.hz - dz * a.hx;
+        if ((lat < 0 ? -lat : lat) >= ra + rb) continue;
+        const [lax, laz] = sideStep(a, dx, dz);
+        const [lbx, lbz] = sideStep(b, -dx, -dz);
+        shove(this, a, lax * PASS_STEER, laz * PASS_STEER);
+        shove(this, b, lbx * PASS_STEER, lbz * PASS_STEER);
+        continue;
+      }
+      // xe đang chạy nhường xe đã đứng yên: xe chạy chịu phần lớn lực đẩy (lách qua), xe đã vào hàng chỉ xê dịch chút ít
+      // (vẫn nhường một chút để khe hẹp nới dần, xe chạy không kẹt mãi). Hai xe cùng chạy hoặc cùng đứng thì chia đều.
+      // Quân ĐÃ HẠ BỆ (chân chống cắm đất) thì không bị xô chút nào: xe kia chịu trọn; hai quân cùng hạ bệ thì không ai nhích.
       const wa = pa ? 0 : pb ? 1 : a.moved === b.moved ? 0.5 : a.moved ? MOVER_SHARE : 1 - MOVER_SHARE;
       const over = min - d;
-      // xe chạy gặp xe đứng: ngoài đẩy ra còn LÁCH SANG BÊN (vuông góc hướng chạy, phía xa vật cản), không thì đâm
-      // thẳng vào nhau sẽ bị đẩy lùi đúng ngược hướng mỗi tick và kẹt mãi
-      let sx = 0;
-      let sz = 0;
-      const aMoves = a.moved && !b.moved;
-      if (a.moved !== b.moved) {
-        const m = aMoves ? a : b;
-        const ox = aMoves ? dx : -dx; // từ xe chạy tới xe đứng
-        const oz = aMoves ? dz : -dz;
-        const lo = ox * m.hz - oz * m.hx; // vật cản lệch về bên phải (+) hay trái (−) hướng chạy
-        const sg = lo > 1e-9 ? -1 : lo < -1e-9 ? 1 : m.id % 2 === 0 ? 1 : -1;
-        sx = m.hz * sg * over;
-        sz = -m.hx * sg * over;
-      }
-      const ax = a.x - nx * over * wa + (aMoves ? sx : 0);
-      const az = a.z - nz * over * wa + (aMoves ? sz : 0);
-      if (!this.grid.blockedAt(ax, az)) {
-        a.x = ax;
-        a.z = az;
-      }
-      const bMoves = b.moved && !a.moved;
-      const bx = b.x + nx * over * (1 - wa) + (bMoves ? sx : 0);
-      const bz = b.z + nz * over * (1 - wa) + (bMoves ? sz : 0);
-      if (!this.grid.blockedAt(bx, bz)) {
-        b.x = bx;
-        b.z = bz;
-      }
+      // xe chạy gặp xe đứng, hoặc hai xe chạy đối đầu: ngoài đẩy ra còn LÁCH SANG BÊN (vuông góc hướng chạy, phía xa xe kia)
+      const aSide = !pa && ((a.moved && !b.moved) || headOn);
+      const bSide = !pb && ((b.moved && !a.moved) || headOn);
+      const [lax, laz] = aSide ? sideStep(a, dx, dz) : [0, 0];
+      const [lbx, lbz] = bSide ? sideStep(b, -dx, -dz) : [0, 0];
+      // đẩy qua tryMove: sát vách thì trượt dọc vách thay vì bỏ cả cú đẩy (trước đây cả hai đứng im lồng vào nhau); phần xe
+      // này không nhích được thì xe kia gánh (trừ quân đã hạ bệ)
+      const pushA = over * wa;
+      const [mxa, mza] = shove(this, a, -nx * pushA + lax * over, -nz * pushA + laz * over);
+      const lackA = pushA + (mxa * nx + mza * nz); // phần đẩy dọc pháp tuyến a chưa đi được
+      const pushB = over * (1 - wa) + (pb ? 0 : lackA > 0 ? lackA : 0);
+      const [mxb, mzb] = shove(this, b, nx * pushB + lbx * over, nz * pushB + lbz * over);
+      const lackB = pushB - (mxb * nx + mzb * nz);
+      if (lackB > 1e-6 && !pa && lackA <= 1e-6) shove(this, a, -nx * lackB, -nz * lackB);
     }
   }
 }

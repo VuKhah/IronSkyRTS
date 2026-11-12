@@ -248,3 +248,67 @@ describe("địa hình bậc thang: mũi xe và mặt cầu", () => {
     }
   });
 });
+
+describe("xe ngược chiều qua nhau (12/11/2026)", () => {
+  /**
+   * Trước khi sửa: hai Xe Vận Tải đi đúng thẳng hàng ngược chiều (chung một đường A*, chuyện thường giữa mỏ và nhà) chỉ
+   * bị đẩy dọc đường nối tâm, triệt tiêu với lực tiến: kẹt mãi giữa đồng và trong lối dốc 10 m. Giờ cả hai lách sang bên
+   * (thẳng hàng tuyệt đối thì cùng giữ bên phải), chạm nhau thì cú đẩy trượt dọc vách.
+   */
+  const cases: [string, [number, number], [number, number]][] = [
+    ["đất bằng, thẳng hàng", [-70, -50], [-30, -50]],
+    ["xuyên lối dốc, thẳng hàng", [-50, 0], [-20, 0]],
+    ["lối dốc, sát mép dốc", [-50, 3.2], [-20, 3.2]]
+  ];
+  for (const [name, p, q] of cases)
+    it(name, () => {
+      const w = world();
+      const a = spawn(w, "hauler", p[0], p[1]);
+      const b = spawn(w, "hauler", q[0], q[1]);
+      a.manual = b.manual = true;
+      w.step([
+        { side: 0, order: { t: "move", ids: [a.id], x: q[0], z: q[1] } },
+        { side: 0, order: { t: "move", ids: [b.id], x: p[0], z: p[1] } }
+      ]);
+      for (let t = 0; t < sec(30); t++) w.step([]);
+      expect(Math.hypot(a.x - q[0], a.z - q[1]), "A tới nơi").toBeLessThan(2.5);
+      expect(Math.hypot(b.x - p[0], b.z - p[1]), "B tới nơi").toBeLessThan(2.5);
+    });
+});
+
+describe("chỗ đứng khai thác quanh mỏ (12/11/2026)", () => {
+  // Lỗi 11/11/2026: mỏ Dầu (±97, ±40) của Cao Nguyên Ba Bậc sát chân vách, chỗ đứng rơi lên đỉnh vách; xe đứng mãi phía trên mỏ.
+  const w = new World(1, { sandbox: true, map: "standard" });
+  it("mọi chỗ đứng cùng tầng với mỏ, không trên dốc, trong tầm khai thác", () => {
+    for (const m of w.mines)
+      for (let i = 0; i < 3; i++) {
+        const fake = { id: 1e6 + i } as Unit;
+        const keep = m.slots;
+        m.slots = [1e6, 1e6 + 1, 1e6 + 2];
+        const [x, z] = w.slotPos(m, fake);
+        m.slots = keep;
+        const at = `mỏ (${m.x}, ${m.z}) chỗ ${i}: (${x.toFixed(1)}, ${z.toFixed(1)})`;
+        expect(w.map.tierAt(x, z), at).toBe(w.map.tierAt(m.x, m.z));
+        expect(w.map.onRamp(x, z), at).toBe(false);
+        expect(Math.hypot(x - m.x, z - m.z), at).toBeLessThan(7);
+      }
+  });
+  it("hai mỏ đối xứng qua tâm có chỗ đứng đối xứng qua tâm", () => {
+    for (const m of w.mines) {
+      const o = w.mines.find((k) => k.x === -m.x && k.z === -m.z);
+      if (!o) continue;
+      for (let i = 0; i < 3; i++) {
+        const fake = { id: 1e6 + i } as Unit;
+        const ids = [1e6, 1e6 + 1, 1e6 + 2];
+        const [km, ko] = [m.slots, o.slots];
+        m.slots = ids;
+        o.slots = ids;
+        const [x, z] = w.slotPos(m, fake);
+        const [x2, z2] = w.slotPos(o, fake);
+        m.slots = km;
+        o.slots = ko;
+        expect([x2, z2], `mỏ (${m.x}, ${m.z}) chỗ ${i}`).toEqual([-x, -z]);
+      }
+    }
+  });
+});

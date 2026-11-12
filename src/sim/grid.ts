@@ -269,12 +269,13 @@ export class Grid {
   /**
    * Điểm đi được gần (x, z) nhất, tìm theo từng vòng ô; trả về chính (x, z) nếu nó đã đi được.
    * Hai ô cách đều thì ô xét trước thắng; nửa bản đồ bên kia xét theo thứ tự soi gương để công bằng.
+   * `accept` (tùy chọn): chỉ nhận ô qua được điều kiện này (theo tâm ô), ví dụ cùng tầng với mỏ.
    */
-  nearestFree(x: number, z: number, maxRing = 15): [number, number] | null {
+  nearestFree(x: number, z: number, maxRing = 15, accept?: (cx: number, cz: number) => boolean): [number, number] | null {
     const cx0 = this.colOf(x, z);
     const cz0 = this.rowOf(x, z);
     const C = this.cols;
-    if (!this.blockedIdx(cz0 * C + cx0) && Math.abs(x) < this.halfW && Math.abs(z) < this.halfH) return [x, z];
+    if (!this.blockedIdx(cz0 * C + cx0) && Math.abs(x) < this.halfW && Math.abs(z) < this.halfH && (!accept || accept(x, z))) return [x, z];
     const s = canonPoint(x, z) ? 1 : -1;
     for (let r = 1; r <= maxRing; r++) {
       let best = -1;
@@ -292,7 +293,7 @@ export class Grid {
           const ddx = this.centerX(cx) - x;
           const ddz = this.centerZ(cz) - z;
           const d = ddx * ddx + ddz * ddz;
-          if (d < bestD) {
+          if (d < bestD && (!accept || accept(this.centerX(cx), this.centerZ(cz)))) {
             bestD = d;
             best = i;
           }
