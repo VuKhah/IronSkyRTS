@@ -1,8 +1,9 @@
 /** Di chuyển một xe: quay thân, bước tới, đi theo đường A*, né vách, đẩy xe không chồng lên nhau. */
 import { RULES, UNITS } from "../content";
-import { dist2, turnToward } from "../fmath";
+import { dcos, DEG, dist2, dsin, turnToward } from "../fmath";
+import { orcaLine, orcaSolve, type OrcaLine } from "../orca";
 import type { Target, Unit } from "../types";
-import { DT, sec, MOVER_SHARE, WALL_PUSH, GOAL_SHIFT, PIVOT_COS, ALIGNED_COS, TMP, traverseStep } from "./shared";
+import { DT, sec, BODY_W, BODY_L, MOVER_SHARE, WALL_PUSH, GOAL_SHIFT, PIVOT_COS, ALIGNED_COS, TMP, traverseStep } from "./shared";
 import { World } from "./core";
 
 /** Hai xe cùng chạy coi là "ngược chiều" khi góc giữa hai hướng thân lớn hơn 120° (cos < −0,5). */
@@ -11,22 +12,31 @@ const HEAD_ON_COS = -0.5;
 const PASS_LOOK = 6;
 /** Lách sang bên mỗi tick khi chưa chạm (m; 1,5 m/s, chậm hơn nhiều so với tốc độ chạy). */
 const PASS_STEER = 0.15;
-/** Né xe chủ động: nhìn trước chừng này giây theo vận tốc hiện tại. */
+/** ORCA: không va xe nào trong chừng này giây tới (theo vận tốc hiện tại của xe kia). */
 const AVOID_T = 2.5;
-/** Xét cặp xe trong chừng này mét (đủ cho hai xe 5 m/s lao vào nhau trong AVOID_T giây). */
+/** Xét láng giềng trong chừng này mét (đủ cho hai xe 5 m/s lao vào nhau trong AVOID_T giây). */
 const AVOID_LOOK = 26;
-/** Hai xe đi qua nhau phải cách tâm ít nhất (tổng nửa bề ngang) × chừng này, không thì coi là sắp va. */
-const AVOID_R = 1.35;
-/** Lực lái tối đa so với hướng muốn đi (1 = lệch tối đa 45°). */
-const AVOID_GAIN = 1.1;
-/** Xe phải nhường phanh tới chừng này phần tốc độ khi va chạm sắp xảy ra ngay. */
-const AVOID_BRAKE = 0.6;
-/** Hai vận tốc lệch nhau dưới 45° (cos² > 0,5) là cùng chiều (bám đuôi), không phải cắt ngang. */
-const SAME_COS2 = 0.5;
-/** Xe bám đuôi (cùng chiều, xe kia ngay phía trước) phanh tới chừng này phần tốc độ. */
-const FOLLOW_BRAKE = 0.35;
-/** Lực lái nhỏ dần khi cách đích dưới chừng này mét. */
+/** Số láng giềng gần nhất tối đa mỗi xe xét (như RVO2 maxNeighbors). */
+const ORCA_NEIGHBORS = 10;
+/** Bán kính chung = tổng tầm với thân va chạm × chừng này (chừa khe khi đi qua nhau). */
+const ORCA_PAD = 1.1;
+/** Xe rỗng gặp xe chở hàng gánh chừng này phần trách nhiệm né (xe chở hàng giữ làn hơn). */
+const ORCA_YIELD = 0.75;
+/** Vận tốc ORCA chọn phải nằm trong nón ±25° quanh mũi xe (xe không trượt ngang; lệch > 30° là phải xoay tại chỗ). */
+const ORCA_CONE_COS = dcos(25 * DEG);
+const ORCA_CONE_SIN = dsin(25 * DEG);
+/** ORCA giữ xe gần như đứng chừng này tick liền (1,5 s) thì thôi né xe đứng yên trong ORCA_RELEASE tick (3 s) để lách qua. */
+const ORCA_HOLD_MAX = 15;
+const ORCA_RELEASE = 30;
+/** Xe trong đội cách ô dưới chừng này mét là "đúng ô" (ORCA không cho hai xe đúng ô cùng đội né nhau). */
+const SQUAD_IN_SLOT = 2.5;
+/** Hướng muốn đi lệch mũi quá 40° thì xe sắp xoay tại chỗ (không giải ORCA, tick sau xe đứng xoay). */
+const ORCA_SKIP_COS = dcos(40 * DEG);
+/** Độ lệch hướng / phanh né xe nhỏ dần khi cách đích dưới chừng này mét. */
 const AVOID_FADE = 9;
+/** Đích ở phía sau và gần hơn chừng này mét thì xe lùi thẳng (không xoay 180°), tốc độ × REVERSE_SPEED. */
+const REVERSE_MAX = 6;
+const REVERSE_SPEED = 0.5;
 /** Bán kính chấp nhận của điểm qua giữa đường (m). */
 const WAYPOINT_R = 2.5;
 /** Điểm dò thân xe nằm ở chừng này lần kích thước thân thật (chừa 5% cho góc bo / sai số lưới 2 m). */
@@ -63,8 +73,9 @@ function turnHull(this: World, u: Unit, dx: number, dz: number): boolean {
 }
 
 /**
- * Hướng đi khi né xe (vector đơn vị) = hướng muốn đi (dx, dz) + lực lái `avX/avZ` × AVOID_GAIN, lực lái nhỏ dần khi cách đích
- * (gx, gz) dưới AVOID_FADE m (để xe vẫn đỗ đúng chỗ đỗ / ô đội hình). Không có lực lái đáng kể thì [0, 0].
+ * Hướng đi khi né xe (vector đơn vị) = hướng muốn đi (dx, dz) + độ lệch hướng ORCA `avX/avZ` (hướng ORCA chọn − hướng muốn đi,
+ * tính ở cuối tick trước), độ lệch nhỏ dần khi cách đích (gx, gz) dưới AVOID_FADE m (để xe vẫn đỗ đúng chỗ đỗ / ô đội hình).
+ * Không lệch đáng kể thì [0, 0].
  */
 function steer(this: World, u: Unit, dx: number, dz: number, gx: number, gz: number): [number, number] {
   const a2 = u.avX * u.avX + u.avZ * u.avZ;
@@ -72,9 +83,8 @@ function steer(this: World, u: Unit, dx: number, dz: number, gx: number, gz: num
   const dg = Math.sqrt(dist2(u.x, u.z, gx, gz));
   const fade = dg >= AVOID_FADE ? 1 : dg <= 3 ? 0 : (dg - 3) / (AVOID_FADE - 3);
   if (fade <= 0) return [0, 0];
-  const k = AVOID_GAIN * fade;
-  const sx = dx + u.avX * k;
-  const sz = dz + u.avZ * k;
+  const sx = dx + u.avX * fade;
+  const sz = dz + u.avZ * fade;
   const l = Math.sqrt(sx * sx + sz * sz);
   return l < 1e-6 ? [0, 0] : [sx / l, sz / l];
 }
@@ -102,8 +112,14 @@ function stepToward(this: World, u: Unit, x: number, z: number, d: number): void
   }
   let dx = (x - u.x) / d;
   let dz = (z - u.z) / d;
-  // né xe chủ động (xem `steer`): chỉ khi còn đi xa, nhích chỉnh hàng thì thôi
-  if (d >= 3) {
+  // LÙI XE: đích ở phía sau (lệch mũi > 120°) và gần (dưới REVERSE_MAX m) thì lùi thẳng, nửa tốc độ, không quay thân. Không thì
+  // xe về ô ở hàng sau phải xoay 180° ngay giữa hàng (quệt xe bên cạnh), đi vài mét rồi xoay lại
+  const back = d < REVERSE_MAX && dx * u.hx + dz * u.hz < -0.5;
+  // né xe (ORCA, xem `orcaPass` / `steer`): chỉ khi còn đi xa, nhích chỉnh hàng thì thôi
+  if (d >= 3 && !back) {
+    const v = this.speedOf(u) * (this.mobilized(u) ? 1 + RULES.abilities.mobilize.speed : 1) * this.moveFactor(u, dx, dz);
+    u.prefX = dx * v;
+    u.prefZ = dz * v;
     const [sx, sz] = this.steer(u, dx, dz, x, z);
     if (sx !== 0 || sz !== 0) {
       dx = sx;
@@ -111,9 +127,9 @@ function stepToward(this: World, u: Unit, x: number, z: number, d: number): void
     }
   }
   // đi xa (từ 3 m): quay thân về hướng đi trước, lệch nhiều thì xoay tại chỗ; nhích chỉnh hàng thì khỏi quay thân
-  if (d >= 3 && !this.turnHull(u, dx, dz)) return;
+  if (d >= 3 && !back && !this.turnHull(u, dx, dz)) return;
   const rally = this.mobilized(u) ? 1 + RULES.abilities.mobilize.speed : 1;
-  const step = Math.min(this.speedOf(u) * DT * rally * this.moveFactor(u, dx, dz) * this.brakeNear(u, x, z), d);
+  const step = Math.min(this.speedOf(u) * DT * rally * this.moveFactor(u, dx, dz) * this.brakeNear(u, x, z) * (back ? REVERSE_SPEED : 1), d);
   const ox = u.x;
   const oz = u.z;
   this.tryMove(u, u.x + dx * step, u.z + dz * step);
@@ -333,6 +349,11 @@ function follow(this: World, u: Unit): boolean {
   // theo hướng đó rồi chạy (không trượt ngang), tốc độ nhân hệ số phanh. Gần đích thì lực lái nhỏ dần để vẫn đỗ đúng chỗ.
   const gx = u.path[u.path.length - 2];
   const gz = u.path[u.path.length - 1];
+  if (fd > 1e-6) {
+    const v = this.speedOf(u) * rally * this.moveFactor(u, fdx / fd, fdz / fd);
+    u.prefX = (fdx / fd) * v;
+    u.prefZ = (fdz / fd) * v;
+  }
   const brake = this.brakeNear(u, gx, gz);
   const [sx, sz] = this.steer(u, fd > 1e-6 ? fdx / fd : u.hx, fd > 1e-6 ? fdz / fd : u.hz, gx, gz);
   if (sx !== 0 || sz !== 0) {
@@ -429,9 +450,6 @@ function shove(w: World, u: Unit, dx: number, dz: number): [number, number] {
   return [u.x - ox, u.z - oz];
 }
 
-/** Thân xe để tính va chạm: nửa bề ngang = bán kính × 0,85, nửa chiều dài = halfLen × 0,9 (thùng / giáp hơi tròn góc). */
-const BODY_W = 0.85;
-const BODY_L = 0.9;
 const BODIES = new Map<string, readonly [number, number, number]>();
 /** [nửa ngang, nửa dài, nửa đường chéo] của thân xe (tính một lần cho mỗi loại quân). */
 function bodyOf(u: Unit): readonly [number, number, number] {
@@ -486,64 +504,97 @@ function yieldsTo(a: Unit, b: Unit): number {
 }
 
 /**
- * NÉ XE CHỦ ĐỘNG (12/11/2026): hai xe CÙNG PHE (không cùng đội hình, ít nhất một xe đang chạy) theo vận tốc tick này có sắp đi sát nhau
- * không: thời điểm gần nhau nhất t (giây) trong [0, AVOID_T] (đã qua lúc gần nhất thì t = 0, tức khoảng cách lúc này), khoảng
- * cách tâm lúc đó < (tổng tầm với thân thật theo hướng hai tâm: nửa bề ngang khi đối đầu, nửa dài + nửa ngang khi cắt ngang) ×
- * AVOID_R. Có thì mỗi
- * xe đang chạy nhận lực lái sang bên, về phía xa chỗ xe kia sẽ có mặt lúc t (thẳng hàng thì giữ bên phải, `sideStep`), mạnh dần
- * khi t nhỏ và khi càng sát; xe phải nhường (rỗng gặp xe chở hàng, `yieldsTo`) phanh thêm. Xe đứng yên là vật cản: chỉ xe chạy
- * lái vòng. Dùng ở tick sau (`steer`), như tài xế thấy trước rồi bẻ lái, không đợi chạm mới đẩy.
+ * NÉ XE BẰNG ORCA (12/11/2026, thay bản dự đoán bẻ lái): mỗi xe mặt đất đang tự đi (có vận tốc muốn đi `prefX/prefZ`, không
+ * hạ bệ) chọn vận tốc cho tick sau bằng `orcaSolve`, từ trạng thái lúc mọi xe vừa đi xong (không phụ thuộc thứ tự mã xe):
+ * - láng giềng: tối đa ORCA_NEIGHBORS xe gần nhất CÙNG PHE trong AVOID_LOOK m, KỂ CẢ xe cùng đội hình (xe về ô của mình đi
+ *   xuyên qua đội được). Xe địch không né: lao vào giao chiến, chạm thì luật đẩy lo (né cả xe địch thì Lynx bẻ lái tránh chính
+ *   mục tiêu trước mặt);
+ * - bán kính chung: tổng tầm với THÂN VA CHẠM theo hướng hai tâm (nửa ngang khi đối đầu, nửa dài + nửa ngang khi cắt ngang) ×
+ *   ORCA_PAD; tâm đã gần hơn thế (tầm với theo một trục là ước lượng thừa) thì coi như vừa chạm, không bắt bật ra trong một tick;
+ * - trách nhiệm: hai xe cùng né thì chia đôi; xe rỗng gặp xe chở hàng gánh ORCA_YIELD; xe đứng yên / đang nhích / hạ bệ là vật
+ *   cản, xe chạy gánh trọn;
+ * - xe không trượt ngang, không lùi: hai đường cứng giữ vận tốc trong nón ±ORCA_CONE quanh mũi (đứng yên luôn hợp lệ). Hướng muốn
+ *   đi đã lệch mũi quá nón (sắp xoay tại chỗ) thì không giải.
+ * Kết quả: `brake` = |v| / |v muốn|, `avX/avZ` = hướng v − hướng muốn đi; tick sau `follow` / `stepToward` dùng qua `steer` /
+ * `brakeNear` (nhạt dần gần đích).
  */
-function avoidPair(this: World, a: Unit, b: Unit, dx: number, dz: number, ba: readonly [number, number, number], bb: readonly [number, number, number]): void {
-  const vax = a.moved ? (a.x - a.px) / DT : 0;
-  const vaz = a.moved ? (a.z - a.pz) / DT : 0;
-  const vbx = b.moved ? (b.x - b.px) / DT : 0;
-  const vbz = b.moved ? (b.z - b.pz) / DT : 0;
-  const wx = vbx - vax;
-  const wz = vbz - vaz;
-  const w2 = wx * wx + wz * wz;
-  if (w2 < 0.04) return;
-  // đã qua lúc gần nhau nhất (t ≤ 0) mà hai thân vẫn còn sát (trong vòng R): vẫn né theo khoảng cách lúc này. Không thì xe
-  // phanh chờ xe kia cắt ngang qua, vừa tới lúc gần nhất là thôi phanh, lao vào hông / đuôi xe kia
-  const t = Math.max(0, -(dx * wx + dz * wz) / w2);
-  if (t > AVOID_T) return;
-  const cx = dx + wx * t;
-  const cz = dz + wz * t;
-  const c2 = cx * cx + cz * cz;
-  // tầm với của THÂN THẬT theo hướng hai tâm lúc gần nhau nhất: đối đầu lệch ngang thì là nửa bề ngang, cắt ngang (mũi xe này
-  // vào hông xe kia) thì là nửa thân dài + nửa bề ngang. Tính theo bán kính thì cắt ngang chỉ thấy sắp va khi đã cách 2 m
-  const cl = Math.sqrt(c2);
-  const [nx, nz] = cl > 1e-6 ? [cx / cl, cz / cl] : [a.hz, -a.hx];
-  const reachOf = (u: Unit, bd: readonly [number, number, number]): number =>
-    bd[1] * Math.abs(u.hx * nx + u.hz * nz) + bd[0] * Math.abs(u.hz * nx - u.hx * nz);
-  const R = (reachOf(a, ba) + reachOf(b, bb)) * AVOID_R;
-  if (c2 >= R * R) return;
-  const k = (1 - t / AVOID_T) * 0.6 + (1 - Math.sqrt(c2) / R) * 0.4;
-  const y = yieldsTo(a, b);
-  // cùng chiều (góc hai vận tốc < 45°): không bẻ lái, xe phía sau phanh bám đuôi
-  const va2 = vax * vax + vaz * vaz;
-  const vb2 = vbx * vbx + vbz * vbz;
-  const dot = vax * vbx + vaz * vbz;
-  const same = va2 > 0 && vb2 > 0 && dot > 0 && dot * dot > SAME_COS2 * va2 * vb2;
-  // (ox, oz): từ xe u tới xe kia lúc này; u chỉ phản ứng khi xe kia ở PHÍA TRƯỚC nó (tài xế nhìn đường trước mặt)
-  const push = (u: Unit, ox: number, oz: number, px: number, pz: number, yields: boolean): void => {
-    if (!u.moved || this.anchored(u)) return;
-    // chỉ phản ứng khi xe kia nằm trong NÓN 60° PHÍA TRƯỚC mũi (|góc| < 60°): xe chạy song song sát bên hay xe phía sau thì
-    // không né (không thì bẻ lái qua lại mãi, "nhảy múa" của các thuật toán né va chạm)
-    const ahead = ox * u.hx + oz * u.hz;
-    if (ahead <= 0 || ahead * ahead < 0.25 * (ox * ox + oz * oz)) return;
-    if (same) {
-      // bám đuôi: phanh nhẹ (hai xe hội tụ về cùng một điểm không phải phanh gấp)
-      u.brake = Math.min(u.brake, 1 - FOLLOW_BRAKE * k);
-      return;
-    }
-    const [lx, lz] = sideStep(u, px, pz);
-    u.avX += lx * k;
-    u.avZ += lz * k;
-    if (yields) u.brake = Math.min(u.brake, 1 - AVOID_BRAKE * k);
+function orcaPass(this: World, g: readonly Unit[]): void {
+  const lines: OrcaLine[] = [];
+  const near: { u: Unit; d2: number }[] = [];
+  const res = { x: 0, z: 0 };
+  const vel = (u: Unit): [number, number] => (u.moved ? [(u.x - u.px) / DT, (u.z - u.pz) / DT] : [0, 0]);
+  const solver = (u: Unit): boolean => (u.prefX !== 0 || u.prefZ !== 0) && !this.anchored(u);
+  // gần như không tiến tick này (vận tốc thật < 25% vận tốc muốn đi, hoặc không đi): đọc trạng thái chụp, không phụ thuộc thứ tự
+  const crawling = (u: Unit): boolean => {
+    if (!u.moved) return true;
+    const [x, z] = vel(u);
+    return x * x + z * z < 0.0625 * (u.prefX * u.prefX + u.prefZ * u.prefZ);
   };
-  push(a, dx, dz, cx, cz, y > 0);
-  push(b, -dx, -dz, -cx, -cz, y < 0);
+  for (const a of g) {
+    const held = a.orcaHeld;
+    a.orcaHeld = 0;
+    if (!solver(a)) continue;
+    const p = Math.sqrt(a.prefX * a.prefX + a.prefZ * a.prefZ);
+    // tiến độ THẬT tick này (không theo hệ số phanh: xe bị ORCA bẻ thân lệch rồi lại bị giữ thì phanh dao động 1 ↔ 0,1 mỗi tick)
+    const slow = crawling(a);
+    const next = (): number => (held + 1 < ORCA_HOLD_MAX + ORCA_RELEASE ? held + 1 : 0);
+    // gần như không tiến được đủ ORCA_HOLD_MAX tick liền (xe đứng yên chắn giữa lối dốc hẹp, hai xe đối đầu trong lối hẹp: ORCA
+    // cấm lại gần mà không biết vách hai bên, chờ mãi): trong ORCA_RELEASE tick tiếp theo thôi né xe đứng yên / cũng đang kẹt,
+    // xe chạm vào rồi lách qua theo luật va chạm (xe chạy chịu phần lớn cú đẩy, xe chở hàng giữ làn), như các bản RVO trong game
+    const release = held >= ORCA_HOLD_MAX;
+    a.orcaHeld = release || slow ? next() : 0;
+    // hướng muốn đi lệch mũi quá ORCA_SKIP: xe sắp / đang xoay tại chỗ, chưa chạy. Lệch ít hơn (kể cả ngoài nón) vẫn giải trong
+    // nón: bỏ qua cả xe vừa bị ORCA bẻ thân lệch quá nón thì tick đó nó lao thẳng hết tốc, không phanh không né
+    if (a.prefX * a.hx + a.prefZ * a.hz < ORCA_SKIP_COS * p) continue;
+    near.length = 0;
+    for (const b of g) {
+      if (b === a || b.side !== a.side) continue;
+      // xe cùng đội hình không né nhau bằng ORCA: đội hình lo khoảng cách, xe đúng ô nhường đường cho xe đang về ô (`separate`).
+      // Cho né nhau thì xe đúng ô cũng lách, cả đội lệch hàng; xe về ô gặp hàng xe đứng (khe hẹp hơn thân) thì chỉ biết phanh
+      if (a.squad !== 0 && a.squad === b.squad) continue;
+      // đã kẹt: thôi né xe đứng yên và xe cũng đang kẹt (hai xe đối đầu chờ nhau trong lối hẹp); luật va chạm gỡ tiếp
+      if (release && crawling(b)) continue;
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      if (dx >= AVOID_LOOK || dx <= -AVOID_LOOK || dz >= AVOID_LOOK || dz <= -AVOID_LOOK) continue;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < AVOID_LOOK * AVOID_LOOK) near.push({ u: b, d2 });
+    }
+    if (!near.length) continue;
+    near.sort((m, n) => m.d2 - n.d2 || m.u.id - n.u.id);
+    // hai đường cứng: nón ±ORCA_CONE quanh mũi (vùng được phép ở bên trái hướng của đường)
+    const c = ORCA_CONE_COS;
+    const s = ORCA_CONE_SIN;
+    lines.length = 0;
+    lines.push({ px: 0, pz: 0, dx: a.hx * c + a.hz * s, dz: -a.hx * s + a.hz * c });
+    lines.push({ px: 0, pz: 0, dx: -(a.hx * c - a.hz * s), dz: -(a.hx * s + a.hz * c) });
+    const [vax, vaz] = vel(a);
+    const ba = bodyOf(a);
+    for (let k = 0; k < near.length && k < ORCA_NEIGHBORS; k++) {
+      const b = near[k].u;
+      const bb = bodyOf(b);
+      const rx = b.x - a.x;
+      const rz = b.z - a.z;
+      const d = Math.sqrt(near[k].d2);
+      const nx = d > 1e-6 ? rx / d : a.hz;
+      const nz = d > 1e-6 ? rz / d : -a.hx;
+      const reach = (u: Unit, bd: readonly [number, number, number]): number => bd[1] * Math.abs(u.hx * nx + u.hz * nz) + bd[0] * Math.abs(u.hz * nx - u.hx * nz);
+      const r = Math.min((reach(a, ba) + reach(b, bb)) * ORCA_PAD, d * 0.98);
+      const [vbx, vbz] = vel(b);
+      const y = yieldsTo(a, b);
+      const share = !solver(b) ? 1 : y > 0 ? ORCA_YIELD : y < 0 ? 1 - ORCA_YIELD : 0.5;
+      const L = { px: 0, pz: 0, dx: 0, dz: 0 };
+      orcaLine(rx, rz, vax, vaz, vbx, vbz, r, AVOID_T, share, DT, L);
+      lines.push(L);
+    }
+    orcaSolve(lines, 2, p, a.prefX, a.prefZ, res);
+    const v = Math.sqrt(res.x * res.x + res.z * res.z);
+    a.brake = Math.min(1, v / p);
+    if (v > 1e-3) {
+      a.avX = res.x / v - a.prefX / p;
+      a.avZ = res.z / v - a.prefZ / p;
+    }
+  }
 }
 
 function separate(this: World): void {
@@ -555,21 +606,9 @@ function separate(this: World): void {
     u.brake = 1;
     if (u.air === "none" && u.hp > 0) g.push(u);
   }
-  // NÉ XE: một lượt riêng, đọc vị trí và vận tốc lúc mọi xe vừa đi xong, TRƯỚC mọi cú đẩy va chạm. Gộp vào vòng đẩy bên dưới
-  // thì cặp sau đọc vị trí đã bị cặp trước xô, kết quả đổi theo thứ tự mã xe (đảo thứ tự thả xe thì lệch một chuyến hàng).
-  // Chỉ né quân mình, khác đội hình (giao thông của một phe); xe địch thì lao vào giao chiến, chạm thì luật đẩy lo (né cả xe
-  // địch thì Lynx lao tới bắn lại bẻ lái tránh chính mục tiêu đứng chắn trước mặt)
-  for (let i = 0; i < g.length; i++) {
-    const a = g[i];
-    for (let j = i + 1; j < g.length; j++) {
-      const b = g[j];
-      if (!(a.moved || b.moved) || a.side !== b.side || (a.squad !== 0 && a.squad === b.squad)) continue;
-      const dx = b.x - a.x;
-      const dz = b.z - a.z;
-      if (dx >= AVOID_LOOK || dx <= -AVOID_LOOK || dz >= AVOID_LOOK || dz <= -AVOID_LOOK || dx * dx + dz * dz >= AVOID_LOOK * AVOID_LOOK) continue;
-      this.avoidPair(a, b, dx, dz, bodyOf(a), bodyOf(b));
-    }
-  }
+  // NÉ XE (ORCA): một lượt riêng, đọc vị trí và vận tốc lúc mọi xe vừa đi xong, TRƯỚC mọi cú đẩy va chạm (gộp vào vòng đẩy
+  // bên dưới thì cặp sau đọc vị trí đã bị cặp trước xô, kết quả đổi theo thứ tự mã xe)
+  this.orcaPass(g);
   for (let i = 0; i < g.length; i++) {
     const a = g[i];
     const ra = UNITS[a.kind].radius;
@@ -578,13 +617,10 @@ function separate(this: World): void {
       const b = g[j];
       const rb = UNITS[b.kind].radius;
       const bb = bodyOf(b);
-      // Hai xe CÙNG MỘT ĐỘI HÌNH: va chạm theo hình tròn bán kính = nửa bề ngang × 0,8, vì khoảng hàng của đội hình đang tính
-      // theo bán kính (tính theo thân dài thì Pháo 9 m kẹt giữa hai Titan đoạn hậu; đổi cùng lúc với ORCA). Còn lại (Xe Vận
-      // Tải, xe lẻ, xe khác đội): theo HÌNH CHỮ NHẬT đúng thân xe, không thì mũi xe chui vào hông xe kia gần 1 m khi cắt ngang.
-      const sameSq = a.squad !== 0 && a.squad === b.squad;
+      // va chạm theo HÌNH CHỮ NHẬT đúng thân xe cho mọi cặp, kể cả hai xe cùng đội hình (từ 12/11/2026, khi khoảng hàng đội
+      // hình đã tính theo chiều dài thân; trước đó cùng đội là hình tròn nửa bề ngang × 0,8 nên hai hàng Titan lồng nhau dọc thân)
       const both = a.moved && b.moved;
-      const min = (ra + rb) * 0.8;
-      const touch = sameSq ? min : ba[2] + bb[2];
+      const touch = ba[2] + bb[2];
       // hai xe cùng chạy thì nhìn xa thêm PASS_LOOK để kịp lách trước khi chạm
       const near = both ? Math.max(touch, ra + rb + PASS_LOOK) : touch;
       const dx = b.x - a.x;
@@ -611,14 +647,11 @@ function separate(this: World): void {
       // ra mỏ và xe về nhà đi chung một lối): khi đó lực đẩy dọc đường nối hai tâm triệt tiêu đúng bằng phần vừa tiến, kẹt mãi
       const headOn = both && a.hx * b.hx + a.hz * b.hz < HEAD_ON_COS && dx * a.hx + dz * a.hz > 0 && -dx * b.hx - dz * b.hz > 0;
       // độ lồng (over) và hướng đẩy (nx, nz: từ a sang b)
-      let over = min - d;
-      if (!sameSq) {
-        const c = boxOverlap(a, ba, b, bb, dx, dz);
-        over = c[0];
-        if (over > 0) {
-          nx = c[1];
-          nz = c[2];
-        }
+      const c = boxOverlap(a, ba, b, bb, dx, dz);
+      const over = c[0];
+      if (over > 0) {
+        nx = c[1];
+        nz = c[2];
       }
       if (over <= 0) {
         // chưa chạm: tài xế thấy nhau từ xa thì cùng lách sang bên, chỉ khi giữ nguyên làn thì sẽ tông
@@ -638,11 +671,24 @@ function separate(this: World): void {
       // của tài xế; đối xứng hai phe vì chỉ xét hàng trên xe). Hai xe đối đầu ở một góc sát vách: xe bị vách chặn không lách
       // được, đường đi lại kéo cả hai về cùng một điểm góc, giằng co mãi nếu chia đều.
       const ya = a.moved === b.moved ? yieldsTo(a, b) : 0;
-      const wa = pa ? 0 : pb ? 1 : ya > 0 ? MOVER_SHARE : ya < 0 ? 1 - MOVER_SHARE : a.moved === b.moved ? 0.5 : a.moved ? MOVER_SHARE : 1 - MOVER_SHARE;
+      let wa = pa ? 0 : pb ? 1 : ya > 0 ? MOVER_SHARE : ya < 0 ? 1 - MOVER_SHARE : a.moved === b.moved ? 0.5 : a.moved ? MOVER_SHARE : 1 - MOVER_SHARE;
       // xe chạy gặp xe đứng, hoặc hai xe chạy đối đầu: ngoài đẩy ra còn LÁCH SANG BÊN (vuông góc hướng chạy, phía xa xe kia);
       // đối đầu mà có xe được ưu tiên thì xe đó giữ làn, xe nhường lách
-      const aSide = !pa && ((a.moved && !b.moved) || (headOn && ya >= 0));
-      const bSide = !pb && ((b.moved && !a.moved) || (headOn && ya <= 0));
+      let aSide = !pa && ((a.moved && !b.moved) || (headOn && ya >= 0));
+      let bSide = !pb && ((b.moved && !a.moved) || (headOn && ya <= 0));
+      // CÙNG ĐỘI HÌNH, một xe đúng ô, một xe đang về ô (lệch ô từ SQUAD_IN_SLOT m, kể cả xe đứng chờ phía trước đội): xe đúng ô
+      // NHƯỜNG ĐƯỜNG (chịu phần lớn cú đẩy và lách sang bên) rồi tự về ô; xe về ô đi tiếp. Khe giữa hai xe trong hàng hẹp hơn
+      // thân xe lớn (Titan cạnh nhau hở 3,2 m, Pháo rộng 4,6 m): không ai nhường thì xe về ô kẹt ngoài hàng, hoặc bị cả hàng
+      // xô theo (Pháo đứng trước đội bị hàng sau xô lên 120 m trong 22 giây)
+      if (!pa && !pb && a.squad !== 0 && a.squad === b.squad) {
+        const offA = a.slotOff >= SQUAD_IN_SLOT;
+        const offB = b.slotOff >= SQUAD_IN_SLOT;
+        if (offA !== offB) {
+          wa = offA ? 1 - MOVER_SHARE : MOVER_SHARE;
+          aSide = !offA;
+          bSide = !offB;
+        }
+      }
       const [lax, laz] = aSide ? sideStep(a, dx, dz) : [0, 0];
       const [lbx, lbz] = bSide ? sideStep(b, -dx, -dz) : [0, 0];
       // Đẩy qua tryMove: sát vách thì trượt dọc vách thay vì bỏ cả cú đẩy (trước đây cả hai đứng im lồng vào nhau). Hai cú đẩy
@@ -687,7 +733,7 @@ function anchored(this: World, u: Unit): boolean {
   return !!dep && u.still >= sec(dep.time);
 }
 
-const methods = { turnHull, stepToward, setIdle, halt, setPath, bodyContact, wallNormal, clearGoal, tryMove, terrainFactor, moveFactor, follow, chase, separate, keepOffWalls, anchored, steer, avoidPair, brakeNear };
+const methods = { turnHull, stepToward, setIdle, halt, setPath, bodyContact, wallNormal, clearGoal, tryMove, terrainFactor, moveFactor, follow, chase, separate, keepOffWalls, anchored, steer, orcaPass, brakeNear };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

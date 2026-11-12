@@ -29,6 +29,9 @@ export const SALVAGE_RETRIES = 5;
 
 /** Đội hình: khe hở giữa hai thân xe cạnh nhau (m). Hình dạng từng kiểu đội hình nằm ở `FORMATIONS` trong content.ts. */
 export const FORMATION_GAP = 1.4;
+/** Thân xe để tính va chạm: nửa bề ngang = bán kính × BODY_W, nửa chiều dài = halfLen × BODY_L (thùng / giáp hơi tròn góc). */
+export const BODY_W = 0.85;
+export const BODY_L = 0.9;
 /** Xe chậm hơn tốc độ khối được chạy nhanh hơn khối một chút để còn đuổi kịp ô của mình. */
 export const SQUAD_CATCHUP = 1.08;
 /** Khoảng cách giữa hai máy bay cạnh nhau trong đội hình mũi tên (m). */

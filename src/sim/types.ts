@@ -71,12 +71,19 @@ export interface Unit {
   stuck: number;
   moved: boolean;
   /**
-   * Né xe chủ động (12/11/2026): lực lái sang bên (vector, cộng vào hướng muốn đi) và hệ số tốc độ (1 = không phanh) tính ở cuối
-   * tick trước từ dự đoán va chạm (`separate`), dùng ở tick này khi xe đi theo đường / tới ô.
+   * Né xe (ORCA, 12/11/2026): độ lệch hướng (vector đơn vị hướng ORCA chọn − hướng muốn đi, cộng vào hướng muốn đi) và hệ số
+   * tốc độ (1 = không phanh) tính ở cuối tick trước (`separate` → `orcaPass`), dùng ở tick này khi xe đi theo đường / tới ô.
    */
   avX: number;
   avZ: number;
   brake: number;
+  /** Vận tốc muốn đi trong tick này (m/s, trước khi né), ghi khi xe đi theo đường / tới ô xa từ 3 m; 0 = không tự đi. */
+  prefX: number;
+  prefZ: number;
+  /** Xe trong đội hình: cách ô của mình bao xa (m) ở tick này; 0 khi không trong đội. Xe cùng đội: xe đúng ô nhường xe lệch ô. */
+  slotOff: number;
+  /** Số tick liền ORCA giữ xe gần như đứng (phanh < 25%); đủ ORCA_HOLD_MAX thì thôi né xe đứng yên, để luật chạm lách qua. */
+  orcaHeld: number;
   /** Đang đuổi theo mục tiêu (đường đi đang trỏ tới mục tiêu, không phải tới đích lệnh). */
   chasing: boolean;
   /** Hướng quay mặt khi tới đích / khi về lại chỗ đứng (0, 0 = giữ hướng đang đi). */

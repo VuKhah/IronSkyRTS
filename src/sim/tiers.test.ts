@@ -356,10 +356,11 @@ describe("xe cắt ngang nhau không lồng thân (12/11/2026)", () => {
     expect(Math.hypot(b.x - B2[0], b.z - B2[1]), "xe B tới nơi").toBeLessThan(2.5);
     return worst;
   };
-  it("hai Xe Vận Tải đi vuông góc qua cùng một điểm: thân thật lồng dưới 0,2 m, cả hai tới nơi", () => {
-    // né xe chủ động (12/11/2026): tầm với tính theo thân thật (mũi xe này vào hông xe kia = nửa dài + nửa ngang), trước đó
-    // tính theo bán kính nên chỉ thấy sắp va khi đã cách 2 m: lồng 0,47 m
-    expect(pass([-70, -50], [-30, -50], [-50, -70], [-50, -30]), "thân lồng nhau").toBeLessThan(0.2);
+  it("hai Xe Vận Tải đi vuông góc qua cùng một điểm: một xe lách ra sau đuôi xe kia, thân thật lồng dưới 0,6 m, cả hai tới nơi", () => {
+    // ORCA (12/11/2026): xe A phanh và lách ra sau đuôi xe B; ORCA coi mỗi xe như hình tròn (bán kính theo hướng hai tâm) nên
+    // góc thân chữ nhật lướt sát góc đuôi xe kia, còn lồng ~0,5 m thân thật (≈ phần góc bo của thân va chạm). Đánh đổi có chủ ý:
+    // giao thông thật 12 xe trên Cao Nguyên Ba Bậc chồng thân ít hơn 7 lần so với bản né dự đoán (bản đó ca này 0,10 m)
+    expect(pass([-70, -50], [-30, -50], [-50, -70], [-50, -30]), "thân lồng nhau").toBeLessThan(0.6);
   });
   it("hai Xe Vận Tải đối đầu lệch làn 1 m: lách sang bên từ xa, thân thật không chạm", () => {
     expect(pass([-70, -50], [-30, -50], [-30, -49], [-70, -49]), "thân chạm nhau").toBeLessThan(0);

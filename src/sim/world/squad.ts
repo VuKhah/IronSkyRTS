@@ -1,14 +1,16 @@
 /** Đội hình hành quân (Squad): xếp ô, chia hàng, xoay đội, hành quân theo khối, chờ xe tụt. */
 import { DEFAULT_FORMATION, FORMATIONS, REAR_RANK, RULES, UNITS, type FormationId, type Mobility, type Side, type WeaponSpec } from "../content";
 import { assignMin } from "../assign";
-import { clamp, dist2, turnStep, turnToward } from "../fmath";
+import { clamp, dcos, DEG, dist2, turnStep, turnToward } from "../fmath";
 import { CELL } from "../maps";
 import type { Squad, Target, Unit } from "../types";
-import { DT, sec, FORMATION_GAP, SQUAD_CATCHUP, AIR_FORMATION_GAP, SQUAD_RESHAPE_EXTRA, SQUAD_MIN_TURN_R, SQUAD_PIVOT_COS, PIVOT_COS, ALIGNED_COS, SQUAD_LAG, SQUAD_LOOK, SQUAD_FAR, SQUAD_FORM_MAX, SQUAD_DIRECT, SQUAD_SETTLE_MAX, SQUAD_PIVOT_MAX, SQUAD_WIDEN_CHECKS, SHIFT_OFFSETS, SLOT_NUDGE, TMP, traverseStep } from "./shared";
+import { DT, sec, BODY_W, BODY_L, FORMATION_GAP, SQUAD_CATCHUP, AIR_FORMATION_GAP, SQUAD_RESHAPE_EXTRA, SQUAD_MIN_TURN_R, SQUAD_PIVOT_COS, PIVOT_COS, ALIGNED_COS, SQUAD_LAG, SQUAD_LOOK, SQUAD_FAR, SQUAD_FORM_MAX, SQUAD_DIRECT, SQUAD_SETTLE_MAX, SQUAD_PIVOT_MAX, SQUAD_WIDEN_CHECKS, SHIFT_OFFSETS, SLOT_NUDGE, TMP, traverseStep } from "./shared";
 import { World } from "./core";
 
 /** Ô đội hình phải có khoảng trống ≥ bán kính xe × chừng này (cùng cỡ điểm dò thân `bodyContact`). */
 const SLOT_BODY = 0.95;
+/** Đội xoay tại chỗ: hướng đội chỉ quay tiếp khi mọi thân xe lệch hướng đội dưới 10°. */
+const PIVOT_SYNC_COS = dcos(10 * DEG);
 /** Độ dạt ngang thử khi chốt hình đội ở đích (m), thứ tự cố định: giữa trước, rồi lệch dần hai bên. */
 const SETTLE_SHIFTS = [0, 2, -2, 4, -4, 6, -6, 8, -8, 10, -10];
 
@@ -17,6 +19,34 @@ function turnRadius(u: Unit): number {
   const s = UNITS[u.kind];
   const L = Math.max(s.halfLen ?? s.radius, s.radius);
   return Math.sqrt(L * L + s.radius * s.radius) * SLOT_BODY;
+}
+
+/**
+ * Khoảng cột (m, tâm tới tâm hai xe cạnh nhau trong một hàng) cho các xe `kinds`: ≥ hai bán kính lớn nhất + khe. Đội GIÃN HẾT
+ * CỠ (`wide`, đứng ở bãi trống, là lúc đội xoay tại chỗ) thì còn ≥ 2 × nửa đường chéo THÂN VA CHẠM lớn nhất: hai thân song song
+ * đặt cạnh nhau cách chừng đó thì cùng xoay góc nào cũng không chạm (người dùng 12/11/2026, hàng ngang Titan cách 5,2 m mà thân
+ * dài 6,2 m). Đội đã co hàng qua chỗ hẹp chỉ đi thẳng, không xoay tại chỗ: khoảng hẹp, không thì cầu 9 m chỉ vừa hàng một
+ * (10 Titan thành cột dài 76 m thay vì hàng đôi 26 m).
+ */
+function colSpacing(kinds: Iterable<Unit["kind"]>, wide = true): number {
+  let r = 0;
+  let d = 0;
+  for (const k of kinds) {
+    const s = UNITS[k];
+    const w = s.radius * BODY_W;
+    const l = Math.max(s.halfLen ?? s.radius, s.radius) * BODY_L;
+    r = Math.max(r, s.radius);
+    d = Math.max(d, Math.sqrt(w * w + l * l));
+  }
+  return wide ? Math.max(2 * r + FORMATION_GAP, 2 * d) : 2 * r + FORMATION_GAP;
+}
+
+/**
+ * Đội đang HÀNH QUÂN và đã co hàng (qua chỗ hẹp): khoảng cột hẹp. Mọi lúc khác (đứng chốt hình, xoay tại chỗ, đi thẳng tới
+ * ô, giãn hết cỡ) khoảng rộng: đội đứng ở đích rồi nhận lệnh mới là xoay tại chỗ từ đúng thế đứng đó.
+ */
+function narrowMarch(sq: Squad): boolean {
+  return sq.phase === "march" && sq.cols < sq.colsMax;
 }
 
 /** Bán kính xoay tại chỗ lớn nhất trong đội. */
@@ -178,18 +208,19 @@ function formation(this: World, units: readonly Unit[], x: number, z: number): {
     if (!row || row.length >= cols || rank(row[0]) !== rank(u)) rows.push([u]);
     else row.push(u);
   }
-  const rMax = (row: Unit[]): number => {
-    let r = 0;
-    for (const u of row) r = Math.max(r, UNITS[u.kind].radius);
-    return r;
+  // nửa chiều dài lớn nhất trong hàng (hai hàng cách theo chiều dài thân, như `squadLayout`)
+  const lMax = (row: Unit[]): number => {
+    let l = 0;
+    for (const u of row) l = Math.max(l, UNITS[u.kind].halfLen ?? 0, UNITS[u.kind].radius);
+    return l;
   };
   // vị trí từng hàng theo chiều sâu (hàng đầu = 0, lùi dần), rồi dời cho tâm khối nằm ở đích
   const depth: number[] = [0];
-  for (let i = 1; i < rows.length; i++) depth.push(depth[i - 1] - (rMax(rows[i - 1]) + rMax(rows[i]) + FORMATION_GAP));
+  for (let i = 1; i < rows.length; i++) depth.push(depth[i - 1] - (lMax(rows[i - 1]) + lMax(rows[i]) + FORMATION_GAP));
   const shift = -depth[depth.length - 1] / 2; // nửa bề sâu: đẩy cả khối lên để tâm khối nằm ở đích
   const used = new Set<number>();
   rows.forEach((row, ri) => {
-    const spacing = 2 * rMax(row) + FORMATION_GAP;
+    const spacing = colSpacing(row.map((u) => u.kind));
     const f = depth[ri] + shift;
     row.sort((a, b) => lat(a) - lat(b) || a.id - b.id);
     row.forEach((u, i) => {
@@ -615,6 +646,16 @@ function squadLayout(this: World, sq: Squad): void {
     for (const i of row) r = Math.max(r, UNITS[unit(sq.ids[i]).kind].radius);
     return r;
   };
+  // nửa chiều dài thân lớn nhất trong hàng: hai hàng liền nhau cách theo CHIỀU DÀI thân (người dùng 12/11/2026: xếp theo bán
+  // kính thì hai hàng Titan lồng nhau 2,4 m dọc thân, Pháo 3,6 m), hai xe cạnh nhau trong hàng cách theo bề ngang
+  const lMax = (row: number[]): number => {
+    let l = 0;
+    for (const i of row) {
+      const s = UNITS[unit(sq.ids[i]).kind];
+      l = Math.max(l, s.halfLen ?? s.radius, s.radius);
+    }
+    return l;
+  };
   sq.offLat = new Array<number>(sq.ids.length).fill(0);
   sq.offBack = new Array<number>(sq.ids.length).fill(0);
   sq.width = 0;
@@ -622,8 +663,12 @@ function squadLayout(this: World, sq: Squad): void {
   let back = 0;
   rows.forEach((row, ri) => {
     const r = rMax(row);
-    if (ri > 0) back += rMax(rows[ri - 1]) + r + FORMATION_GAP;
-    const spacing = 2 * r + FORMATION_GAP;
+    if (ri > 0) back += lMax(rows[ri - 1]) + lMax(row) + FORMATION_GAP;
+    // khoảng cột theo xe trong hàng (`colSpacing`); khoảng hàng theo chiều dài ở trên tự đủ chỗ xoay tại chỗ
+    const spacing = colSpacing(
+      row.map((i) => unit(sq.ids[i]).kind),
+      !narrowMarch(sq)
+    );
     row.forEach((i, j) => {
       const col = ri % 2 === 1 ? row.length - 1 - j : j;
       sq.offLat[i] = (col - (row.length - 1) / 2) * spacing;
@@ -877,9 +922,17 @@ function stepSquad(this: World, sq: Squad): void {
       // cả đội xoay tại chỗ, đồng bộ theo xe quay chậm nhất; xong khi mọi thân xe đã quay đúng hướng
       let rate = Infinity;
       for (const id of sq.ids) rate = Math.min(rate, UNITS[(this.byId.get(id) as Unit).kind].turnRate ?? 90);
-      turnToward(sq.hx, sq.hz, sq.wantX, sq.wantZ, traverseStep(rate), TMP);
-      sq.hx = TMP.x;
-      sq.hz = TMP.z;
+      // hướng đội chỉ quay tiếp khi mọi thân xe đã theo kịp (lệch < 10°): xe vừa vào ô muộn, thân còn lệch nhiều, mà xoay theo
+      // đường ngắn nhất thì có thể xoay NGƯỢC CHIỀU cả đội và quệt xe bên cạnh (thân song song cùng xoay mới không chạm nhau)
+      const synced = sq.ids.every((id) => {
+        const u = this.byId.get(id) as Unit;
+        return u.hx * sq.hx + u.hz * sq.hz >= PIVOT_SYNC_COS;
+      });
+      if (synced) {
+        turnToward(sq.hx, sq.hz, sq.wantX, sq.wantZ, traverseStep(rate), TMP);
+        sq.hx = TMP.x;
+        sq.hz = TMP.z;
+      }
       const done =
         sq.hx === sq.wantX &&
         sq.hz === sq.wantZ &&
@@ -891,7 +944,8 @@ function stepSquad(this: World, sq: Squad): void {
       return;
     }
     case "settle":
-      if (lag < 0.8 || sq.phaseT > sq.settleMax) this.disbandSquad(sq);
+      // 0,4 m: giải tán là xe đứng luôn tại chỗ; xe vừa đổi ô (đội co / giãn hàng ở đích) còn cách ô 0,8 m thì lệch hẳn khỏi hàng
+      if (lag < 0.4 || sq.phaseT > sq.settleMax) this.disbandSquad(sq);
       return;
     case "direct":
       if (sq.rigid && !sq.rolling) {
@@ -1047,8 +1101,12 @@ function squadSettle(this: World, sq: Squad, speed: number): void {
  * bớt số xe mỗi hàng ngay; chỉ giãn lại khi đã đủ rộng liên tục khoảng 2 giây (cả cột đã qua khỏi chỗ hẹp).
  */
 function squadFit(this: World, sq: Squad): void {
-  const spacing = 2 * sq.rMax + FORMATION_GAP;
-  const fullW = (sq.colsMax - 1) * spacing + 2 * sq.rMax;
+  const kinds = sq.ids.map((id) => (this.byId.get(id) as Unit).kind);
+  const wideSp = colSpacing(kinds);
+  const narrowSp = colSpacing(kinds, false);
+  // bề ngang đội c cột lúc hành quân: giãn hết cỡ thì khoảng cột rộng (đủ xoay tại chỗ), co hàng thì khoảng hẹp (`narrowMarch`)
+  const widthOf = (c: number): number => (c - 1) * (c >= sq.colsMax ? wideSp : narrowSp) + 2 * sq.rMax;
+  const fullW = widthOf(sq.colsMax);
   const scan = fullW + 1;
   const left: number[] = [];
   const right: number[] = [];
@@ -1084,7 +1142,7 @@ function squadFit(this: World, sq: Squad): void {
   }
   // với c xe mỗi hàng: khoảng dạt ngang khả thi [lo, hi] (null = không vừa)
   const range = (c: number, margin: number): [number, number] | null => {
-    const half = ((c - 1) * spacing + 2 * sq.rMax) / 2 + margin;
+    const half = widthOf(c) / 2 + margin;
     let lo = -Infinity;
     let hi = Infinity;
     for (let i = 0; i < left.length; i++) {
@@ -1151,6 +1209,9 @@ function squadMember(this: World, u: Unit, w: WeaponSpec | undefined, range: num
   if (sq.phase === "direct" && sq.kind === "amove" && sq.holding) return fireAt;
   const [, shx, shz, sx, sz] = this.squadLag(sq, i, u);
   const d = Math.sqrt(dist2(u.x, u.z, sx, sz));
+  // cách ô THẬT (kể cả xe đang đứng chờ phía trước ô lúc hành quân): ORCA chỉ cho xe cùng đội né nhau khi có xe lệch ô
+  const [ox, oz] = this.squadSlot(sq, i);
+  u.slotOff = Math.sqrt(dist2(u.x, u.z, ox, oz));
   if (sq.phase === "direct" && sq.rigid && !sq.rolling) {
     // chưa lăn bánh: chỉ thu bệ và xoay thân về hướng sắp đi
     const dep = UNITS[u.kind].weapon?.deploy;

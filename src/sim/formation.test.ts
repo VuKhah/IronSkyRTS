@@ -47,8 +47,10 @@ describe("đội hình khi ra lệnh cho cả nhóm", () => {
     // hàng ngang: vị trí theo chiều sâu chỉ có vài mức (mỗi hàng một mức), bề ngang rộng hơn bề sâu
     const fwd = us.map((u) => (u.x - tx) * fx + (u.z - tz) * fz);
     const lat = us.map((u) => (u.x - tx) * fz - (u.z - tz) * fx);
-    const rows = new Set(fwd.map((v) => Math.round(v)));
-    expect(rows.size).toBeLessThanOrEqual(3);
+    // số hàng: gom các xe lệch nhau dưới 1 m theo chiều sâu vào cùng một hàng (làm tròn số nguyên thì −7,4 và −7,6 thành hai hàng)
+    const levels = [...fwd].sort((p, q) => p - q);
+    const rows = levels.filter((v, i) => i === 0 || v - levels[i - 1] >= 1);
+    expect(rows.length).toBeLessThanOrEqual(3);
     expect(Math.max(...lat) - Math.min(...lat)).toBeGreaterThan(Math.max(...fwd) - Math.min(...fwd));
     // tâm khối ở điểm đích
     const cx = us.reduce((s, u) => s + u.x, 0) / us.length;
@@ -179,7 +181,10 @@ describe("đội hình khi ra lệnh cho cả nhóm", () => {
     expect(narrowest, "phải co hàng để qua cầu").toBeLessThanOrEqual(2);
     // mọi xe đã sang bờ bên kia và dàn lại thành hàng ngang (vài mức theo chiều sâu)
     for (const u of us) expect((u.x - bx) * -S + (u.z - bz) * S, `xe #${u.id} đã qua sông`).toBeLessThan(-5);
-    expect(sq.cols).toBe(sq.colsMax);
+    // giãn lại ở đích: từ 12/11/2026 hàng đứng giãn hết cỡ chừa đủ chỗ xoay tại chỗ (6 Titan rộng 36 m), đích này sát vách đá
+    // nên vừa 5 cột; chỉ đòi đã giãn lại gần hết cỡ
+    expect(sq.cols).toBeGreaterThanOrEqual(sq.colsMax - 1);
+    expect(sq.cols).toBeGreaterThan(narrowest);
   });
 
   it("đi-và-đánh: gặp địch trong tầm thì cả khối dừng lại bắn, không xe nào bỏ hàng đi đuổi", () => {

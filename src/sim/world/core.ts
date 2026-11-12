@@ -181,6 +181,9 @@ export class World {
       u.phx = u.hx;
       u.phz = u.hz;
       u.moved = false;
+      u.prefX = 0;
+      u.prefZ = 0;
+      u.slotOff = 0;
       u.packing = false;
     }
     if (this.sandbox)
