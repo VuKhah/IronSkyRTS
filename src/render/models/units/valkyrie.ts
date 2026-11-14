@@ -37,7 +37,7 @@ const leZ = (x: number) => NOSE_Z + ((TIP_FRONT[1] - NOSE_Z) * x) / TIP_FRONT[0]
 
 
 /** Ép vào đế thân (UNIT_BASES_PLAN.md): dời tâm hình về tâm quân rồi phóng đều. Số trong file là số trước khi phóng. */
-const FIT = { scale: 1.29, dz: 0 }; // thân Ø 10 m: sải cánh 7,3 → 9,4 m; không dời vì đầu cánh nằm lệch về sau, dời mũi lùi lại làm đầu cánh thò xa hơn
+const FIT = { scale: 1.03, dz: 0 }; // thân Ø 8 m (bằng Pháo, người dùng 15/11): sải cánh 7,3 → 7,5 m; không dời vì đầu cánh nằm lệch về sau, dời mũi lùi lại làm đầu cánh thò xa hơn
 
 export function buildValkyrie(p: Palette): Rig {
   const frame = group();
@@ -285,7 +285,7 @@ export function buildValkyrie(p: Palette): Rig {
         }
       }
     },
-    5.3
+    4.4
   );
   rigRoot = rig.root;
   return rig;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ARMOR_NAME, BUILDINGS, DMG_NAME, FORMATIONS, PAD_OFFSETS, RULES, UNITS, getSpec, type ArmorClass, type DmgType, type EntityId } from "./content";
+import { ARMOR_NAME, BUILDINGS, DMG_NAME, FORMATIONS, PAD_CELL, PAD_OFFSETS, RULES, UNITS, getSpec, type ArmorClass, type DmgType, type EntityId } from "./content";
 
 const ALL = [...Object.keys(UNITS), ...Object.keys(BUILDINGS)] as EntityId[];
 
@@ -80,7 +80,9 @@ describe("content", () => {
   it("Sân Đáp: số vị trí bãi đậu khớp RULES.air.pads, bãi nằm trọn trong sân và không chồng nhau", () => {
     expect(PAD_OFFSETS.length).toBe(RULES.air.pads);
     const [hx, hz] = BUILDINGS.airfield.half;
-    const PAD = [2.8, 2.6]; // nửa kích thước một ô đáp (5,6 × 5,2 m, vừa Falcon sải cánh 5,1 m)
+    const PAD = [PAD_CELL / 2, PAD_CELL / 2]; // nửa cạnh một ô đáp
+    // ô vừa thân máy bay lớn nhất (đế thân, Docs/design/UNIT_BASES_PLAN.md)
+    for (const u of Object.values(UNITS)) if (u.domain === "air" && !u.hover && u.bodyR) expect(2 * u.bodyR, u.id).toBeLessThanOrEqual(PAD_CELL);
     for (const [x, z] of PAD_OFFSETS) {
       expect(Math.abs(x) + PAD[0]).toBeLessThanOrEqual(hx);
       expect(Math.abs(z) + PAD[1]).toBeLessThanOrEqual(hz);

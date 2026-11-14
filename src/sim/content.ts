@@ -930,6 +930,8 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     sight: 18,
     radius: 2.7, // mô hình phóng to ×1,5 (06/11/2026)
     halfLen: 4.5,
+    bodyR: 4,
+    spaceR: 4.2,
     captureWeight: 1,
     weapon: {
       name: "Pháo 155mm nòng dài",
@@ -980,8 +982,8 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     minSpeed: 10,
     sight: 26,
     radius: 2.4,
-    bodyR: 5,
-    spaceR: 7.5,
+    bodyR: 4,
+    spaceR: 6,
     captureWeight: 0,
     weapon: {
       name: "Chuỗi 6 bom rải thảm",
@@ -1099,11 +1101,11 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     armorClass: "struct",
     sight: 16,
     half: [9, 9], // thân 9 × 9 ô (người dùng 10/11/2026, bản vẽ xưởng): + viền 1 ô trong mô hình = nền móng 11 × 11 ô
-    // 10/11/2026: nhà chứa có sàn phóng trên nóc, 2 giếng cửa cuốn (lớn 8 × 8 m cho Valkyrie sải cánh 7,3 m, nhỏ 6 × 6 m);
-    // không có lối ra mặt đất, máy bay cất cánh thẳng đứng. Giếng đầu tiên là giếng lớn.
+    // 10/11/2026: nhà chứa có sàn phóng trên nóc, 2 giếng cửa cuốn; không có lối ra mặt đất, máy bay cất cánh thẳng đứng.
+    // Giếng đầu tiên là giếng lớn. 15/11: giếng = thân Ø + 0,4 m như ô Sân Đáp (lớn 8,4 m cho Valkyrie Ø 8, nhỏ 6,4 m cho Falcon Ø 6).
     pads: [
-      [-6.5, -0.2, 1.5, 7.8],
-      [-5.5, -8, 0.5, -2]
+      [-6.7, -0.4, 1.7, 8],
+      [-5.7, -8.4, 0.7, -2]
     ],
     launch: { deck: 7.5, shaft: 5 },
     produces: ["falcon", "valkyrie"],
@@ -1127,7 +1129,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     hp: 1150,
     armorClass: "struct",
     sight: 18,
-    half: [6, 8],
+    half: [9, 13], // 18 × 26 m (15/11/2026: 6 ô 8,4 × 8,4 m theo đế máy bay)
     power: -15,
     priority: 2,
     features: [
@@ -1373,19 +1375,23 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
 
 /** Công trình người chơi được xây trong bản MVP, theo thứ tự trên thanh xây. */
 /**
- * Vị trí 5 bãi đậu so với tâm Sân Đáp (dùng chung cho sim và mô hình `buildAirfield`): lưới 2 cột × 3 hàng ô 5,6 × 5,2 m vừa khít
- * sân 12 × 16 m, ô thứ sáu là trạm điều khiển (`CONTROL_CELL`); máy bay đậu quay mũi về +z. Số phần tử = `RULES.air.pads`.
+ * Vị trí 5 bãi đậu so với tâm Sân Đáp (dùng chung cho sim và mô hình `buildAirfield`): lưới 2 cột × 3 hàng ô vuông `PAD_CELL`
+ * (5 ô đáp như nhau + ô thứ sáu là trạm điều khiển `CONTROL_CELL`); máy bay đậu quay mũi về +z. Số phần tử = `RULES.air.pads`.
+ * Bản 3 (người dùng 15/11/2026, theo đế máy bay): ô 5,6 × 5,2 → 8,4 × 8,4 m, sân 12 × 16 → 18 × 26 m.
  */
 export const PAD_OFFSETS: readonly (readonly [number, number])[] = [
-  [3, -5.4],
-  [-3, 0],
-  [3, 0],
-  [-3, 5.4],
-  [3, 5.4]
+  [4.2, -8.4],
+  [-4.2, 0],
+  [4.2, 0],
+  [-4.2, 8.4],
+  [4.2, 8.4]
 ];
 
+/** Cạnh một ô đáp (m): thân Ø máy bay lớn nhất (Valkyrie 8 m) + 0,4 m như luật mặt đất; máy bay đậu thì đứng yên, vùng giãn chỉ dùng khi bay. */
+export const PAD_CELL = 8.4;
+
 /** Ô thứ sáu của lưới Sân Đáp: trạm điều khiển, nằm hàng sau để không chắn mũi máy bay. */
-export const CONTROL_CELL: readonly [number, number] = [-3, -5.4];
+export const CONTROL_CELL: readonly [number, number] = [-4.2, -8.4];
 
 /**
  * Tổng Hành Dinh và nhà xưởng quay cửa (phía +z của mô hình) về phía giữa bản đồ theo trục z: xưởng nằm ở nửa +z thì xoay 180°.

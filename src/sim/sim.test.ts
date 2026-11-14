@@ -210,6 +210,17 @@ describe("lõi mô phỏng", () => {
           return w.buildings[w.buildings.length - 1];
         }
       }
+    // nhà lớn (Sân Đáp 18 × 26 m) có thể không vừa 8 hướng trên khi Tổng Hành Dinh nằm sát góc bản đồ: quét từng vòng ra xa
+    for (let r = 10; r <= 60; r += 2)
+      for (let a = -r; a <= r; a += 2)
+        for (const [dx, dz] of [[a, -r], [a, r], [-r, a], [r, a]] as const) {
+          const x = Math.round(hq.x + dx);
+          const z = Math.round(hq.z + dz);
+          if (w.canPlace(0, kind, x, z) === null) {
+            w.step([{ side: 0, order: { t: "build", kind, x, z } }]);
+            return w.buildings[w.buildings.length - 1];
+          }
+        }
     throw new Error(`không đặt được ${kind}`);
   };
   const wait = (w: World, s: number): void => {
