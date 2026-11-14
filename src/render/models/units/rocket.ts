@@ -12,7 +12,7 @@
  * Bộ phận động: bánh lăn, mâm xoay, cụm phóng ngóc lên, 4 chân chống hạ khi dựng dàn.
  *
  * Bản 3 (15/11/2026): lọt đế chức năng Ø 5,5 m (bodyR 2,75, Docs/design/UNIT_BASES_PLAN.md). Giữ mọi ý trên, dựng lại thân
- * bè hơn (≈ 3,0 × 4,4 m, tỉ lệ ≈ 1,47; trước 2,7 × 5,65 m), vẫn 8 bánh; mâm xoay đặt ĐÚNG TÂM xe, hộp phóng ngắn 2,5 → 1,75 m
+ * bè hơn (2,88 × 4,65 m, tỉ lệ vàng ≈ 1,618 theo người dùng; trước 2,7 × 5,65 m), vẫn 8 bánh; mâm xoay đặt ĐÚNG TÂM xe, hộp phóng ngắn 2,5 → 1,75 m
  * nằm gọn trên mâm, nên cụm phóng quay hướng nào cũng nằm trong đế và nằm ngang không đè lên cabin.
  */
 import * as THREE from "three";
@@ -23,7 +23,7 @@ type P3 = [number, number, number];
 
 const AXLES = [1.45, 0.5, -0.5, -1.45];
 const WHEEL_R = 0.42;
-const WHEEL_X = 1.22;
+const WHEEL_X = 1.15;
 
 export function buildRocket(p: Palette): Rig {
   const body = group();
@@ -42,10 +42,10 @@ export function buildRocket(p: Palette): Rig {
   for (const sx of [-1, 1]) {
     // chắn bùn vát ôm hai cặp bánh trước và hai cặp bánh sau
     for (const [z0, z1] of [[1.95, 0.04], [-0.04, -1.95]]) {
-      const f: P3[] = [[1.0, 0.9, z0], [1.48, 0.9, z0 - 0.05], [1.0, 1.06, z0 - 0.28], [1.48, 1.04, z0 - 0.3], [1.0, 1.06, z1 + 0.28], [1.48, 1.04, z1 + 0.3], [1.0, 0.9, z1], [1.48, 0.9, z1 + 0.05]];
+      const f: P3[] = [[0.96, 0.9, z0], [1.41, 0.9, z0 - 0.05], [0.96, 1.06, z0 - 0.28], [1.41, 1.04, z0 - 0.3], [0.96, 1.06, z1 + 0.28], [1.41, 1.04, z1 + 0.3], [0.96, 0.9, z1], [1.41, 0.9, z1 + 0.05]];
       add(part("Chắn bùn", facets(f.map(([x, y, z]): P3 => [sx * x, y, z]), p.hull)));
     }
-    add(part("Vạch chắn bùn (màu phe)", box(0.04, 0.06, 1.5, p.team, sx * 1.49, 0.97, 1.0)));
+    add(part("Vạch chắn bùn (màu phe)", box(0.04, 0.06, 1.5, p.team, sx * 1.42, 0.97, 1.0)));
     add(part("Thùng đồ", group(box(0.5, 0.36, 0.42, p.hull, sx * 0.7, 1.07, -1.85), box(0.52, 0.05, 0.44, p.white, sx * 0.7, 1.27, -1.85))));
   }
 
@@ -63,7 +63,7 @@ export function buildRocket(p: Palette): Rig {
     add(skin("Đèn pha", [[sx * 0.76, 0.92], [sx * 0.98, 0.92], [sx * 0.98, 1.05], [sx * 0.76, 1.05]], p.glass, { face: "front", lift: 0.025 }));
     add(skin("Kính hông cabin", [[1.8, 1.38], [1.1, 1.38], [1.1, 1.7], [1.55, 1.7]], p.glass, { face: "right", mirror: sx < 0, lift: 0.015 }));
     add(skin("Sọc cabin (màu phe)", [[1.95, 1.22], [1.0, 1.22], [1.0, 1.3], [1.95, 1.3]], p.team, { face: "right", mirror: sx < 0 }));
-    add(part("Gương", group(box(0.04, 0.04, 0.26, p.metal, sx * 1.26, 1.55, 1.8), box(0.06, 0.2, 0.12, p.hullDark, sx * 1.34, 1.55, 1.9))));
+    add(part("Gương", group(box(0.16, 0.04, 0.06, p.metal, sx * 1.24, 1.55, 1.8), box(0.06, 0.2, 0.12, p.hullDark, sx * 1.34, 1.55, 1.9))));
   }
   add(skin("Nóc cabin (màu phe)", [[-0.7, 1.6], [0.7, 1.6], [0.7, 1.05], [-0.7, 1.05]], p.team));
   add(part("Đèn hiệu", group(box(0.9, 0.08, 0.16, p.hullDark, 0, 1.9, 1.35), box(0.16, 0.08, 0.14, p.warning, -0.3, 1.97, 1.35), box(0.16, 0.08, 0.14, p.warning, 0.3, 1.97, 1.35))));
@@ -150,7 +150,8 @@ export function buildRocket(p: Palette): Rig {
     );
   }
   cluster.add(
-    part("Giá chữ thập", group(box(OW, 0.14, 0.12, p.hullDark, 0, 0, 0.0), box(0.14, OH, 0.12, p.hullDark, 0, 0, 0.0), box(0.3, 0.3, 0.16, p.metal, 0, 0, -0.02))),
+    // giá chữ thập lùi ra sau đuôi cụm (người dùng 15/11), mặt trước vẫn áp vào đuôi 4 hộp
+    part("Giá chữ thập", group(box(OW, 0.14, 0.22, p.hullDark, 0, 0, -0.11), box(0.14, OH, 0.22, p.hullDark, 0, 0, -0.11), box(0.3, 0.3, 0.16, p.metal, 0, 0, -0.26))),
     part("Khung đỡ", group(box(OW - 0.2, 0.08, L - 0.3, p.hullDark, 0, -OH / 2 - 0.09, L / 2), box(0.12, 0.12, L - 0.3, p.hullDark, -0.5, -OH / 2 - 0.15, L / 2), box(0.12, 0.12, L - 0.3, p.hullDark, 0.5, -OH / 2 - 0.15, L / 2))),
     part("Ống dẫn cáp", box(0.1, 0.1, 0.6, p.metal, 0.3, -OH / 2 - 0.2, 0.3))
   );
