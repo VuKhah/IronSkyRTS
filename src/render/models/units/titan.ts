@@ -2,15 +2,29 @@
 import { box, cyl, group, muzzleFlash, part, type Palette, type Rig } from "../kit";
 import { vehicleRig, barrel, tracks } from "./ground";
 
+/**
+ * Thu đều cả xe để lọt đế lõi Ø 4,5 m (bodyR 2,25, Docs/design/UNIT_BASES_PLAN.md). Mọi số bên dưới là số TRƯỚC khi thu;
+ * kích thước thật = số × S. Thu đều cả ba chiều để bánh xích vẫn tròn.
+ */
+const S = 0.69;
+/** Chiều dài nòng (trước khi thu): cắt từ 2,75 để đầu hãm nòng không thò ra khỏi đế ở mọi góc tháp. */
+const BARREL = 1.8;
+/** Áo bọc, bầu hút khói, đầu hãm co theo nòng. */
+const K = BARREL / 2.75;
+
 export function buildTitan(p: Palette): Rig {
   const body = group();
+  const hull = group();
+  hull.scale.setScalar(S);
+  body.add(hull);
 
-  const TURRET_Z = -0.15;
+  // trục tháp đúng tâm xe: quay nòng ra trước hay ra sau đều thò ra bằng nhau
+  const TURRET_Z = 0;
   const TURRET_Y = 1.32;
 
   // 1. CỤM XÍCH & BÁNH TÌ (Gầm đầm chắc, bánh dẫn hướng & chủ động có trục nổi)
   const tr = tracks(p, 1.48, 4.7, 0.4, 6);
-  body.add(tr.g);
+  hull.add(tr.g);
 
   // Bánh dẫn hướng trước & bánh chủ động sau kèm nắp trục cơ khí
   const idlerFL = cyl(0.32, 0.32, 0.42, p.metal, 14, -1.48, 0.64, 2.2).rotateZ(Math.PI / 2);
@@ -99,7 +113,7 @@ export function buildTitan(p: Palette): Rig {
   const drumBandL = cyl(0.25, 0.25, 0.12, p.team, 14, -0.82, 1.08, -2.32).rotateZ(Math.PI / 2);
   const drumBandR = cyl(0.25, 0.25, 0.12, p.team, 14, 0.82, 1.08, -2.32).rotateZ(Math.PI / 2);
 
-  body.add(
+  hull.add(
     idlerFL, idlerFR, idlerHubFL, idlerHubFR,
     sprocketRL, sprocketRR, sprocketHubRL, sprocketHubRR,
     sponsonL, sponsonR, sponsonTrimL, sponsonTrimR,
@@ -210,22 +224,22 @@ export function buildTitan(p: Palette): Rig {
   const laserLens = box(0.28, 0.08, 0.04, p.flash, 0, 0.32, 0.51);
 
   // Nòng pháo chính 120mm
-  const b = part("Pháo chính 120mm", barrel(2.75, 0.18, p.metal));
+  const b = part("Pháo chính 120mm", barrel(BARREL, 0.18, p.metal));
 
   // Áo bọc cách nhiệt đa giác màu thân xe + Đai khóa màu phe ở bầu hút khói
-  const thermalShroud = box(0.42, 0.36, 1.25, p.hull, 0, 0, 1.15);
-  const shroudSpine = box(0.18, 0.08, 1.2, p.hullDark, 0, 0.2, 1.15);
-  const fumeCollar = box(0.46, 0.4, 0.38, p.hullDark, 0, 0, 1.55);
-  const fumeBand = box(0.48, 0.42, 0.12, p.team, 0, 0, 1.55);
+  const thermalShroud = box(0.42, 0.36, 1.25 * K, p.hull, 0, 0, 1.15 * K);
+  const shroudSpine = box(0.18, 0.08, 1.2 * K, p.hullDark, 0, 0.2, 1.15 * K);
+  const fumeCollar = box(0.46, 0.4, 0.38, p.hullDark, 0, 0, 1.55 * K);
+  const fumeBand = box(0.48, 0.42, 0.12, p.team, 0, 0, 1.55 * K);
 
   // Đầu hãm nòng kép (Muzzle Brake) xẻ rãnh kim loại
-  const muzzleBrake = part("Đầu hãm nòng", box(0.54, 0.38, 0.62, p.hullDark, 0, 0, 2.72));
-  const brakeTopPlate = box(0.38, 0.05, 0.5, p.hull, 0, 0.2, 2.72);
-  const brakeVentL = box(0.08, 0.22, 0.38, p.metal, -0.25, 0, 2.72);
-  const brakeVentR = box(0.08, 0.22, 0.38, p.metal, 0.25, 0, 2.72);
+  const muzzleBrake = part("Đầu hãm nòng", box(0.54, 0.38, 0.62, p.hullDark, 0, 0, BARREL - 0.03));
+  const brakeTopPlate = box(0.38, 0.05, 0.5, p.hull, 0, 0.2, BARREL - 0.03);
+  const brakeVentL = box(0.08, 0.22, 0.38, p.metal, -0.25, 0, BARREL - 0.03);
+  const brakeVentR = box(0.08, 0.22, 0.38, p.metal, 0.25, 0, BARREL - 0.03);
 
   const f = muzzleFlash(1.25, p.flash);
-  f.position.z = 3.18;
+  f.position.z = BARREL + 0.43;
 
   b.add(
     mantlet, laserBox, laserStripe, laserLens,
@@ -234,14 +248,15 @@ export function buildTitan(p: Palette): Rig {
   );
   gun.add(b);
   turret.add(gun);
-  body.add(turret);
+  hull.add(turret);
 
   return vehicleRig(
     "titan",
     p,
     {
       body,
-      wheels: tr.wheels,
+      // bánh quay đúng theo bán kính thật sau khi thu
+      wheels: tr.wheels.map((w) => ({ g: w.g, r: w.r * S })),
       turret,
       gun,
       barrels: [b],
@@ -251,6 +266,6 @@ export function buildTitan(p: Palette): Rig {
       aimPitch: 0.08,
       recoil: 0.36
     },
-    4.3
+    2.6
   );
 }

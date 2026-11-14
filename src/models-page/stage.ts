@@ -91,6 +91,36 @@ export function localBox(obj: THREE.Object3D, root: THREE.Object3D, ownOnly = fa
   return out;
 }
 
+/**
+ * Tầm với trên mặt đất: khoảng cách xa nhất từ tâm quân (trục đứng qua gốc) tới mọi đỉnh của mô hình, quét tháp pháo
+ * qua `steps` góc. Mô hình lọt đế khi tầm với ≤ `bodyR` (Docs/design/UNIT_BASES_PLAN.md). Bỏ qua khối hiệu ứng và khối ẩn.
+ */
+export function reachXZ(rig: Rig, steps = 24): { r: number; part: string; yaw: number } {
+  const best = { r: 0, part: "", yaw: 0 };
+  const v = new THREE.Vector3();
+  const n = rig.setAim ? steps : 1;
+  const none = new Set<string>();
+  for (let i = 0; i < n; i++) {
+    const yaw = (i / n) * Math.PI * 2;
+    rig.setAim?.(yaw, false);
+    for (let k = 0; k < 60; k++) rig.update(0.05, k * 0.05, none);
+    rig.root.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(rig.root.matrixWorld).invert();
+    rig.root.traverse((o) => {
+      if (!(o instanceof THREE.Mesh) || isEffect(o) || !shownIn(o, rig.root)) return;
+      TMP_M.multiplyMatrices(inv, o.matrixWorld);
+      const pos = o.geometry.getAttribute("position");
+      for (let j = 0; j < pos.count; j++) {
+        v.fromBufferAttribute(pos, j).applyMatrix4(TMP_M);
+        const r = Math.sqrt(v.x * v.x + v.z * v.z);
+        if (r > best.r) Object.assign(best, { r, part: String(partOf(o, rig.root)?.userData.part ?? "(không tên)"), yaw });
+      }
+    });
+  }
+  rig.setAim?.(null);
+  return best;
+}
+
 /** Bộ phận có tên gần nhất chứa khối `o` (đi ngược lên các nhóm cha tới `root`). */
 export function partOf(o: THREE.Object3D, root: THREE.Object3D): THREE.Object3D | null {
   for (let x: THREE.Object3D | null = o; x; x = x.parent) {

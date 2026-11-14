@@ -209,6 +209,13 @@ export interface UnitSpec {
    * rộng 3,6 m nhưng dài 6,5 m): sim giữ mũi / đuôi xe khỏi lấn vào vách theo số này. Bỏ trống = bằng `radius`.
    */
   halfLen?: number;
+  /**
+   * Bán kính đế thân (m): mô hình nằm gọn trong vòng này ở mọi góc xoay tháp, kể cả nòng (Docs/design/UNIT_BASES_PLAN.md).
+   * Kiểm bằng `npm run model-report` và `src/render/models/bases.test.ts`. Sim chưa dùng (bước 1 của kế hoạch đế).
+   */
+  bodyR?: number;
+  /** Bán kính vùng giãn (m): khoảng tối thiểu với quân cùng lớp; mặt đất = bodyR + 0,2. Sim chưa dùng. */
+  spaceR?: number;
   /** Độ cao đặt thanh máu trên quân (m), chỉ dùng cho phần vẽ. Bỏ trống = theo cỡ thường. */
   barHeight?: number;
   /** Sức chiếm mỏ (0 = không chiếm được). */
@@ -605,6 +612,8 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     sight: 22,
     radius: 1.9,
     halfLen: 3.1,
+    bodyR: 2.25,
+    spaceR: 2.45,
     captureWeight: 1,
     weapon: { name: "Pháo chính 120mm", dmgGround: 136, dmgAir: 0, range: 19.5, cooldown: 3, dmgType: "he", splash: 1, visual: "cannon", traverse: 60 },
     frontArmor: { reduce: 0.25, arc: 60 },

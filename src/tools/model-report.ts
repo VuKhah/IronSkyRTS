@@ -11,7 +11,7 @@ import * as THREE from "three";
 import { getSpec, type EntityId } from "../sim/content";
 import { buildModel } from "../render/models";
 import { bakeStatic } from "../render/models/bake";
-import { isEffect, localBox, partOf, shownIn } from "../models-page/stage";
+import { isEffect, localBox, partOf, reachXZ, shownIn } from "../models-page/stage";
 
 const args = process.argv.slice(2);
 const id = args[0] as EntityId | undefined;
@@ -72,6 +72,13 @@ console.log(`Thấp nhất y = ${f(whole.min.y)} · cao nhất y = ${f(whole.max
 console.log(`Bán kính khung hình rig: ${f(rig.radius)}${"radius" in spec ? ` · bán kính sim: ${f(spec.radius as number)}` : ""}`);
 console.log(`Khối: ${items.length} (ẩn ${hidden}, hiệu ứng ${effects}) · tam giác: ${Math.round(tris)} · vật liệu: ${mats.size} · lệnh vẽ sau khi gộp: ${baked.before} → ${baked.after}`);
 console.log(`Hoạt ảnh có: ${rig.actions.map((a) => a.id).join(", ") || "không"}`);
+{
+  // quét trên một bản dựng riêng để không làm lệch trạng thái hoạt ảnh của bản đang đo
+  const reach = reachXZ(buildModel(id, faction, true));
+  const bodyR = "bodyR" in spec ? (spec.bodyR as number | undefined) : undefined;
+  const verdict = bodyR === undefined ? "chưa có bodyR" : reach.r <= bodyR ? `lọt đế Ø ${f(bodyR * 2)} (dư ${f(bodyR - reach.r)} m)` : `TRÀN đế Ø ${f(bodyR * 2)} thêm ${f(reach.r - bodyR)} m`;
+  console.log(`Tầm với từ tâm (mọi góc tháp): ${f(reach.r)} m ở "${reach.part}", tháp ${Math.round((reach.yaw * 180) / Math.PI)}° · ${verdict}`);
+}
 
 // Bộ phận có tên
 const groups = new Map<THREE.Object3D, number>();
