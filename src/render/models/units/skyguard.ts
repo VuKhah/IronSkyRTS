@@ -29,8 +29,15 @@ const SKIRT_R = 1.68;
 const SKIRT_Y = 0.34;
 const BAND_Y1 = 1.08;
 const DECK_Y = 1.32;
-/** Bán kính đặt 6 đế chân khi cố định (đỉnh của vành lục giác). */
-const PAD_R = 2.75;
+/** Bán kính đặt 6 đế chân khi cố định (đỉnh của vành lục giác): 2,75 → 2,3 để bệ hạ gọn trong đế (15/11). */
+const PAD_R = 2.3;
+/**
+ * Lọt đế lõi Ø 4,5 m (15/11/2026, Docs/design/UNIT_BASES_PLAN.md). Mọi số của thân là số TRƯỚC khi thu: thân (lục giác, cabin,
+ * khối mũi, chân chống, vành giằng) thu ×0,81 (bán kính lục giác 1,85 → 1,5 m); tháp (radar + 2 hộp phóng, phần người dùng
+ * muốn nổi bật) chỉ thu ×0,85 nên to hơn tương đối so với thân. Thu đều cả ba chiều để bánh xích vẫn tròn.
+ */
+const BODY_S = 0.81;
+const TURRET_S = 0.85;
 /** Độ cao trục chân chống (giữa dải giáp đứng). */
 const ARM_Y = 0.95;
 const PAD_STOW_Y = 0.84;
@@ -49,7 +56,10 @@ const smooth = (a: number, b: number, t: number) => {
 
 export function buildSkyguard(p: Palette): Rig {
   const body = group();
-  const add = (...o: THREE.Object3D[]) => body.add(...o);
+  const inner = group();
+  inner.scale.setScalar(BODY_S);
+  body.add(inner);
+  const add = (...o: THREE.Object3D[]) => inner.add(...o);
 
   // ================================================================ 1. XÍCH + THÂN LỤC GIÁC
   // Xích ngắn nằm gọn dưới váy giáp lục giác, chỉ lộ nửa dưới bánh; bỏ tấm che xích màu phe (đã bị váy che)
@@ -65,7 +75,7 @@ export function buildSkyguard(p: Palette): Rig {
   }
   const hull = part("Thân lục giác", facets(hullPts, p.hull));
   add(hull);
-  const { line } = surfaceTools(body, [hull]);
+  const { line } = surfaceTools(inner, [hull]);
 
   /** Điểm trên mặt vát thứ i (giữa đỉnh i và i+1): t dọc cạnh 0..1, s từ mép ngoài (0) vào mép sàn (1). */
   const slopePt = (i: number, t: number, s: number): P2 =>
@@ -111,7 +121,7 @@ export function buildSkyguard(p: Palette): Rig {
     facets([[0.48, 0.82, 2.34], [0.62, 1.14, 2.2], [0.56, 1.58, 1.66], [0.6, 1.58, 0.96], [0.7, 0.82, 0.96], [0.7, 0.82, 2.06]], p.hull, true)
   );
   add(cab);
-  const cabTools = surfaceTools(body, [cab]);
+  const cabTools = surfaceTools(inner, [cab]);
   add(cabTools.skin("Kính chắn gió", [[-0.46, 1.2], [0.46, 1.2], [0.42, 1.5], [-0.42, 1.5]], p.glass, { face: "front", lift: 0.02 }));
   add(cabTools.line("Khung kính", [[0, 1.18], [0, 1.53]], p.metal, { face: "front", w: 0.07 }));
   for (const sx of [1, -1]) {
@@ -226,6 +236,7 @@ export function buildSkyguard(p: Palette): Rig {
   // Bộ phận động (giá phóng, 2 hộp tên lửa, radar quay) giữ ít màu: không gộp được, mỗi màu một lệnh vẽ.
   const turret = part("Mâm xoay", group(cyl(0.72, 0.78, 0.22, p.hullDark, 16, 0, 0.11, 0)));
   turret.position.set(0, DECK_Y + 0.1, TURRET_Z);
+  turret.scale.setScalar(TURRET_S / BODY_S);
   turret.add(part("Viền mâm (màu phe)", cyl(0.8, 0.8, 0.05, p.team, 16, 0, 0.03, 0)));
   for (let i = 0; i < 12; i++) {
     const a = (i * Math.PI) / 6;
@@ -311,8 +322,8 @@ export function buildSkyguard(p: Palette): Rig {
   return vehicleRig(
     "skyguard",
     p,
-    { body, wheels: tr.wheels, turret, gun, barrels, muzzles: alternating, flashes: [], spinners: [radar], aimPitch: 0.6, recoil: 0, missiles: true, bounce: { damp: 0.42, hull: { hz: 10, tilt: 0.014, slide: 0.024, sink: 0.02 }, gunHz: 8, gunClimb: 0.018, gunSlide: 0.06, gunTwist: 0 } },
-    3.3,
+    { body, wheels: tr.wheels.map((w) => ({ g: w.g, r: w.r * BODY_S })), turret, gun, barrels, muzzles: alternating, flashes: [], spinners: [radar], aimPitch: 0.6, recoil: 0, missiles: true, bounce: { damp: 0.42, hull: { hz: 10, tilt: 0.014, slide: 0.024, sink: 0.02 }, gunHz: 8, gunClimb: 0.018, gunSlide: 0.06, gunTwist: 0 } },
+    2.6,
     [{ id: "deploy", label: "Cố định (bệ lục giác)" }],
     (dt, _t, a) => {
       const target = a.has("deploy") ? 1 : 0;

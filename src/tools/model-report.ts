@@ -77,7 +77,7 @@ console.log(`Hoạt ảnh có: ${rig.actions.map((a) => a.id).join(", ") || "kh�
   const reach = reachXZ(buildModel(id, faction, true));
   const bodyR = "bodyR" in spec ? (spec.bodyR as number | undefined) : undefined;
   const verdict = bodyR === undefined ? "chưa có bodyR" : reach.r <= bodyR ? `lọt đế Ø ${f(bodyR * 2)} (dư ${f(bodyR - reach.r)} m)` : `TRÀN đế Ø ${f(bodyR * 2)} thêm ${f(reach.r - bodyR)} m`;
-  console.log(`Tầm với từ tâm (mọi góc tháp): ${f(reach.r)} m ở "${reach.part}", tháp ${Math.round((reach.yaw * 180) / Math.PI)}° · ${verdict}`);
+  console.log(`Tầm với từ tâm (mọi góc tháp): ${f(reach.r)} m ở "${reach.part}", tháp ${Math.round((reach.yaw * 180) / Math.PI)}°${reach.deployed ? ", đã hạ bệ" : ""} · ${verdict}`);
 }
 
 // Bộ phận có tên

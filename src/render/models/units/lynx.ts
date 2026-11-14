@@ -1,13 +1,13 @@
 /**
- * Mô hình Thiết Giáp Trinh Sát Lynx (`lynx`), bản 1 (06/11/2026).
- * Người dùng chốt: xe trinh sát BỐN BÁNH, BỌC THÉP, HAI NÒNG nâng lên bắn máy bay / hạ xuống bắn ngang.
+ * Mô hình Thiết Giáp Lynx (`lynx`), bản 2 (15/11/2026): xe thiết giáp SÁU BÁNH, HAI NÒNG, lọt đế lõi Ø 4,5 m.
+ * Người dùng chốt 06/11: bọc thép, hai nòng nâng lên bắn máy bay / hạ xuống bắn ngang. 15/11: 6 bánh, thân 1,6 : 1.
  *
  * Ý đồ hình khối:
- * - Thân vỏ thép nhiều mặt vát (`facets`), gầm chữ V (đẩy sóng nổ mìn ra hai bên), nóc thấp: nhanh, gọn, nhỏ hơn Titan rõ.
- * - 4 bánh lớn có chắn bùn vát; mũi xe dốc có lưới tản nhiệt, đèn pha có khung bảo vệ, cản trước + móc kéo.
- * - Tháp nhỏ mang giá hai nòng 20mm (bắn so le), hộp đạn hai bên giá súng, kính ngắm quang điện tử, ống phóng khói.
- * - Chất "trinh sát": kính ngắm trên tháp, 2 ăng-ten roi, cửa nóc xe trưởng.
- * - Màu phe theo nhịp: vạch dọc vai xe, chữ V mũi, tấm hông tháp, ô nhận diện trên nóc.
+ * - Thân 2,3 × 3,7 m (đường chéo vừa trong vòng Ø 4,5): hộp thép nhiều mặt vát (`facets`), gầm chữ V, vai rộng phủ trên bánh,
+ *   mũi dốc có lưới tản nhiệt, chữ V màu phe, đèn pha có khung bảo vệ, cản trước + móc kéo.
+ * - 6 bánh chia đều thân, giáp hông liền một dải phủ nửa trên cả ba bánh (chắc, nặng hơn bản trinh sát 4 bánh).
+ * - Tháp nhỏ ĐẶT ĐÚNG TÂM xe (nòng quay hướng nào cũng thò ra bằng nhau), giá hai nòng 20mm bắn so le.
+ * - Đuôi: cửa sau lớn (xe chở được tổ lái + trinh sát), hai hộp đồ ở góc sau, đèn hậu, 2 ăng-ten roi.
  *
  * Bộ phận động: tháp xoay, giá súng nâng hạ (ngang ↔ ngóc ~65° khi mục tiêu đang bay: `airPitch`),
  * hai nòng giật so le, bánh lăn.
@@ -18,29 +18,25 @@ import { vehicleRig, barrel } from "./ground";
 
 type P3 = [number, number, number];
 
-const WHEEL_R = 0.5;
-const WHEEL_X = 1.02;
-const AXLES = [1.3, -1.2];
+const WHEEL_R = 0.42;
+const WHEEL_X = 0.96;
+const AXLES = [1.22, 0.06, -1.1];
+/** Độ cao nóc thân, chỗ đặt tháp. */
+const ROOF_Y = 1.36;
 
 export function buildLynx(p: Palette): Rig {
   const body = group();
   const add = (...o: THREE.Object3D[]) => body.add(...o);
   const both = (f: (sx: number) => void) => [1, -1].forEach(f);
 
-  // ================================================================ 1. BÁNH + CHẮN BÙN
+  // ================================================================ 1. SÁU BÁNH
   const wheels: { g: THREE.Object3D; r: number }[] = [];
   for (const sx of [-1, 1])
     for (const z of AXLES) {
-      const w = wheel(WHEEL_R, 0.4, p.rubber, p.metal);
+      const w = wheel(WHEEL_R, 0.36, p.rubber, p.metal);
       w.position.set(sx * WHEEL_X, WHEEL_R, z);
       add(w);
       wheels.push({ g: w, r: WHEEL_R });
-      // chắn bùn vát ôm trên bánh
-      const f: P3[] = [
-        [0.8, 0.92, z + 0.66], [1.27, 0.92, z + 0.62], [0.8, 1.1, z + 0.34], [1.27, 1.08, z + 0.32],
-        [0.8, 1.1, z - 0.34], [1.27, 1.08, z - 0.32], [0.8, 0.92, z - 0.66], [1.27, 0.92, z - 0.62]
-      ];
-      add(part("Chắn bùn", facets(f.map(([x, y, zz]): P3 => [sx * x, y, zz]), p.hullDark)));
     }
 
   // ================================================================ 2. THÂN BỌC THÉP
@@ -48,11 +44,11 @@ export function buildLynx(p: Palette): Rig {
     "Thân bọc thép",
     facets(
       [
-        [0, 0.42, 1.55], [0, 0.42, -1.6], // gầm chữ V
-        [0.78, 0.62, 2.05], [0.8, 0.62, -2.0], // mép dưới hông
-        [0.68, 0.72, 2.38], [0.7, 0.98, 2.3], // mũi
-        [0.86, 1.16, 1.3], [0.9, 1.1, -1.95], // vai xe (chỗ rộng nhất)
-        [0.66, 1.42, 0.6], [0.68, 1.45, -1.9] // nóc
+        [0, 0.36, 1.4], [0, 0.36, -1.45], // gầm chữ V
+        [0.7, 0.56, 1.72], [0.72, 0.56, -1.78], // mép dưới hông
+        [0.6, 0.64, 1.86], [0.64, 0.94, 1.8], // mũi
+        [0.9, 1.08, 1.05], [0.92, 1.04, -1.76], // vai xe (chỗ rộng nhất)
+        [0.7, ROOF_Y, 0.42], [0.72, ROOF_Y + 0.02, -1.72] // nóc
       ],
       p.hull,
       true
@@ -61,53 +57,59 @@ export function buildLynx(p: Palette): Rig {
   add(hull);
   const { skin, line, at } = surfaceTools(body, [hull]);
 
+  // Giáp hông liền một dải phủ trên cả ba bánh: tấm trên nằm ngang + tấm đứng vát vào ở hai đầu
+  both((sx) => {
+    const top: P3[] = [
+      [0.74, 0.9, 1.78], [1.15, 0.9, 1.62], [0.74, 1.04, 1.5], [1.15, 1.02, 1.4],
+      [0.74, 1.04, -1.6], [1.15, 1.02, -1.5], [0.74, 0.9, -1.8], [1.15, 0.9, -1.66]
+    ];
+    add(part("Giáp hông", facets(top.map(([x, y, z]): P3 => [sx * x, y, z]), p.hullDark)));
+    // vạch màu phe chạy dọc mép ngoài giáp hông, chia 2 đoạn
+    add(part("Vạch vai xe (màu phe)", box(0.05, 0.06, 1.2, p.team, sx * 1.16, 0.97, 0.72)));
+    add(part("Vạch vai xe (màu phe)", box(0.05, 0.06, 1.2, p.team, sx * 1.16, 0.97, -0.72)));
+  });
+
   // Kính chắn gió bọc thép: 2 ô vát + thanh khung giữa; kính hông dạng khe
   both((sx) => {
-    add(skin("Kính chắn gió", [[0.08, 1.22], [0.6, 1.12], [0.54, 0.74], [0.08, 0.8]], p.glass, { mirror: sx < 0, lift: 0.02 }));
-    add(skin("Kính hông", [[1.0, 1.2], [0.45, 1.24], [0.45, 1.33], [0.92, 1.3]], p.glass, { face: "right", mirror: sx < 0, lift: 0.015 }));
+    add(skin("Kính chắn gió", [[0.08, 1.2], [0.56, 1.12], [0.5, 0.78], [0.08, 0.84]], p.glass, { mirror: sx < 0, lift: 0.02 }));
+    add(skin("Kính hông", [[0.9, 1.12], [0.45, 1.15], [0.45, 1.25], [0.86, 1.19]], p.glass, { face: "right", mirror: sx < 0, lift: 0.015 }));
   });
-  add(line("Khung kính", [[0, 1.28], [0, 0.72]], p.metal, { w: 0.08 }));
+  add(line("Khung kính", [[0, 1.26], [0, 0.76]], p.metal, { w: 0.08 }));
 
   // ================================================================ 3. MŨI XE: lưới tản nhiệt, đèn, cản, móc kéo, chữ V
-  for (const x of [-0.3, -0.15, 0, 0.15, 0.3]) add(line("Lưới tản nhiệt", [[x, 1.95], [x, 1.6]], p.hullDark, { w: 0.06 }));
-  add(line("Chữ V mũi (màu phe)", [[-0.5, 1.98], [0, 2.22], [0.5, 1.98]], p.team, { w: 0.08 }));
+  for (const x of [-0.28, -0.14, 0, 0.14, 0.28]) add(line("Lưới tản nhiệt", [[x, 1.72], [x, 1.42]], p.hullDark, { w: 0.06 }));
+  add(line("Chữ V mũi (màu phe)", [[-0.46, 1.62], [0, 1.82], [0.46, 1.62]], p.team, { w: 0.08 }));
   both((sx) => {
-    add(skin("Đèn pha", [[0.34, 0.8], [0.58, 0.8], [0.58, 0.9], [0.34, 0.9]], p.glass, { face: "front", mirror: sx < 0, lift: 0.02 }));
-    add(line("Khung bảo vệ đèn", [[0.32, 0.94], [0.6, 0.94]], p.metal, { face: "front", mirror: sx < 0, w: 0.035 }));
-    add(part("Móc kéo", box(0.08, 0.12, 0.12, p.warning, sx * 0.45, 0.58, 2.48)));
+    add(skin("Đèn pha", [[0.32, 0.74], [0.54, 0.74], [0.54, 0.84], [0.32, 0.84]], p.glass, { face: "front", mirror: sx < 0, lift: 0.02 }));
+    add(line("Khung bảo vệ đèn", [[0.3, 0.88], [0.56, 0.88]], p.metal, { face: "front", mirror: sx < 0, w: 0.035 }));
+    add(part("Móc kéo", box(0.08, 0.12, 0.12, p.warning, sx * 0.42, 0.52, 1.95)));
   });
-  add(part("Cản trước", box(1.36, 0.16, 0.14, p.metal, 0, 0.62, 2.42)));
+  add(part("Cản trước", box(1.2, 0.16, 0.12, p.metal, 0, 0.58, 1.9)));
 
   // ================================================================ 4. HÔNG + ĐUÔI
   both((sx) => {
     const m = sx < 0;
-    // Vạch màu phe dọc vai xe, chia 2 đoạn như viền vai Titan
-    add(skin("Vạch vai xe (màu phe)", [[1.15, 1.12], [0.25, 1.12], [0.25, 1.17], [1.15, 1.17]], p.team, { face: "right", mirror: m }));
-    add(skin("Vạch vai xe (màu phe)", [[0.0, 1.13], [-1.8, 1.13], [-1.8, 1.18], [0.0, 1.18]], p.team, { face: "right", mirror: m }));
-    // Tấm giáp hông giữa hai bánh + đường viền cửa hông
-    add(skin("Giáp hông", [[0.62, 0.7], [-0.52, 0.7], [-0.52, 1.02], [0.62, 1.02]], p.hullDark, { face: "right", mirror: m, lift: 0.03, thick: 0.05 }));
-    add(line("Cửa hông", [[0.5, 1.06], [0.5, 1.36], [-0.25, 1.38], [-0.25, 1.06]], p.hullDark, { face: "right", mirror: m, w: 0.03 }));
-    // Đèn hậu, ăng-ten roi ở góc sau nóc
-    add(skin("Đèn hậu", [[0.62, 0.9], [0.78, 0.9], [0.78, 1.0], [0.62, 1.0]], p.warning, { face: "back", mirror: m }));
-    const [ax, ay, az] = at(0.55, -1.75, "top", 0, m);
-    add(part("Ăng-ten roi", group(cyl(0.05, 0.06, 0.08, p.metal, 6, ax, ay + 0.04, az), cyl(0.012, 0.012, 1.5, p.metal, 4, ax, ay + 0.8, az))));
+    // Cửa hông trên mặt vát giữa vai và nóc, sau kính hông
+    add(line("Cửa hông", [[-0.2, 1.1], [-0.2, 1.3], [-0.9, 1.3], [-0.9, 1.1]], p.hullDark, { face: "right", mirror: m, w: 0.03 }));
+    // Đèn hậu, hộp đồ ở góc sau, ăng-ten roi ở góc sau nóc
+    add(skin("Đèn hậu", [[0.58, 0.86], [0.74, 0.86], [0.74, 0.96], [0.58, 0.96]], p.warning, { face: "back", mirror: m }));
+    add(part("Hộp đồ", box(0.3, 0.3, 0.26, p.hullDark, sx * 0.55, 1.5, -1.5)));
+    const [ax, ay, az] = at(0.55, -1.62, "top", 0, m);
+    add(part("Ăng-ten roi", group(cyl(0.05, 0.06, 0.08, p.metal, 6, ax, ay + 0.04, az), cyl(0.012, 0.012, 1.4, p.metal, 4, ax, ay + 0.75, az))));
   });
-  // Ống xả bên phải, bánh dự phòng + can dầu sau đuôi, viền cửa sau
-  add(part("Ống xả", cyl(0.05, 0.05, 0.5, p.metal, 6, 0.9, 1.22, -1.62)));
-  const spare = part("Bánh dự phòng", wheel(0.42, 0.22, p.rubber, p.metal));
-  spare.rotation.y = Math.PI / 2;
-  spare.position.set(0.32, 1.02, -2.1);
-  add(spare, part("Can dầu", box(0.3, 0.42, 0.12, p.hullDark, -0.42, 1.0, -2.04)));
-  add(line("Cửa sau", [[-0.12, 0.66], [-0.12, 1.3], [0.62, 1.3]], p.hullDark, { face: "back", w: 0.03 }));
+  // Cửa sau lớn + tay nắm, ống xả bên phải
+  add(line("Cửa sau", [[-0.4, 0.62], [-0.4, 1.24], [0.4, 1.24], [0.4, 0.62]], p.hullDark, { face: "back", w: 0.035 }));
+  add(part("Tay nắm cửa sau", box(0.18, 0.05, 0.05, p.metal, 0.22, 0.95, -1.82)));
+  add(part("Ống xả", cyl(0.05, 0.05, 0.45, p.metal, 6, 0.84, 1.2, -1.45)));
 
   // ================================================================ 5. NÓC: cửa xe trưởng, ô nhận diện
-  const [hx, hy, hz] = at(0.36, -1.25);
-  add(part("Cửa nóc xe trưởng", group(cyl(0.22, 0.24, 0.08, p.hullDark, 10, hx, hy + 0.03, hz), box(0.08, 0.06, 0.22, p.metal, hx, hy + 0.09, hz))));
-  add(skin("Ô nhận diện (màu phe)", [[-0.6, -1.0], [-0.12, -1.0], [-0.12, -1.55], [-0.6, -1.55]], p.team));
+  const [hx, hy, hz] = at(0.4, -1.05);
+  add(part("Cửa nóc xe trưởng", group(cyl(0.2, 0.22, 0.08, p.hullDark, 10, hx, hy + 0.03, hz), box(0.08, 0.06, 0.2, p.metal, hx, hy + 0.09, hz))));
+  add(skin("Ô nhận diện (màu phe)", [[-0.58, -0.82], [-0.14, -0.82], [-0.14, -1.3], [-0.58, -1.3]], p.team));
 
-  // ================================================================ 6. THÁP + GIÁ HAI NÒNG
+  // ================================================================ 6. THÁP (đúng tâm xe) + GIÁ HAI NÒNG
   const turret = part("Tháp súng", group());
-  turret.position.set(0, 1.44, -0.32);
+  turret.position.set(0, ROOF_Y, 0);
   turret.add(part("Vành tháp", cyl(0.5, 0.52, 0.1, p.metal, 14, 0, 0.03, 0)));
   const shell = part(
     "Thân tháp",
@@ -126,7 +128,7 @@ export function buildLynx(p: Palette): Rig {
       turret.add(t);
     }
   }
-  // Kính ngắm quang điện tử (trinh sát): hộp cảm biến trên nóc tháp, mặt kính quay ra trước
+  // Kính ngắm quang điện tử: hộp cảm biến trên nóc tháp, mặt kính quay ra trước
   turret.add(part("Kính ngắm quang điện tử", group(box(0.24, 0.2, 0.24, p.hullDark, -0.26, 0.48, -0.25), box(0.18, 0.12, 0.02, p.glass, -0.26, 0.5, -0.12), cyl(0.04, 0.04, 0.1, p.metal, 6, -0.26, 0.4, -0.25))));
 
   // Giá súng: trục nâng ở trước tháp; nòng, hộp đạn, tấm chắn đều nằm trong giá nên ngóc lên cùng nhau
@@ -153,7 +155,7 @@ export function buildLynx(p: Palette): Rig {
     "lynx",
     p,
     { body, wheels, turret, gun, barrels, muzzles: barrels, flashes, spinners: [], aimPitch: 0.05, airPitch: 1.15, recoil: 0.1 },
-    2.8,
+    2.6,
     [{ id: "aimAir", label: "Ngắm máy bay" }]
   );
 }

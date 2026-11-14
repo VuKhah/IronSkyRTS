@@ -578,6 +578,8 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     sight: 28,
     radius: 1.4,
     halfLen: 2.25,
+    bodyR: 2.25,
+    spaceR: 2.45,
     captureWeight: 1,
     weapon: { name: "Súng máy 20mm", dmgGround: 32, dmgAir: 14, range: 15.5, cooldown: 0.65, dmgType: "normal", splash: 0, visual: "bullet", traverse: 120 },
     features: [
@@ -650,6 +652,8 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     sight: 28,
     radius: 1.6,
     halfLen: 2.3,
+    bodyR: 2.25,
+    spaceR: 2.45,
     captureWeight: 1,
     weapon: {
       name: "Loạt 12 tên lửa tầm nhiệt, 2 khẩu",
@@ -701,6 +705,8 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     sight: 20,
     radius: 1.8,
     halfLen: 2.7,
+    bodyR: 2.75,
+    spaceR: 2.95,
     captureWeight: 1,
     weapon: {
       name: "Dàn 24 tên lửa 122mm",
