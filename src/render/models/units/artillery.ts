@@ -18,6 +18,11 @@
  * - Hạ bệ (khớp luật `deploy.time` = 2 giây, `required`): 5–60% 4 càng xoè · 50–80% 4 lưỡi neo cắm đất ·
  *   65–100% nòng trong duỗi thêm 1,5 m (nòng ống lồng).
  * Bộ phận động: 4 càng, 4 lưỡi neo, bệ quay tháp, thân tháp + nòng ngóc + giật, nòng trong duỗi, bánh lăn.
+ *
+ * Bản 7 (15/11/2026, đế Pháo Ø 8 m, Docs/design/UNIT_BASES_PLAN.md), người dùng: thân tỉ lệ 1,7 : 1; vòng thân CHÍNH LÀ phạm vi
+ * lúc hạ bệ (4 càng xoè hết thì mũi lưỡi neo chạm vòng); lúc CHẠY nòng hạ ngang và thu ngắn (nòng ngoài rút vào ống dẫn, nòng
+ * trong thu hết); lúc CỐ ĐỊNH nòng vươn lên cao (ngóc `DEPLOY_PITCH`) rồi duỗi dài, chỉ xoay ngang, không hạ góc được.
+ * Thân + 4 càng nén dọc ×`K_Z` (tháp không nén: tháp xoay, nén một chiều thì méo khi quay); cả xe phóng ×`SCALE`.
  */
 import * as THREE from "three";
 import { box, cyl, facets, group, muzzleFlash, part, surfaceTools, tubeZ, wheel, type Palette, type Rig } from "../kit";
@@ -31,14 +36,23 @@ const DEPLOY_TIME = 2;
 const SPLAY_FRONT = 0.35;
 const SPLAY_REAR = 0.6;
 /** Nòng trong duỗi thêm bao nhiêu mét khi cố định. */
-const BARREL_EXT = 1.5;
+const BARREL_EXT = 1.0;
+/** Nòng ngoài: lúc chạy rút vào ống dẫn (z = OUTER_IN), lúc cố định đẩy ra (OUTER_OUT). */
+const OUTER_IN = 0.3;
+const OUTER_OUT = 1.4;
+/** Góc ngóc cố định khi hạ bệ (rad, ~50°, người dùng 15/11): nòng dựng cao nên bóng trên mặt đất ngắn, duỗi dài vẫn nằm trong vòng thân. */
+const DEPLOY_PITCH = 0.87;
+/** Cụm nòng (nòng ngoài + nòng trong + bầu hút khói + đầu hãm) thu ×0,8 cho cân với bệ (người dùng 15/11: nòng quá cỡ). */
+const GUN_S = 0.8;
+/** Nén dọc thân + càng cho thân đạt tỉ lệ 1,7 : 1 (bản 6: ~2 : 1). */
+const K_Z = 0.82;
 const HALF_W = 1.38; // mép ngoài thân xe (cũng là chỗ đặt bản lề càng)
 const ARM_LEN = 2.6;
 /** Lưỡi neo: bản lề cao 0,6 m, lưỡi dài 0,75 m, hạ quá phương ngang 0,9 rad thì mũi chạm đất. */
 const SPADE_DIG = 0.9;
 const PEDESTAL_TOP = 1.75;
-/** Tỉ lệ phóng to cả xe (06/11/2026: to hơn ~50%). Kích thước trong file là trước khi nhân. Sim: UNITS.artillery.radius. */
-const SCALE = 1.5;
+/** Tỉ lệ phóng cả xe. Kích thước trong file là trước khi nhân. 15/11: chọn để bệ hạ chạm đúng vòng thân Ø 8 m (`bodyR` 4). */
+const SCALE = 1.16;
 /** Mép trong của càng bắt đầu từ z này: góc trong vát xiên, chừa chỗ cho cột bệ tháp (bán kính ≤ 0,65 m). */
 const CUT_Z = 0.8;
 
@@ -125,6 +139,7 @@ export function buildArtillery(p: Palette): Rig {
       spades.push(spade);
       add(arm);
       // xoè ra ngoài quanh bản lề mép ngoài: càng trước phải quay mũi về +x (quay +), càng sau phải quay đuôi về +x (quay −)
+      arm.scale.z = K_Z; // nén dọc trong khung của càng (càng xoay quanh bản lề nên không bị xô lệch)
       arms.push({ g: arm, rot: sx * sz * (rear ? SPLAY_REAR : SPLAY_FRONT) });
     }
 
@@ -195,8 +210,8 @@ export function buildArtillery(p: Palette): Rig {
     part("Kính ngắm pháo", group(box(0.22, 0.22, 0.26, p.hullDark, -0.4, 0.7, 0.05), box(0.16, 0.1, 0.02, p.glass, -0.4, 0.72, 0.185))),
     part("Lá chắn nòng", facets([[0.48, -0.4, 1.0], [0.48, 0.42, 1.0], [0.42, -0.34, 1.48], [0.42, 0.36, 1.48]], p.hullDark, true)),
     // ống dẫn nòng (đứng yên, nòng giật lùi bên trong) + 2 ống hãm giật trên / dưới: dáng pháo hạng nặng
-    part("Ống dẫn nòng", at3(tubeZ(0.3, 0.32, 1.15, p.hullDark, 12), 0, 0, 2.0)),
-    part("Ống hãm giật", group(at3(tubeZ(0.09, 0.09, 1.25, p.metal, 8), 0, 0.36, 2.05), at3(tubeZ(0.09, 0.09, 1.25, p.metal, 8), 0, -0.34, 2.05)))
+    part("Ống dẫn nòng", at3(tubeZ(0.24, 0.26, 1.15, p.hullDark, 12), 0, 0, 2.0)),
+    part("Ống hãm giật", group(at3(tubeZ(0.075, 0.075, 1.25, p.metal, 8), 0, 0.3, 2.05), at3(tubeZ(0.075, 0.075, 1.25, p.metal, 8), 0, -0.28, 2.05)))
   );
   for (const sx of [-1, 1]) gun.add(part("Tấm hông tháp (màu phe)", box(0.03, 0.46, 1.3, p.team, sx * 0.715, 0.0, -0.6)));
   // Nòng ngoài (giật khi bắn, lùi vào trong ống dẫn) chứa nòng trong (duỗi ra khi cố định): nòng trong là con của nòng ngoài
@@ -218,9 +233,17 @@ export function buildArtillery(p: Palette): Rig {
   inner.add(innerTube, brake, flash);
   inner.position.z = 0.95;
   outer.add(inner);
+  outer.scale.setScalar(GUN_S);
   gun.add(outer);
   turret.add(gun);
   add(turret);
+
+  // Nén dọc phần thân đứng yên (mọi thứ trừ tháp và 4 càng: càng đã nén trong khung riêng)
+  const hullG = group();
+  hullG.scale.z = K_Z;
+  for (const c of [...body.children]) if (c !== turret && !arms.some((a) => a.g === c)) hullG.add(c);
+  body.add(hullG);
+  outer.position.z = outer.userData.z0 = OUTER_IN;
 
   // ================================================================ 4. HOẠT ẢNH HẠ BỆ (tuyến tính, đúng DEPLOY_TIME giây)
   // Phóng to cả xe (người dùng: to hơn khoảng 50%): mọi kích thước ở trên là trước khi nhân tỉ lệ
@@ -230,7 +253,7 @@ export function buildArtillery(p: Palette): Rig {
     "artillery",
     p,
     { body, wheels, turret, gun, barrels: [outer], muzzles: [inner], flashes: [flash], spinners: [], aimPitch: 0.62, recoil: 0.6, bounce: { damp: 0.3, gunHz: 5, gunClimb: 0, gunSlide: 0, gunTwist: 0, recoilTime: 0.8 } }, // bệ cố định: thân và tháp đứng im, chỉ nòng giật lùi rồi từ từ trả về
-    4.3 * SCALE,
+    4.4,
     [{ id: "deploy", label: "Hạ bệ chữ X" }],
     (dt, _t, a) => {
       const target = a.has("deploy") ? 1 : 0;
@@ -239,7 +262,14 @@ export function buildArtillery(p: Palette): Rig {
       for (const arm of arms) arm.g.rotation.y = arm.rot * splay;
       const down = smooth(0.5, 0.8, dep);
       for (const s of spades) s.rotation.x = -Math.PI / 2 + down * (Math.PI / 2 + SPADE_DIG);
-      inner.position.z = 0.95 + smooth(0.65, 1, dep) * BARREL_EXT;
+      // nòng: ngóc lên cao (40–75%) rồi đẩy nòng ngoài + duỗi nòng trong (65–100%); thu bệ thì ngược lại.
+      // Góc ngóc do bệ quyết định, không theo lệnh ngắm: cố định là chỉ xoay ngang, không hạ góc được.
+      gun.rotation.x = -DEPLOY_PITCH * smooth(0.4, 0.75, dep);
+      const ext = smooth(0.65, 1, dep);
+      const z0 = OUTER_IN + (OUTER_OUT - OUTER_IN) * ext;
+      outer.position.z += z0 - (outer.userData.z0 as number);
+      outer.userData.z0 = z0;
+      inner.position.z = 0.95 + ext * BARREL_EXT;
     }
   );
 }
