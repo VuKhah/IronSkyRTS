@@ -214,7 +214,7 @@ export interface UnitSpec {
    * Kiểm bằng `npm run model-report` và `src/render/models/bases.test.ts`. Sim chưa dùng (bước 1 của kế hoạch đế).
    */
   bodyR?: number;
-  /** Bán kính vùng giãn (m): khoảng tối thiểu với quân cùng lớp; mặt đất = bodyR + 0,2. Sim chưa dùng. */
+  /** Bán kính vùng giãn (m): khoảng tối thiểu với quân cùng lớp; mặt đất = bodyR + 0,2, trên không theo bảng đế không quân. Sim chưa dùng. */
   spaceR?: number;
   /** Độ cao đặt thanh máu trên quân (m), chỉ dùng cho phần vẽ. Bỏ trống = theo cỡ thường. */
   barHeight?: number;
@@ -863,6 +863,8 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     minSpeed: 12,
     sight: 30,
     radius: 1.8,
+    bodyR: 3,
+    spaceR: 7,
     captureWeight: 0,
     weapon: {
       name: "Pháo đôi 30mm",
@@ -978,6 +980,8 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     minSpeed: 10,
     sight: 26,
     radius: 2.4,
+    bodyR: 5,
+    spaceR: 12,
     captureWeight: 0,
     weapon: {
       name: "Chuỗi 6 bom rải thảm",

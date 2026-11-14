@@ -36,6 +36,9 @@ const TRAIL: P2[] = [[2.5, -0.42], [1.58, -1.85], [0.8, -0.8], [0, -2.05]];
 const leZ = (x: number) => NOSE_Z + ((TIP_FRONT[1] - NOSE_Z) * x) / TIP_FRONT[0];
 
 
+/** Ép vào đế thân (UNIT_BASES_PLAN.md): dời tâm hình về tâm quân rồi phóng đều. Số trong file là số trước khi phóng. */
+const FIT = { scale: 1.29, dz: 0 }; // thân Ø 10 m: sải cánh 7,3 → 9,4 m; không dời vì đầu cánh nằm lệch về sau, dời mũi lùi lại làm đầu cánh thò xa hơn
+
 export function buildValkyrie(p: Palette): Rig {
   const frame = group();
   const engines: THREE.Mesh[] = [];
@@ -245,6 +248,7 @@ export function buildValkyrie(p: Palette): Rig {
       engines,
       parkY: 0.78,
       flyY: 3.2,
+      fit: FIT,
       fire(dt, on) {
         // cánh lái theo độ nghiêng / chúc ngóc của thân (aircraftRig đặt frame.rotation = (−pitch, yaw, −roll))
         const roll = -frame.rotation.z;
@@ -281,7 +285,7 @@ export function buildValkyrie(p: Palette): Rig {
         }
       }
     },
-    4.0
+    5.3
   );
   rigRoot = rig.root;
   return rig;

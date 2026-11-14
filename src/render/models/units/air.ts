@@ -24,6 +24,11 @@ export interface AirParts {
   parkY: number;
   flyY: number;
   fire(dt: number, on: boolean, flying: boolean): void;
+  /**
+   * Ép mô hình vào đế thân (Docs/design/UNIT_BASES_PLAN.md): dời cả khung `dz` m theo trục dọc (số trước khi phóng) để tâm hình
+   * trùng tâm quân, rồi phóng đều `scale` lần. Các số trong file mô hình vẫn là số trước khi phóng.
+   */
+  fit?: { scale: number; dz: number };
 }
 
 export const AIR_ACTIONS: RigAction[] = [
@@ -35,8 +40,17 @@ export function aircraftRig(parts: AirParts, radius: number): Rig {
   partIfUnnamed("Thân máy bay", parts.frame);
   partIfUnnamed("Càng đáp", parts.gear);
   for (const e of parts.engines) partIfUnnamed("Lửa động cơ", e);
+  const fit = parts.fit;
+  if (fit) {
+    const inner = group(...[...parts.frame.children]);
+    inner.position.z = fit.dz;
+    parts.frame.add(inner);
+    parts.frame.scale.setScalar(fit.scale);
+  }
+  // càng đáp phóng theo mô hình nên độ cao đậu cũng phóng theo
+  const parkY = parts.parkY * (fit?.scale ?? 1);
   const root = group(parts.frame);
-  let alt = parts.parkY;
+  let alt = parkY;
   let gearT = 1;
   let roll = 0;
   let pitch = 0;
@@ -58,7 +72,7 @@ export function aircraftRig(parts: AirParts, radius: number): Rig {
         gearT = approach(gearT, ext.airborne ? 0 : 1, 5, dt);
         roll = approach(roll, ext.roll, 6, dt);
         throttle = approach(throttle, ext.airborne ? 1 : 0.25, 3, dt);
-        parts.frame.position.y = parts.parkY;
+        parts.frame.position.y = parkY;
         parts.frame.rotation.set(0, 0, -roll, "YXZ");
         parts.gear.scale.y = Math.max(0.02, gearT);
         parts.gear.visible = gearT > 0.04;
@@ -67,8 +81,8 @@ export function aircraftRig(parts: AirParts, radius: number): Rig {
         return;
       }
       const flying = a.has("fly");
-      alt = approach(alt, flying ? parts.flyY : parts.parkY, flying ? 1.2 : 1.6, dt);
-      const airborne = alt > parts.parkY + 0.25;
+      alt = approach(alt, flying ? parts.flyY : parkY, flying ? 1.2 : 1.6, dt);
+      const airborne = alt > parkY + 0.25;
       gearT = approach(gearT, flying && airborne ? 0 : 1, 5, dt);
       roll = approach(roll, flying ? Math.sin(t * 0.7) * 0.5 : 0, 2, dt);
       pitch = approach(pitch, flying ? Math.sin(t * 0.45) * 0.07 - 0.03 : 0, 2, dt);

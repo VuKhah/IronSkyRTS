@@ -28,6 +28,9 @@ const TIP_TOE = 0.14;
 /** Kính buồng lái vàng (phủ kim loại chống chói): vật liệu riêng của tiêm kích, dùng chung cho cả hai phe. */
 let goldGlass: THREE.MeshStandardMaterial | null = null;
 
+/** Ép vào đế thân (UNIT_BASES_PLAN.md): dời tâm hình về tâm quân rồi phóng đều. Số trong file là số trước khi phóng. */
+const FIT = { scale: 1.1, dz: -0.475 }; // thân Ø 6 m: sải cánh 5,2 → 5,7 m, tầm với ≈ 2,93 m
+
 export function buildFalcon(p: Palette): Rig {
   goldGlass ??= new THREE.MeshStandardMaterial({ color: 0xffc94d, roughness: 0.2, metalness: 0.7, emissive: 0xa86400, emissiveIntensity: 0.75, flatShading: true });
   const frame = group();
@@ -173,6 +176,7 @@ export function buildFalcon(p: Palette): Rig {
       engines,
       parkY: 0.62,
       flyY: 2.6,
+      fit: FIT,
       fire(dt, on) {
         clock.tick(dt, on);
         // hai nòng cùng chớp, nhấp nháy theo nhịp bắn
@@ -183,7 +187,7 @@ export function buildFalcon(p: Palette): Rig {
         }
       }
     },
-    3.1
+    3.3
   );
   rig.setAmmo = (n) => {
     // sim bắn quả ở trục +x của thân trước (pylons[1], x = +1,35), rồi tới quả bên kia
