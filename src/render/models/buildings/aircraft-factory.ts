@@ -2,8 +2,8 @@
  * Nhà Máy Máy Bay, bản 3 (10/11/2026): NHÀ CHỨA CÓ SÀN PHÓNG TRÊN NÓC, máy bay cất cánh thẳng đứng từ giếng.
  *
  *  - NHÀ CHỨA 13 × 18 m, cả nóc là sàn phóng phẳng (độ cao `launch.deck`) như boong tàu sân bay, có lan can, đèn sàn, vạch an
- *    toàn, ống gió. Trên sàn có các GIẾNG PHÓNG đọc từ `BUILDINGS["aircraft-factory"].pads` (giếng lớn 8,4 × 8,4 m cho
- *    Valkyrie Ø 8, giếng nhỏ 6,4 × 6,4 m cho Falcon Ø 6; 15/11/2026: thân Ø + 0,4 m như ô Sân Đáp), sâu `launch.shaft`, lòng lót tối, đáy có bệ nâng.
+ *    toàn, ống gió. Trên sàn có các GIẾNG PHÓNG đọc từ `BUILDINGS["aircraft-factory"].pads` (giếng lớn 8 × 8 m cho Valkyrie
+ *    sải cánh 7,3 m, giếng nhỏ 6 × 6 m), sâu `launch.shaft`, lòng lót tối, đáy có bệ nâng.
  *  - Mỗi giếng đậy bằng CỬA CUỐN nằm ngang (nan cửa màu phe, chữ H, viền vàng); khi phóng, tấm cửa cuộn vào HỘP TRỤC ở mép
  *    giếng phía ngoài. Chiến trường mở từng cửa qua `setLaunch(k, open)` theo trạng thái máy bay `launch` trong sim; Xưởng Mô
  *    Hình dùng nút "Phóng" để mở cả hai.
