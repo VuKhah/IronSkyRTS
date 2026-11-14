@@ -8,7 +8,7 @@ import * as THREE from "three";
 import { ExitArrows } from "./exit-arrows";
 import { Paving } from "./paving";
 import { sec } from "../sim/world";
-import { BUILDINGS, doorDir, FACTION_OF, RULES, rotOffset, UNITS, type Side, lotTime } from "../sim/content";
+import { BUILDINGS, doorDir, FACTION_OF, PARK_GROW_ALT, PARK_SCALE, RULES, rotOffset, UNITS, type Side, lotTime } from "../sim/content";
 import type { GameMap } from "../sim/maps";
 import type { Building, Mine, Target, Unit, Uplink, Wreck } from "../sim/types";
 import { AIRBORNE_ALT, DT, type World } from "../sim/world";
@@ -424,6 +424,12 @@ export class Views {
       const pitchTarget = Math.atan2(sink, Math.max(1, u.speed));
       v.pitch += (pitchTarget - v.pitch) * Math.min(1, dt * 5);
       root.rotation.set(v.pitch, v.yaw, 0, "YXZ");
+      // đậu trên Sân Đáp thì thu nhỏ còn PARK_SCALE; hạ / cất cánh đổi cỡ dần theo độ cao; bay và phóng từ giếng giữ nguyên mẫu
+      if (!spec.hover) {
+        const low = u.air === "parked" || u.air === "landing" || u.air === "takeoff";
+        const k = low ? Math.min(1, Math.max(0, alt / PARK_GROW_ALT)) : 1;
+        root.scale.setScalar(PARK_SCALE + (1 - PARK_SCALE) * k);
+      }
       // đang phóng từ giếng: giữ càng hạ tới khi bắt đầu bay ra trước
       v.rig.setFlight?.(u.air === "launch" ? u.speed > 0 : alt > 0.6, flying ? v.roll : 0);
       if (spec.secondary) v.rig.setAmmo?.(u.ammo2);

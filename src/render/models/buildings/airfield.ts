@@ -5,7 +5,7 @@
  * Đèn ô đáp chỉ sáng khi sân có điện. Bộ phận động: radar.
  */
 import * as THREE from "three";
-import { BUILDINGS, CONTROL_CELL, PAD_OFFSETS, type Faction } from "../../../sim/content";
+import { BUILDINGS, CONTROL_CELL, PAD_OFFSETS, PARK_SCALE, type Faction } from "../../../sim/content";
 import { approach, box, cyl, facets, group, part, sphere, type Palette, type Rig } from "../kit";
 import { buildUnit } from "../units";
 import { WORK, rig, oct, strut, type P3 } from "./shared";
@@ -62,13 +62,15 @@ export function buildAirfield(p: Palette, faction: Faction, showcase: boolean): 
   radar.position.set(TX, BODY_TOP + 1.95, TZ);
   add(radar);
 
-  // Xưởng Mô Hình: trưng một chiếc Falcon đậu ở ô số 3 (trong trận thì máy bay thật đậu ở các ô)
-  if (showcase) {
-    const falcon = buildUnit("falcon", faction);
-    const [fx, fz] = PAD_OFFSETS[2]!;
-    falcon.root.position.set(fx, PAD_Y, fz);
-    add(falcon.root);
-  }
+  // Xưởng Mô Hình: trưng Falcon đậu ô số 3 và Valkyrie ô số 5, thu nhỏ như lúc đậu thật (PARK_SCALE)
+  if (showcase)
+    for (const [kind, i] of [["falcon", 2], ["valkyrie", 4]] as const) {
+      const plane = buildUnit(kind, faction);
+      const [fx, fz] = PAD_OFFSETS[i]!;
+      plane.root.position.set(fx, PAD_Y, fz);
+      plane.root.scale.setScalar(PARK_SCALE);
+      add(plane.root);
+    }
   let powered = 0;
   return rig(root, [WORK], 10.5, [
     (dt, t, a) => {

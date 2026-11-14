@@ -1107,11 +1107,12 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     armorClass: "struct",
     sight: 16,
     half: [9, 9], // thân 9 × 9 ô (người dùng 10/11/2026, bản vẽ xưởng): + viền 1 ô trong mô hình = nền móng 11 × 11 ô
-    // 10/11/2026: nhà chứa có sàn phóng trên nóc, 2 giếng cửa cuốn (lớn 8 × 8 m cho Valkyrie sải cánh 7,3 m, nhỏ 6 × 6 m);
-    // không có lối ra mặt đất, máy bay cất cánh thẳng đứng. Giếng đầu tiên là giếng lớn.
+    // 10/11/2026: nhà chứa có sàn phóng trên nóc, 2 giếng cửa cuốn; không có lối ra mặt đất, máy bay cất cánh thẳng đứng.
+    // Giếng đầu tiên là giếng lớn. 15/11 (người dùng: cửa xưởng to ra): giếng = thân Ø + 0,4 m, máy bay phóng ở nguyên mẫu
+    // (lớn 8,4 m cho Valkyrie Ø 8, nhỏ 6,4 m cho Falcon Ø 6).
     pads: [
-      [-6.5, -0.2, 1.5, 7.8],
-      [-5.5, -8, 0.5, -2]
+      [-6.7, -0.4, 1.7, 8],
+      [-5.7, -8.4, 0.7, -2]
     ],
     launch: { deck: 7.5, shaft: 5 },
     produces: ["falcon", "valkyrie"],
@@ -1394,6 +1395,15 @@ export const PAD_OFFSETS: readonly (readonly [number, number])[] = [
 
 /** Ô thứ sáu của lưới Sân Đáp: trạm điều khiển, nằm hàng sau để không chắn mũi máy bay. */
 export const CONTROL_CELL: readonly [number, number] = [-3, -5.4];
+
+/**
+ * Máy bay đậu trên Sân Đáp thu nhỏ còn PARK_SCALE (chỉ phần vẽ; người dùng 15/11/2026: hạ cánh thu nhỏ, cất cánh phóng to về
+ * nguyên mẫu). Hằng số chung cho mọi máy bay, lấy theo máy bay to nhất (Valkyrie): đậu thì đứng yên như quân mặt đất, nên
+ * thân thu nhỏ + vùng giãn mặt đất 0,2 m phải vừa nửa cạnh ngắn ô đáp (5,6 × 5,2 m → 2,6 m): k = (2,6 − 0,2) / bodyR lớn nhất.
+ */
+export const PARK_SCALE = (5.2 / 2 - 0.2) / Math.max(...Object.values(UNITS).filter((u) => u.fuel && u.bodyR).map((u) => u.bodyR!));
+/** Hạ cánh / cất cánh: dưới độ cao này (m) máy bay đổi cỡ dần giữa PARK_SCALE (chạm đất) và nguyên mẫu. */
+export const PARK_GROW_ALT = 4;
 
 /**
  * Tổng Hành Dinh và nhà xưởng quay cửa (phía +z của mô hình) về phía giữa bản đồ theo trục z: xưởng nằm ở nửa +z thì xoay 180°.
