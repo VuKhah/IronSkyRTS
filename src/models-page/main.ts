@@ -281,7 +281,9 @@ function loadModel(keepView: boolean): void {
   if (!keepView) stage.active = new Set(rig.defaultOn);
   // ?bake=1: xem mô hình đã "nướng" đúng như trên chiến trường (gộp khối đứng yên)
   if (new URLSearchParams(location.search).has("bake")) bakeStatic(rig);
-  const old = stage.show(rig, keepView);
+  // hai vòng của quân: thân bodyR + vùng giãn spaceR (chưa có đế thì vòng va chạm sim)
+  const u = state.id in UNITS ? UNITS[state.id as UnitId] : null;
+  const old = stage.show(rig, keepView, u ? { bodyR: u.bodyR, spaceR: u.spaceR, simR: u.radius } : undefined);
   // ?flight=1: thử chế độ bay do chiến trường điều khiển (setFlight)
   if (new URLSearchParams(location.search).has("flight")) rig.setFlight?.(true, 0.5);
   if (old) disposeRig(old);

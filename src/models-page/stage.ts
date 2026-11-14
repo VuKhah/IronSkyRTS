@@ -158,6 +158,34 @@ const VIEW_DIRS: Record<ViewName, THREE.Vector3> = {
   back: new THREE.Vector3(-1.0, 0.16, -1.25)
 };
 
+/** Hai vòng của quân (Docs/design/UNIT_BASES_PLAN.md): thân `bodyR` và vùng giãn `spaceR`; chưa có đế thì vẽ vòng sim `radius`. */
+export interface BaseRings {
+  bodyR?: number;
+  spaceR?: number;
+  /** Bán kính va chạm sim hiện tại, vẽ thay khi quân chưa có `bodyR`. */
+  simR?: number;
+}
+
+/** Vòng phẳng sát đất, bề rộng `w`; `dashes` > 0 thì cắt thành từng đoạn (nét đứt). */
+function groundRing(r: number, w: number, color: number, dashes = 0): THREE.Mesh {
+  const geo = new THREE.BufferGeometry();
+  const pos: number[] = [];
+  const seg = dashes > 0 ? dashes * 4 : 96;
+  for (let i = 0; i < seg; i++) {
+    if (dashes > 0 && i % 4 >= 2) continue; // nửa vòng đoạn có nét, nửa trống
+    const a0 = (i / seg) * Math.PI * 2;
+    const a1 = ((i + 1) / seg) * Math.PI * 2;
+    const p = (a: number, rr: number): number[] => [Math.cos(a) * rr, 0, Math.sin(a) * rr];
+    const [A, B, C, D] = [p(a0, r - w), p(a0, r), p(a1, r), p(a1, r - w)];
+    pos.push(...A, ...B, ...C, ...A, ...C, ...D);
+  }
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity: 0.9, depthWrite: false }));
+  mesh.position.y = 0.04;
+  mesh.renderOrder = 8;
+  return mesh;
+}
+
 export class Stage {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
@@ -186,6 +214,9 @@ export class Stage {
   private dims = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xffb547, depthTest: false, transparent: true }));
   private person = makePerson();
   private labels: { el: HTMLDivElement; at: THREE.Vector3 }[] = [];
+  /** Vòng thân và vòng giãn trên mặt đất, cùng bật / tắt với thước đo. */
+  private rings = new THREE.Group();
+  private ringLabels: { el: HTMLDivElement; at: THREE.Vector3 }[] = [];
 
   constructor(private host: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -217,12 +248,12 @@ export class Stage {
     host.appendChild(this.tip);
 
     this.dims.renderOrder = 9;
-    this.scene.add(this.dims, this.person);
-    for (let i = 0; i < 4; i++) {
+    this.scene.add(this.dims, this.person, this.rings);
+    for (let i = 0; i < 6; i++) {
       const el = document.createElement("div");
       el.className = "dim-label";
       host.appendChild(el);
-      this.labels.push({ el, at: new THREE.Vector3() });
+      (i < 4 ? this.labels : this.ringLabels).push({ el, at: new THREE.Vector3() });
     }
 
     const canvas = this.renderer.domElement;
@@ -257,12 +288,14 @@ export class Stage {
     this.measureOn = on;
     this.dims.visible = on;
     this.person.visible = on;
-    for (const l of this.labels) l.el.hidden = !on;
+    this.rings.visible = on;
+    for (const l of [...this.labels, ...this.ringLabels]) l.el.hidden = !on || !l.el.textContent;
     this.measureT = 0;
   }
 
   /** Đổi mô hình; keepView = giữ góc camera (khi chỉ đổi màu phe). */
-  show(rig: Rig, keepView = false): Rig | null {
+  show(rig: Rig, keepView = false, base?: BaseRings): Rig | null {
+    this.setRings(base);
     const old = this.rig;
     if (old) {
       old.root.remove(this.hoverHelper);
@@ -276,6 +309,35 @@ export class Stage {
     this.measureT = 0;
     if (!keepView) this.frameRig(rig);
     return old;
+  }
+
+  /** Vẽ lại hai vòng: thân (nét liền, xanh) và vùng giãn (nét đứt, vàng). Quân chưa có đế thì vẽ vòng sim (nét đứt, xám). */
+  private setRings(base?: BaseRings): void {
+    for (const c of [...this.rings.children]) {
+      const m = c as THREE.Mesh;
+      m.geometry.dispose();
+      (m.material as THREE.Material).dispose();
+      this.rings.remove(m);
+    }
+    const [bodyL, spaceL] = this.ringLabels;
+    bodyL.el.textContent = spaceL.el.textContent = "";
+    // nhãn đặt chéo phía sau (trái: thân, phải: giãn) để không đè nhãn Rộng / Dài và người 1,8 m
+    const D = Math.SQRT1_2;
+    if (base?.bodyR) {
+      this.rings.add(groundRing(base.bodyR, 0.07, 0x6fe3ff));
+      bodyL.el.textContent = `Thân Ø ${m1(base.bodyR * 2)} m`;
+      bodyL.at.set(-base.bodyR * D, 0.05, -base.bodyR * D);
+    } else if (base?.simR) {
+      this.rings.add(groundRing(base.simR, 0.06, 0xb8c2d0, 24));
+      bodyL.el.textContent = `Vòng sim Ø ${m1(base.simR * 2)} m (chưa có đế)`;
+      bodyL.at.set(-base.simR * D, 0.05, -base.simR * D);
+    }
+    if (base?.spaceR) {
+      this.rings.add(groundRing(base.spaceR, 0.06, 0xffb547, 36));
+      spaceL.el.textContent = `Giãn Ø ${m1(base.spaceR * 2)} m`;
+      spaceL.at.set(base.spaceR * D, 0.05, -base.spaceR * D);
+    }
+    for (const l of this.ringLabels) l.el.hidden = !this.measureOn || !l.el.textContent;
   }
 
   /** Mô hình rất lớn (tàu sân bay): cho camera lùi đủ xa, nới tầm nhìn và vùng đổ bóng theo cỡ mô hình. */
@@ -418,7 +480,8 @@ export class Stage {
     const w = this.host.clientWidth;
     const h = this.host.clientHeight;
     const v = new THREE.Vector3();
-    for (const l of this.labels) {
+    for (const l of [...this.labels, ...this.ringLabels]) {
+      if (!l.el.textContent) continue;
       v.copy(l.at).project(this.camera);
       const off = v.z > 1;
       l.el.hidden = off;
