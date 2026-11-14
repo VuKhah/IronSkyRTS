@@ -24,6 +24,11 @@ export interface DroneParts {
   actions: RigAction[];
   /** Vật thể đứng yên theo mặt đất, không nhún theo thân (vùng khiên, khói). */
   ground?: THREE.Object3D[];
+  /**
+   * Thu đều thân bay (không thu độ cao bay, không thu vật bám đất) cho lọt đế thân `bodyR` (Docs/design/UNIT_BASES_PLAN.md).
+   * Số trong file mô hình là số trước khi thu.
+   */
+  scale?: number;
   extra?: (dt: number, t: number, a: ReadonlySet<string>) => void;
 }
 
@@ -35,6 +40,7 @@ export function droneRig(d: DroneParts): Rig {
   const root = group(d.frame, ...(d.ground ?? []));
   let flyY = d.flyY;
   d.frame.position.y = flyY;
+  if (d.scale) d.frame.scale.setScalar(d.scale);
   for (const r of d.rotors) (r.disc.material as THREE.MeshBasicMaterial).opacity = 0.28;
   return {
     root,

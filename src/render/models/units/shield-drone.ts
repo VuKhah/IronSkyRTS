@@ -142,6 +142,7 @@ export function buildShieldDrone(p: Palette): Rig {
     frame,
     rotors,
     flyY: 6,
+    scale: 0.54, // lọt đế thân Ø 4,5 m (15/11/2026): thân 7,3 × 8,1 → 3,9 × 4,4 m; vùng khiên vẫn theo luật
     radius: 10.5, // đủ thấy trọn vùng khiên đường kính 24 m
     ground: [field, smoke],
     actions: [

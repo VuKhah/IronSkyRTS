@@ -61,7 +61,8 @@ export function buildScoutDrone(p: Palette): Rig {
     frame,
     rotors,
     flyY: 2.8,
-    radius: 2.6,
+    scale: 0.74, // lọt đế thân Ø 2,5 m (15/11/2026): sải cánh quạt 2,64 → 1,95 m
+    radius: 2.0,
     actions: [{ id: "kamikaze", label: "Lao cảm tử" }],
     extra: (dt, t, a) => {
       const on = a.has("kamikaze");
