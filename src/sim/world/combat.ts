@@ -125,12 +125,12 @@ function updateGround(this: World, u: Unit): void {
           u.chasing = false;
           this.setPath(u, u.tx, u.tz);
         }
-        if (this.follow(u)) this.arrive(u);
+        if (this.goalTaken(u) || this.follow(u)) this.arrive(u);
       }
       break;
     }
     case "move": {
-      if (this.follow(u)) this.arrive(u);
+      if (this.goalTaken(u) || this.follow(u)) this.arrive(u);
       if (w) fireAt = this.acquire(u, w, range);
       break;
     }

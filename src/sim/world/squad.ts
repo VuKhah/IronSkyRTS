@@ -1203,6 +1203,13 @@ function squadMember(this: World, u: Unit, w: WeaponSpec | undefined, range: num
   // cách ô THẬT (kể cả xe đang đứng chờ phía trước ô lúc hành quân): ORCA chỉ cho xe cùng đội né nhau khi có xe lệch ô
   const [ox, oz] = this.squadSlot(sq, i);
   u.slotOff = Math.sqrt(dist2(u.x, u.z, ox, oz));
+  // TỚI GẦN LÀ TỚI (T1, 16/11/2026): ô ở đích bị quân cùng phe ngoài đội đang đứng chiếm và xe đã sát quân đó thì đứng lại
+  // tại chỗ, không lái lún vào quân đứng. Lúc hành quân ô còn di động nên không xét. Đội hình mới (T3/T4) sẽ thay chốt này.
+  if (sq.phase !== "march" && this.spotTaken(u, ox, oz)) {
+    u.path = [];
+    u.pathI = 0;
+    return fireAt;
+  }
   if (sq.phase === "direct" && sq.rigid && !sq.rolling) {
     // chưa lăn bánh: chỉ thu bệ và xoay thân về hướng sắp đi
     const dep = UNITS[u.kind].weapon?.deploy;

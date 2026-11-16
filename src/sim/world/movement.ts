@@ -28,6 +28,14 @@ const REPLAN_EVERY = 2;
 const REPLAN_LOOK = 3;
 /** Lớp xe đứng dựng lại sau chừng này tick (0,5 s; xe đứng từ 1 s mới là vật cản nên trễ chừng này không đáng kể). */
 const STAND_REBUILD = 5;
+/** Tới gần là tới (T1): xe cách quân đứng đang chiếm đích không quá tổng hai vòng giãn + chừng này (m) thì coi như đã tới. */
+const ARRIVE_SLACK = 1;
+let MAX_SPACE_R = -1;
+/** Vòng giãn lớn nhất trong mọi quân (tính một lần). */
+function maxSpaceR(): number {
+  if (MAX_SPACE_R < 0) for (const k of Object.keys(UNITS) as (keyof typeof UNITS)[]) MAX_SPACE_R = Math.max(MAX_SPACE_R, spaceRadius(k));
+  return MAX_SPACE_R;
+}
 
 /** Bán kính thân khi tìm / nối tắt đường (cùng vòng với điểm dò thân `bodyContact`); máy bay: 0,7 m như cũ. */
 function pathHalf(u: Unit): number {
@@ -367,6 +375,40 @@ function clearStand(this: World, u: Unit, x: number, z: number): [number, number
 }
 
 /**
+ * TỚI GẦN LÀ TỚI (T1 kế hoạch A1 làm lại, người dùng duyệt 16/11/2026): đích cuối của xe bị quân cùng phe ĐANG ĐỨNG chiếm (xe không
+ * vừa chỗ: đích cách quân đó dưới tổng hai vòng giãn) và xe đã tới sát quân đó → coi như đã tới. Kiểm MỖI TICK khi đang đi, không
+ * chỉ lúc ra lệnh (`clearStand`): quân kia có thể tới đứng vào chỗ sau khi lệnh đã ra. Thiếu luật này xe bám đích nằm trong thân
+ * quân đứng, va chạm tròn đẩy trượt vòng quanh mãi (lỗi video 16/11, `arrival.test.ts`).
+ */
+function goalTaken(this: World, u: Unit): boolean {
+  if (u.path.length < 2) return false;
+  return this.spotTaken(u, u.path[u.path.length - 2], u.path[u.path.length - 1]);
+}
+
+/**
+ * Chỗ (gx, gz) bị quân cùng phe đang đứng (≥ STAND_AFTER giây, hoặc đã hạ bệ) chiếm, và xe `u` đã tới sát quân đó (`goalTaken`).
+ * Xe trong đội hình không tính đồng đội cùng đội (ô kề nhau vốn cách nhau đúng tổng hai vòng giãn).
+ */
+function spotTaken(this: World, u: Unit, gx: number, gz: number): boolean {
+  if (u.air !== "none") return false;
+  const su = spaceRadius(u.kind);
+  // thoát sớm: điều kiện bên dưới buộc xe cách đích < 2 (su + vòng giãn lớn nhất) + ARRIVE_SLACK
+  const reach = 2 * (su + maxSpaceR()) + ARRIVE_SLACK;
+  if (dist2(u.x, u.z, gx, gz) >= reach * reach) return false;
+  const still = sec(STAND_AFTER);
+  for (const v of this.units) {
+    if (v === u || v.side !== u.side || v.hp <= 0 || v.air !== "none" || isSquad(v.kind)) continue;
+    if (u.squad && v.squad === u.squad) continue;
+    if (!this.anchored(v) && v.still < still) continue;
+    const lim = su + spaceRadius(v.kind);
+    if (dist2(gx, gz, v.x, v.z) >= lim * lim) continue;
+    const near = lim + ARRIVE_SLACK;
+    if (dist2(u.x, u.z, v.x, v.z) <= near * near) return true;
+  }
+  return false;
+}
+
+/**
  * Bước xe tới (nx, nz), vật cản là RÀNG BUỘC CỨNG (12/11/2026): thân ở chỗ mới chạm vật cản thì bỏ phần bước đi hướng vào vật
  * cản (trượt dọc vách / tường nhà); rồi chỉ nhận chỗ mới khi tâm không vào ô chặn VÀ thân không chạm nhiều điểm hơn chỗ cũ
  * (đang lún sẵn thì bước nào bớt lún cũng được, để tự thoát). Không được thì thử riêng từng trục. Trước đây chỉ cấm tâm xe vào
@@ -586,7 +628,7 @@ function chase(this: World, u: Unit, t: Target): void {
  * GIỮ BÊN PHẢI (cùng một quy ước cho mọi xe, mọi phe): hai xe ngược chiều cùng giữ phải thì tự lệch về hai phía, qua được nhau.
  * Trước đây hòa thì chọn theo chẵn / lẻ của mã xe, không đối xứng giữa hai phe.
  */
-const methods = { standLayer, standFor, turnHull, stepToward, setIdle, halt, setPath, bodyContact, wallNormal, clearGoal, clearStand, tryMove, terrainFactor, moveFactor, follow, chase, steer, brakeNear };
+const methods = { standLayer, standFor, turnHull, stepToward, setIdle, halt, setPath, bodyContact, wallNormal, clearGoal, clearStand, goalTaken, spotTaken, tryMove, terrainFactor, moveFactor, follow, chase, steer, brakeNear };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
