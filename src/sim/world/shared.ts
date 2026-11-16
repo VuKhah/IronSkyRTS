@@ -14,12 +14,6 @@ export const sec = (s: number): number => Math.round(s * TICK_RATE);
 export const AIRBORNE_ALT = 2;
 export { PAD_OFFSETS };
 export const SHOT_SPEED: Record<WeaponVisual, number> = { bullet: 90, cannon: 60, missile: 40, rocket: 30, bomb: 25, pulse: 120 };
-/** 3 chỗ đứng đào quanh một mỏ. */
-export const SLOT_OFFSETS: readonly (readonly [number, number])[] = [
-  [3.9, 0],
-  [-1.95, 3.38],
-  [-1.95, -3.38]
-];
 export const IDLE_ACQUIRE_BONUS = 4;
 export const LEASH = 12;
 /** Lệnh trục vớt: các xác trong bán kính này (m) quanh xác được chạm được chia cho những xe còn lại. */
@@ -96,21 +90,13 @@ export const WALL_CLEAR = 0.85;
 export const WALL_PUSH = 0.3;
 /** Đích sát vách được dời ra xa nhất chừng này (m) cho vừa thân xe (World.clearGoal). */
 export const GOAL_SHIFT = 3;
-/** Ô cách ô bị chặn cố định hơn chừng này ô (≥ 5 m > nửa thân xe dài nhất 4,5 m × WALL_CLEAR) thì thân xe chắc chắn không chạm vách. */
-export const WALL_FAR = 3;
-/** 16 hướng dò cách đều 22,5° (cos / sin viết sẵn thành hằng số, không gọi Math.cos trong sim); hướng đối nhau đứng liền nhau. */
+/** cos / sin 22,5° và 45° viết sẵn thành hằng số (không gọi Math.cos trong sim). */
 export const C1 = 0.9238795325112867;
 export const S1 = 0.3826834323650898;
 export const R2 = 0.7071067811865476;
 /** Hướng thử khi tìm chỗ đứng rải thảm: thẳng, rồi lệch dần hai bên (cos, sin). */
 export const APPROACH_DIRS: readonly (readonly [number, number])[] = [
   [1, 0], [C1, S1], [C1, -S1], [R2, R2], [R2, -R2], [S1, C1], [S1, -C1], [0, 1], [0, -1]
-];
-export const PROBES: readonly (readonly [number, number])[] = [
-  [1, 0], [-1, 0], [0, 1], [0, -1],
-  [R2, R2], [-R2, -R2], [R2, -R2], [-R2, R2],
-  [C1, S1], [-C1, -S1], [S1, C1], [-S1, -C1],
-  [-S1, C1], [S1, -C1], [-C1, S1], [C1, -S1]
 ];
 /** Ô cửa ra trước cửa nhà có xe chạy ra: rộng × sâu (m). Loang tìm bãi trống trong ± `EXIT_ESCAPE` ô, hoặc đủ `EXIT_ROOM` ô. */
 export const EXIT_W = 4;
