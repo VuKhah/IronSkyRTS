@@ -45,6 +45,32 @@ export function spaceRadius(kind: keyof typeof UNITS): number {
   const s = UNITS[kind];
   return s.spaceR ?? bodyRadius(kind) + SPACE_GAP;
 }
+/** Tiểu đội bộ binh (`UnitSpec.troops`): chạm mềm với xe, dò vách ở nửa bán kính đế (người túm lại qua lối hẹp). */
+export function isSquad(kind: keyof typeof UNITS): boolean {
+  return !!UNITS[kind].troops;
+}
+/**
+ * Vòng dò vách và bán kính tìm đường = bodyR × chừng này. Bảng khoảng trống của lưới 2 m chỉ có vài giá trị (1; 1,41; 2,24; 3…):
+ * dò đúng bodyR 2,25 m thì mọi ô khoảng trống 2,236 m (rất thường gặp: lối chéo giữa hai vật cản) thành chặn với đế lõi, tìm
+ * đường thất bại hàng loạt, A* quét cả bản đồ mỗi giây (đo 16/11/2026: two-crossings 2,1 → 38,8 ms/tick). 95% như bản thân chữ
+ * nhật trước đó: Titan 2,14 m, Pháo 3,8 m; mô hình có thể sát vách thêm tối đa 0,2 m.
+ */
+export const WALL_PROBE = 0.95;
+/** Tiểu đội bộ binh dò vách ở chừng này lần bán kính đế: năm người túm lại đi lối hẹp (đế Ø 6 → lọt lối như xe Ø 3). */
+export const SQUAD_WALL = 0.5;
+/** Bán kính dò vách / tìm đường của quân mặt đất (m). */
+export function wallRadius(kind: keyof typeof UNITS): number {
+  return bodyRadius(kind) * (isSquad(kind) ? SQUAD_WALL : WALL_PROBE);
+}
+/**
+ * Hai quân mặt đất được lồng vào nhau tối đa chừng này mét: tiểu đội với xe chạm MỀM, chồng tới nửa đế (bán kính đế tiểu đội,
+ * người dùng chốt 15/11/2026); hai xe hoặc hai tiểu đội thì 0 (vòng giãn cứng).
+ */
+export function softOverlap(a: keyof typeof UNITS, b: keyof typeof UNITS): number {
+  const sa = isSquad(a);
+  const sb = isSquad(b);
+  return sa === sb ? 0 : bodyRadius(sa ? a : b);
+}
 /** cos 30° = √3 / 2: lục giác đều có cạnh đối diện cách tâm a (trung đoạn) thì đỉnh cách tâm a / cos 30°. */
 export const HEX_COS30 = 0.8660254037844386;
 /** Xe chậm hơn tốc độ khối được chạy nhanh hơn khối một chút để còn đuổi kịp ô của mình. */

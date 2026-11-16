@@ -20,6 +20,7 @@ import { buildHauler } from "./hauler";
 import { buildScoutDrone } from "./scout-drone";
 import { buildShieldDrone } from "./shield-drone";
 import { buildRepairDrone } from "./repair-drone";
+import { buildSniper } from "./sniper";
 
 /** Thêm binh chủng mới: tạo file `<mã>.ts` có hàm build…, rồi thêm một dòng vào bảng này. */
 const BUILDERS: Record<UnitId, (p: Palette) => Rig> = {
@@ -34,7 +35,8 @@ const BUILDERS: Record<UnitId, (p: Palette) => Rig> = {
   hauler: buildHauler,
   scout: buildScoutDrone,
   shield: buildShieldDrone,
-  repair: buildRepairDrone
+  repair: buildRepairDrone,
+  sniper: buildSniper
 };
 
 export function buildUnit(id: UnitId, faction: Faction): Rig {

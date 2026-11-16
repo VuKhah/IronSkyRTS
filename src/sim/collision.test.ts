@@ -106,3 +106,63 @@ describe("va chạm theo đế tròn", () => {
     expect(w.bodyContact(u, edge - UNITS.titan.bodyR! * 0.95 - 0.05, pz)[2]).toBe(0);
   });
 });
+
+describe("tiểu đội bộ binh chạm mềm (16/11/2026)", () => {
+  const S = (): number => UNITS.sniper.spaceR!;
+  it("tiểu đội đè lên Titan: chỉ bị đẩy tới mức chồng nửa đế, lính nhường xe (Titan gần như không nhích)", () => {
+    const w = new World(1, { sandbox: true });
+    const [x, z] = arenaPoint(0);
+    const t = spawn(w, "titan", x, z);
+    for (let k = 0; k < sec(1); k++) w.step([]);
+    const [tx, tz] = [t.x, t.z];
+    const s = spawn(w, "sniper", x + 0.8, z + 0.3);
+    for (let k = 0; k < sec(3); k++) w.step([]);
+    const want = S() + space("titan") - UNITS.sniper.bodyR!;
+    expect(gap(s, t)).toBeGreaterThanOrEqual(want - 0.05);
+    expect(gap(s, t)).toBeLessThan(want + 0.5);
+    expect(Math.hypot(t.x - tx, t.z - tz)).toBeLessThan(gap(s, t) * 0.25);
+  });
+
+  it("hai tiểu đội với nhau là vòng giãn cứng", () => {
+    const w = new World(1, { sandbox: true });
+    const [x, z] = arenaPoint(0);
+    const a = spawn(w, "sniper", x, z);
+    const b = spawn(w, "sniper", x + 1, z);
+    for (let k = 0; k < sec(3); k++) w.step([]);
+    expect(gap(a, b)).toBeGreaterThanOrEqual(2 * S() - 0.05);
+  });
+
+  it("tiểu đội lọt qua khe giữa hai Titan đứng sát nhau, đi thẳng không vòng", () => {
+    const w = new World(1, { sandbox: true });
+    const [x, z] = arenaPoint(0);
+    const gapX = 2 * space("titan") + 1.4; // khoảng cột đội hình
+    const t1 = spawn(w, "titan", x - gapX / 2, z);
+    const t2 = spawn(w, "titan", x + gapX / 2, z);
+    for (let k = 0; k < sec(2); k++) w.step([]);
+    const s = spawn(w, "sniper", x, z - 16);
+    w.step([{ side: 0, order: { t: "move", ids: [s.id], x, z: z + 16 } }]);
+    let maxLat = 0;
+    for (let k = 0; k < sec(20) && s.order !== "idle"; k++) {
+      w.step([]);
+      maxLat = Math.max(maxLat, Math.abs(s.x - x));
+    }
+    expect(s.order).toBe("idle");
+    expect(Math.hypot(s.x - x, s.z - z - 16)).toBeLessThan(3);
+    expect(maxLat).toBeLessThan(1.5);
+    for (const t of [t1, t2]) expect(gap(s, t)).toBeGreaterThan(2);
+  });
+
+  it("xe thấy tiểu đội đứng là vật cản mềm: có đường đi thẳng qua sát tiểu đội (không bị chặn như xe đứng)", () => {
+    const w = new World(1, { sandbox: true });
+    const [x, z] = arenaPoint(0);
+    spawn(w, "sniper", x, z + 3.5);
+    spawn(w, "sniper", x, z - 3.5);
+    for (let k = 0; k < sec(2); k++) w.step([]);
+    const t = spawn(w, "titan", x - 20, z);
+    const f = w.grid.field("track", false);
+    // hai tiểu đội cách nhau 7 m: hai Titan đứng thế thì chặn, hai tiểu đội thì Titan lách được giữa
+    const p = w.grid.findPath(t.x, t.z, x + 20, z, f, 2.14, w.standFor(t)!)!;
+    expect(p).not.toBeNull();
+    expect(Math.max(...p.filter((_, i) => i % 2 === 1).map((v) => Math.abs(v - z)))).toBeLessThan(3);
+  });
+});

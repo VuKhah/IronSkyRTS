@@ -4,7 +4,7 @@ import { dcos, DEG, dist2, dsin, TAU, turnToward } from "../fmath";
 import { orcaLine, orcaSolve, type OrcaLine } from "../orca";
 import type { Target, Unit } from "../types";
 import type { StandLayer } from "../grid";
-import { DT, sec, bodyRadius, spaceRadius, HEX_COS30, MOVER_SHARE, WALL_PUSH, GOAL_SHIFT, PIVOT_COS, ALIGNED_COS, TMP, traverseStep } from "./shared";
+import { DT, sec, bodyRadius, spaceRadius, wallRadius, softOverlap, isSquad, HEX_COS30, MOVER_SHARE, WALL_PUSH, GOAL_SHIFT, PIVOT_COS, ALIGNED_COS, TMP, traverseStep } from "./shared";
 import { World } from "./core";
 
 /** Hai xe cùng chạy coi là "ngược chiều" khi góc giữa hai hướng thân lớn hơn 120° (cos < −0,5). */
@@ -40,13 +40,6 @@ const REVERSE_SPEED = 0.5;
 const WAYPOINT_R = 2.5;
 /** Hai điểm dò liền nhau trên vòng thân cách nhau không quá chừng này (m): không ô 2 m nào lọt giữa hai điểm. */
 const PROBE_STEP = 1;
-/**
- * Vòng dò vách và bán kính tìm đường = bodyR × chừng này. Bảng khoảng trống của lưới 2 m chỉ có vài giá trị (1; 1,41; 2,24; 3…):
- * dò đúng bodyR 2,25 m thì mọi ô khoảng trống 2,236 m (rất thường gặp: lối chéo giữa hai vật cản) thành chặn với đế lõi, tìm
- * đường thất bại hàng loạt, A* quét cả bản đồ mỗi giây (đo 16/11/2026: two-crossings 2,1 → 38,8 ms/tick). 95% như bản thân chữ
- * nhật trước đó: Titan 2,14 m, Pháo 3,8 m; mô hình có thể sát vách thêm tối đa 0,2 m.
- */
-const WALL_PROBE = 0.95;
 /** Số lần đẩy ra khỏi vật cản tối đa trong một tick (× WALL_PUSH m). */
 const STATIC_ITERS = 6;
 
@@ -64,7 +57,7 @@ const STAND_REBUILD = 5;
 
 /** Bán kính thân khi tìm / nối tắt đường (cùng vòng với điểm dò thân `bodyContact`); máy bay: 0,7 m như cũ. */
 function pathHalf(u: Unit): number {
-  return u.air === "none" ? Math.max(0.71, bodyRadius(u.kind) * WALL_PROBE) : 0.7;
+  return u.air === "none" ? Math.max(0.71, wallRadius(u.kind)) : 0.7;
 }
 
 
@@ -176,17 +169,20 @@ function halt(this: World, u: Unit): void {
  * STAND_AFTER giây hoặc đã hạ bệ, in khoảng cách từ tâm từng ô tới vòng giãn của chúng (quân hạ bệ: vòng ngoại tiếp lục giác)
  * trong STAND_REACH m. Chỉ xe cùng phe (như ORCA): không tránh trước xe địch, không lộ xe địch trong sương mù.
  */
-function standLayer(this: World, side: 0 | 1): [Float32Array, Int32Array] {
+function standLayer(this: World, side: 0 | 1, mover: Unit["kind"]): [Float32Array, Int32Array] {
   const g = this.grid;
-  let clear = this.standClear[side];
-  let owner = this.standOwner[side];
+  // xe và tiểu đội bộ binh thấy xe đứng khác nhau (chạm mềm): mỗi phe hai lớp
+  const sq = isSquad(mover);
+  const L = side * 2 + (sq ? 1 : 0);
+  let clear = this.standClear[L];
+  let owner = this.standOwner[L];
   if (!clear || !owner) {
-    clear = this.standClear[side] = new Float32Array(g.size);
-    owner = this.standOwner[side] = new Int32Array(g.size);
-    this.standTick[side] = -1;
+    clear = this.standClear[L] = new Float32Array(g.size);
+    owner = this.standOwner[L] = new Int32Array(g.size);
+    this.standTick[L] = -1;
   }
-  if (this.standTick[side] >= 0 && this.tick - this.standTick[side] < STAND_REBUILD) return [clear, owner];
-  this.standTick[side] = this.tick;
+  if (this.standTick[L] >= 0 && this.tick - this.standTick[L] < STAND_REBUILD) return [clear, owner];
+  this.standTick[L] = this.tick;
   clear.fill(Infinity);
   owner.fill(-1);
   const still = sec(STAND_AFTER);
@@ -194,7 +190,13 @@ function standLayer(this: World, side: 0 | 1): [Float32Array, Int32Array] {
     if (v.side !== side || v.hp <= 0 || v.air !== "none") continue;
     const anch = this.anchored(v);
     if (!anch && v.still < still) continue;
-    const r = anch ? spaceRadius(v.kind) / HEX_COS30 : spaceRadius(v.kind);
+    // chạm mềm (tiểu đội đứng với xe tìm đường, hoặc xe đứng với tiểu đội tìm đường): vòng in nhỏ đi nửa đế tiểu đội, nên xe đi
+    // qua sát tiểu đội được (chỉ tốn hơn vì ô gần vật cản tính chậm), tiểu đội lọt giữa hai xe đứng sát nhau
+    const soft = isSquad(v.kind) !== sq ? bodyRadius(sq ? mover : v.kind) : 0;
+    // tiểu đội tìm đường với bán kính nhỏ (người túm lại, `wallRadius`): bù phần vòng giãn của nó để A* giữ đúng khoảng luật va
+    // chạm (Titan ↔ tiểu đội 2,65 m, hai tiểu đội 6,4 m)
+    const own = sq ? spaceRadius(mover) - wallRadius(mover) : 0;
+    const r = (anch ? spaceRadius(v.kind) / HEX_COS30 : spaceRadius(v.kind)) - soft + own;
     const R = r + STAND_REACH;
     const c0 = g.colOf(v.x - R, v.z);
     const c1 = g.colOf(v.x + R, v.z);
@@ -220,7 +222,7 @@ function standLayer(this: World, side: 0 | 1): [Float32Array, Int32Array] {
 /** Lớp xe đứng cho xe u tự tìm đường (bỏ qua thân chính nó); máy bay không dùng. */
 function standFor(this: World, u: Unit): StandLayer | null {
   if (u.air !== "none") return null;
-  const [clear, owner] = this.standLayer(u.side);
+  const [clear, owner] = this.standLayer(u.side, u.kind);
   return { clear, owner, self: u.id };
 }
 
@@ -254,7 +256,7 @@ const PROBE_CACHE = new Map<string, Float64Array>();
 function probesOf(kind: keyof typeof UNITS): Float64Array {
   let p = PROBE_CACHE.get(kind);
   if (p) return p;
-  const R = bodyRadius(kind) * WALL_PROBE;
+  const R = wallRadius(kind);
   const pts: number[] = [];
   const ring = (r: number): void => {
     const n = Math.max(8, Math.ceil((TAU * r) / PROBE_STEP));
@@ -276,7 +278,7 @@ function bodyContact(this: World, u: Unit, x: number, z: number, _fx = u.hx, _fz
   if (u.air !== "none") return [0, 0, 0];
   const p = probesOf(u.kind);
   // xa vật cản hơn bán kính thân (+ 1,5 m vì khoảng trống đo ở tâm ô): khỏi dò
-  if (this.grid.clearanceAt(x, z) > bodyRadius(u.kind) * WALL_PROBE + 1.5) return [0, 0, 0];
+  if (this.grid.clearanceAt(x, z) > wallRadius(u.kind) + 1.5) return [0, 0, 0];
   let px = 0;
   let pz = 0;
   let hits = 0;
@@ -695,7 +697,8 @@ function orcaPass(this: World, g: readonly Unit[]): void {
       // bán kính chung = tổng hai vòng giãn (quân hạ bệ: vòng ngoại tiếp lục giác); tâm đã gần hơn thế thì coi như vừa chạm,
       // không bắt bật ra trong một tick (luật va chạm `separate` gỡ phần lồng)
       const sb = this.anchored(b) ? spaceRadius(b.kind) / HEX_COS30 : spaceRadius(b.kind);
-      const r = Math.min(sa + sb, d * 0.98);
+      // tiểu đội với xe chạm mềm: né theo khoảng đã trừ phần được chồng (nửa đế tiểu đội)
+      const r = Math.min(sa + sb - softOverlap(a.kind, b.kind), d * 0.98);
       const [vbx, vbz] = vel(b);
       const y = yieldsTo(a, b);
       const share = !solver(b) ? 1 : y > 0 ? ORCA_YIELD : y < 0 ? 1 - ORCA_YIELD : 0.5;
@@ -737,7 +740,9 @@ function separate(this: World): void {
       // va chạm theo ĐẾ TRÒN cho mọi cặp (16/11/2026; trước đó hình chữ nhật thân, phép tách trục): hai tâm cách nhau ≥ tổng hai
       // vòng giãn `spaceR`. Quân đã hạ bệ là LỤC GIÁC tĩnh (trung đoạn = vòng giãn), tầm xét tới đỉnh lục giác
       const both = a.moved && b.moved;
-      const touch = (pa ? ra / HEX_COS30 : ra) + (pb ? rb / HEX_COS30 : rb);
+      // tiểu đội với xe: chạm MỀM, được chồng tới nửa đế tiểu đội (`softOverlap`)
+      const soft = softOverlap(a.kind, b.kind);
+      const touch = (pa ? ra / HEX_COS30 : ra) + (pb ? rb / HEX_COS30 : rb) - soft;
       // hai xe cùng chạy thì nhìn xa thêm PASS_LOOK để kịp lách trước khi chạm
       const near = both ? touch + PASS_LOOK : touch;
       const dx = b.x - a.x;
@@ -761,9 +766,9 @@ function separate(this: World): void {
       // ra mỏ và xe về nhà đi chung một lối): khi đó lực đẩy dọc đường nối hai tâm triệt tiêu đúng bằng phần vừa tiến, kẹt mãi
       const headOn = both && a.hx * b.hx + a.hz * b.hz < HEAD_ON_COS && dx * a.hx + dz * a.hz > 0 && -dx * b.hx - dz * b.hz > 0;
       // độ lồng (over) và hướng đẩy (nx, nz: từ a sang b): hai vòng tròn, hoặc vòng tròn với lục giác của quân hạ bệ
-      let over = ra + rb - d;
+      let over = ra + rb - soft - d;
       if (pa || pb) {
-        const c = pa ? hexOverlap(a, dx, dz, ra, rb) : hexOverlap(b, -dx, -dz, rb, ra);
+        const c = pa ? hexOverlap(a, dx, dz, ra, rb - soft) : hexOverlap(b, -dx, -dz, rb, ra - soft);
         over = c[0];
         nx = pa ? c[1] : -c[1];
         nz = pa ? c[2] : -c[2];
@@ -791,6 +796,13 @@ function separate(this: World): void {
       // đối đầu mà có xe được ưu tiên thì xe đó giữ làn, xe nhường lách
       let aSide = !pa && ((a.moved && !b.moved) || (headOn && ya >= 0));
       let bSide = !pb && ((b.moved && !a.moved) || (headOn && ya <= 0));
+      // tiểu đội gặp xe: LÍNH NHƯỜNG XE (chịu phần lớn cú đẩy, không lách), xe đi tiếp như không có gì
+      if (soft > 0 && !pa && !pb) {
+        const sqA = isSquad(a.kind);
+        wa = sqA ? MOVER_SHARE : 1 - MOVER_SHARE;
+        aSide = false;
+        bSide = false;
+      }
       // CÙNG ĐỘI HÌNH, một xe đúng ô, một xe đang về ô (lệch ô từ SQUAD_IN_SLOT m, kể cả xe đứng chờ phía trước đội): xe đúng ô
       // NHƯỜNG ĐƯỜNG (chịu phần lớn cú đẩy và lách sang bên) rồi tự về ô; xe về ô đi tiếp. Khe giữa hai xe trong hàng hẹp hơn
       // thân xe lớn (Titan cạnh nhau hở 3,2 m, Pháo rộng 4,6 m): không ai nhường thì xe về ô kẹt ngoài hàng, hoặc bị cả hàng

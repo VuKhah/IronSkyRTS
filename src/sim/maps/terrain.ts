@@ -34,15 +34,15 @@ export interface TerrainSpec {
 }
 
 export const TERRAIN: Record<TerrainKind, TerrainSpec> = {
-  grass: { name: "Cỏ / đất", speed: { wheel: 1, track: 1 }, sight: 1, cover: 0, losHeight: 0, resistible: false, color: 0x6f8f4e },
-  road: { name: "Đường", speed: { wheel: 1.3, track: 1.1 }, sight: 1, cover: 0, losHeight: 0, resistible: false, color: 0x8a8070 },
-  sand: { name: "Cát", speed: { wheel: 0.75, track: 0.9 }, sight: 1, cover: 0, losHeight: 0, resistible: true, color: 0xc9b27a },
-  mud: { name: "Bùn", speed: { wheel: 0.5, track: 0.8 }, sight: 1, cover: 0, losHeight: 0, resistible: true, color: 0x5d4b36 },
-  snow: { name: "Tuyết", speed: { wheel: 0.65, track: 0.85 }, sight: 0.85, cover: 0, losHeight: 0, resistible: true, color: 0xe6edf2 },
-  forest: { name: "Rừng", speed: { wheel: 0.7, track: 0.85 }, sight: 0.8, cover: 0.2, losHeight: 4, resistible: true, color: 0x3f6b35 },
-  shallow: { name: "Nước nông / bãi cạn", speed: { wheel: 0.6, track: 0.75 }, sight: 1, cover: 0, losHeight: 0, resistible: true, color: 0x8c8064 },
-  deep: { name: "Nước sâu", speed: { wheel: 0, track: 0 }, sight: 1, cover: 0, losHeight: 0, resistible: false, color: 0x2c628c },
-  cliff: { name: "Vách núi", speed: { wheel: 0, track: 0 }, sight: 1, cover: 0, losHeight: 0, resistible: false, color: 0x6b6258 }
+  grass: { name: "Cỏ / đất", speed: { wheel: 1, track: 1, foot: 1 }, sight: 1, cover: 0, losHeight: 0, resistible: false, color: 0x6f8f4e },
+  road: { name: "Đường", speed: { wheel: 1.3, track: 1.1, foot: 1.05 }, sight: 1, cover: 0, losHeight: 0, resistible: false, color: 0x8a8070 },
+  sand: { name: "Cát", speed: { wheel: 0.75, track: 0.9, foot: 0.85 }, sight: 1, cover: 0, losHeight: 0, resistible: true, color: 0xc9b27a },
+  mud: { name: "Bùn", speed: { wheel: 0.5, track: 0.8, foot: 0.75 }, sight: 1, cover: 0, losHeight: 0, resistible: true, color: 0x5d4b36 },
+  snow: { name: "Tuyết", speed: { wheel: 0.65, track: 0.85, foot: 0.8 }, sight: 0.85, cover: 0, losHeight: 0, resistible: true, color: 0xe6edf2 },
+  forest: { name: "Rừng", speed: { wheel: 0.7, track: 0.85, foot: 0.95 }, sight: 0.8, cover: 0.2, losHeight: 4, resistible: true, color: 0x3f6b35 },
+  shallow: { name: "Nước nông / bãi cạn", speed: { wheel: 0.6, track: 0.75, foot: 0.7 }, sight: 1, cover: 0, losHeight: 0, resistible: true, color: 0x8c8064 },
+  deep: { name: "Nước sâu", speed: { wheel: 0, track: 0, foot: 0 }, sight: 1, cover: 0, losHeight: 0, resistible: false, color: 0x2c628c },
+  cliff: { name: "Vách núi", speed: { wheel: 0, track: 0, foot: 0 }, sight: 1, cover: 0, losHeight: 0, resistible: false, color: 0x6b6258 }
 };
 
 /** Hệ số tốc độ của một loại địa hình cho một kiểu xe; xe kháng làm chậm bỏ qua phần < 1 của loại `resistible`. */

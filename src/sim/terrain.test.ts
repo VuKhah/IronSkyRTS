@@ -178,9 +178,10 @@ describe("B3a: tốc độ theo địa hình", () => {
   });
 
   it("bảng địa hình hợp lệ: cỏ = 1, loại không đi được thì không đi được với mọi kiểu xe", () => {
-    expect(TERRAIN.grass.speed).toEqual({ wheel: 1, track: 1 });
+    expect(TERRAIN.grass.speed).toEqual({ wheel: 1, track: 1, foot: 1 });
     for (const [kind, t] of Object.entries(TERRAIN)) {
       expect(t.speed.wheel === 0, `${kind}: bánh và xích phải cùng đi được hoặc cùng không`).toBe(t.speed.track === 0);
+      expect(t.speed.foot === 0, `${kind}: đi bộ cùng đi được hoặc cùng không với xe`).toBe(t.speed.track === 0);
       expect(t.speed.wheel).toBeGreaterThanOrEqual(0);
     }
     for (const spec of Object.values(UNITS)) if (spec.domain === "ground") expect(spec.mobility, `${spec.id} thiếu kiểu di chuyển`).toBeDefined();

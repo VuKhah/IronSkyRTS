@@ -4,7 +4,7 @@ import { assignMin } from "../assign";
 import { clamp, dcos, DEG, dist2, turnStep, turnToward } from "../fmath";
 import { CELL } from "../maps";
 import type { Squad, Target, Unit } from "../types";
-import { DT, sec, bodyRadius, spaceRadius, FORMATION_GAP, SQUAD_CATCHUP, AIR_FORMATION_GAP, SQUAD_RESHAPE_EXTRA, SQUAD_MIN_TURN_R, SQUAD_PIVOT_COS, PIVOT_COS, ALIGNED_COS, SQUAD_LAG, SQUAD_LOOK, SQUAD_FAR, SQUAD_FORM_MAX, SQUAD_DIRECT, SQUAD_SETTLE_MAX, SQUAD_PIVOT_MAX, SQUAD_WIDEN_CHECKS, SHIFT_OFFSETS, SLOT_NUDGE, TMP, traverseStep } from "./shared";
+import { DT, sec, bodyRadius, spaceRadius, isSquad, wallRadius, FORMATION_GAP, SQUAD_CATCHUP, AIR_FORMATION_GAP, SQUAD_RESHAPE_EXTRA, SQUAD_MIN_TURN_R, SQUAD_PIVOT_COS, PIVOT_COS, ALIGNED_COS, SQUAD_LAG, SQUAD_LOOK, SQUAD_FAR, SQUAD_FORM_MAX, SQUAD_DIRECT, SQUAD_SETTLE_MAX, SQUAD_PIVOT_MAX, SQUAD_WIDEN_CHECKS, SHIFT_OFFSETS, SLOT_NUDGE, TMP, traverseStep } from "./shared";
 import { World } from "./core";
 
 /** Ô đội hình phải có khoảng trống ≥ bán kính thân × chừng này (cùng vòng với điểm dò thân `bodyContact`, WALL_PROBE). */
@@ -16,7 +16,7 @@ const SETTLE_SHIFTS = [0, 2, -2, 4, -4, 6, -6, 8, -8, 10, -10];
 
 /** Bán kính vòng quét khi xe xoay tại chỗ: đế tròn nên đúng bằng bán kính thân (16/11/2026; trước đó nửa đường chéo thân). */
 function turnRadius(u: Unit): number {
-  return bodyRadius(u.kind) * SLOT_BODY;
+  return isSquad(u.kind) ? wallRadius(u.kind) : bodyRadius(u.kind) * SLOT_BODY;
 }
 
 /**

@@ -25,7 +25,7 @@ export interface Cost {
   oil: number;
 }
 
-export type UnitId = "commander" | "hauler" | "lynx" | "titan" | "skyguard" | "rocket" | "artillery" | "falcon" | "valkyrie" | "scout" | "shield" | "repair";
+export type UnitId = "commander" | "hauler" | "lynx" | "titan" | "skyguard" | "rocket" | "artillery" | "falcon" | "valkyrie" | "scout" | "shield" | "repair" | "sniper";
 
 export type BuildingId =
   | "hq"
@@ -53,14 +53,14 @@ export type EntityId = UnitId | BuildingId;
  * Nhẹ: xe nhẹ, máy bay nhẹ, hạ tầng lộ thiên · Nặng: xe tăng, máy bay ném bom · Công sự: tháp phòng thủ ·
  * Kết cấu: nhà xưởng, căn cứ, công trình lớn.
  */
-export type ArmorClass = "light" | "heavy" | "fort" | "struct";
-export const ARMOR_NAME: Record<ArmorClass, string> = { light: "Nhẹ", heavy: "Nặng", fort: "Công sự", struct: "Kết cấu" };
+export type ArmorClass = "light" | "heavy" | "fort" | "struct" | "inf";
+export const ARMOR_NAME: Record<ArmorClass, string> = { light: "Nhẹ", heavy: "Nặng", fort: "Công sự", struct: "Kết cấu", inf: "Bộ binh" };
 
 /** Loại đạn: Thường (súng máy, pháo nhỏ), Xuyên giáp, Nổ (tên lửa, bom, đạn nổ). */
 export type DmgType = "normal" | "ap" | "he";
 /** Kiểu di chuyển của xe mặt đất: quyết định hệ số tốc độ trên từng loại địa hình (src/sim/maps/terrain.ts). */
-export type Mobility = "wheel" | "track";
-export const MOBILITY_NAME: Record<Mobility, string> = { wheel: "Bánh", track: "Xích" };
+export type Mobility = "wheel" | "track" | "foot";
+export const MOBILITY_NAME: Record<Mobility, string> = { wheel: "Bánh", track: "Xích", foot: "Đi bộ" };
 export const DMG_NAME: Record<DmgType, string> = { normal: "Thường", ap: "Xuyên giáp", he: "Nổ" };
 
 /** Kiểu đạn để vẽ hiệu ứng và tính tốc độ bay của đạn ("rocket": tên lửa loạt bay cầu vồng cao, kéo vệt khói). */
@@ -126,7 +126,7 @@ export interface WeaponSpec {
  * XA hỏa lực gián tiếp · DAN đạn đạo · HC hậu cần · TL chỉ huy · KQ máy bay cánh bằng (không vào đội hình mặt đất).
  * Trực thăng và tàu dùng cùng các mã này, phân biệt bằng `domain`.
  */
-export type GroupCode = "MUI" | "GIAP" | "HL" | "PK" | "XA" | "DAN" | "HC" | "TL" | "KQ";
+export type GroupCode = "MUI" | "GIAP" | "HL" | "PK" | "XA" | "DAN" | "HC" | "TL" | "KQ" | "BB";
 
 export type FormationId = "hold" | "march" | "attack" | "escort" | "pin";
 
@@ -146,14 +146,14 @@ export interface FormationDef {
 /** Tuyến cuối cùng, dành cho đoạn hậu của các đội hình có `rearGuard`. */
 export const REAR_RANK = 9;
 
-const ATTACK_RANK: Record<GroupCode, number> = { MUI: 0, GIAP: 0, HL: 1, TL: 1, PK: 1, KQ: 1, XA: 2, HC: 2, DAN: 3 };
+const ATTACK_RANK: Record<GroupCode, number> = { MUI: 0, GIAP: 0, HL: 1, TL: 1, PK: 1, KQ: 1, BB: 1, XA: 2, HC: 2, DAN: 3 };
 
 export const FORMATIONS: Record<FormationId, FormationDef> = {
   // giữ trận địa: giáp đứng trước, xe nhanh làm lực lượng dự phòng ngay sau giáp, hỏa lực phía sau, phòng không hai cánh
-  hold: { name: "Giữ", wide: 3, rank: { GIAP: 0, MUI: 1, HL: 1, TL: 1, PK: 1, KQ: 1, XA: 2, HC: 2, DAN: 3 }, flank: "PK" },
-  march: { name: "Hành quân", wide: 0.8, rank: { MUI: 0, GIAP: 1, HL: 2, TL: 2, PK: 2, KQ: 2, XA: 3, HC: 3, DAN: 4 }, rearGuard: true },
+  hold: { name: "Giữ", wide: 3, rank: { GIAP: 0, MUI: 1, HL: 1, TL: 1, PK: 1, KQ: 1, BB: 1, XA: 2, HC: 2, DAN: 3 }, flank: "PK" },
+  march: { name: "Hành quân", wide: 0.8, rank: { MUI: 0, GIAP: 1, HL: 2, TL: 2, PK: 2, KQ: 2, BB: 2, XA: 3, HC: 3, DAN: 4 }, rearGuard: true },
   attack: { name: "Xung kích", wide: 2.5, rank: ATTACK_RANK },
-  escort: { name: "Hộ tống Pháo", wide: 1.5, rank: { MUI: 0, GIAP: 0, HL: 1, TL: 1, PK: 1, KQ: 1, XA: 1, HC: 1, DAN: 1 }, rearGuard: true, flank: "PK" },
+  escort: { name: "Hộ tống Pháo", wide: 1.5, rank: { MUI: 0, GIAP: 0, HL: 1, TL: 1, PK: 1, KQ: 1, BB: 1, XA: 1, HC: 1, DAN: 1 }, rearGuard: true, flank: "PK" },
   pin: { name: "Kìm chân", wide: 8, rank: ATTACK_RANK }
 };
 
@@ -221,6 +221,12 @@ export interface UnitSpec {
    * 15/11). Sim dùng cho va chạm xe–xe và ORCA mặt đất (`spaceRadius`, từ 16/11/2026); trên không chưa dùng.
    */
   spaceR?: number;
+  /**
+   * TIỂU ĐỘI BỘ BINH (16/11/2026): số người trên một đế (đế tiểu đội Ø 6 m, UNIT_BASES_PLAN.md). Có trường này thì quân theo luật
+   * bộ binh: chạm MỀM với xe (chồng tới nửa đế, lính nhường xe), đứng là vật cản mềm với xe (xe đi qua được nhưng tốn hơn), lọt
+   * giữa hai xe đứng sát nhau, dò vách ở nửa bán kính đế (người túm lại qua lối hẹp). Phần vẽ: số người còn theo máu.
+   */
+  troops?: number;
   /** Độ cao đặt thanh máu trên quân (m), chỉ dùng cho phần vẽ. Bỏ trống = theo cỡ thường. */
   barHeight?: number;
   /** Sức chiếm mỏ (0 = không chiếm được). */
@@ -386,7 +392,9 @@ export const RULES = {
     light: { normal: 1, ap: 0.6, he: 1.25 },
     heavy: { normal: 0.5, ap: 1.5, he: 0.6 },
     fort: { normal: 0.25, ap: 1.5, he: 0.6 },
-    struct: { normal: 0.25, ap: 1, he: 1.5 }
+    struct: { normal: 0.25, ap: 1, he: 1.5 },
+    /** Bộ binh (16/11/2026, số tạm): súng máy và đạn nổ diệt mạnh, đạn xuyên giáp gần như xuyên qua người. */
+    inf: { normal: 1.25, ap: 0.4, he: 1.5 }
   } as Record<ArmorClass, Record<DmgType, number>>,
   /**
    * Địa hình bậc thang (11/11/2026): mặt đất có tầng 0, 1, 2 (GameMap). Đứng trên tầng cao được cộng tầm nhìn / tầm bắn theo mỗi
@@ -1026,9 +1034,47 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     ],
     beats: ["titan", "factory"],
     fears: ["falcon", "skyguard", "turret"]
+  },
+  sniper: {
+    id: "sniper",
+    kind: "unit",
+    name: "Tiểu Đội Bắn Tỉa",
+    short: "Bắn Tỉa",
+    code: "SNP",
+    hotkey: "B",
+    role: "5 xạ thủ bắn tỉa trên một đế: bắn xa, diệt bộ binh và xe nhẹ, sợ súng máy và pháo.",
+    domain: "ground",
+    group: "BB",
+    batch: 1,
+    turnRate: 240,
+    mvp: false,
+    cost: { iron: 120, oil: 0 },
+    buildTime: 6,
+    builtAt: "hq",
+    hp: 300,
+    armorClass: "inf",
+    speed: 3.2,
+    mobility: "foot",
+    sight: 30,
+    radius: 2.2,
+    bodyR: 3,
+    spaceR: 3.2,
+    troops: 5,
+    captureWeight: 1,
+    weapon: { name: "Súng bắn tỉa 12,7mm", dmgGround: 60, dmgAir: 0, range: 28, cooldown: 3, dmgType: "normal", splash: 0, visual: "bullet", traverse: 180 },
+    features: [
+      "Bộ binh: 5 người trên một đế Ø 6 m. Máu tụt thì mất dần người (chỉ là hình, sức bắn giữ nguyên).",
+      "Tầm bắn 28 m, xa nhất trong quân trực xạ: bắn tỉa từ ngoài tầm súng máy Lynx (15,5 m).",
+      "Giáp Bộ binh: súng máy và đạn nổ diệt mạnh, đạn xuyên giáp gần như vô hại.",
+      "Chạm mềm với xe: chen được tới nửa đế, lọt qua giữa hai xe đứng sát nhau; đi bộ nên rừng, bùn, bãi cạn chậm ít hơn xe.",
+      "Không bắn được máy bay."
+    ],
+    beats: ["hauler"],
+    fears: ["lynx", "artillery", "titan"]
   }
 };
 
+//  (Tiểu Đội Bắn Tỉa nằm cuối bảng UNITS ở trên.)
 export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
   hq: {
     id: "hq",
@@ -1041,7 +1087,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     armorClass: "struct",
     sight: 28,
     half: [4, 4],
-    produces: ["hauler"],
+    produces: ["hauler", "sniper"],
     power: 20,
     zone: 72, // tạm ×3 (người dùng 10/11/2026; trước là 24)
     clearCells: 2,

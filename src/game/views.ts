@@ -497,6 +497,8 @@ export class Views {
       v.lastShot = u.lastShot;
       v.rig.shot?.();
     }
+    // tiểu đội bộ binh: số người còn trên đế theo máu (chỉ là hình, sim không đổi)
+    if (spec.troops) v.rig.setLevel?.(u.hp / u.maxHp);
     v.rig.update(dt, time, a);
     const mat = viewer === null ? (u.side === 0 ? RING_MAT.own : RING_MAT.enemy) : u.side === viewer ? RING_MAT.own : RING_MAT.enemy;
     this.setRing(v, root, selected, spec.radius, mat, u.alt > AIRBORNE_ALT && !spec.hover ? -alt + 0.12 : 0.12);
