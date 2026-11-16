@@ -31,7 +31,7 @@
  * cho các hàm đó. Mọi nơi khác chỉ import từ file này ("./world"), không import thẳng "./world/core" (sẽ thiếu hàm).
  */
 export { World } from "./world/core";
-export { TICK_RATE, DT, sec, AIRBORNE_ALT, PAD_OFFSETS, dirToCenter } from "./world/shared";
+export { TICK_RATE, DT, sec, AIRBORNE_ALT, PAD_OFFSETS, dirToCenter, passGap, spaceRadius, bodyRadius } from "./world/shared";
 export type { WorldOptions, SandboxState } from "./world/shared";
 export { hashWorld } from "./world/hash";
 import "./world/placement";

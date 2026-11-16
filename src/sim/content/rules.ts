@@ -5,6 +5,13 @@ import type { ArmorClass, DmgType, Res } from "./types";
  * mô hình là số TRƯỚC khi nhân. Không nhân: tầm bắn, tầm nhìn, tốc độ, độ cao bay, công trình, bản đồ (đó là luật, không phải cỡ).
  */
 export const UNIT_SCALE: number = 0.8;
+/**
+ * LÁCH MỀM (người dùng 16/11/2026, A1a): quân ĐANG CHẠY đi ngang quân ĐANG ĐỨNG cùng phe chỉ giữ khoảng = vòng thân quân đứng +
+ * SOFT_PASS × vòng thân người lách (mô hình được lún nhau chút trong lúc lách); quân đứng không bị đẩy. Chỉ dựa vào đế, không
+ * đọc số đo mô hình. Khe giữa hai quân đứng lọt được khi rộng thêm PASS_MARGIN m (`passGap` trong world/shared.ts).
+ */
+export const SOFT_PASS = 0.55;
+export const PASS_MARGIN = 0.2;
 /** Luật chơi MVP (số tạm). */
 export const RULES = {
   tickRate: 10,

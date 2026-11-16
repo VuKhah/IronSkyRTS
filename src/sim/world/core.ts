@@ -32,6 +32,8 @@ export class World {
   standTick: number[] = [-1, -1, -1, -1];
   standClear: (Float32Array | null)[] = [null, null, null, null];
   standOwner: (Int32Array | null)[] = [null, null, null, null];
+  /** Vòng in của từng xe đứng [x, z, r, mã] theo lớp (xem `StandLayer.discs`), dựng cùng lúc với `standClear`. */
+  standDiscs: Float64Array[] = [new Float64Array(0), new Float64Array(0), new Float64Array(0), new Float64Array(0)];
   /** Độ cao mặt đất ở tâm từng ô lưới (m), tính một lần lúc tạo trận (địa hình không đổi). */
   /** Vật che tầm nhìn đứng trên mặt đất từng ô (m): rừng cao 4 m, còn lại 0 (TERRAIN.losHeight). */
   readonly cellLos: Float64Array;

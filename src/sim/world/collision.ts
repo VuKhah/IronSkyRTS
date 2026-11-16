@@ -3,7 +3,7 @@ import { UNITS } from "../content";
 import { dcos, DEG, dsin } from "../fmath";
 import { orcaLine, orcaSolve, type OrcaLine } from "../orca";
 import type { Unit } from "../types";
-import { DT, sec, spaceRadius, softOverlap, isSquad, HEX_COS30, MOVER_SHARE, WALL_PUSH } from "./shared";
+import { DT, sec, spaceRadius, softOverlap, isSquad, passTouch, HEX_COS30, MOVER_SHARE, WALL_PUSH } from "./shared";
 import { World } from "./core";
 
 /** Hai xe cùng chạy coi là "ngược chiều" khi góc giữa hai hướng thân lớn hơn 120° (cos < −0,5). */
@@ -162,6 +162,9 @@ function orcaPass(this: World, g: readonly Unit[]): void {
       if (a.squad !== 0 && a.squad === b.squad) continue;
       // đã kẹt: thôi né xe đứng yên và xe cũng đang kẹt (hai xe đối đầu chờ nhau trong lối hẹp); luật va chạm gỡ tiếp
       if (release && crawling(b)) continue;
+      // LÁCH MỀM (A1a): quân đứng cùng phe là việc của tìm đường (lớp xe đứng, kiểm khe theo vòng in chính xác), ORCA không né
+      // thêm: nhìn trước AVOID_T giây thì khe lách dư 0,1 m mỗi bên thành chặn, xe bị bẻ sang ngang rồi tìm lại đường vòng
+      if (!solver(b) && passTouch(b, a) !== null) continue;
       const dx = b.x - a.x;
       const dz = b.z - a.z;
       if (dx >= AVOID_LOOK || dx <= -AVOID_LOOK || dz >= AVOID_LOOK || dz <= -AVOID_LOOK) continue;
@@ -226,6 +229,25 @@ function separate(this: World): void {
       const rb = spaceRadius(b.kind);
       const pb = this.anchored(b);
       if (pa && pb) continue;
+      // LÁCH MỀM (A1a, 16/11/2026): quân đang chạy đi ngang quân đang đứng cùng phe chỉ giữ khoảng `passTouch` (vòng thân quân
+      // đứng + SOFT_PASS × thân người lách; quân hạ bệ cũng tính vòng thân, không lục giác). Chỉ người lách bị đẩy (cộng lách
+      // sang bên, phía xa quân đứng); quân đứng không xê dịch, kể cả khi người lách bị vách chặn (không bù sang quân đứng)
+      const pass = passTouch(b, a) ?? passTouch(a, b);
+      if (pass !== null) {
+        const m = passTouch(b, a) !== null ? a : b;
+        const s = m === a ? b : a;
+        const ox = m.x - s.x;
+        const oz = m.z - s.z;
+        if (ox >= pass || ox <= -pass || oz >= pass || oz <= -pass) continue;
+        const od2 = ox * ox + oz * oz;
+        if (od2 >= pass * pass) continue;
+        const od = Math.sqrt(od2);
+        const [ux, uz] = od < 1e-6 ? [m.hz, -m.hx] : [ox / od, oz / od];
+        const over = pass - od;
+        const [lx, lz] = sideStep(m, -ox, -oz);
+        shove(this, m, (ux + lx) * over, (uz + lz) * over);
+        continue;
+      }
       // va chạm theo ĐẾ TRÒN cho mọi cặp (16/11/2026; trước đó hình chữ nhật thân, phép tách trục): hai tâm cách nhau ≥ tổng hai
       // vòng giãn `spaceR`. Quân đã hạ bệ là LỤC GIÁC tĩnh (trung đoạn = vòng giãn), tầm xét tới đỉnh lục giác
       const both = a.moved && b.moved;

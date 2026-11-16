@@ -1,8 +1,8 @@
 /** Hằng số và hàm phụ dùng chung cho các phần của World (tách từ world.ts). */
-import { BUILDINGS, PAD_OFFSETS, RULES, UNITS, type WeaponVisual } from "../content";
+import { BUILDINGS, PAD_OFFSETS, PASS_MARGIN, RULES, SOFT_PASS, UNITS, type WeaponVisual } from "../content";
 import { dcos, DEG, dsin, TAU, turnStep, type TurnStep } from "../fmath";
 import { CELL, GameMap } from "../maps";
-import type { SideState } from "../types";
+import type { SideState, Unit } from "../types";
 
 
 export const TICK_RATE = RULES.tickRate;
@@ -47,6 +47,20 @@ export function spaceRadius(kind: keyof typeof UNITS): number {
 /** Tiểu đội bộ binh (`UnitSpec.troops`): chạm mềm với xe, dò vách ở nửa bán kính đế (người túm lại qua lối hẹp). */
 export function isSquad(kind: keyof typeof UNITS): boolean {
   return !!UNITS[kind].troops;
+}
+/**
+ * Khoảng giữ (m, tâm tới tâm) khi `mover` ĐANG CHẠY đi ngang `stand` ĐANG ĐỨNG cùng phe (luật lách mềm, SOFT_PASS trong
+ * content/rules.ts): vòng thân quân đứng + SOFT_PASS × vòng thân người lách. null = không áp luật lách (khác phe, trên không,
+ * bộ binh: bộ binh giữ luật chồng nửa đế riêng, hoặc không đúng cặp chạy / đứng).
+ */
+export function passTouch(stand: Unit, mover: Unit): number | null {
+  if (stand.side !== mover.side || stand.air !== "none" || mover.air !== "none") return null;
+  if (!mover.moved || stand.moved || isSquad(stand.kind) || isSquad(mover.kind)) return null;
+  return bodyRadius(stand.kind) + SOFT_PASS * bodyRadius(mover.kind);
+}
+/** Khoảng tâm hai quân đứng `a`, `b` tối thiểu để `mover` lách qua giữa (m). */
+export function passGap(a: keyof typeof UNITS, b: keyof typeof UNITS, mover: keyof typeof UNITS): number {
+  return bodyRadius(a) + bodyRadius(b) + 2 * SOFT_PASS * bodyRadius(mover) + PASS_MARGIN;
 }
 /**
  * Vòng dò vách và bán kính tìm đường = bodyR × chừng này. Bảng khoảng trống của lưới 2 m chỉ có vài giá trị (1; 1,41; 2,24; 3…):

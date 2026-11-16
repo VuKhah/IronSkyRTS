@@ -4,7 +4,7 @@
  * đường (tìm lại không có lớp xe đứng). Chỉ kiểm HÀNH VI.
  */
 import { describe, expect, it } from "vitest";
-import { UNITS, type UnitId } from "./content";
+import { SOFT_PASS, UNITS, type UnitId } from "./content";
 import { arenaPoint } from "./scenarios";
 import type { Unit } from "./types";
 import { sec, World } from "./world";
@@ -35,7 +35,8 @@ describe("tìm đường vòng qua xe đứng", () => {
       expect(lx.order).toBe("idle");
       expect(Math.sqrt((lx.x - cx) ** 2 + (lx.z - cz - 14 * sg) ** 2)).toBeLessThan(3);
       // không chen vào hàng: luôn cách mọi Titan ít nhất tổng hai vòng giãn (trừ sai số lưới)
-      expect(closest).toBeGreaterThan(UNITS.titan.spaceR! + UNITS.lynx.spaceR! - 0.3);
+      // từ A1a (luật lách mềm) xe chạy được đi sát xe đứng cùng phe tới vòng thân + SOFT_PASS × đế mình
+      expect(closest).toBeGreaterThan(UNITS.titan.bodyR! + SOFT_PASS * UNITS.lynx.bodyR! - 0.3);
       wall.forEach((u, i) => {
         expect(Math.abs(u.x - at[i][0]) + Math.abs(u.z - at[i][1]), `Titan ${i} bị xô`).toBeLessThan(0.05);
       });
@@ -77,6 +78,7 @@ describe("tìm đường vòng qua xe đứng", () => {
       px = around[i];
       pz = around[i + 1];
     }
-    expect(near).toBeGreaterThan(UNITS.artillery.spaceR! + 1.5);
+    // luật lách mềm (A1a): đường giữ cách vòng thân Pháo ít nhất SOFT_PASS × đế Lynx
+    expect(near).toBeGreaterThan(UNITS.artillery.bodyR! + SOFT_PASS * UNITS.lynx.bodyR!);
   });
 });

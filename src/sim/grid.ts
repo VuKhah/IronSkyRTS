@@ -38,6 +38,16 @@ export interface StandLayer {
   clear: Float32Array;
   owner: Int32Array;
   self: number;
+  /**
+   * Khoảng tối thiểu (m) từ tâm người tìm đường tới vòng in của xe đứng (A1a, luật lách mềm: SOFT_PASS × đế người đi). Bỏ trống =
+   * dùng nửa bề ngang `half` như vật cản tĩnh (tiểu đội bộ binh).
+   */
+  need?: number;
+  /**
+   * Vòng in của từng xe đứng [x, z, r, mã xe] × n: `los` kiểm đoạn thẳng theo hình học chính xác (lưới 2 m quá thô cho khe lách
+   * 1,6 m). Bỏ trống = tra theo ô như cũ.
+   */
+  discs?: Float64Array;
 }
 
 /** A* có lớp xe đứng mà duyệt quá chừng này ô thì thôi (đích bị xe đứng vây kín): người gọi tìm lại không có lớp này. */
@@ -470,11 +480,31 @@ export class Grid {
     return true;
   }
 
-  /** Đoạn A → B không đi quá sát xe đứng nào (lớp `stand`, trừ chính xe tìm đường): mỗi ô dọc đoạn có clear ≥ half. */
+  /**
+   * Đoạn A → B không đi quá sát xe đứng nào (lớp `stand`, trừ chính xe tìm đường). Có `discs`: khoảng cách hình học từ đoạn tới
+   * từng vòng in ≥ `need`; không thì mỗi ô dọc đoạn có clear ≥ half.
+   */
   private standClear(x0: number, z0: number, x1: number, z1: number, half: number, st: StandLayer): boolean {
     const dx = x1 - x0;
     const dz = z1 - z0;
-    const d = Math.sqrt(dx * dx + dz * dz);
+    const L2 = dx * dx + dz * dz;
+    if (st.discs) {
+      const need = st.need ?? half;
+      const D = st.discs;
+      for (let i = 0; i < D.length; i += 4) {
+        if (D[i + 3] === st.self) continue;
+        const px = D[i] - x0;
+        const pz = D[i + 1] - z0;
+        let t = L2 > 1e-12 ? (px * dx + pz * dz) / L2 : 0;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const ex = px - dx * t;
+        const ez = pz - dz * t;
+        const lim = D[i + 2] + need;
+        if (ex * ex + ez * ez < lim * lim) return false;
+      }
+      return true;
+    }
+    const d = Math.sqrt(L2);
     const steps = Math.ceil(d / (CELL * 0.5));
     for (let i = 0; i <= steps; i++) {
       const k = i / steps;
@@ -670,6 +700,7 @@ export class Grid {
     const SC = stand?.clear;
     const SO = stand?.owner;
     const self = stand?.self ?? -1;
+    const sNeed = stand?.need ?? half;
     while (this.heapSize > 0) {
       const cur = this.pop();
       if (this.closedGen[cur] === gen) continue;
@@ -696,8 +727,9 @@ export class Grid {
         let corr = 1;
         if (clr) {
           // xe đứng cùng phe (lớp động) tính như vật cản tĩnh: ô quá sát là chặn, ô gần thì chậm (đường chừa khoảng với xe đứng)
-          const c = SC && SO![ni] !== self && SC[ni] < clr[ni] ? SC[ni] : clr[ni];
-          const m = c - half;
+          // xe đứng so với ngưỡng riêng `need` (luật lách mềm), vật cản tĩnh so với nửa bề ngang
+          const sm = SC && SO![ni] !== self ? SC[ni] - sNeed : Infinity;
+          const m = Math.min(clr[ni] - half, sm);
           if (m < 0 && Math.max(Math.abs(nx - (s % C)), Math.abs(nz - Math.floor(s / C))) > 2 && Math.max(Math.abs(nx - tx), Math.abs(nz - tz)) > 1) continue;
           corr = m < 1 ? 0.4 : m < 2 ? 0.6 : m < 3 ? 0.85 : 1;
         }

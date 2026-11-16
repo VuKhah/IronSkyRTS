@@ -1,5 +1,5 @@
 /** Di chuyển một xe: quay thân, bước tới, đi theo đường A*, né vách, đẩy xe không chồng lên nhau. */
-import { RULES, UNITS } from "../content";
+import { RULES, SOFT_PASS, UNITS } from "../content";
 import { dcos, dist2, dsin, TAU, turnToward } from "../fmath";
 import type { Target, Unit } from "../types";
 import type { StandLayer } from "../grid";
@@ -157,6 +157,7 @@ function standLayer(this: World, side: 0 | 1, mover: Unit["kind"]): [Float32Arra
   this.standTick[L] = this.tick;
   clear.fill(Infinity);
   owner.fill(-1);
+  const discs: number[] = [];
   const still = sec(STAND_AFTER);
   for (const v of this.units) {
     if (v.side !== side || v.hp <= 0 || v.air !== "none") continue;
@@ -168,7 +169,10 @@ function standLayer(this: World, side: 0 | 1, mover: Unit["kind"]): [Float32Arra
     // tiểu đội tìm đường với bán kính nhỏ (người túm lại, `wallRadius`): bù phần vòng giãn của nó để A* giữ đúng khoảng luật va
     // chạm (Titan ↔ tiểu đội 2,65 m, hai tiểu đội 6,4 m)
     const own = sq ? spaceRadius(mover) - wallRadius(mover) : 0;
-    const r = (anch ? spaceRadius(v.kind) / HEX_COS30 : spaceRadius(v.kind)) - soft + own;
+    // xe tìm đường thấy xe đứng theo LUẬT LÁCH MỀM (A1a): in vòng THÂN (cả quân hạ bệ), `standFor` đặt ngưỡng SOFT_PASS × đế
+    // người đi. Tiểu đội (tìm đường hay đang đứng) giữ số cũ
+    const r = !sq && !isSquad(v.kind) ? bodyRadius(v.kind) : (anch ? spaceRadius(v.kind) / HEX_COS30 : spaceRadius(v.kind)) - soft + own;
+    discs.push(v.x, v.z, r, v.id);
     const R = r + STAND_REACH;
     const c0 = g.colOf(v.x - R, v.z);
     const c1 = g.colOf(v.x + R, v.z);
@@ -188,14 +192,20 @@ function standLayer(this: World, side: 0 | 1, mover: Unit["kind"]): [Float32Arra
         }
       }
   }
+  this.standDiscs[L] = new Float64Array(discs);
   return [clear, owner];
 }
 
-/** Lớp xe đứng cho xe u tự tìm đường (bỏ qua thân chính nó); máy bay không dùng. */
+/**
+ * Lớp xe đứng cho xe u tự tìm đường (bỏ qua thân chính nó); máy bay không dùng. Xe: ngưỡng lách mềm SOFT_PASS × đế, đoạn thẳng
+ * kiểm theo vòng in chính xác (`discs`). Tiểu đội: như cũ (ngưỡng nửa bề ngang, tra theo ô).
+ */
 function standFor(this: World, u: Unit): StandLayer | null {
   if (u.air !== "none") return null;
   const [clear, owner] = this.standLayer(u.side, u.kind);
-  return { clear, owner, self: u.id };
+  if (isSquad(u.kind)) return { clear, owner, self: u.id };
+  const L = u.side * 2;
+  return { clear, owner, self: u.id, need: SOFT_PASS * bodyRadius(u.kind), discs: this.standDiscs[L] };
 }
 
 function setPath(this: World, u: Unit, x: number, z: number): boolean {
