@@ -27,8 +27,13 @@ export const SALVAGE_POOL = 14;
 /** Đường tới xác bị chặn quá chừng này lần thì bỏ, không tìm đường lại mãi. */
 export const SALVAGE_RETRIES = 5;
 
-/** Đội hình: khe hở giữa hai thân xe cạnh nhau (m). Hình dạng từng kiểu đội hình nằm ở `FORMATIONS` trong content.ts. */
-export const FORMATION_GAP = 1.4;
+/**
+ * Đội hình: khe thêm giữa hai VÒNG GIÃN cạnh nhau (m); hai vòng giãn đã chừa 0,4 m giữa hai vòng thân. 1,4 m trước 16/11/2026
+ * là để thân chữ nhật xoay tại chỗ không quệt; đế tròn xoay không quệt nên người dùng thấy hàng Titan quá thưa (ảnh 16/11):
+ * còn 0,8 m, Titan cạnh nhau cách tâm 5,7 m. Đã thử 0,4 m (5,3 m): đội 6 Titan tới nơi 15 → 24 s vì xe về ô trong phải đi vòng
+ * qua hàng xe đã đứng (thứ tự vào ô là việc của bước 3). Hình dạng từng kiểu đội hình nằm ở `FORMATIONS` trong content.ts.
+ */
+export const FORMATION_GAP = 0.8;
 /**
  * VA CHẠM THEO ĐẾ TRÒN (bước 1 kế hoạch đế, 16/11/2026; Docs/design/UNIT_BASES_PLAN.md). Mô hình đã nằm gọn trong vòng `bodyR`
  * ở mọi góc xoay, nên thân xe là một vòng tròn: xoay tại chỗ không bao giờ quệt, hướng đẩy luôn theo đường nối hai tâm (không

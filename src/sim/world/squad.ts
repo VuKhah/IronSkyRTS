@@ -1211,7 +1211,13 @@ function squadMember(this: World, u: Unit, w: WeaponSpec | undefined, range: num
     } else if (d >= 3) this.turnHull(u, (sx - u.x) / d, (sz - u.z) / d);
     return fireAt;
   }
-  if (d > SQUAD_FAR || (d > 2 && !this.grid.los(u.x, u.z, sx, sz))) {
+  // bị che: vách / nhà, hoặc đồng đội cùng phe đang đứng chắn giữa đường (bước 2: đi vòng qua xe đứng, không ủi xe đã vào
+  // hàng; người dùng 16/11/2026: "một chiếc tiến tới đang đẩy chiếc còn lại ra khỏi hàng")
+  // Chỉ xét xe đứng khi đội không hành quân: lúc hành quân xe bám ô di động trên vệt đội, đồng đội khựng 1 giây là bị coi như
+  // chắn đường, xe bỏ ô đi tìm đường (kiểm thử "bám sát ô" tụt 11 m)
+  const stand = sq.phase === "march" ? undefined : (this.standFor(u) ?? undefined);
+  const blocked = d > 2 && !this.grid.los(u.x, u.z, sx, sz, stand ? Math.max(0.7, wallRadius(u.kind)) : 0.7, stand);
+  if (d > SQUAD_FAR || blocked) {
     // xa ô hoặc bị che: tìm đường tới ô (mỗi giây tìm lại một lần, ô còn đang di chuyển)
     if (u.path.length === 0 || this.tick >= u.repathAt) {
       this.setPath(u, sx, sz);

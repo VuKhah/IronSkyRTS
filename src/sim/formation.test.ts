@@ -30,6 +30,35 @@ function march(kinds: UnitId[], formation?: FormationId): { w: World; us: Unit[]
   return { w, us, tx, tz };
 }
 
+describe("xe đã vào hàng không bị xe đến sau ủi ra (người dùng 16/11/2026, ảnh)", () => {
+  // hai kịch bản bản cũ ủi rõ nhất (đo 16/11: 1,7 m và 1,2 m); bản mới 0,2 m
+  for (const seed of [1, 2])
+    it(`9 Titan lộn xộn đi 30 m (seed ${seed}): xe đang đứng không bị xe khác ủi đi quá 1 m (cộng dồn cả trận)`, () => {
+      const w = new World(1, { sandbox: true });
+      const rng = new Rng(seed);
+      const [ax, az] = arenaPoint(-22);
+      for (let k = 0; k < 9; k++) spawn(w, "titan", ax + (rng.next() - 0.5) * 18, az + (rng.next() - 0.5) * 18);
+      const us = w.units.filter((u) => u.side === 0);
+      for (let t = 0; t < sec(2); t++) w.step([]);
+      const [tx, tz] = arenaPoint(8);
+      w.step([{ side: 0, order: { t: "move", ids: us.map((u) => u.id), x: tx, z: tz } }]);
+      // cú đẩy không bật cờ `moved`: quãng xe bị dời trong tick nó không tự chạy (đang đứng) là quãng bị xe khác ủi
+      let worst = 0;
+      const pushed = new Map<number, number>();
+      for (let t = 0; t < sec(40); t++) {
+        w.step([]);
+        for (const u of us)
+          if (!u.moved && u.still > 0) {
+            const v = (pushed.get(u.id) ?? 0) + Math.hypot(u.x - u.px, u.z - u.pz);
+            pushed.set(u.id, v);
+            worst = Math.max(worst, v);
+          }
+      }
+      expect(us.every((u) => u.order === "idle")).toBe(true);
+      expect(worst).toBeLessThan(1);
+    });
+});
+
 describe("đội hình khi ra lệnh cho cả nhóm", () => {
   it("10 Titan: hàng ngang ngay ngắn quanh điểm đích, không xe nào chạm nhau, cùng quay một hướng", () => {
     const { w, us, tx, tz } = march(Array<UnitId>(10).fill("titan"));

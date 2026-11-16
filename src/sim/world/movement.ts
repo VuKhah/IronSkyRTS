@@ -27,7 +27,7 @@ const ORCA_CONE_SIN = dsin(25 * DEG);
 /** ORCA giữ xe gần như đứng chừng này tick liền (1,5 s) thì thôi né xe đứng yên trong ORCA_RELEASE tick (3 s) để lách qua. */
 const ORCA_HOLD_MAX = 15;
 const ORCA_RELEASE = 30;
-/** Xe trong đội cách ô dưới chừng này mét là "đúng ô" (ORCA không cho hai xe đúng ô cùng đội né nhau). */
+/** Xe trong đội lệch ô từ chừng này mét là "đang về ô" (luật nhường trong đội đang chạy, `separate`). */
 const SQUAD_IN_SLOT = 2.5;
 /** Hướng muốn đi lệch mũi quá 40° thì xe sắp xoay tại chỗ (không giải ORCA, tick sau xe đứng xoay). */
 const ORCA_SKIP_COS = dcos(40 * DEG);
@@ -803,14 +803,15 @@ function separate(this: World): void {
         aSide = false;
         bSide = false;
       }
-      // CÙNG ĐỘI HÌNH, một xe đúng ô, một xe đang về ô (lệch ô từ SQUAD_IN_SLOT m, kể cả xe đứng chờ phía trước đội): xe đúng ô
-      // NHƯỜNG ĐƯỜNG (chịu phần lớn cú đẩy và lách sang bên) rồi tự về ô; xe về ô đi tiếp. Khe giữa hai xe trong hàng hẹp hơn
-      // thân xe lớn (Titan cạnh nhau hở 3,2 m, Pháo rộng 4,6 m): không ai nhường thì xe về ô kẹt ngoài hàng, hoặc bị cả hàng
-      // xô theo (Pháo đứng trước đội bị hàng sau xô lên 120 m trong 22 giây)
+      // CÙNG ĐỘI HÌNH ĐANG CHẠY, một xe đúng ô, một xe đang về ô (lệch ô từ SQUAD_IN_SLOT m): xe đúng ô NHƯỜNG ĐƯỜNG (chịu phần lớn
+      // cú đẩy và lách sang bên) rồi tự về ô; không thì xe tụt hàng kẹt ngoài hàng lúc hành quân (12/11/2026). CHỈ khi xe đúng ô
+      // cũng đang chạy: xe đã ĐỨNG YÊN trong hàng thì giữ chỗ như mọi xe đứng, xe về ô tìm đường vòng (bước 2, `squadMember`);
+      // áp cả lúc đứng thì xe về ô ủi xe đã vào hàng ra khỏi hàng (người dùng chụp ảnh 16/11/2026)
       if (!pa && !pb && a.squad !== 0 && a.squad === b.squad) {
         const offA = a.slotOff >= SQUAD_IN_SLOT;
         const offB = b.slotOff >= SQUAD_IN_SLOT;
-        if (offA !== offB) {
+        const inSlotMoving = offA ? b.moved : a.moved;
+        if (offA !== offB && inSlotMoving) {
           wa = offA ? 1 - MOVER_SHARE : MOVER_SHARE;
           aSide = !offA;
           bSide = !offB;
