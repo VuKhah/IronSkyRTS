@@ -3,7 +3,7 @@ import { BUILDINGS, RULES, UNITS, valueOf, type Side, type WeaponSpec } from "..
 import { clamp, dist2, turnToward } from "../fmath";
 import { MAX_TIER, TERRAIN } from "../maps";
 import type { Building, Shot, Target, Unit } from "../types";
-import { TICK_RATE, DT, sec, AIRBORNE_ALT, SHOT_SPEED, IDLE_ACQUIRE_BONUS, LEASH, ALIGNED_COS, TMP, traverseStep, AIM_COS, MISSILE_PYLON, BARREL_GAP, BOMB_FALL, cosDeg, dirToCenter } from "./shared";
+import { TICK_RATE, DT, sec, AIRBORNE_ALT, SHOT_SPEED, IDLE_ACQUIRE_BONUS, LEASH, ALIGNED_COS, DRIVE_LAT_TOL, TMP, traverseStep, AIM_COS, MISSILE_PYLON, BARREL_GAP, BOMB_FALL, cosDeg, dirToCenter } from "./shared";
 import { World } from "./core";
 
 
@@ -155,6 +155,23 @@ function updateGround(this: World, u: Unit): void {
     }
     case "idle": {
       const t = w ? this.acquire(u, w, range + IDLE_ACQUIRE_BONUS) : null;
+      if (u.yieldAway && !u.squad) {
+        // NHƯỜNG ĐƯỜNG (`world/yield.ts`): dạt tới chỗ được yêu cầu, hết hạn thì về ô nhà; chạy theo xích. Vẫn bắn mục tiêu
+        // trong tầm (tháp pháo quay), không bỏ chỗ đi đuổi
+        if (t && w && this.inRange(u.x, u.z, w, t, range)) fireAt = t;
+        const going = this.tick < u.yieldUntil;
+        const gx = going ? u.yieldX : u.tx;
+        const gz = going ? u.yieldZ : u.tz;
+        const d = Math.sqrt(dist2(u.x, u.z, gx, gz));
+        if (!going && this.spotTaken(u, u.tx, u.tz)) {
+          // ô nhà đã có xe khác đứng vào (xe vừa đi qua dừng đúng chỗ): nhận chỗ đang đứng làm ô mới
+          u.tx = u.x;
+          u.tz = u.z;
+          u.yieldAway = false;
+        } else if (d > DRIVE_LAT_TOL + 0.05) this.driveTo(u, gx, gz, d, true);
+        else if (!going) u.yieldAway = false;
+        break;
+      }
       if (t && w) {
         fireAt = t;
         if (this.inRange(u.x, u.z, w, t, range)) this.halt(u);

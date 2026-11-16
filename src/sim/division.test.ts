@@ -8,6 +8,7 @@ import { Rng } from "./fmath";
 import { arenaPoint } from "./scenarios";
 import type { Building, Squad, Unit } from "./types";
 import { hashWorld, sec, World } from "./world";
+import { spaceRadius } from "./world/shared";
 
 function spawn(w: World, kind: UnitId, x: number, z: number, side: 0 | 1 = 0): Unit {
   w.step([{ side, order: { t: "sbSpawn", kind, side, x, z } }]);
@@ -97,7 +98,7 @@ describe("đúc và điều theo lô", () => {
     go(w, us, 30);
     const sq: Squad = w.squads[0];
     // mỗi xe có ít nhất một xe cùng lô ngay bên cạnh (kể cả lô vắt qua hai hàng)
-    const reach = (2 * UNITS.lynx.spaceR! + 1.4) * 1.5;
+    const reach = (2 * spaceRadius("lynx") + 1.4) * 1.5;
     sq.ids.forEach((id, i) => {
       const lot = (w.byId.get(id) as Unit).lot;
       const near = sq.ids.some((o, j) => j !== i && (w.byId.get(o) as Unit).lot === lot && Math.sqrt((sq.offLat[i] - sq.offLat[j]) ** 2 + (sq.offBack[i] - sq.offBack[j]) ** 2) <= reach);

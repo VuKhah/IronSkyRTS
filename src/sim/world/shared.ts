@@ -1,8 +1,8 @@
 /** Hằng số và hàm phụ dùng chung cho các phần của World (tách từ world.ts). */
-import { BUILDINGS, PAD_OFFSETS, PASS_MARGIN, RULES, SOFT_PASS, UNITS, type WeaponVisual } from "../content";
+import { BUILDINGS, PAD_OFFSETS, RULES, UNITS, type WeaponVisual } from "../content";
 import { dcos, DEG, dsin, TAU, turnStep, type TurnStep } from "../fmath";
 import { CELL, GameMap } from "../maps";
-import type { SideState, Unit } from "../types";
+import type { SideState } from "../types";
 
 
 export const TICK_RATE = RULES.tickRate;
@@ -28,6 +28,8 @@ export const SALVAGE_RETRIES = 5;
  * qua hàng xe đã đứng (thứ tự vào ô là việc của bước 3). Hình dạng từng kiểu đội hình nằm ở `FORMATIONS` trong content.ts.
  */
 export const FORMATION_GAP = 0.8;
+/** Chạy theo xích (`driveTo`): đích lệch ngang khỏi trục thân không quá chừng này (m) thì chạy dọc trục luôn, khỏi quay thân. */
+export const DRIVE_LAT_TOL = 0.3;
 /**
  * VA CHẠM THEO ĐẾ TRÒN (bước 1 kế hoạch đế, 16/11/2026; Docs/design/UNIT_BASES_PLAN.md). Mô hình đã nằm gọn trong vòng `bodyR`
  * ở mọi góc xoay, nên thân xe là một vòng tròn: xoay tại chỗ không bao giờ quệt, hướng đẩy luôn theo đường nối hai tâm (không
@@ -37,30 +39,19 @@ export function bodyRadius(kind: keyof typeof UNITS): number {
   const s = UNITS[kind];
   return s.bodyR ?? s.radius;
 }
-/** Khe mỗi bên giữa hai thân mặt đất (m): vùng giãn = thân + chừng này (người dùng chốt 15/11/2026). */
-export const SPACE_GAP = 0.2;
-/** Bán kính vùng giãn (m): hai quân mặt đất giữ tâm cách nhau ≥ tổng hai số này (khe giữa hai thân 0,4 m). */
+/**
+ * Bán kính vùng giãn (m): hai quân giữ tâm cách nhau ≥ tổng hai số này. QUÂN MẶT ĐẤT: BỎ VÒNG GIÃN (người dùng duyệt 16/11/2026,
+ * T2 kế hoạch A1 làm lại): chỉ còn một vòng là vòng thân `bodyR`; khoảng giữa các xe trong đội hình do tướng chọn
+ * (`FORMATION_GAP`), lối đi xuyên đội hình do luật nhường đường (`yieldPass`), không do vòng va chạm. Máy bay giữ vòng giãn riêng
+ * (`spaceR`, 1,5 × thân) cho đội bay / lượn vòng.
+ */
 export function spaceRadius(kind: keyof typeof UNITS): number {
   const s = UNITS[kind];
-  return s.spaceR ?? bodyRadius(kind) + SPACE_GAP;
+  return s.domain === "air" ? (s.spaceR ?? bodyRadius(kind) * 1.5) : bodyRadius(kind);
 }
 /** Tiểu đội bộ binh (`UnitSpec.troops`): chạm mềm với xe, dò vách ở nửa bán kính đế (người túm lại qua lối hẹp). */
 export function isSquad(kind: keyof typeof UNITS): boolean {
   return !!UNITS[kind].troops;
-}
-/**
- * Khoảng giữ (m, tâm tới tâm) khi `mover` ĐANG CHẠY đi ngang `stand` ĐANG ĐỨNG cùng phe (luật lách mềm, SOFT_PASS trong
- * content/rules.ts): vòng thân quân đứng + SOFT_PASS × vòng thân người lách. null = không áp luật lách (khác phe, trên không,
- * bộ binh: bộ binh giữ luật chồng nửa đế riêng, hoặc không đúng cặp chạy / đứng).
- */
-export function passTouch(stand: Unit, mover: Unit): number | null {
-  if (stand.side !== mover.side || stand.air !== "none" || mover.air !== "none") return null;
-  if (!mover.moved || stand.moved || isSquad(stand.kind) || isSquad(mover.kind)) return null;
-  return bodyRadius(stand.kind) + SOFT_PASS * bodyRadius(mover.kind);
-}
-/** Khoảng tâm hai quân đứng `a`, `b` tối thiểu để `mover` lách qua giữa (m). */
-export function passGap(a: keyof typeof UNITS, b: keyof typeof UNITS, mover: keyof typeof UNITS): number {
-  return bodyRadius(a) + bodyRadius(b) + 2 * SOFT_PASS * bodyRadius(mover) + PASS_MARGIN;
 }
 /**
  * Vòng dò vách và bán kính tìm đường = bodyR × chừng này. Bảng khoảng trống của lưới 2 m chỉ có vài giá trị (1; 1,41; 2,24; 3…):

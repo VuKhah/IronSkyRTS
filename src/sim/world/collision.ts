@@ -3,7 +3,7 @@ import { UNITS } from "../content";
 import { dcos, DEG, dsin } from "../fmath";
 import { orcaLine, orcaSolve, type OrcaLine } from "../orca";
 import type { Unit } from "../types";
-import { DT, sec, spaceRadius, softOverlap, isSquad, passTouch, HEX_COS30, MOVER_SHARE, WALL_PUSH } from "./shared";
+import { DT, sec, spaceRadius, softOverlap, isSquad, HEX_COS30, MOVER_SHARE, WALL_PUSH } from "./shared";
 import { World } from "./core";
 
 /** Hai xe cùng chạy coi là "ngược chiều" khi góc giữa hai hướng thân lớn hơn 120° (cos < −0,5). */
@@ -42,6 +42,13 @@ function sideStep(m: Unit, ox: number, oz: number): [number, number] {
 /** Đẩy xe đi (dx, dz) qua tryMove (trượt dọc vách, không lấn vào vách); trả về quãng thật sự đi được. */
 function shove(w: World, u: Unit, dx: number, dz: number): [number, number] {
   if (dx * dx + dz * dz < 1e-12) return [0, 0];
+  // xe đang dạt nhường đường chạy theo xích: chỉ nhận phần đẩy DỌC TRỤC THÂN (lùi / tiến), không bị đẩy trượt ngang
+  if (u.order === "idle" && u.yieldAway) {
+    const a = dx * u.hx + dz * u.hz;
+    dx = u.hx * a;
+    dz = u.hz * a;
+    if (dx * dx + dz * dz < 1e-12) return [0, 0];
+  }
   const ox = u.x;
   const oz = u.z;
   w.tryMove(u, u.x + dx, u.z + dz);
@@ -117,7 +124,7 @@ function yieldsTo(a: Unit, b: Unit): number {
  * - láng giềng: tối đa ORCA_NEIGHBORS xe gần nhất CÙNG PHE trong AVOID_LOOK m, KỂ CẢ xe cùng đội hình (xe về ô của mình đi
  *   xuyên qua đội được). Xe địch không né: lao vào giao chiến, chạm thì luật đẩy lo (né cả xe địch thì Lynx bẻ lái tránh chính
  *   mục tiêu trước mặt);
- * - bán kính chung: tổng hai VÒNG GIÃN `spaceR` (16/11/2026, đế tròn; ORCA vốn viết cho vòng tròn nên khớp đúng luật va chạm),
+ * - bán kính chung: tổng hai vòng `spaceRadius` (quân mặt đất = vòng thân từ T2 16/11/2026; ORCA viết cho vòng tròn nên khớp luật va chạm),
  *   quân hạ bệ dùng vòng ngoại tiếp lục giác; tâm đã gần hơn thế thì coi như vừa chạm, không bắt bật ra trong một tick;
  * - trách nhiệm: hai xe cùng né thì chia đôi; xe rỗng gặp xe chở hàng gánh ORCA_YIELD; xe đứng yên / đang nhích / hạ bệ là vật
  *   cản, xe chạy gánh trọn;
@@ -162,9 +169,9 @@ function orcaPass(this: World, g: readonly Unit[]): void {
       if (a.squad !== 0 && a.squad === b.squad) continue;
       // đã kẹt: thôi né xe đứng yên và xe cũng đang kẹt (hai xe đối đầu chờ nhau trong lối hẹp); luật va chạm gỡ tiếp
       if (release && crawling(b)) continue;
-      // LÁCH MỀM (A1a): quân đứng cùng phe là việc của tìm đường (lớp xe đứng, kiểm khe theo vòng in chính xác), ORCA không né
-      // thêm: nhìn trước AVOID_T giây thì khe lách dư 0,1 m mỗi bên thành chặn, xe bị bẻ sang ngang rồi tìm lại đường vòng
-      if (!solver(b) && passTouch(b, a) !== null) continue;
+      // xe cùng phe BIẾT NHƯỜNG ĐƯỜNG (`world/yield.ts`) tự dạt khỏi lối, xe đi giữ đúng lối và chờ nếu lối chưa mở (`laneWait`):
+      // không né (né thì ORCA bẻ xe lệch khỏi lối trước khi xe kia kịp dạt, đâm vào chỗ xe vừa dạt tới rồi kẹt; đo 16/11 lưới 3×3)
+      if (this.canYield(b) || (b.order === "idle" && b.yieldAway)) continue;
       const dx = b.x - a.x;
       const dz = b.z - a.z;
       if (dx >= AVOID_LOOK || dx <= -AVOID_LOOK || dz >= AVOID_LOOK || dz <= -AVOID_LOOK) continue;
@@ -229,28 +236,11 @@ function separate(this: World): void {
       const rb = spaceRadius(b.kind);
       const pb = this.anchored(b);
       if (pa && pb) continue;
-      // LÁCH MỀM (A1a, 16/11/2026): quân đang chạy đi ngang quân đang đứng cùng phe chỉ giữ khoảng `passTouch` (vòng thân quân
-      // đứng + SOFT_PASS × thân người lách; quân hạ bệ cũng tính vòng thân, không lục giác). Chỉ người lách bị đẩy (cộng lách
-      // sang bên, phía xa quân đứng); quân đứng không xê dịch, kể cả khi người lách bị vách chặn (không bù sang quân đứng)
-      const pass = passTouch(b, a) ?? passTouch(a, b);
-      if (pass !== null) {
-        const m = passTouch(b, a) !== null ? a : b;
-        const s = m === a ? b : a;
-        const ox = m.x - s.x;
-        const oz = m.z - s.z;
-        if (ox >= pass || ox <= -pass || oz >= pass || oz <= -pass) continue;
-        const od2 = ox * ox + oz * oz;
-        if (od2 >= pass * pass) continue;
-        const od = Math.sqrt(od2);
-        const [ux, uz] = od < 1e-6 ? [m.hz, -m.hx] : [ox / od, oz / od];
-        const over = pass - od;
-        const [lx, lz] = sideStep(m, -ox, -oz);
-        shove(this, m, (ux + lx) * over, (uz + lz) * over);
-        continue;
-      }
       // va chạm theo ĐẾ TRÒN cho mọi cặp (16/11/2026; trước đó hình chữ nhật thân, phép tách trục): hai tâm cách nhau ≥ tổng hai
-      // vòng giãn `spaceR`. Quân đã hạ bệ là LỤC GIÁC tĩnh (trung đoạn = vòng giãn), tầm xét tới đỉnh lục giác
+      // vòng `spaceRadius` (quân mặt đất = vòng thân). Quân đã hạ bệ là LỤC GIÁC tĩnh (trung đoạn = vòng đó), tầm xét tới đỉnh
       const both = a.moved && b.moved;
+      const ra2 = !a.moved || (a.order === "idle" && a.yieldAway);
+      const rb2 = !b.moved || (b.order === "idle" && b.yieldAway);
       // tiểu đội với xe: chạm MỀM, được chồng tới nửa đế tiểu đội (`softOverlap`)
       const soft = softOverlap(a.kind, b.kind);
       const touch = (pa ? ra / HEX_COS30 : ra) + (pb ? rb / HEX_COS30 : rb) - soft;
@@ -286,7 +276,8 @@ function separate(this: World): void {
       }
       if (over <= 0) {
         // chưa chạm: tài xế thấy nhau từ xa thì cùng lách sang bên, chỉ khi giữ nguyên làn thì sẽ tông
-        if (!headOn || pa || pb) continue;
+        // xe đang dạt nhường đường chạy theo xích, tự nhìn trước (`driveTo` careful): không lách ngang kiểu tài xế đối đầu
+        if (!headOn || pa || pb || ra2 || rb2) continue;
         const lat = dx * a.hz - dz * a.hx;
         if ((lat < 0 ? -lat : lat) >= ra + rb) continue;
         const [lax, laz] = sideStep(a, dx, dz);
@@ -301,8 +292,16 @@ function separate(this: World): void {
       // Hai xe cùng chạy mà một xe đang CHỞ HÀNG, xe kia rỗng: xe rỗng nhường như xe chạy nhường xe đứng (luật đường hẹp
       // của tài xế; đối xứng hai phe vì chỉ xét hàng trên xe). Hai xe đối đầu ở một góc sát vách: xe bị vách chặn không lách
       // được, đường đi lại kéo cả hai về cùng một điểm góc, giằng co mãi nếu chia đều.
+      // XE KHÔNG BỊ XÔ TRƯỢT (người dùng 16/11/2026: "xe không tự nhiên đẩy đi, phải chạy theo hướng bánh xích"): xe ĐỨNG và xe
+      // đang dạt NHƯỜNG ĐƯỜNG (`world/yield.ts`, tự chạy theo xích) không nhận cú đẩy từ xe đang chạy cùng phe; xe chạy chịu trọn.
+      // Nhường đường dọn lối trước nên chạm hiếm; chạm thì xe chạy tự lách. Khác phe giữ luật cũ (xe đứng nhích 15%).
       const ya = a.moved === b.moved ? yieldsTo(a, b) : 0;
       let wa = pa ? 0 : pb ? 1 : ya > 0 ? MOVER_SHARE : ya < 0 ? 1 - MOVER_SHARE : a.moved === b.moved ? 0.5 : a.moved ? MOVER_SHARE : 1 - MOVER_SHARE;
+      if (!pa && !pb && a.side === b.side && soft === 0) {
+        if (ra2 !== rb2) wa = ra2 ? 0 : 1;
+        // hai xe cùng không "lái đi" (đứng, hoặc đang dạt nhường): xe đang chạy (dạt) nhận trọn, xe đứng không bị xô
+        else if (ra2 && a.moved !== b.moved) wa = a.moved ? 1 : 0;
+      }
       // KHÔNG DỪNG Ở CHỖ CHỒNG ĐẾ (A1a): hai quân cùng phe cùng đứng mà chồng vòng giãn (vừa lách tới, vừa dừng) thì quân dừng SAU
       // nhường trọn, quân đứng trước không xê dịch; dừng cùng tick thì chia đều (đối xứng hai phe). Đo 12 seed (9 Titan đi 30 m):
       // xe đã vào hàng bị xô 0,00 m (bản cũ tới 1,09 m); số lần đội chạm hết giờ 24 s (lỗi sẵn có của squad.ts, A1b) 4 / 12 so
@@ -310,8 +309,9 @@ function separate(this: World): void {
       if (!pa && !pb && !a.moved && !b.moved && a.side === b.side && soft === 0 && a.still !== b.still) wa = a.still < b.still ? 1 : 0;
       // xe chạy gặp xe đứng, hoặc hai xe chạy đối đầu: ngoài đẩy ra còn LÁCH SANG BÊN (vuông góc hướng chạy, phía xa xe kia);
       // đối đầu mà có xe được ưu tiên thì xe đó giữ làn, xe nhường lách
-      let aSide = !pa && ((a.moved && !b.moved) || (headOn && ya >= 0));
-      let bSide = !pb && ((b.moved && !a.moved) || (headOn && ya <= 0));
+      // xe đang dạt nhường đường (`ra2` / `rb2` dù đang chạy) không bị lách ngang: nó chạy theo xích
+      let aSide = !pa && !(a.moved && ra2) && ((a.moved && !b.moved) || (headOn && ya >= 0));
+      let bSide = !pb && !(b.moved && rb2) && ((b.moved && !a.moved) || (headOn && ya <= 0));
       // tiểu đội gặp xe: LÍNH NHƯỜNG XE (chịu phần lớn cú đẩy, không lách), xe đi tiếp như không có gì
       if (soft > 0 && !pa && !pb) {
         const sqA = isSquad(a.kind);
@@ -344,8 +344,9 @@ function separate(this: World): void {
       const dbz = nz * over * (1 - wa) + lbz * over;
       const [mxa, mza] = shove(this, a, dax, daz);
       const [mxb, mzb] = shove(this, b, dbx, dbz);
-      if (!pb) shove(this, b, mxa - dax, mza - daz);
-      if (!pa) shove(this, a, mxb - dbx, mzb - dbz);
+      // xe được miễn đẩy (phần chia 0: hạ bệ, xe đứng / đang nhường gặp xe cùng phe đang chạy) cũng không nhận phần bù
+      if (!pb && wa < 1) shove(this, b, mxa - dax, mza - daz);
+      if (!pa && wa > 0) shove(this, a, mxb - dbx, mzb - dbz);
     }
   }
 }

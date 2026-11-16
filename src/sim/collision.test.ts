@@ -1,13 +1,14 @@
 /**
  * Va chạm theo ĐẾ TRÒN (bước 1 kế hoạch đế, 16/11/2026; Docs/design/UNIT_BASES_PLAN.md): mô hình nằm gọn trong vòng `bodyR`,
- * hai quân mặt đất giữ tâm cách nhau ≥ tổng hai vòng giãn `spaceR`; quân đã hạ bệ là lục giác tĩnh (trung đoạn = vòng giãn,
+ * hai quân mặt đất giữ tâm cách nhau ≥ tổng hai vòng thân (từ T2 16/11/2026 vòng giãn = vòng thân); quân đã hạ bệ là lục giác tĩnh (trung đoạn = vòng giãn,
  * một cạnh phẳng quay về mũi lúc hạ bệ); thân tròn chạm vách như nhau ở mọi hướng mũi. Chỉ kiểm HÀNH VI.
  */
 import { describe, expect, it } from "vitest";
-import { UNIT_SCALE, UNITS, type UnitId } from "./content";
+import { UNITS, type UnitId } from "./content";
 import { arenaPoint } from "./scenarios";
 import type { Unit } from "./types";
 import { sec, World } from "./world";
+import { spaceRadius } from "./world/shared";
 
 function spawn(w: World, kind: UnitId, x: number, z: number, side: 0 | 1 = 0): Unit {
   w.step([{ side, order: { t: "sbSpawn", kind, side, x, z } }]);
@@ -35,13 +36,15 @@ function hexDist(h: Unit, a: number, px: number, pz: number): number {
   }
   return best;
 }
-const space = (k: UnitId): number => UNITS[k].spaceR!;
+/** Vòng giãn: quân mặt đất từ T2 (16/11/2026) chỉ còn một vòng = vòng thân. */
+const space = (k: UnitId): number => spaceRadius(k);
 
 describe("va chạm theo đế tròn", () => {
-  it("mọi quân mặt đất đã khai đế: thân và vùng giãn (giãn = thân + 0,2 m, thu theo UNIT_SCALE)", () => {
-    for (const k of ["hauler", "lynx", "titan", "skyguard", "rocket", "artillery"] as UnitId[]) {
+  it("mọi quân mặt đất đã khai đế, chỉ một vòng: vòng giãn = vòng thân (bỏ vòng giãn 16/11/2026)", () => {
+    for (const k of ["hauler", "lynx", "titan", "skyguard", "rocket", "artillery", "sniper"] as UnitId[]) {
       expect(UNITS[k].bodyR, k).toBeGreaterThan(0);
-      expect(space(k), k).toBeCloseTo(UNITS[k].bodyR! + 0.2 * UNIT_SCALE, 6);
+      expect(UNITS[k].spaceR, k).toBeUndefined();
+      expect(space(k), k).toBe(UNITS[k].bodyR);
     }
   });
 
@@ -108,7 +111,7 @@ describe("va chạm theo đế tròn", () => {
 });
 
 describe("tiểu đội bộ binh chạm mềm (16/11/2026)", () => {
-  const S = (): number => UNITS.sniper.spaceR!;
+  const S = (): number => spaceRadius("sniper");
   it("tiểu đội đè lên Titan: chỉ bị đẩy tới mức chồng nửa đế, lính nhường xe (Titan gần như không nhích)", () => {
     const w = new World(1, { sandbox: true });
     const [x, z] = arenaPoint(0);

@@ -213,6 +213,8 @@ export class World {
     }
     this.separate();
     this.keepOffWalls();
+    // nhường đường: đọc đường đi / vận tốc thật của tick này, xe đứng dạt từ tick sau (`world/yield.ts`)
+    this.yieldPass();
     this.resolveShots();
     this.veteranRegen();
     this.commanderRetreat();

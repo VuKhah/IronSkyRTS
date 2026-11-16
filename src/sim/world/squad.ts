@@ -4,7 +4,7 @@ import { assignMin } from "../assign";
 import { clamp, dcos, DEG, dist2, turnStep, turnToward } from "../fmath";
 import { CELL } from "../maps";
 import type { Squad, Target, Unit } from "../types";
-import { DT, sec, bodyRadius, spaceRadius, isSquad, wallRadius, FORMATION_GAP, SQUAD_CATCHUP, AIR_FORMATION_GAP, SQUAD_RESHAPE_EXTRA, SQUAD_MIN_TURN_R, SQUAD_PIVOT_COS, PIVOT_COS, ALIGNED_COS, SQUAD_LAG, SQUAD_LOOK, SQUAD_FAR, SQUAD_FORM_MAX, SQUAD_DIRECT, SQUAD_SETTLE_MAX, SQUAD_PIVOT_MAX, SQUAD_WIDEN_CHECKS, SHIFT_OFFSETS, SLOT_NUDGE, TMP, traverseStep } from "./shared";
+import { DT, sec, bodyRadius, spaceRadius, isSquad, wallRadius, FORMATION_GAP, DRIVE_LAT_TOL, SQUAD_CATCHUP, AIR_FORMATION_GAP, SQUAD_RESHAPE_EXTRA, SQUAD_MIN_TURN_R, SQUAD_PIVOT_COS, PIVOT_COS, ALIGNED_COS, SQUAD_LAG, SQUAD_LOOK, SQUAD_FAR, SQUAD_FORM_MAX, SQUAD_DIRECT, SQUAD_SETTLE_MAX, SQUAD_PIVOT_MAX, SQUAD_WIDEN_CHECKS, SHIFT_OFFSETS, SLOT_NUDGE, TMP, traverseStep } from "./shared";
 import { World } from "./core";
 
 /** Ô đội hình phải có khoảng trống ≥ bán kính thân × chừng này (cùng vòng với điểm dò thân `bodyContact`, WALL_PROBE). */
@@ -1239,8 +1239,10 @@ function squadMember(this: World, u: Unit, w: WeaponSpec | undefined, range: num
     u.pathI = 0;
     this.stepToward(u, sx, sz, d);
   }
-  // đứng sát ô: thân quay dần theo hướng đội hình (đi thẳng tới ô: hướng vừa đi), đi đều, không lắc theo từng chỉnh nhỏ
-  if (d < 1.5) {
+  // đứng sát ô: thân quay dần theo hướng đội hình (đi thẳng tới ô: hướng vừa đi), đi đều, không lắc theo từng chỉnh nhỏ.
+  // Từ 16/11/2026 nhích vào ô chạy theo xích (`driveTo` quay thân về phía ô): chỉ quay theo hướng đội hình khi đã vào ô (sai số
+  // ngang của `driveTo`), không thì hai lệnh quay thân giằng nhau
+  if (d < DRIVE_LAT_TOL + 0.15) {
     if (sq.phase === "direct") this.turnHull(u, sq.wantX, sq.wantZ);
     else this.turnHull(u, shx, shz);
   }

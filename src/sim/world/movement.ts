@@ -1,9 +1,9 @@
 /** Di chuyển một xe: quay thân, bước tới, đi theo đường A*, né vách, đẩy xe không chồng lên nhau. */
-import { RULES, SOFT_PASS, UNITS } from "../content";
+import { RULES, UNITS } from "../content";
 import { dcos, dist2, dsin, TAU, turnToward } from "../fmath";
 import type { Target, Unit } from "../types";
 import type { StandLayer } from "../grid";
-import { DT, sec, bodyRadius, spaceRadius, wallRadius, isSquad, HEX_COS30, GOAL_SHIFT, PIVOT_COS, ALIGNED_COS, TMP, traverseStep } from "./shared";
+import { DT, sec, bodyRadius, spaceRadius, wallRadius, isSquad, HEX_COS30, GOAL_SHIFT, DRIVE_LAT_TOL, PIVOT_COS, ALIGNED_COS, TMP, traverseStep } from "./shared";
 import { World } from "./core";
 /** Độ lệch hướng / phanh né xe nhỏ dần khi cách đích dưới chừng này mét. */
 const AVOID_FADE = 9;
@@ -105,11 +105,16 @@ function stepToward(this: World, u: Unit, x: number, z: number, d: number): void
   }
   let dx = (x - u.x) / d;
   let dz = (z - u.z) / d;
-  // LÙI XE: đích ở phía sau (lệch mũi > 120°) và gần (dưới REVERSE_MAX m) thì lùi thẳng, nửa tốc độ, không quay thân. Không thì
-  // xe về ô ở hàng sau phải xoay 180° ngay giữa hàng (quệt xe bên cạnh), đi vài mét rồi xoay lại
+  // LÙI XE: đích ở phía sau (lệch mũi > 120°) và gần (dưới REVERSE_MAX m) thì lùi, nửa tốc độ. Không thì xe về ô ở hàng sau phải
+  // xoay 180° ngay giữa hàng (quệt xe bên cạnh), đi vài mét rồi xoay lại
   const back = d < REVERSE_MAX && dx * u.hx + dz * u.hz < -0.5;
+  // quãng ngắn hoặc lùi: CHẠY THEO XÍCH (`driveTo`), không trượt thẳng tới đích
+  if (d < 3 || back) {
+    this.driveTo(u, x, z, d);
+    return;
+  }
   // né xe (ORCA, xem `orcaPass` / `steer`): chỉ khi còn đi xa, nhích chỉnh hàng thì thôi
-  if (d >= 3 && !back) {
+  {
     const v = this.speedOf(u) * (this.mobilized(u) ? 1 + RULES.abilities.mobilize.speed : 1) * this.moveFactor(u, dx, dz);
     u.prefX = dx * v;
     u.prefZ = dz * v;
@@ -119,13 +124,62 @@ function stepToward(this: World, u: Unit, x: number, z: number, d: number): void
       dz = sz;
     }
   }
-  // đi xa (từ 3 m): quay thân về hướng đi trước, lệch nhiều thì xoay tại chỗ; nhích chỉnh hàng thì khỏi quay thân
-  if (d >= 3 && !back && !this.turnHull(u, dx, dz)) return;
+  // đi xa (từ 3 m): quay thân về hướng đi trước, lệch nhiều thì xoay tại chỗ
+  if (!this.turnHull(u, dx, dz)) return;
   const rally = this.mobilized(u) ? 1 + RULES.abilities.mobilize.speed : 1;
-  const step = Math.min(this.speedOf(u) * DT * rally * this.moveFactor(u, dx, dz) * this.brakeNear(u, x, z) * (back ? REVERSE_SPEED : 1), d);
+  const step = Math.min(this.speedOf(u) * DT * rally * this.moveFactor(u, dx, dz) * this.brakeNear(u, x, z), d);
   const ox = u.x;
   const oz = u.z;
   this.tryMove(u, u.x + dx * step, u.z + dz * step);
+  u.moved = u.moved || dist2(ox, oz, u.x, u.z) > 1e-6;
+}
+
+/**
+ * CHẠY THEO XÍCH (người dùng 16/11/2026: "xe không tự nhiên đẩy đi, nó phải chạy theo hướng bánh xích, Titan không đi ngang"):
+ * xe chỉ chạy DỌC TRỤC THÂN, tiến hoặc lùi (đích ở phía sau và gần: lùi, nửa tốc độ). Đích lệch ngang khỏi trục thân quá
+ * DRIVE_LAT_TOL m thì quay thân về phía đích (hoặc quay đuôi về phía đích khi lùi) trước, lệch nhiều thì xoay tại chỗ. Dùng cho
+ * quãng ngắn (nhích vào ô, nhường đường, về ô); đi xa vẫn theo `stepToward` / `follow`.
+ */
+function driveTo(this: World, u: Unit, x: number, z: number, d: number, careful = false): void {
+  if (d < 0.05) return;
+  const spec = UNITS[u.kind];
+  const dep = spec.weapon?.deploy;
+  if (dep && u.still > 0) {
+    if (d > 0.4) {
+      u.still = Math.min(u.still, sec(dep.time)) - 1;
+      u.packing = true;
+    }
+    return;
+  }
+  const ex = x - u.x;
+  const ez = z - u.z;
+  const rev = ex * u.hx + ez * u.hz < 0 && d < REVERSE_MAX;
+  const sg = rev ? -1 : 1;
+  // lệch ngang của đích so với trục thân
+  const lat = ex * u.hz - ez * u.hx;
+  if ((lat < 0 ? -lat : lat) > DRIVE_LAT_TOL && !this.turnHull(u, (ex / d) * sg, (ez / d) * sg)) return;
+  const along = (x - u.x) * u.hx + (z - u.z) * u.hz;
+  const want = along < 0 ? -along : along;
+  if (want < 0.02) return;
+  const dir = along < 0 ? -1 : 1;
+  const rally = this.mobilized(u) ? 1 + RULES.abilities.mobilize.speed : 1;
+  const step = Math.min(this.speedOf(u) * DT * rally * this.moveFactor(u, u.hx * dir, u.hz * dir) * (dir < 0 ? REVERSE_SPEED : 1), want);
+  const ox = u.x;
+  const oz = u.z;
+  const nx = u.x + u.hx * dir * step;
+  const nz = u.z + u.hz * dir * step;
+  // `careful` (xe dạt nhường đường): nhìn trước, bước tới làm thân lấn sâu hơn vào xe mặt đất khác thì đứng chờ tick này, không
+  // lái đâm vào rồi bị đẩy trượt ngang
+  if (careful) {
+    const ru = bodyRadius(u.kind);
+    for (const v of this.units) {
+      if (v === u || v.hp <= 0 || v.air !== "none") continue;
+      const lim = ru + bodyRadius(v.kind);
+      const n2 = dist2(nx, nz, v.x, v.z);
+      if (n2 < lim * lim && n2 < dist2(ox, oz, v.x, v.z)) return;
+    }
+  }
+  this.tryMove(u, nx, nz);
   u.moved = u.moved || dist2(ox, oz, u.x, u.z) > 1e-6;
 }
 
@@ -135,6 +189,8 @@ function setIdle(this: World, u: Unit): void {
   u.order = "idle";
   u.tx = u.x;
   u.tz = u.z;
+  u.yieldAway = false;
+  u.yieldUntil = 0;
   u.targetId = 0;
   u.path = [];
   u.pathI = 0;
@@ -172,15 +228,16 @@ function standLayer(this: World, side: 0 | 1, mover: Unit["kind"]): [Float32Arra
   for (const v of this.units) {
     if (v.side !== side || v.hp <= 0 || v.air !== "none") continue;
     const anch = this.anchored(v);
-    if (!anch && v.still < still) continue;
+    // xe biết nhường (`canYield`, `world/yield.ts`) không là vật cản: đường đi xuyên qua, xe đứng tự dạt ra cho lối
+    if (!anch && (v.still < still || this.canYield(v))) continue;
     // chạm mềm (tiểu đội đứng với xe tìm đường, hoặc xe đứng với tiểu đội tìm đường): vòng in nhỏ đi nửa đế tiểu đội, nên xe đi
     // qua sát tiểu đội được (chỉ tốn hơn vì ô gần vật cản tính chậm), tiểu đội lọt giữa hai xe đứng sát nhau
     const soft = isSquad(v.kind) !== sq ? bodyRadius(sq ? mover : v.kind) : 0;
     // tiểu đội tìm đường với bán kính nhỏ (người túm lại, `wallRadius`): bù phần vòng giãn của nó để A* giữ đúng khoảng luật va
     // chạm (Titan ↔ tiểu đội 2,65 m, hai tiểu đội 6,4 m)
     const own = sq ? spaceRadius(mover) - wallRadius(mover) : 0;
-    // xe tìm đường thấy xe đứng theo LUẬT LÁCH MỀM (A1a): in vòng THÂN (cả quân hạ bệ), `standFor` đặt ngưỡng SOFT_PASS × đế
-    // người đi. Tiểu đội (tìm đường hay đang đứng) giữ số cũ
+    // xe tìm đường thấy xe đứng (không nhường được) theo vòng THÂN (cả quân hạ bệ), `standFor` đặt ngưỡng = bán kính dò vách
+    // của người đi. Tiểu đội (tìm đường hay đang đứng) giữ số cũ
     const r = !sq && !isSquad(v.kind) ? bodyRadius(v.kind) : (anch ? spaceRadius(v.kind) / HEX_COS30 : spaceRadius(v.kind)) - soft + own;
     discs.push(v.x, v.z, r, v.id);
     const R = r + STAND_REACH;
@@ -207,7 +264,7 @@ function standLayer(this: World, side: 0 | 1, mover: Unit["kind"]): [Float32Arra
 }
 
 /**
- * Lớp xe đứng cho xe u tự tìm đường (bỏ qua thân chính nó); máy bay không dùng. Xe: ngưỡng lách mềm SOFT_PASS × đế, đoạn thẳng
+ * Lớp xe đứng cho xe u tự tìm đường (bỏ qua thân chính nó); máy bay không dùng. Xe: ngưỡng = bán kính dò vách của xe, đoạn thẳng
  * kiểm theo vòng in chính xác (`discs`). Tiểu đội: như cũ (ngưỡng nửa bề ngang, tra theo ô).
  */
 function standFor(this: World, u: Unit): StandLayer | null {
@@ -215,7 +272,7 @@ function standFor(this: World, u: Unit): StandLayer | null {
   const [clear, owner] = this.standLayer(u.side, u.kind);
   if (isSquad(u.kind)) return { clear, owner, self: u.id };
   const L = u.side * 2;
-  return { clear, owner, self: u.id, need: SOFT_PASS * bodyRadius(u.kind), discs: this.standDiscs[L] };
+  return { clear, owner, self: u.id, need: wallRadius(u.kind), discs: this.standDiscs[L] };
 }
 
 function setPath(this: World, u: Unit, x: number, z: number): boolean {
@@ -344,7 +401,8 @@ function clearStand(this: World, u: Unit, x: number, z: number): [number, number
       let hit = false;
       for (const v of this.units) {
         if (v === u || v.side !== u.side || v.hp <= 0 || v.air !== "none" || isSquad(v.kind)) continue;
-        if (!this.anchored(v) && v.still < still) continue;
+        // xe biết nhường tự dạt khỏi đích (`world/yield.ts`): không dời đích
+        if (!this.anchored(v) && (v.still < still || this.canYield(v))) continue;
         const ox = x - v.x;
         const oz = z - v.z;
         const lim = su + spaceRadius(v.kind);
@@ -401,7 +459,9 @@ function spotTaken(this: World, u: Unit, gx: number, gz: number): boolean {
     if (u.squad && v.squad === u.squad) continue;
     if (!this.anchored(v) && v.still < still) continue;
     const lim = su + spaceRadius(v.kind);
-    if (dist2(gx, gz, v.x, v.z) >= lim * lim) continue;
+    // xe biết nhường dạt cho đích đè một phần (`world/yield.ts`): chỉ tính là chiếm khi đích nằm TRONG thân nó
+    const occ = this.canYield(v) ? spaceRadius(v.kind) : lim;
+    if (dist2(gx, gz, v.x, v.z) >= occ * occ) continue;
     const near = lim + ARRIVE_SLACK;
     if (dist2(u.x, u.z, v.x, v.z) <= near * near) return true;
   }
@@ -480,6 +540,14 @@ function follow(this: World, u: Unit): boolean {
   if (dep && u.still > 0) {
     u.still = Math.min(u.still, sec(dep.time)) - 1;
     u.packing = true;
+    return false;
+  }
+  // CHỜ LỐI (`world/yield.ts`): xe phía trước đang dạt nhường chưa xong thì đứng chờ, quay thân sẵn về hướng sắp đi
+  if (u.laneWait > 0) {
+    const wx = u.path[u.pathI * 2] - u.x;
+    const wz = u.path[u.pathI * 2 + 1] - u.z;
+    const wl = Math.sqrt(wx * wx + wz * wz);
+    if (wl > 1e-6) this.turnHull(u, wx / wl, wz / wl);
     return false;
   }
   // TÌM LẠI KHI BỊ CHẮN (bước 2): đường còn dài thì mỗi REPLAN_EVERY giây xem REPLAN_LOOK đoạn phía trước có xe cùng phe mới
@@ -628,7 +696,7 @@ function chase(this: World, u: Unit, t: Target): void {
  * GIỮ BÊN PHẢI (cùng một quy ước cho mọi xe, mọi phe): hai xe ngược chiều cùng giữ phải thì tự lệch về hai phía, qua được nhau.
  * Trước đây hòa thì chọn theo chẵn / lẻ của mã xe, không đối xứng giữa hai phe.
  */
-const methods = { standLayer, standFor, turnHull, stepToward, setIdle, halt, setPath, bodyContact, wallNormal, clearGoal, clearStand, goalTaken, spotTaken, tryMove, terrainFactor, moveFactor, follow, chase, steer, brakeNear };
+const methods = { standLayer, standFor, turnHull, stepToward, driveTo, setIdle, halt, setPath, bodyContact, wallNormal, clearGoal, clearStand, goalTaken, spotTaken, tryMove, terrainFactor, moveFactor, follow, chase, steer, brakeNear };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

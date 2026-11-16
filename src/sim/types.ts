@@ -91,6 +91,18 @@ export interface Unit {
   /** Hướng quay mặt khi tới đích / khi về lại chỗ đứng (0, 0 = giữ hướng đang đi). */
   faceX: number;
   faceZ: number;
+  /**
+   * NHƯỜNG ĐƯỜNG (T2, 16/11/2026, `yieldPass`): xe đứng dạt tới (yieldX, yieldZ) cho xe cùng phe đi qua, giữ tới tick `yieldUntil`;
+   * `yieldAway` = đang ở ngoài ô nhà (tx, tz), hết hạn nhường thì chạy theo xích về ô.
+   */
+  yieldX: number;
+  yieldZ: number;
+  yieldUntil: number;
+  yieldAway: boolean;
+  /** Tới tick này xe không nhường được (đã chờ dọn lối quá lâu mà kẹt): là vật cản cứng, xe khác tìm đường vòng. */
+  yieldBlock: number;
+  /** Xe đang đi đứng chờ xe phía trước dạt nhường xong (số tick liền); quá lâu thì coi xe chắn là vật cản và tìm đường vòng. */
+  laneWait: number;
   /** Đang hành quân trong đội hình nào (`Squad.id`, 0 = đi riêng). */
   squad: number;
   // Xe Vận Tải

@@ -59,7 +59,6 @@ export const GROUND_UNITS: Record<"commander" | "hauler" | "lynx" | "titan" | "s
     sight: 16,
     radius: 1.7,
     bodyR: 2.25,
-    spaceR: 2.45,
     halfLen: 2.1,
     captureWeight: 0,
     cargo: 100,
@@ -97,7 +96,6 @@ export const GROUND_UNITS: Record<"commander" | "hauler" | "lynx" | "titan" | "s
     radius: 1.2,
     halfLen: 1.8,
     bodyR: 1.8,
-    spaceR: 2,
     captureWeight: 1,
     weapon: { name: "Súng máy 20mm", dmgGround: 32, dmgAir: 14, range: 15.5, cooldown: 0.65, dmgType: "normal", splash: 0, visual: "bullet", traverse: 120 },
     features: [
@@ -133,7 +131,6 @@ export const GROUND_UNITS: Record<"commander" | "hauler" | "lynx" | "titan" | "s
     radius: 1.9,
     halfLen: 3.1,
     bodyR: 2.25,
-    spaceR: 2.45,
     captureWeight: 1,
     weapon: { name: "Pháo chính 120mm", dmgGround: 136, dmgAir: 0, range: 19.5, cooldown: 3, dmgType: "he", splash: 1, visual: "cannon", traverse: 60 },
     frontArmor: { reduce: 0.25, arc: 60 },
@@ -171,7 +168,6 @@ export const GROUND_UNITS: Record<"commander" | "hauler" | "lynx" | "titan" | "s
     radius: 1.6,
     halfLen: 2.3,
     bodyR: 2.25,
-    spaceR: 2.45,
     captureWeight: 1,
     weapon: {
       name: "Loạt 12 tên lửa tầm nhiệt, 2 khẩu",
@@ -224,7 +220,6 @@ export const GROUND_UNITS: Record<"commander" | "hauler" | "lynx" | "titan" | "s
     radius: 1.8,
     halfLen: 2.7,
     bodyR: 2.75,
-    spaceR: 2.95,
     captureWeight: 1,
     weapon: {
       name: "Dàn 24 tên lửa 122mm",
@@ -280,7 +275,6 @@ export const GROUND_UNITS: Record<"commander" | "hauler" | "lynx" | "titan" | "s
     radius: 2.7, // mô hình phóng to ×1,5 (06/11/2026)
     halfLen: 4.5,
     bodyR: 4,
-    spaceR: 4.2,
     captureWeight: 1,
     weapon: {
       name: "Pháo 155mm nòng dài",

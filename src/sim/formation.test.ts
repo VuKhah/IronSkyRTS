@@ -194,9 +194,9 @@ describe("đội hình khi ra lệnh cho cả nhóm", () => {
     }
   });
 
-  // HỎNG ĐÃ BIẾT (16/11/2026, người dùng duyệt): từ UNIT_SCALE 0,8 hệ squad.ts cũ co hàng một rồi xếp ô chốt sang bờ bên kia
-  // sông. A1 viết lại đội hình ở đích (Docs/plans/2026-11-16-A1-doi-hinh-dich-lach-mem.md); sửa xong thì bỏ `.fails`.
-  it.fails("qua cầu hẹp: đội hình co thành hàng một / hàng đôi, qua hết rồi giãn lại ở đích", () => {
+  // Từng hỏng sau UNIT_SCALE 0,8 (co hàng một rồi xếp ô chốt sang bờ bên kia sông); qua lại từ T2 (16/11/2026): bỏ vòng giãn
+  // (khoảng đội hình hẹp hơn, vừa cầu) + xe đứng nhường đường cho xe sau qua cầu.
+  it("qua cầu hẹp: đội hình co thành hàng một / hàng đôi, qua hết rồi giãn lại ở đích", () => {
     // cầu trên Thung Lũng Sông Sắt: rộng 9 m, vuông góc dòng sông chạy chéo bản đồ
     const S = Math.SQRT1_2;
     const bx = -56 * S;
@@ -240,7 +240,8 @@ describe("đội hình khi ra lệnh cho cả nhóm", () => {
     expect(w.buildings.some((b) => b.side === 1 && b.kind === "power-pylon" && b.hp > 0), "đã diệt mục tiêu").toBe(false);
   });
 
-  it("xe đang chạy lách qua xe đã đứng yên, không xô lệch nó khỏi chỗ", () => {
+  // Từ T2 (16/11/2026, nhường đường chủ động): xe đứng tự dạt cho xe chạy qua rồi về ô (trước đó: xe đứng không được xê dịch)
+  it("xe đang chạy đi qua xe đã đứng yên: xe đứng dạt vừa đủ rồi về lại chỗ cũ", () => {
     const w = new World(1, { sandbox: true });
     const [x, z] = arenaPoint(0);
     const still = spawn(w, "titan", x, z);
@@ -256,7 +257,9 @@ describe("đội hình khi ra lệnh cho cả nhóm", () => {
     }
     expect(mover.order, "xe chạy tới được đích").toBe("idle");
     expect(Math.sqrt((mover.x - bx) ** 2 + (mover.z - bz) ** 2)).toBeLessThan(2.5);
-    expect(maxShift, "xe đứng chỉ xê dịch chút ít").toBeLessThan(1.5);
+    expect(maxShift, "xe đứng dạt vừa đủ, không bị đẩy xa").toBeLessThan(4.5);
+    for (let i = 0; i < sec(10); i++) w.step([]);
+    expect(Math.sqrt((still.x - x) ** 2 + (still.z - z) ** 2), "xe đứng về lại chỗ cũ").toBeLessThan(0.6);
   });
 });
 

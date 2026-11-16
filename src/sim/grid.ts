@@ -39,7 +39,7 @@ export interface StandLayer {
   owner: Int32Array;
   self: number;
   /**
-   * Khoảng tối thiểu (m) từ tâm người tìm đường tới vòng in của xe đứng (A1a, luật lách mềm: SOFT_PASS × đế người đi). Bỏ trống =
+   * Khoảng tối thiểu (m) từ tâm người tìm đường tới vòng in của xe đứng (bán kính dò vách của người đi, `standFor`). Bỏ trống =
    * dùng nửa bề ngang `half` như vật cản tĩnh (tiểu đội bộ binh).
    */
   need?: number;

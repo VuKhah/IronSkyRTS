@@ -1,13 +1,14 @@
 /**
- * Tìm đường vòng qua xe đứng (bước 2 kế hoạch đế, 16/11/2026; Docs/design/UNIT_BASES_PLAN.md): xe cùng phe đã đứng yên ≥ 1 giây
- * hoặc đã hạ bệ là vật cản khi tìm đường. Xe chạy đi vòng, không lao vào đẩy hàng xe đứng; đích bị xe đứng vây kín thì vẫn có
- * đường (tìm lại không có lớp xe đứng). Chỉ kiểm HÀNH VI.
+ * Tìm đường vòng qua xe đứng KHÔNG NHƯỜNG ĐƯỢC (bước 2 kế hoạch đế 16/11/2026; từ T2 cùng ngày xe đứng thường tự nhường đường,
+ * `yield.test.ts`, nên lớp xe đứng chỉ còn quân cố định đã hạ bệ, tiểu đội bộ binh và xe trong đội hình đang chốt). Xe chạy đi
+ * vòng, không lao vào đẩy; đích bị vây kín thì vẫn có đường (tìm lại không có lớp xe đứng). Chỉ kiểm HÀNH VI.
  */
 import { describe, expect, it } from "vitest";
-import { SOFT_PASS, UNITS, type UnitId } from "./content";
+import { UNITS, type UnitId } from "./content";
 import { arenaPoint } from "./scenarios";
 import type { Unit } from "./types";
 import { sec, World } from "./world";
+import { bodyRadius, wallRadius } from "./world/shared";
 
 function spawn(w: World, kind: UnitId, x: number, z: number, side: 0 | 1 = 0): Unit {
   w.step([{ side, order: { t: "sbSpawn", kind, side, x, z } }]);
@@ -15,15 +16,19 @@ function spawn(w: World, kind: UnitId, x: number, z: number, side: 0 | 1 = 0): U
 }
 const gap = (a: Unit, b: Unit): number => Math.sqrt((a.x - b.x) ** 2 + (a.z - b.z) ** 2);
 
-describe("tìm đường vòng qua xe đứng", () => {
+describe("tìm đường vòng qua xe đứng không nhường được", () => {
   for (const side of [0, 1] as const)
-    it(`hàng 5 Titan đứng chắn ngang: Lynx đi vòng qua đầu hàng, không xô xe nào, tới nơi (phe ${side})`, () => {
+    it(`hàng 5 SkyGuard đã hạ bệ chắn ngang: Lynx đi vòng qua đầu hàng, không xô xe nào, tới nơi (phe ${side})`, () => {
       const w = new World(1, { sandbox: true });
-      const [cx, cz] = arenaPoint(0);
+      const [cx0, cz0] = arenaPoint(0);
       const sg = side === 0 ? 1 : -1;
-      // hàng ngang theo trục x, sát nhau (cách 2 vòng giãn); Lynx đi theo trục z xuyên qua giữa hàng
-      const wall = [-2, -1, 0, 1, 2].map((k) => spawn(w, "titan", cx + k * 2 * UNITS.titan.spaceR!, cz, side));
-      for (let t = 0; t < sec(2); t++) w.step([]);
+      const cx = cx0 * sg;
+      const cz = cz0 * sg;
+      // hàng ngang theo trục x, sát nhau (khe hẹp hơn thân Lynx); Lynx đi theo trục z xuyên qua giữa hàng
+      const sp = 2 * bodyRadius("skyguard") + 0.8;
+      const wall = [-2, -1, 0, 1, 2].map((k) => spawn(w, "skyguard", cx + k * sp * sg, cz, side));
+      for (let t = 0; t < sec(UNITS.skyguard.weapon!.deploy!.time + 1); t++) w.step([]);
+      expect(wall.every((u) => w.anchored(u))).toBe(true);
       const at = wall.map((u) => [u.x, u.z]);
       const lx = spawn(w, "lynx", cx, cz - 14 * sg, side);
       w.step([{ side, order: { t: "move", ids: [lx.id], x: cx, z: cz + 14 * sg } }]);
@@ -34,20 +39,19 @@ describe("tìm đường vòng qua xe đứng", () => {
       }
       expect(lx.order).toBe("idle");
       expect(Math.sqrt((lx.x - cx) ** 2 + (lx.z - cz - 14 * sg) ** 2)).toBeLessThan(3);
-      // không chen vào hàng: luôn cách mọi Titan ít nhất tổng hai vòng giãn (trừ sai số lưới)
-      // từ A1a (luật lách mềm) xe chạy được đi sát xe đứng cùng phe tới vòng thân + SOFT_PASS × đế mình
-      expect(closest).toBeGreaterThan(UNITS.titan.bodyR! + SOFT_PASS * UNITS.lynx.bodyR! - 0.3);
+      // không chen vào hàng: luôn cách mọi SkyGuard ít nhất tổng hai vòng thân (trừ sai số lưới)
+      expect(closest).toBeGreaterThan(bodyRadius("skyguard") + bodyRadius("lynx") - 0.4);
       wall.forEach((u, i) => {
-        expect(Math.abs(u.x - at[i][0]) + Math.abs(u.z - at[i][1]), `Titan ${i} bị xô`).toBeLessThan(0.05);
+        expect(Math.abs(u.x - at[i][0]) + Math.abs(u.z - at[i][1]), `SkyGuard ${i} bị xô`).toBeLessThan(0.05);
       });
     });
 
   it("đích nằm giữa vòng xe đứng kín: vẫn có đường (tìm lại không tính xe đứng), không treo", () => {
     const w = new World(1, { sandbox: true });
     const [cx, cz] = arenaPoint(0);
-    const R = 2 * UNITS.titan.spaceR!;
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7]]) spawn(w, "titan", cx + dx * R, cz + dz * R);
-    for (let t = 0; t < sec(2); t++) w.step([]);
+    const R = 2 * bodyRadius("skyguard") + 0.4;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7]]) spawn(w, "skyguard", cx + dx * R, cz + dz * R);
+    for (let t = 0; t < sec(UNITS.skyguard.weapon!.deploy!.time + 1); t++) w.step([]);
     const lx = spawn(w, "lynx", cx + 30, cz);
     expect(w.setPath(lx, cx, cz)).toBe(true);
     expect(lx.path.length).toBeGreaterThan(0);
@@ -78,7 +82,7 @@ describe("tìm đường vòng qua xe đứng", () => {
       px = around[i];
       pz = around[i + 1];
     }
-    // luật lách mềm (A1a): đường giữ cách vòng thân Pháo ít nhất SOFT_PASS × đế Lynx
-    expect(near).toBeGreaterThan(UNITS.artillery.bodyR! + SOFT_PASS * UNITS.lynx.bodyR!);
+    // đường giữ cách vòng thân Pháo ít nhất bán kính dò vách của Lynx (trừ sai số lưới)
+    expect(near).toBeGreaterThan(bodyRadius("artillery") + wallRadius("lynx") - 0.3);
   });
 });

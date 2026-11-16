@@ -25,7 +25,6 @@ export const INFANTRY_UNITS: Record<"sniper", UnitSpec> = {
     sight: 30,
     radius: 2.2,
     bodyR: 3,
-    spaceR: 3.2,
     troops: 5,
     captureWeight: 1,
     weapon: { name: "Súng bắn tỉa 12,7mm", dmgGround: 60, dmgAir: 0, range: 28, cooldown: 3, dmgType: "normal", splash: 0, visual: "bullet", traverse: 180 },

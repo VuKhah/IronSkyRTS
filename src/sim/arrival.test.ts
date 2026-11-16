@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Tới gần là tới (T1 kế hoạch A1 làm lại, 16/11/2026: Docs/plans/2026-11-16-A1-tuong-su-doan-ke-hoach.md).
  * Lỗi người dùng quay video 16/11: Lynx được chỉ tới chỗ mà Titan SẮP đứng (lệnh ra lúc Titan còn đang đi). Lúc ra lệnh chỗ đó
  * trống nên đích không bị dời; Titan tới, đứng yên thành vật cản không đẩy được; Lynx bám đích nằm trong thân Titan → trượt vòng
@@ -9,6 +9,7 @@ import { UNITS, type Side, type UnitId } from "./content";
 import { arenaPoint } from "./scenarios";
 import type { Unit } from "./types";
 import { sec, World } from "./world";
+import { bodyRadius } from "./world/shared";
 
 const gap = (a: { x: number; z: number }, b: { x: number; z: number }): number => Math.sqrt((a.x - b.x) ** 2 + (a.z - b.z) ** 2);
 
@@ -87,7 +88,7 @@ describe("tới gần là tới", () => {
       expect(lx.order, "Lynx phải dừng").toBe("idle");
       expect(overlap / 10, "giây lún vào thân Titan").toBeLessThan(1);
       // dừng gần đích (sát Titan đang chiếm chỗ), không bỏ cuộc ở xa
-      expect(gap(lx, spot)).toBeLessThan(UNITS.titan.spaceR! + UNITS.lynx.spaceR! + 2);
+      expect(gap(lx, spot)).toBeLessThan(bodyRadius("titan") + bodyRadius("lynx") + 2);
     });
 
     it(`chiều ngược: Lynx tới đứng vào ô của Titan trước, Titan trong đội hình tới sau không lún vào Lynx, đội tới nơi (phe ${side})`, () => {

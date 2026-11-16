@@ -40,6 +40,12 @@ export function hashWorld(w: World): number {
     num(u.still);
     num(u.faceX);
     num(u.faceZ);
+    num(u.yieldX);
+    num(u.yieldZ);
+    num(u.yieldUntil);
+    num(u.yieldAway ? 1 : 0);
+    num(u.yieldBlock);
+    num(u.laneWait);
     num(u.squad);
     num(u.lot);
     num(u.formation === null ? -1 : Object.keys(FORMATIONS).indexOf(u.formation));
