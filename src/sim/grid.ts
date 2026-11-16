@@ -701,6 +701,11 @@ export class Grid {
     const SO = stand?.owner;
     const self = stand?.self ?? -1;
     const sNeed = stand?.need ?? half;
+    // Xe đứng: ô quá sát (sm < 0) là chặn, KHÔNG có miễn trừ quanh chỗ đứng / đích như vật cản tĩnh (16/11/2026: Lynx đậu cách tâm
+    // Titan < 4 m thì cả thân Titan nằm trong vùng miễn trừ, A* vẽ đường xuyên tâm Titan, Lynx bám điểm đó trượt vòng quanh mãi).
+    // Chỉ cho đi vào ô không sát hơn chỗ đứng hoặc đích (xe lỡ lấn sẵn / đích lỡ sát vẫn ra vào được).
+    const smAt = (i: number): number => (SC && SO![i] !== self ? SC[i] - sNeed : Infinity);
+    const smFloor = Math.min(0, smAt(s), smAt(t));
     while (this.heapSize > 0) {
       const cur = this.pop();
       if (this.closedGen[cur] === gen) continue;
@@ -728,9 +733,10 @@ export class Grid {
         if (clr) {
           // xe đứng cùng phe (lớp động) tính như vật cản tĩnh: ô quá sát là chặn, ô gần thì chậm (đường chừa khoảng với xe đứng)
           // xe đứng so với ngưỡng riêng `need` (luật lách mềm), vật cản tĩnh so với nửa bề ngang
-          const sm = SC && SO![ni] !== self ? SC[ni] - sNeed : Infinity;
+          const sm = smAt(ni);
+          if (sm < smFloor) continue;
           const m = Math.min(clr[ni] - half, sm);
-          if (m < 0 && Math.max(Math.abs(nx - (s % C)), Math.abs(nz - Math.floor(s / C))) > 2 && Math.max(Math.abs(nx - tx), Math.abs(nz - tz)) > 1) continue;
+          if (clr[ni] - half < 0 && Math.max(Math.abs(nx - (s % C)), Math.abs(nz - Math.floor(s / C))) > 2 && Math.max(Math.abs(nx - tx), Math.abs(nz - tz)) > 1) continue;
           corr = m < 1 ? 0.4 : m < 2 ? 0.6 : m < 3 ? 0.85 : 1;
         }
         // chính sách "nhanh nhất": thời gian đi vào ô = quãng đường ÷ hệ số tốc độ của ô

@@ -29,6 +29,43 @@ function setup(side: Side) {
   return { w, ts, spawn, at };
 }
 
+describe("đường đi không xuyên qua quân đứng", () => {
+  // Thí nghiệm người dùng 16/11: 1 Titan đứng; Lynx đậu bên trái, mũi quay vào Titan; lệnh qua bên phải cách 4 m. Trước khi sửa:
+  // A* miễn trừ vùng 4 m quanh chỗ đứng cả với quân đứng → đường xuyên tâm Titan → Lynx trượt vòng quanh Titan mãi (12/108 ca).
+  for (const side of [0, 1] as const)
+    for (const along of [-2, 0, 2])
+      it(`Lynx bên trái Titan đứng, lệnh sang phải 4 m (dọc ${along}): tới nơi, không lún vào Titan (phe ${side})`, () => {
+        const w = new World(1, { sandbox: true });
+        const [cx0, cz0] = arenaPoint(0);
+        const sg = side === 0 ? 1 : -1;
+        const spawn = (kind: UnitId, x: number, z: number): Unit => {
+          w.step([{ side, order: { t: "sbSpawn", kind, side, x, z } }]);
+          return w.units.filter((u) => u.side === side && u.kind === kind).pop()!;
+        };
+        const ti = spawn("titan", cx0 * sg, cz0 * sg);
+        for (let t = 0; t < sec(2); t++) w.step([]);
+        const fx = ti.hx, fz = ti.hz, lx = -fz, lz = fx;
+        const ly = spawn("lynx", ti.x + lx * 5 + fx * along, ti.z + lz * 5 + fz * along);
+        // mũi Lynx quay vào Titan (đặt thẳng trạng thái: lệnh thả quân không có hướng)
+        const dx = ti.x - ly.x, dz = ti.z - ly.z, d = Math.sqrt(dx * dx + dz * dz);
+        ly.hx = ly.phx = dx / d;
+        ly.hz = ly.phz = dz / d;
+        for (let t = 0; t < sec(1.5); t++) w.step([]);
+        const g = { x: ti.x - lx * 4 + fx * along, z: ti.z - lz * 4 + fz * along };
+        w.step([{ side, order: { t: "move", ids: [ly.id], x: g.x, z: g.z } }]);
+        const touch = UNITS.titan.bodyR! + UNITS.lynx.bodyR!;
+        let overlap = 0;
+        for (let t = 0; t < sec(20); t++) {
+          w.step([]);
+          if (gap(ti, ly) < touch - 0.3) overlap++;
+        }
+        expect(ly.order, "Lynx phải dừng").toBe("idle");
+        expect(overlap / 10, "giây lún vào thân Titan").toBeLessThan(0.5);
+        // tới bên phải Titan (không đứng lại bên trái)
+        expect((ly.x - ti.x) * lx + (ly.z - ti.z) * lz).toBeLessThan(-2);
+      });
+});
+
 describe("tới gần là tới", () => {
   for (const side of [0, 1] as const) {
     it(`Lynx chỉ tới chỗ Titan sắp đứng (lệnh lúc Titan còn đi): dừng được, không lún vào thân Titan (phe ${side})`, () => {
