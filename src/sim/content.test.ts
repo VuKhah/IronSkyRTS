@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ARMOR_NAME, BUILDINGS, DMG_NAME, FORMATIONS, PAD_OFFSETS, RULES, UNITS, getSpec, type ArmorClass, type DmgType, type EntityId } from "./content";
+import { ARMOR_NAME, BUILDINGS, DMG_NAME, FORMATIONS, PAD_OFFSETS, PAD_SHAPE, padHeading, parkScale, RULES, UNITS, getSpec, type ArmorClass, type DmgType, type EntityId } from "./content";
 
 const ALL = [...Object.keys(UNITS), ...Object.keys(BUILDINGS)] as EntityId[];
 
@@ -77,19 +77,56 @@ describe("content", () => {
       expect(BUILDINGS[u.builtAt!].produces, u.id).toContain(u.id);
     }
   });
-  it("Sân Đáp: số vị trí bãi đậu khớp RULES.air.pads, bãi nằm trọn trong sân và không chồng nhau", () => {
+  it("Sân Đáp: số bãi khớp RULES.air.pads, ô chữ V nằm trọn trong sân, không chồng nhau, soi gương trái / phải", () => {
     expect(PAD_OFFSETS.length).toBe(RULES.air.pads);
     const [hx, hz] = BUILDINGS.airfield.half;
-    const PAD = [2.8, 2.6]; // nửa kích thước một ô đáp (5,6 × 5,2 m, vừa Falcon sải cánh 5,1 m)
-    for (const [x, z] of PAD_OFFSETS) {
-      expect(Math.abs(x) + PAD[0]).toBeLessThanOrEqual(hx);
-      expect(Math.abs(z) + PAD[1]).toBeLessThanOrEqual(hz);
+    const { halfSpan: S, halfLen: L, notch: N, yaw } = PAD_SHAPE;
+    expect(PAD_SHAPE.sin).toBeCloseTo(Math.sin(yaw), 12);
+    expect(PAD_SHAPE.cos).toBeCloseTo(Math.cos(yaw), 12);
+    // chữ V = 2 tam giác lồi (mũi, đầu cánh, khấc), xoay theo hướng ô rồi dời tới tâm ô
+    type P = [number, number];
+    const tris = PAD_OFFSETS.map(([x, z], i): P[][] => {
+      const [sx, cz] = padHeading(i); // hướng mũi = trục +z cục bộ của ô
+      const w = (lx: number, lz: number): P => [x + lx * cz + lz * sx, z - lx * sx + lz * cz];
+      const nose = w(0, L);
+      const notch = w(0, -(L - N));
+      return [[nose, w(S, -L), notch], [nose, notch, w(-S, -L)]];
+    });
+    for (const t of tris.flat(2)) {
+      expect(Math.abs(t[0])).toBeLessThanOrEqual(hx);
+      expect(Math.abs(t[1])).toBeLessThanOrEqual(hz);
     }
-    for (let i = 0; i < PAD_OFFSETS.length; i++)
-      for (let j = i + 1; j < PAD_OFFSETS.length; j++) {
-        const [ax, az] = PAD_OFFSETS[i];
-        const [bx, bz] = PAD_OFFSETS[j];
-        expect(Math.abs(ax - bx) >= PAD[0] * 2 || Math.abs(az - bz) >= PAD[1] * 2, `bãi ${i} và ${j}`).toBe(true);
-      }
+    // định lý trục tách cho hai tam giác lồi
+    const apart = (a: P[], b: P[]): boolean =>
+      [a, b].some((poly) =>
+        poly.some((p, k) => {
+          const q = poly[(k + 1) % 3];
+          const n: P = [q[1] - p[1], p[0] - q[0]];
+          const proj = (s: P[]) => s.map((v) => v[0] * n[0] + v[1] * n[1]);
+          const pa = proj(a);
+          const pb = proj(b);
+          return Math.max(...pa) <= Math.min(...pb) + 1e-9 || Math.max(...pb) <= Math.min(...pa) + 1e-9;
+        })
+      );
+    for (let i = 0; i < tris.length; i++)
+      for (let j = i + 1; j < tris.length; j++)
+        for (const a of tris[i]) for (const b of tris[j]) expect(apart(a, b), `bãi ${i} và ${j}`).toBe(true);
+    // soi gương: ô nào cũng có hướng nghiêng ra phía nó đứng; đôi ô cùng hàng đối xứng qua x = 0
+    PAD_OFFSETS.forEach(([x, , side], i) => {
+      expect(side).toBe(Math.sign(x));
+      expect(Math.hypot(...padHeading(i))).toBeCloseTo(1, 12);
+    });
+    for (const [x, z, side] of PAD_OFFSETS) {
+      const twin = PAD_OFFSETS.find(([x2, z2]) => x2 === -x && z2 === z);
+      if (twin) expect(twin[2]).toBe(-side);
+    }
+  });
+  it("máy bay đậu thu nhỏ cho thân lọt ô chữ V, không phóng to quá nguyên mẫu", () => {
+    for (const u of Object.values(UNITS)) {
+      if (!u.fuel || u.hover) continue;
+      const k = parkScale(u.id);
+      expect(k, u.id).toBeLessThanOrEqual(1);
+      expect(u.bodyR! * k, u.id).toBeLessThanOrEqual(PAD_SHAPE.halfSpan * 0.9 + 1e-9);
+    }
   });
 });

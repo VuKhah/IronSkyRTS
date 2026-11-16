@@ -21,7 +21,7 @@ describe("Đặt công trình lên lưới", () => {
       expect(BUILDINGS[k].half.map(cellsOf), k).toEqual([9, 9]);
       expect(BUILDINGS[k].doors ?? BUILDINGS[k].pads?.length, k).toBe(k === "factory" ? 3 : 2);
     }
-    expect(BUILDINGS.airfield.half.map(cellsOf)).toEqual([6, 8]);
+    expect(BUILDINGS.airfield.half.map(cellsOf)).toEqual([6, 10]);
     expect(BUILDINGS["power-plant"].half.map(cellsOf)).toEqual([3, 4]);
   });
 

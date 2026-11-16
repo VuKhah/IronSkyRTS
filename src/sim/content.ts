@@ -482,7 +482,13 @@ export const RULES = {
      * Phóng thẳng đứng từ giếng Nhà Máy Máy Bay (giây / mét): chờ `hatch` cho cửa cuốn mở, chiếc dùng chung giếng chờ thêm
      * `gap` mỗi lượt; bay thẳng lên trong `rise` tới cao hơn sàn `clear`, rồi tăng tốc ra trước và lên độ bay trong `climbOut`.
      */
-    launch: { hatch: 1, gap: 2.5, rise: 1.6, clear: 2.5, climbOut: 1.6 }
+    launch: { hatch: 1, gap: 2.5, rise: 1.6, clear: 2.5, climbOut: 1.6 },
+    /**
+     * Cất / hạ cánh đứng ở Sân Đáp (giây / mét, 16/11/2026, theo hoạt ảnh của mô hình Sân Đáp bản 3). Cất cánh: bốc thẳng lên
+     * `hoverAlt` trong `rise` (vừa lên vừa xoay mũi về hướng bay), rồi lao ra trước và lên độ bay trong `climbOut`.
+     * Hạ cánh: lượn tới lơ lửng trên ô trong `glide`, rồi hạ thẳng trong `descend` (vừa hạ vừa xoay mũi theo ô đáp).
+     */
+    vtol: { hoverAlt: 4.5, rise: 1.2, climbOut: 1.6, glide: 1.6, descend: 1.2 }
   }
 } as const;
 
@@ -543,6 +549,8 @@ export const UNITS: Record<UnitId, UnitSpec> = {
     mobility: "wheel",
     sight: 16,
     radius: 1.7,
+    bodyR: 2.25,
+    spaceR: 2.45,
     halfLen: 2.1,
     captureWeight: 0,
     cargo: 100,
@@ -1136,7 +1144,7 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
     hp: 1150,
     armorClass: "struct",
     sight: 18,
-    half: [6, 8],
+    half: [6, 10],
     power: -15,
     priority: 2,
     features: [
@@ -1382,27 +1390,41 @@ export const BUILDINGS: Record<BuildingId, BuildingSpec> = {
 
 /** Công trình người chơi được xây trong bản MVP, theo thứ tự trên thanh xây. */
 /**
- * Vị trí 5 bãi đậu so với tâm Sân Đáp (dùng chung cho sim và mô hình `buildAirfield`): lưới 2 cột × 3 hàng ô 5,6 × 5,2 m vừa khít
- * sân 12 × 16 m, ô thứ sáu là trạm điều khiển (`CONTROL_CELL`); máy bay đậu quay mũi về +z. Số phần tử = `RULES.air.pads`.
+ * Ô đáp chữ V của Sân Đáp bản 3 (16/11/2026, dùng chung cho sim và mô hình `buildAirfield`), chưa xoay: mũi ở +z, hai đầu
+ * cánh ở đuôi, khấc giữa đuôi. Mỗi ô nghiêng `yaw` ra phía ngoài sân; sim không được gọi sin / cos nên ghi sẵn `sin`, `cos`.
  */
-export const PAD_OFFSETS: readonly (readonly [number, number])[] = [
-  [3, -5.4],
-  [-3, 0],
-  [3, 0],
-  [-3, 5.4],
-  [3, 5.4]
-];
-
-/** Ô thứ sáu của lưới Sân Đáp: trạm điều khiển, nằm hàng sau để không chắn mũi máy bay. */
-export const CONTROL_CELL: readonly [number, number] = [-3, -5.4];
+export const PAD_SHAPE = { halfSpan: 2.5, halfLen: 2.7, notch: 1.5, yaw: Math.PI / 6, sin: 0.5, cos: 0.8660254037844386 } as const;
 
 /**
- * Máy bay đậu trên Sân Đáp thu nhỏ còn PARK_SCALE (chỉ phần vẽ; người dùng 15/11/2026: hạ cánh thu nhỏ, cất cánh phóng to về
- * nguyên mẫu). Hằng số chung cho mọi máy bay, lấy theo máy bay to nhất (Valkyrie): đậu thì đứng yên như quân mặt đất, nên
- * thân thu nhỏ + vùng giãn mặt đất 0,2 m phải vừa nửa cạnh ngắn ô đáp (5,6 × 5,2 m → 2,6 m): k = (2,6 − 0,2) / bodyR lớn nhất.
+ * 5 bãi đậu `[x, z, bên]` so với tâm Sân Đáp: bố cục xương cá 3 hàng × 2 cột hai bên hành lang giữa, soi gương qua x = 0.
+ * `bên` = ±1: ô nghiêng ra phía đó, máy bay đậu quay mũi theo (bên × sin, cos) (`padHeading`). Ô thứ sáu (hàng đuôi, bên trái)
+ * là ô điều khiển (`CONTROL_CELL`). Số phần tử = `RULES.air.pads`.
  */
-export const PARK_SCALE = (5.2 / 2 - 0.2) / Math.max(...Object.values(UNITS).filter((u) => u.fuel && u.bodyR).map((u) => u.bodyR!));
-/** Hạ cánh / cất cánh: dưới độ cao này (m) máy bay đổi cỡ dần giữa PARK_SCALE (chạm đất) và nguyên mẫu. */
+export const PAD_OFFSETS: readonly (readonly [number, number, 1 | -1])[] = [
+  [4.0, 6.3, 1],
+  [-4.0, 6.3, -1],
+  [4.0, 0.1, 1],
+  [-4.0, 0.1, -1],
+  [4.0, -6.1, 1]
+];
+
+/** Hướng mũi máy bay đậu ở ô `i`, trong khung chưa xoay của Sân Đáp (mũi sân ở +z). */
+export function padHeading(i: number): [number, number] {
+  return [PAD_OFFSETS[i][2] * PAD_SHAPE.sin, PAD_SHAPE.cos];
+}
+
+/** Ô điều khiển của Sân Đáp (tháp + nhà điều hành), hàng đuôi: tháp không bao giờ nằm trên đường bay. */
+export const CONTROL_CELL: readonly [number, number] = [-3.2, -6.1];
+
+/**
+ * Máy bay đậu trên Sân Đáp thu nhỏ cho thân (vòng `bodyR`) lọt trong chữ V (chỉ phần vẽ; người dùng 15/11/2026: hạ cánh thu
+ * nhỏ, cất cánh phóng to về nguyên mẫu). Mỗi loại thu riêng: k = 90% nửa sải chữ V / bodyR, không phóng to quá nguyên mẫu.
+ */
+export function parkScale(kind: UnitId): number {
+  const r = UNITS[kind].bodyR;
+  return r ? Math.min(1, (PAD_SHAPE.halfSpan * 0.9) / r) : 1;
+}
+/** Hạ cánh / cất cánh: dưới độ cao này (m) máy bay đổi cỡ dần giữa cỡ đậu (chạm đất) và nguyên mẫu. */
 export const PARK_GROW_ALT = 4;
 
 /**

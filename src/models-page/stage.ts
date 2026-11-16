@@ -67,7 +67,17 @@ export function isEffect(m: THREE.Mesh): boolean {
 }
 
 const TMP_M = new THREE.Matrix4();
-const TMP_B = new THREE.Box3();
+const TMP_V = new THREE.Vector3();
+
+/**
+ * Hộp bao của một khối theo ma trận `m`, tính từ từng đỉnh thật: khối xoay xiên (ô chữ V nghiêng 30°) không bị phồng ra như
+ * khi xoay hộp bao sẵn của hình (cách đó báo Sân Đáp rộng 15 m trong khi đế chỉ 12 m). Cộng dồn vào `out`.
+ */
+export function meshBox(g: THREE.BufferGeometry, m: THREE.Matrix4, out: THREE.Box3): THREE.Box3 {
+  const pos = g.getAttribute("position");
+  for (let i = 0; i < pos.count; i++) out.expandByPoint(TMP_V.fromBufferAttribute(pos, i).applyMatrix4(m));
+  return out;
+}
 
 /**
  * Hộp bao của `obj` tính trong hệ tọa độ của `root` (trục theo thân mô hình: x = rộng, y = cao, z = dài),
@@ -81,9 +91,7 @@ export function localBox(obj: THREE.Object3D, root: THREE.Object3D, ownOnly = fa
   const walk = (o: THREE.Object3D): void => {
     if (ownOnly && o !== obj && o.userData.part) return;
     if (o instanceof THREE.Mesh && !isEffect(o) && shownIn(o, root)) {
-      const g = o.geometry;
-      if (!g.boundingBox) g.computeBoundingBox();
-      out.union(TMP_B.copy(g.boundingBox!).applyMatrix4(TMP_M.multiplyMatrices(inv, o.matrixWorld)));
+      meshBox(o.geometry, TMP_M.multiplyMatrices(inv, o.matrixWorld), out);
     }
     for (const c of o.children) walk(c);
   };
@@ -99,8 +107,8 @@ export function reachXZ(rig: Rig, steps = 24): { r: number; part: string; yaw: n
   const best = { r: 0, part: "", yaw: 0, deployed: false };
   const v = new THREE.Vector3();
   const n = rig.setAim ? steps : 1;
-  // quân có bệ hạ: đo cả lúc chạy lẫn lúc đã hạ bệ (bệ cũng phải gọn trong đế)
-  const states = rig.actions.some((a) => a.id === "deploy") ? [new Set<string>(), new Set(["deploy"])] : [new Set<string>()];
+  // quân có tư thế làm việc (hạ bệ, cẩu xác): đo cả lúc chạy lẫn lúc làm việc (bệ, cần cẩu cũng phải gọn trong đế)
+  const states = [new Set<string>(), ...["deploy", "crane"].filter((id) => rig.actions.some((a) => a.id === id)).map((id) => new Set([id]))];
   for (const active of states) for (let i = 0; i < n; i++) {
     const yaw = (i / n) * Math.PI * 2;
     rig.setAim?.(yaw, false);

@@ -1,9 +1,46 @@
 /** Mô hình Xe Vận Tải (`hauler`). */
 import * as THREE from "three";
+import { UNITS } from "../../../sim/content";
 import { approach, box, cyl, facets, group, part, sphere, tubeZ, wheel, type Palette, type Rig } from "../kit";
 import { vehicleRig } from "./ground";
 
 let cargoMats: { ore: THREE.MeshStandardMaterial; tank: THREE.MeshStandardMaterial; oil: THREE.MeshStandardMaterial; scrap: THREE.MeshStandardMaterial } | null = null;
+
+/**
+ * Thu đều cả xe cho lọt đế lõi Ø 4,5 m (bodyR 2,25; người dùng 15/11/2026: chỉ thu nhỏ). Số trong file là số trước khi thu.
+ * Cả xe lẫn cần cẩu đều nằm gọn trong đế ở mọi tư thế (15/11/2026): cần cẩu không ngóc ra sau nữa mà xoay ngang
+ * trên mâm, góc xoay tối đa tính sẵn từ `bodyR` (`CRANE_SLEW`).
+ */
+const S = 0.88;
+
+/** Mâm cần cẩu (số trước khi thu): góc sau phải thùng hàng. */
+const CRANE_X = 0.72;
+const CRANE_Y = 1.85;
+const CRANE_Z = -1.95;
+/** Chiều dài cần (tới móc) và khoảng chừa an toàn tới mép đế (bề dày cần, móc). */
+const BOOM_L = 1.7;
+const CRANE_MARGIN = 0.12;
+/** Cần ngóc lên khi cẩu: nhấp nhô giữa hai góc này (rad). Góc thấp nhất cho tầm ngang xa nhất. */
+const LIFT_MIN = 0.42;
+const LIFT_MAX = 0.75;
+
+/**
+ * Góc xoay ngang lớn nhất của cần (rad, tính từ tư thế nằm dọc thùng hướng về đầu xe, quay ra phía ngoài +x) sao cho đầu
+ * cần vẫn trong đế: |mâm + tầm ngang × (sin θ, cos θ)| ≤ bodyR / S − chừa. Chia đôi vì hàm tăng dần trên [0, π].
+ */
+const CRANE_SLEW = ((): number => {
+  const lim = UNITS.hauler.bodyR! / S - CRANE_MARGIN;
+  const reach = BOOM_L * Math.cos(LIFT_MIN);
+  const r = (a: number): number => Math.hypot(CRANE_X + reach * Math.sin(a), CRANE_Z + reach * Math.cos(a));
+  let lo = 0;
+  let hi = Math.PI;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (r(mid) <= lim) lo = mid;
+    else hi = mid;
+  }
+  return lo;
+})();
 
 export function buildHauler(p: Palette): Rig {
   cargoMats ??= {
@@ -171,12 +208,17 @@ export function buildHauler(p: Palette): Rig {
   brokenWheel.position.set(0.5, 2.0, 0.12);
   brokenWheel.rotation.z = 1.1;
   scrap.add(brokenWheel);
-  // cần cẩu nhỏ phía sau thùng: gập nằm dọc thành thùng khi không dùng, vươn ra sau và nhấp nhô khi đang cẩu xác
-  const CRANE_REST = 2.95;
-  const crane = group(box(0.12, 0.12, 1.7, p.warning, 0, 0, -0.85), box(0.08, 0.35, 0.08, p.metal, 0, -0.2, -1.7));
-  crane.position.set(0.72, 1.85, -1.95);
-  crane.rotation.x = CRANE_REST;
-  body.add(part("Chân cần cẩu", cyl(0.14, 0.18, 0.5, p.hullDark, 8, 0.72, 1.6, -1.95)));
+  // cần cẩu nhỏ góc sau thùng: gập nằm dọc thành thùng khi không dùng; khi cẩu xác thì mâm xoay ngang ra hông xe
+  // tới góc tối đa còn lọt đế (CRANE_SLEW), cần ngóc lên và nhấp nhô
+  const boom = group(
+    part("Cần cẩu", box(0.12, 0.12, BOOM_L, p.warning, 0, 0, BOOM_L / 2)),
+    part("Cáp cẩu", box(0.02, 0.3, 0.02, p.metal, 0, -0.15, BOOM_L - 0.06)),
+    part("Móc cẩu", box(0.08, 0.12, 0.08, p.hullDark, 0, -0.34, BOOM_L - 0.06))
+  );
+  boom.rotation.x = 0.06; // nằm hơi chúc trên đống hàng
+  const crane = group(part("Mâm xoay cần cẩu", cyl(0.17, 0.17, 0.1, p.metal, 8, 0, -0.06, 0)), boom);
+  crane.position.set(CRANE_X, CRANE_Y, CRANE_Z);
+  body.add(part("Chân cần cẩu", cyl(0.14, 0.18, 0.5, p.hullDark, 8, CRANE_X, 1.6, CRANE_Z)));
   part("Quặng Sắt", ore);
   part("Bồn Dầu", tank);
   part("Xác đang kéo về", scrap);
@@ -185,11 +227,17 @@ export function buildHauler(p: Palette): Rig {
   // bakeStatic chạy thử mọi hoạt ảnh cùng lúc nên "Chở xác" che mất hai loại hàng kia: phải báo trước thì khối bên trong mới được gộp
   ore.userData.animated = tank.userData.animated = scrap.userData.animated = true;
   body.add(ore, tank, scrap, crane);
+  // gom cả xe vào một nhóm thu nhỏ (vehicleRig nhún `body`, nên thu ở nhóm con để nhún vẫn tính bằng mét thật)
+  const inner = group(...[...body.children]);
+  inner.scale.setScalar(S);
+  body.add(inner);
+  // bánh quay đúng theo bán kính thật sau khi thu
+  for (const w of wheels) w.r *= S;
   return vehicleRig(
     "hauler",
     p,
     { body, wheels, turret: group(), gun: group(), barrels: [], muzzles: [group()], flashes: [], spinners: [], aimPitch: 0, recoil: 0 },
-    2.8,
+    2.5,
     [
       { id: "load", label: "Chở Sắt" },
       { id: "loadOil", label: "Chở Dầu" },
@@ -201,7 +249,10 @@ export function buildHauler(p: Palette): Rig {
       scrap.visible = a.has("scrap");
       ore.visible = a.has("load") && !scrap.visible;
       tank.visible = a.has("loadOil") && !a.has("load") && !scrap.visible;
-      crane.rotation.x = approach(crane.rotation.x, a.has("crane") ? 0.45 + Math.sin(t * 2.2) * 0.18 : CRANE_REST, 4, dt);
+      const lifting = a.has("crane");
+      crane.rotation.y = approach(crane.rotation.y, lifting ? CRANE_SLEW : 0, 2.5, dt);
+      const lift = LIFT_MIN + (LIFT_MAX - LIFT_MIN) * (0.5 + 0.5 * Math.sin(t * 2.2));
+      boom.rotation.x = approach(boom.rotation.x, lifting ? -lift : 0.06, 4, dt);
     },
     [{ id: "move", label: "Di chuyển" }]
   );

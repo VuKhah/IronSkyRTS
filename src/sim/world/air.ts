@@ -1,5 +1,5 @@
 /** Không quân và drone: sân bay, nhiên liệu, pin, bay, bổ nhào, Drone Khiên, sửa chữa, cảm tử. */
-import { BUILDINGS, doorDir, RULES, UNITS, type Side, type UnitSpec } from "../content";
+import { BUILDINGS, PAD_OFFSETS, RULES, UNITS, type Side, type UnitSpec } from "../content";
 import { clamp, dcos, DEG, dist2, dsin } from "../fmath";
 import type { Building, Target, Unit } from "../types";
 import { TICK_RATE, DT, sec, AIRBORNE_ALT, STEER_SOFT_COS, STEER_SOFT_SIN, STEER_RAMP, BOMB_FALL, cosDeg } from "./shared";
@@ -120,15 +120,50 @@ function takeoff(this: World, u: Unit): void {
     tx = t.x;
     tz = t.z;
   }
+  // lúc cất cánh, `ax` / `az` giữ hướng bay ra (vector đơn vị); mũi xoay dần từ hướng ô đáp sang đó trong lúc bốc lên
   const dx = tx - u.x;
   const dz = tz - u.z;
   const l = Math.sqrt(dx * dx + dz * dz);
-  if (l > 1) {
-    u.hx = dx / l;
-    u.hz = dz / l;
-  }
+  u.ax = l > 1 ? dx / l : u.hx;
+  u.az = l > 1 ? dz / l : u.hz;
   u.air = "takeoff";
   u.airT = 0;
+}
+
+/** 0 → 1 mượt hai đầu (smoothstep), không dùng lượng giác. */
+function smooth(k: number): number {
+  const t = k <= 0 ? 0 : k >= 1 ? 1 : k;
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * Xoay hướng mũi (hx, hz) về (tx, tz) thêm một phần `f` (1 = tới hẳn), giữ vector đơn vị. Hai hướng gần ngược nhau thì quay
+ * về phía ô đáp nghiêng ra (`side`), để hai phe soi gương xoay đối xứng.
+ */
+function turnHead(u: Unit, tx: number, tz: number, f: number, side: number): void {
+  if (f >= 1) {
+    u.hx = tx;
+    u.hz = tz;
+    return;
+  }
+  let gx = tx;
+  let gz = tz;
+  if (u.hx * tx + u.hz * tz < -0.9) {
+    gx = side * u.hz;
+    gz = -side * u.hx;
+  }
+  const nx = u.hx + (gx - u.hx) * f;
+  const nz = u.hz + (gz - u.hz) * f;
+  const l = Math.sqrt(nx * nx + nz * nz);
+  if (l > 1e-6) {
+    u.hx = nx / l;
+    u.hz = nz / l;
+  }
+}
+
+/** Bên ô đáp nghiêng ra (±1) của máy bay, để chọn chiều xoay đối xứng. */
+function padSide(u: Unit): number {
+  return u.padI >= 0 ? PAD_OFFSETS[u.padI][2] : 1;
 }
 
 // ------------------------------------------------------------------ drone (bay lơ lửng, chạy pin)
@@ -357,15 +392,24 @@ function updateAir(this: World, u: Unit): void {
       return;
     }
     case "takeoff": {
+      // 1) bốc thẳng lên `hoverAlt`, mũi xoay dần về hướng bay ra · 2) lao ra trước, lên độ bay
+      const V = A.vtol;
       u.airT++;
-      const T = sec(1.6);
-      const k = u.airT / T;
-      u.speed = spec.speed * Math.min(1, 0.2 + k);
-      u.alt = A.cruiseAlt * k * k;
-      u.x += u.hx * u.speed * DT;
-      u.z += u.hz * u.speed * DT;
+      const rise = sec(V.rise);
+      const out = sec(V.climbOut);
+      if (u.airT <= rise) {
+        u.speed = 0;
+        u.alt = V.hoverAlt * smooth(u.airT / rise);
+        turnHead(u, u.ax, u.az, 1 / Math.max(1, rise - u.airT + 1), padSide(u));
+      } else {
+        const k = (u.airT - rise) / out;
+        u.speed = spec.speed * Math.min(1, 0.15 + 0.85 * k);
+        u.alt = V.hoverAlt + (A.cruiseAlt - V.hoverAlt) * k * k;
+        u.x += u.hx * u.speed * DT;
+        u.z += u.hz * u.speed * DT;
+      }
       if (!this.burn(u, spec)) return;
-      if (u.airT >= T) {
+      if (u.airT >= rise + out) {
         u.air = "flying";
         u.alt = A.cruiseAlt;
       }
@@ -403,30 +447,52 @@ function updateAir(this: World, u: Unit): void {
       this.fly(u, spec);
       return;
     case "landing": {
+      // 1) lượn từ điểm bắt đầu (ax, az) tới lơ lửng trên ô ở `hoverAlt`, mũi theo hướng bay vào
+      // 2) hạ thẳng xuống ô, mũi xoay dần về hướng ô đáp (chữ V nghiêng ra ngoài)
       const pad = this.padPosOf(u);
-      if (!pad) {
+      const ab = this.byId.get(u.padB);
+      if (!pad || !ab || ab.cat !== "building") {
         u.air = "returning";
         u.alt = Math.max(u.alt, 4);
         return;
       }
+      const V = A.vtol;
       u.airT++;
-      const T = sec(1.6);
-      const k = Math.min(1, u.airT / T);
-      u.x = u.ax + (pad[0] - u.ax) * k;
-      u.z = u.az + (pad[1] - u.az) * k;
-      u.alt = A.cruiseAlt * (1 - k) * (1 - k);
-      u.speed = spec.speed * (1 - k);
-      if (k >= 1) {
+      const glide = sec(V.glide);
+      const down = sec(V.descend);
+      if (u.airT <= glide) {
+        const k = u.airT / glide;
+        const e = smooth(k);
+        const nx = u.ax + (pad[0] - u.ax) * e;
+        const nz = u.az + (pad[1] - u.az) * e;
+        const mx = nx - u.x;
+        const mz = nz - u.z;
+        const ml = Math.sqrt(mx * mx + mz * mz);
+        if (ml > 1e-3) {
+          u.hx = mx / ml;
+          u.hz = mz / ml;
+        }
+        u.x = nx;
+        u.z = nz;
+        u.alt = u.alt + (V.hoverAlt - u.alt) / Math.max(1, glide - u.airT + 1);
+        u.speed = ml / DT;
+        return;
+      }
+      const t = u.airT - glide;
+      const [phx, phz] = this.padHead(ab, u.padI);
+      u.x = pad[0];
+      u.z = pad[1];
+      u.speed = 0;
+      u.alt = V.hoverAlt * (1 - smooth(t / down));
+      // xoay mũi trong 70% đầu quãng hạ, rồi hạ nốt cho cân
+      turnHead(u, phx, phz, 1 / Math.max(1, Math.ceil(down * 0.7) - t + 1), padSide(u));
+      if (t >= down) {
         u.air = "parked";
         u.alt = 0;
-        u.speed = 0;
         u.mission = "none";
         u.rtb = false;
         u.targetId = 0;
         u.autoTarget = 0;
-        // đậu quay mũi theo hướng Sân Đáp (mô hình: +z), xoay theo nấc xoay của công trình
-        const ab = this.byId.get(u.padB);
-        const [phx, phz] = doorDir(ab && ab.cat === "building" ? ab.rot : 0);
         u.hx = phx;
         u.hz = phz;
         u.yawRate = 0;
@@ -583,7 +649,7 @@ function loiter(this: World, u: Unit, cx: number, cz: number): [number, number] 
   return [-dz / d + (dx / d) * k, dx / d + (dz / d) * k];
 }
 
-const methods = { padPosOf, nearestFreePad, freePads, hasFreePad, ensurePad, releasePad, homeDistance, fuelToReturn, burn, takeoff, inGrid, nearestGrid, droneNeedsCharge, updateDrone, updateShield, shieldOff, updateRepair, detonate, updateAir, fly, steerAir, loiter };
+const methods = { padPosOf,  nearestFreePad, freePads, hasFreePad, ensurePad, releasePad, homeDistance, fuelToReturn, burn, takeoff, inGrid, nearestGrid, droneNeedsCharge, updateDrone, updateShield, shieldOff, updateRepair, detonate, updateAir, fly, steerAir, loiter };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

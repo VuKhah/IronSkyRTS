@@ -11,7 +11,7 @@ import * as THREE from "three";
 import { getSpec, type EntityId } from "../sim/content";
 import { buildModel } from "../render/models";
 import { bakeStatic } from "../render/models/bake";
-import { isEffect, localBox, partOf, reachXZ, shownIn } from "../models-page/stage";
+import { isEffect, localBox, meshBox, partOf, reachXZ, shownIn } from "../models-page/stage";
 
 const args = process.argv.slice(2);
 const id = args[0] as EntityId | undefined;
@@ -55,8 +55,7 @@ rig.root.traverse((o) => {
   if (!shownIn(o, rig.root)) return void hidden++;
   if (isEffect(o)) return void effects++;
   const g = o.geometry as THREE.BufferGeometry;
-  if (!g.boundingBox) g.computeBoundingBox();
-  const box = g.boundingBox!.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld));
+  const box = meshBox(g, new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld), new THREE.Box3());
   items.push({ mesh: o, box, name: String(partOf(o, rig.root)?.userData.part ?? "(không tên)") });
   tris += (g.index ? g.index.count : g.getAttribute("position").count) / 3;
   for (const m of Array.isArray(o.material) ? o.material : [o.material]) mats.add(m);

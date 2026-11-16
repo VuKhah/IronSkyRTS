@@ -172,6 +172,25 @@ describe("lõi mô phỏng", () => {
     expect(f.air, "tự hạ cánh xuống bãi").toBe("parked");
     expect(Math.sqrt((f.x - af.x) ** 2 + (f.z - af.z) ** 2)).toBeLessThan(Math.max(...BUILDINGS.airfield.half));
     expect(f.mission).toBe("none");
+    // đậu quay mũi theo ô chữ V (nghiêng ra ngoài sân), đúng vị trí ô
+    const [phx, phz] = w.padHead(af, f.padI);
+    expect(f.hx).toBeCloseTo(phx, 9);
+    expect(f.hz).toBeCloseTo(phz, 9);
+    const [px, pz] = w.padPos(af, f.padI);
+    expect([f.x, f.z]).toEqual([px, pz]);
+    // cất cánh đứng: bốc thẳng lên `hoverAlt` tại chỗ rồi mới lao ra trước
+    w.step([{ side: 0, order: { t: "move", ids: [f.id], x: f.x + 80, z: f.z } }]);
+    const V = RULES.air.vtol;
+    for (let i = 0; i < sec(V.rise); i++) {
+      w.step([]);
+      expect([f.x, f.z], "bốc thẳng, không trượt ngang").toEqual([px, pz]);
+    }
+    expect(f.air).toBe("takeoff");
+    expect(f.alt).toBeCloseTo(V.hoverAlt, 6);
+    expect(f.hx, "bốc lên xong thì mũi đã quay về hướng bay").toBeCloseTo(1, 6);
+    for (let i = 0; i < sec(V.climbOut); i++) w.step([]);
+    expect(f.air).toBe("flying");
+    expect(f.x).toBeGreaterThan(px + 5);
   });
 
   it("máy bay hết dầu tự bay về sân thay vì rơi (dầu dự trữ)", () => {

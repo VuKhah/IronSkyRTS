@@ -1,5 +1,5 @@
 /** Bố trí công trình: lưới 2 m, xoay nhà, nền móng, cửa ra, ô cấm xây, kiểm chỗ đặt. */
-import { BUILDINGS, defaultRot, doorDir, normRot, rotHalf, rotOffset, PAD_OFFSETS, RULES, UNITS, type BuildingId, type Side } from "../content";
+import { BUILDINGS, defaultRot, doorDir, normRot, rotHalf, rotOffset, PAD_OFFSETS, padHeading, RULES, UNITS, type BuildingId, type Side } from "../content";
 import { dist2 } from "../fmath";
 import { CELL } from "../maps";
 import { WALL } from "../maps/game-map";
@@ -11,6 +11,12 @@ import { World } from "./core";
 function padPos(this: World, b: Building, i: number): [number, number] {
   const [ox, oz] = rotOffset(PAD_OFFSETS[i][0], PAD_OFFSETS[i][1], b.rot);
   return [b.x + ox, b.z + oz];
+}
+
+/** Hướng mũi máy bay đậu ở bãi `i` của Sân Đáp `b` (ô chữ V nghiêng ra ngoài, xoay theo nấc xoay của nhà). */
+function padHead(this: World, b: Building, i: number): [number, number] {
+  const [hx, hz] = padHeading(i);
+  return rotOffset(hx, hz, b.rot);
 }
 
 /** Tọa độ thật của công trình nếu đặt ở (x, z): tâm khối ô lưới mà nó chiếm. */
@@ -240,7 +246,7 @@ function canPlace(this: World, side: Side, kind: BuildingId, x: number, z: numbe
   return "Phải xây trong vùng của Tổng Hành Dinh, Nhà Máy Điện hoặc Cột Điện";
 }
 
-const methods = { padPos, snapBuilding, blockCells, blockHalf, exitRect, padBetween, marginOf, footCells, localRect, bayCells, doorPos, exitOpen, layoutError, cellForbidden, insideMap, flatError, canPlace };
+const methods = { padPos, padHead, snapBuilding, blockCells, blockHalf, exitRect, padBetween, marginOf, footCells, localRect, bayCells, doorPos, exitOpen, layoutError, cellForbidden, insideMap, flatError, canPlace };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
