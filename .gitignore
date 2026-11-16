@@ -16,3 +16,6 @@ Docs/
 
 # Script đo / dò lỗi tạm của Claude (skill sim-verify)
 src/tools/_tmp/
+
+# Đồ thị tri thức của graphify (sinh lại được: graphify update .)
+graphify-out/
