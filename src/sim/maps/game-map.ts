@@ -16,7 +16,7 @@ import { mirrorDef } from "./mirror";
 
 /** Cạnh ô lưới (m): tìm đường, sương mù, độ cao trong sim đều theo lưới này. */
 export const CELL = 2;
-/** Mỗi bậc tầng cao chừng này (m): tầng 0 = 0 m, tầng 1 = 4 m, tầng 2 = 8 m. ⚠️ Số tạm. */
+/** Mỗi bậc tầng cao chừng này (m): tầng 0 = 0 m, tầng 1 = 5 m, tầng 2 = 10 m, tầng 3 = 15 m. ⚠️ Số tạm. */
 export const TIER_H = 5;
 /**
  * Khối dốc dài cố định chừng này (m) theo hướng leo (5 ô): độ dốc TIER_H / RAMP_LEN ≈ 27°. Người dùng chốt 11/11/2026 trên
