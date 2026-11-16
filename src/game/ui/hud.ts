@@ -41,6 +41,8 @@ export class Hud {
 
   private radialEl: HTMLElement | null = null;
   private radialTimer = 0;
+  /** Bảng nan quạt đang mở kiểu kéo: tâm, kiểu đang dùng, hàm chọn, hàm đổi điểm trỏ ra nan. */
+  private radialPick: { cx: number; cy: number; current: FormationId; pick: (f: FormationId) => void; at: (x: number, y: number) => FormationId | null } | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -128,10 +130,12 @@ export class Hud {
   }
 
   /**
-   * Bảng nan quạt tại điểm đến: mỗi nan một kiểu đội hình, nan sáng là kiểu đang dùng. Không chọn gì thì tự ẩn và đội giữ
-   * nguyên kiểu; chạm chỗ khác trên bản đồ cũng ẩn. `ms` = 0: không tự ẩn.
+   * Bảng nan quạt tại điểm đến: mỗi nan một kiểu đội hình, nan sáng là kiểu đang dùng.
+   * - `drag` = false (chỉ dùng cho ?radial=1): bấm vào nan để chọn; `ms` > 0 thì tự ẩn sau chừng đó.
+   * - `drag` = true (trong trận, mở bằng cử chỉ "chạm lần hai rồi giữ"): ngón tay / chuột vẫn đang giữ, kéo về hướng nan nào
+   *   thì nan đó sáng (`radialHover`), thả ra là chọn (`radialRelease`). Thả ở vòng giữa = giữ nguyên.
    */
-  showRadial(x: number, y: number, current: FormationId, pick: (f: FormationId) => void, ms = 3500): void {
+  showRadial(x: number, y: number, current: FormationId, pick: (f: FormationId) => void, ms = 3500, drag = false): void {
     this.hideRadial();
     const ids = Object.keys(FORMATIONS) as FormationId[];
     const SIZE = 232;
@@ -139,6 +143,7 @@ export class Hud {
     const R = 112;
     const r = 42;
     const span = (Math.PI * 2) / ids.length;
+    this.radialPick = null;
     const pad = 0.035;
     const at = (a: number, d: number): string => `${(C + Math.cos(a) * d).toFixed(1)} ${(C + Math.sin(a) * d).toFixed(1)}`;
     const wedges = ids.map((id, i) => {
@@ -156,13 +161,32 @@ export class Hud {
       return `<g class="wedge${id === current ? " on" : ""}" data-f="${id}"><path d="${d}"/><text y="${ly.toFixed(1)}" text-anchor="middle">${text}</text></g>`;
     });
     const el = document.createElement("div");
-    el.className = "radial";
+    el.className = drag ? "radial drag" : "radial";
     el.innerHTML = `<svg viewBox="0 0 ${SIZE} ${SIZE}" width="${SIZE}" height="${SIZE}">${wedges.join("")}<g class="hub" data-f=""><circle cx="${C}" cy="${C}" r="${r - 5}"/><text x="${C}" y="${C - 2}" text-anchor="middle">Giữ</text><text x="${C}" y="${C + 12}" text-anchor="middle">nguyên</text></g></svg>`;
-    const w = this.root.clientWidth;
-    const h = this.root.clientHeight;
+    // khung HUD có thể cao 0 (chỉ là lớp phủ đặt ở góc 0,0): khi đó đo theo cửa sổ, không thì bảng luôn bị đẩy lên mép trên
+    const w = this.root.clientWidth || window.innerWidth;
+    const h = this.root.clientHeight || window.innerHeight;
     const half = SIZE / 2 + 6;
-    el.style.left = `${Math.max(half, Math.min(w - half, x))}px`;
-    el.style.top = `${Math.max(half, Math.min(h - half, y))}px`;
+    const cx = Math.max(half, Math.min(w - half, x));
+    const cy = Math.max(half, Math.min(h - half, y));
+    el.style.left = `${cx}px`;
+    el.style.top = `${cy}px`;
+    if (drag) {
+      // hướng kéo so với tâm bảng (tâm có thể bị dời vào trong khi điểm chạm sát mép màn hình)
+      this.radialPick = {
+        cx,
+        cy,
+        current,
+        pick,
+        at: (px, py) => {
+          const dx = px - cx;
+          const dy = py - cy;
+          if (dx * dx + dy * dy < r * r) return null;
+          const k = Math.round((Math.atan2(dy, dx) + Math.PI / 2) / span);
+          return ids[((k % ids.length) + ids.length) % ids.length];
+        },
+      };
+    }
     // chạm vào bảng không được lọt xuống bản đồ
     el.addEventListener("pointerdown", (e) => {
       if ((e.target as Element).closest("[data-f]")) e.stopPropagation();
@@ -185,6 +209,24 @@ export class Hud {
     this.radialTimer = 0;
     this.radialEl?.remove();
     this.radialEl = null;
+    this.radialPick = null;
+  }
+
+  /** Bảng nan quạt kiểu kéo: làm sáng nan đang trỏ tới (null = vòng giữa, giữ nguyên). */
+  radialHover(x: number, y: number): void {
+    const rp = this.radialPick;
+    if (!rp || !this.radialEl) return;
+    const f = rp.at(x, y);
+    for (const g of this.radialEl.querySelectorAll<SVGGElement>("[data-f]")) g.classList.toggle("hot", (g.dataset.f || null) === f);
+  }
+
+  /** Bảng nan quạt kiểu kéo: thả tay. Trỏ vào nan khác kiểu đang dùng thì chọn kiểu đó; rồi ẩn bảng. */
+  radialRelease(x: number, y: number): void {
+    const rp = this.radialPick;
+    if (!rp) return;
+    const f = rp.at(x, y);
+    this.hideRadial();
+    if (f && f !== rp.current) rp.pick(f);
   }
 
   private buildRow(): string {

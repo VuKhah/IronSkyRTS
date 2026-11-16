@@ -9,7 +9,7 @@
 import * as THREE from "three";
 import { ExitArrows } from "../scene/exit-arrows";
 import { strategicMarks } from "../ui/overlay";
-import { BUILDINGS, canStrike, DEFAULT_FORMATION, defaultRot, doorDir, FACTION_OF, rotHalf, RES_NAME, UNITS, type BuildingId, type Side, type UnitId } from "../../sim/content";
+import { BUILDINGS, canStrike, DEFAULT_FORMATION, defaultRot, doorDir, FACTION_OF, rotHalf, RES_NAME, UNITS, type BuildingId, type FormationId, type Side, type UnitId } from "../../sim/content";
 import type { Building, Entity, Mine, Order, Unit, Wreck } from "../../sim/types";
 import { buildModel, disposeRig, type Rig } from "../../render/models";
 import type { Sfx } from "../audio/audio";
@@ -65,6 +65,8 @@ export class Controller implements GestureHandlers {
   /** Nấc xoay Tư lệnh chọn cho công trình đang đặt (R / nút ⟳); null = mặc định, cửa quay về giữa bản đồ. */
   private placeRot: number | null = null;
   private sellArmed = { id: 0, t: 0 };
+  /** Lệnh đi nhóm vừa ra (≥ 2 quân mặt đất): bảng chiến thuật đổi kiểu đội hình cho đúng lệnh này. */
+  private lastMove: { t: "move" | "amove"; ids: number[]; x: number; z: number; current: FormationId; at: number } | null = null;
   /** Vòng ngắm rải thảm (bán kính = độ tản của dàn phóng: vùng tên lửa rơi). */
   private aim: THREE.Mesh | null = null;
 
@@ -321,13 +323,35 @@ export class Controller implements GestureHandlers {
     this.issue({ t, ids, x: g.x, z: g.z });
     this.fx.marker(g.x, g.z, mode === "amove" ? 0xff6b5e : 0x6fdc8c);
     this.sfx.ui("ack");
-    // Quân đã lăn bánh theo đội hình đang có. Tại điểm đến hiện bảng nan quạt: Tư lệnh bỏ qua thì giữ nguyên, chọn một nan thì đổi kiểu.
+    // Quân đã lăn bánh theo đội hình đang có. Bảng chiến thuật (nan quạt) KHÔNG tự hiện: Tư lệnh muốn đổi kiểu thì nhấn lần hai
+    // vào cùng chỗ và giữ (radialStart). Chỉ nhớ lệnh vừa ra để bảng biết đổi kiểu cho lệnh nào.
     const fighters = units.filter((u) => u.air === "none" && u.kind !== "hauler");
-    if (fighters.length > 1)
-      this.hud?.showRadial(sx, sy, this.world.formationOf(fighters) ?? DEFAULT_FORMATION, (formation) => {
-        this.issue({ t, ids, x: g.x, z: g.z, formation });
-        this.sfx.ui("ack");
-      });
+    this.lastMove = fighters.length > 1 ? { t, ids, x: g.x, z: g.z, current: this.world.formationOf(fighters) ?? DEFAULT_FORMATION, at: performance.now() } : null;
+  }
+
+  // ------------------------------------------------------------------ bảng chiến thuật (nan quạt)
+
+  radialStart(x: number, y: number): boolean {
+    const m = this.lastMove;
+    if (!m || performance.now() - m.at > 1500 || this.mode !== "normal") return false;
+    this.hud?.showRadial(x, y, m.current, (formation) => {
+      this.issue({ t: m.t, ids: m.ids, x: m.x, z: m.z, formation });
+      m.current = formation;
+      this.sfx.ui("ack");
+    }, 0, true);
+    return true;
+  }
+
+  radialMove(x: number, y: number): void {
+    this.hud?.radialHover(x, y);
+  }
+
+  radialEnd(x: number, y: number): void {
+    this.hud?.radialRelease(x, y);
+  }
+
+  radialCancel(): void {
+    this.hud?.hideRadial();
   }
 
   // ------------------------------------------------------------------ đặt công trình

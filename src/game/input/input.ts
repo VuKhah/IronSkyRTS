@@ -4,6 +4,8 @@
  * Cảm ứng:  chạm = chọn / ra lệnh · chạm đúp = chọn cả loại · một ngón kéo = cuộn bản đồ
  *           giữ ~0.3 s rồi kéo = quét khung chọn · hai ngón = thu phóng + xoay + cuộn
  * Chuột:    trái = chọn (kéo = quét khung) · phải = ra lệnh (kéo = xoay camera) · giữa kéo = cuộn · lăn = thu phóng
+ * Bảng chiến thuật (nan quạt): ra lệnh đi (chạm / chuột phải), rồi ngay đó nhấn LẦN HAI vào cùng chỗ và GIỮ → bảng mở;
+ *           kéo về hướng nan nào thì thả ra là chọn kiểu đó; thả ở giữa = giữ nguyên.
  */
 
 export interface TapInfo {
@@ -29,11 +31,21 @@ export interface GestureHandlers {
   wheel(x: number, y: number, delta: number): void;
   hover(x: number, y: number): void;
   longPressFeedback(x: number, y: number): void;
+  /** Nhấn lần hai rồi giữ tại chỗ vừa ra lệnh: mở bảng chiến thuật nếu lệnh vừa rồi hợp lệ (trả false thì cử chỉ chạy như thường). */
+  radialStart(x: number, y: number): boolean;
+  radialMove(x: number, y: number): void;
+  radialEnd(x: number, y: number): void;
+  radialCancel(): void;
 }
 
-type Mode = "none" | "mouseLeft" | "mouseBox" | "mouseRight" | "mouseRotate" | "mousePan" | "touchPending" | "touchPan" | "touchBox" | "pinch" | "dead";
+type Mode = "none" | "mouseLeft" | "mouseBox" | "mouseRight" | "mouseRotate" | "mousePan" | "touchPending" | "touchPan" | "touchBox" | "pinch" | "radial" | "dead";
 
 const LONG_PRESS_MS = 280;
+/** Nhấn lần hai phải giữ chừng này mới mở bảng (ngắn hơn thì vẫn là chạm đúp / nhấp đúp như cũ). */
+const RADIAL_HOLD_MS = 200;
+/** Lần nhấn hai phải tới trong chừng này sau lần ra lệnh, và cách chỗ đó không quá RADIAL_NEAR điểm ảnh. */
+const RADIAL_WINDOW_MS = 400;
+const RADIAL_NEAR = 32;
 const TOUCH_SLOP = 10;
 const MOUSE_SLOP = 6;
 
@@ -42,6 +54,29 @@ export function attachGestures(el: HTMLElement, h: GestureHandlers): () => void 
   let mode: Mode = "none";
   let timer = 0;
   let lastTap = { t: 0, x: 0, y: 0 };
+  /** Lần nhả gần nhất có thể là lệnh (chạm cảm ứng / chuột phải): mốc cho cử chỉ mở bảng chiến thuật. */
+  let lastAct = { t: 0, x: 0, y: 0, mouse: false };
+  const secondPress = (x: number, y: number, mouse: boolean): boolean =>
+    lastAct.mouse === mouse && performance.now() - lastAct.t < RADIAL_WINDOW_MS && Math.hypot(x - lastAct.x, y - lastAct.y) < RADIAL_NEAR;
+  /** Đặt giờ mở bảng: hết giờ mà vẫn giữ yên (chế độ chưa đổi) thì mở. */
+  const armRadial = (expect: Mode): void => {
+    clearTimer();
+    timer = window.setTimeout(() => {
+      timer = 0;
+      if (mode !== expect || pts.size !== 1) return;
+      const s = [...pts.values()][0];
+      if (h.radialStart(s.sx, s.sy)) {
+        mode = "radial";
+        h.longPressFeedback(s.sx, s.sy);
+        h.radialMove(s.x, s.y);
+      } else if (expect === "touchPending") {
+        // không có lệnh để đổi kiểu: giữ nguyên ý nghĩa nhấn giữ = quét khung chọn
+        mode = "touchBox";
+        h.longPressFeedback(s.sx, s.sy);
+        h.boxStart(s.sx, s.sy);
+      }
+    }, RADIAL_HOLD_MS);
+  };
   let pinchPrev = { d: 0, a: 0, cx: 0, cy: 0 };
   let last = { x: 0, y: 0 };
 
@@ -70,8 +105,10 @@ export function attachGestures(el: HTMLElement, h: GestureHandlers): () => void 
     pts.set(e.pointerId, { x: p.x, y: p.y, sx: p.x, sy: p.y });
     if (e.pointerType === "mouse") {
       if (e.button === 0) mode = "mouseLeft";
-      else if (e.button === 2) mode = "mouseRight";
-      else if (e.button === 1) {
+      else if (e.button === 2) {
+        mode = "mouseRight";
+        if (secondPress(p.x, p.y, true)) armRadial("mouseRight");
+      } else if (e.button === 1) {
         mode = "mousePan";
         h.panStart(p.x, p.y);
       }
@@ -81,6 +118,10 @@ export function attachGestures(el: HTMLElement, h: GestureHandlers): () => void 
     if (pts.size === 1) {
       mode = "touchPending";
       clearTimer();
+      if (secondPress(p.x, p.y, false)) {
+        armRadial("touchPending");
+        return;
+      }
       timer = window.setTimeout(() => {
         if (mode === "touchPending") {
           mode = "touchBox";
@@ -91,6 +132,7 @@ export function attachGestures(el: HTMLElement, h: GestureHandlers): () => void 
       }, LONG_PRESS_MS);
     } else if (pts.size === 2) {
       clearTimer();
+      if (mode === "radial") h.radialCancel();
       if (mode === "touchBox") h.boxCancel();
       if (mode === "touchPan") h.panEnd();
       mode = "pinch";
@@ -142,6 +184,9 @@ export function attachGestures(el: HTMLElement, h: GestureHandlers): () => void 
       case "touchBox":
         h.boxMove(p.x, p.y);
         break;
+      case "radial":
+        h.radialMove(p.x, p.y);
+        break;
       case "pinch": {
         if (pts.size !== 2) break;
         const now = pinchState();
@@ -170,7 +215,9 @@ export function attachGestures(el: HTMLElement, h: GestureHandlers): () => void 
         h.boxEnd(p.x, p.y, e.shiftKey);
         break;
       case "mouseRight":
+        clearTimer();
         h.command(p.x, p.y, e.shiftKey);
+        lastAct = { t: performance.now(), x: p.x, y: p.y, mouse: true };
         break;
       case "mousePan":
         h.panEnd();
@@ -178,6 +225,11 @@ export function attachGestures(el: HTMLElement, h: GestureHandlers): () => void 
       case "touchPending":
         clearTimer();
         h.tap(p.x, p.y, info(false));
+        lastAct = { t: performance.now(), x: p.x, y: p.y, mouse: false };
+        break;
+      case "radial":
+        h.radialEnd(p.x, p.y);
+        lastAct = { t: 0, x: 0, y: 0, mouse: false };
         break;
       case "touchPan":
         h.panEnd();
@@ -195,6 +247,7 @@ export function attachGestures(el: HTMLElement, h: GestureHandlers): () => void 
   const cancel = (e: PointerEvent): void => {
     pts.delete(e.pointerId);
     clearTimer();
+    if (mode === "radial") h.radialCancel();
     if (mode === "touchBox" || mode === "mouseBox") h.boxCancel();
     if (mode === "touchPan" || mode === "mousePan") h.panEnd();
     if (pts.size === 0) mode = "none";

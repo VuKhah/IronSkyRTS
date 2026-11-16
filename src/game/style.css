@@ -125,6 +125,9 @@ button { font: inherit; color: inherit; }
 .radial .wedge.on path { stroke: var(--good); stroke-width: 2.5; }
 .radial text { font-size: 13px; font-weight: 700; fill: #e6edf2; pointer-events: none; user-select: none; }
 .radial .wedge.on text { fill: var(--good); }
+.radial.drag .wedge, .radial.drag .hub { pointer-events: none; }
+.radial .wedge.hot path { fill: #36506f; stroke: #e6edf2; stroke-width: 2.5; }
+.radial .hub.hot circle { stroke: #e6edf2; stroke-width: 2; }
 .radial .hub circle { fill: var(--panel-solid); fill-opacity: 0.92; stroke: var(--line-strong); }
 .radial .hub text { font-size: 11px; font-weight: 600; fill: #aab6c5; }
 @keyframes radial-in { from { opacity: 0; transform: translate(-50%, -50%) scale(0.85); } }
