@@ -42,20 +42,22 @@ describe("xe đã vào hàng không bị xe đến sau ủi ra (người dùng 1
       for (let t = 0; t < sec(2); t++) w.step([]);
       const [tx, tz] = arenaPoint(8);
       w.step([{ side: 0, order: { t: "move", ids: us.map((u) => u.id), x: tx, z: tz } }]);
-      // cú đẩy không bật cờ `moved`: quãng xe bị dời trong tick nó không tự chạy (đang đứng) là quãng bị xe khác ủi
+      // cú đẩy không bật cờ `moved`: quãng xe bị dời trong tick nó không tự chạy (đang đứng) là quãng bị xe khác ủi. Từ A1a chỉ
+      // đếm xe đã VÀO HÀNG (đứng yên ≥ 2 s): xe vừa dừng mà chồng đế thì tự dời ra là đúng luật "quân dừng sau nhường" (đo 12
+      // seed: xe đã vào hàng bị xô 0,00 m, bản cũ tới 1,09 m)
       let worst = 0;
       const pushed = new Map<number, number>();
       for (let t = 0; t < sec(40); t++) {
         w.step([]);
         for (const u of us)
-          if (!u.moved && u.still > 0) {
+          if (!u.moved && u.still > sec(2)) {
             const v = (pushed.get(u.id) ?? 0) + Math.hypot(u.x - u.px, u.z - u.pz);
             pushed.set(u.id, v);
             worst = Math.max(worst, v);
           }
       }
       expect(us.every((u) => u.order === "idle")).toBe(true);
-      expect(worst).toBeLessThan(1);
+      expect(worst).toBeLessThan(0.2);
     });
 });
 

@@ -120,6 +120,45 @@ describe("luật lách mềm", () => {
     expect(r.closest).toBeLessThan(spaceRadius("lynx") + spaceRadius("titan"));
   });
 
+  it("lệnh dừng đúng giữa khe: Lynx dời ra chỗ không chồng đế, Titan không xê dịch", () => {
+    const G = gate("titan", "lynx");
+    const lx = spawn(G.w, "lynx", G.cx, G.cz - 10);
+    drive(G, lx, G.cx, G.cz, 20);
+    for (const p of G.posts) expect(gap(lx, p)).toBeGreaterThan(spaceRadius("lynx") + spaceRadius("titan") - 0.05);
+    expect(moved(G)).toBeLessThan(1e-6);
+  });
+
+  for (const side of [0, 1] as const)
+    it(`hai quân cùng đứng chồng vòng giãn: quân dừng sau nhường trọn (phe ${side})`, () => {
+      const w = new World(1, { sandbox: true });
+      const [cx, cz] = arenaPoint(0);
+      const sg = side === 0 ? 1 : -1;
+      const a = spawn(w, "titan", cx, cz, side);
+      for (let t = 0; t < sec(3); t++) w.step([]);
+      const ax = a.x;
+      const az = a.z;
+      const b = spawn(w, "titan", cx + 3 * sg, cz + 1 * sg, side);
+      for (let t = 0; t < sec(5); t++) w.step([]);
+      expect(dist(a, ax, az)).toBeLessThan(1e-6);
+      expect(gap(a, b)).toBeGreaterThan(2 * spaceRadius("titan") - 0.05);
+    });
+
+  it("hai quân cùng đứng chồng vòng giãn: kết quả soi gương hai phe như nhau", () => {
+    const end = (side: 0 | 1): [number, number] => {
+      const w = new World(1, { sandbox: true });
+      const [cx, cz] = arenaPoint(0);
+      const sg = side === 0 ? 1 : -1;
+      spawn(w, "titan", cx * sg, cz * sg, side);
+      for (let t = 0; t < sec(3); t++) w.step([]);
+      const b = spawn(w, "titan", (cx + 3) * sg, (cz + 1) * sg, side);
+      for (let t = 0; t < sec(5); t++) w.step([]);
+      return [b.x * sg, b.z * sg];
+    };
+    const [x0, z0] = end(0);
+    const [x1, z1] = end(1);
+    expect(Math.abs(x0 - x1) + Math.abs(z0 - z1)).toBeLessThan(1e-9);
+  });
+
   it("SkyGuard hạ bệ làm khe: Lynx lách qua, SkyGuard đứng yên", () => {
     const G = gate("skyguard", "lynx", 0, true, 5);
     expect(G.posts.every((p) => G.w.anchored(p))).toBe(true);

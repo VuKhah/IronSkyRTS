@@ -132,7 +132,8 @@ function orderMove(this: World, side: Side, ids: readonly number[], x: number, z
       u.manual = true;
       u.hState = "idle";
     }
-    const f = plan.slots.get(u.id) ?? [x, z];
+    // xe lẻ: đích không được đè quân đứng cùng phe (không dừng giữa khe, A1a)
+    const f = this.clearStand(u, ...(plan.slots.get(u.id) ?? [x, z]));
     u.faceX = plan.fx;
     u.faceZ = plan.fz;
     u.order = kind;

@@ -17,6 +17,8 @@ const PROBE_STEP = 1;
 
 /** Đứng yên từ chừng này giây thì xe là vật cản khi xe cùng phe tìm đường (bước 2 kế hoạch đế). */
 const STAND_AFTER = 1;
+/** Đích đè vòng giãn quân đứng: dời tối đa chừng này bước 0,5 m (`clearGoal`). */
+const STAND_GOAL_STEPS = 24;
 /** Lớp xe đứng chỉ in trong chừng này mét ngoài vòng giãn (xa hơn thì không ảnh hưởng A*: nửa thân lớn nhất 3,8 + dư 3 m). */
 const STAND_REACH = 7;
 /** Xe đi đường còn dài hơn chừng này (m) thì tìm lại đường mỗi REPLAN_EVERY giây (xe đứng chắn đường có thể đã đi, hoặc mới đứng). */
@@ -314,6 +316,57 @@ function clearGoal(this: World, u: Unit, x: number, z: number): [number, number]
 }
 
 /**
+ * KHÔNG DỪNG GIỮA KHE (A1a): đích của xe LẺ (chỉ gọi từ `orderMove` cho xe không vào đội hình; đội hình lo ô của mình) đè vòng
+ * giãn quân đứng cùng phe thì dời ra, mỗi bước 0,5 m theo tổng hướng ra khỏi các quân đó; hướng triệt tiêu (đích đúng giữa khe)
+ * thì lùi về phía xe đang đứng, tức là lùi ra khỏi khe.
+ */
+function clearStand(this: World, u: Unit, x: number, z: number): [number, number] {
+  if (u.air !== "none" || isSquad(u.kind)) return [x, z];
+  const dx = x - u.x;
+  const dz = z - u.z;
+  const d = Math.sqrt(dx * dx + dz * dz);
+  const fx = d > 1e-6 ? dx / d : u.hx;
+  const fz = d > 1e-6 ? dz / d : u.hz;
+  {
+    const still = sec(STAND_AFTER);
+    const su = spaceRadius(u.kind);
+    for (let i = 0; i < STAND_GOAL_STEPS; i++) {
+      let px = 0;
+      let pz = 0;
+      let hit = false;
+      for (const v of this.units) {
+        if (v === u || v.side !== u.side || v.hp <= 0 || v.air !== "none" || isSquad(v.kind)) continue;
+        if (!this.anchored(v) && v.still < still) continue;
+        const ox = x - v.x;
+        const oz = z - v.z;
+        const lim = su + spaceRadius(v.kind);
+        const o2 = ox * ox + oz * oz;
+        if (o2 >= lim * lim) continue;
+        hit = true;
+        const o = Math.sqrt(o2);
+        if (o > 1e-6) {
+          px += ox / o;
+          pz += oz / o;
+        }
+      }
+      if (!hit) break;
+      let l = Math.sqrt(px * px + pz * pz);
+      if (l < 1e-6) {
+        px = -fx;
+        pz = -fz;
+        l = 1;
+      }
+      const nx = x + (px / l) * 0.5;
+      const nz = z + (pz / l) * 0.5;
+      if (this.grid.blockedAt(nx, nz)) break;
+      x = nx;
+      z = nz;
+    }
+  }
+  return [x, z];
+}
+
+/**
  * Bước xe tới (nx, nz), vật cản là RÀNG BUỘC CỨNG (12/11/2026): thân ở chỗ mới chạm vật cản thì bỏ phần bước đi hướng vào vật
  * cản (trượt dọc vách / tường nhà); rồi chỉ nhận chỗ mới khi tâm không vào ô chặn VÀ thân không chạm nhiều điểm hơn chỗ cũ
  * (đang lún sẵn thì bước nào bớt lún cũng được, để tự thoát). Không được thì thử riêng từng trục. Trước đây chỉ cấm tâm xe vào
@@ -533,7 +586,7 @@ function chase(this: World, u: Unit, t: Target): void {
  * GIỮ BÊN PHẢI (cùng một quy ước cho mọi xe, mọi phe): hai xe ngược chiều cùng giữ phải thì tự lệch về hai phía, qua được nhau.
  * Trước đây hòa thì chọn theo chẵn / lẻ của mã xe, không đối xứng giữa hai phe.
  */
-const methods = { standLayer, standFor, turnHull, stepToward, setIdle, halt, setPath, bodyContact, wallNormal, clearGoal, tryMove, terrainFactor, moveFactor, follow, chase, steer, brakeNear };
+const methods = { standLayer, standFor, turnHull, stepToward, setIdle, halt, setPath, bodyContact, wallNormal, clearGoal, clearStand, tryMove, terrainFactor, moveFactor, follow, chase, steer, brakeNear };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

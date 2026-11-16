@@ -303,6 +303,11 @@ function separate(this: World): void {
       // được, đường đi lại kéo cả hai về cùng một điểm góc, giằng co mãi nếu chia đều.
       const ya = a.moved === b.moved ? yieldsTo(a, b) : 0;
       let wa = pa ? 0 : pb ? 1 : ya > 0 ? MOVER_SHARE : ya < 0 ? 1 - MOVER_SHARE : a.moved === b.moved ? 0.5 : a.moved ? MOVER_SHARE : 1 - MOVER_SHARE;
+      // KHÔNG DỪNG Ở CHỖ CHỒNG ĐẾ (A1a): hai quân cùng phe cùng đứng mà chồng vòng giãn (vừa lách tới, vừa dừng) thì quân dừng SAU
+      // nhường trọn, quân đứng trước không xê dịch; dừng cùng tick thì chia đều (đối xứng hai phe). Đo 12 seed (9 Titan đi 30 m):
+      // xe đã vào hàng bị xô 0,00 m (bản cũ tới 1,09 m); số lần đội chạm hết giờ 24 s (lỗi sẵn có của squad.ts, A1b) 4 / 12 so
+      // với 3 / 12, đổi theo vị trí thả quân chứ không theo luật này
+      if (!pa && !pb && !a.moved && !b.moved && a.side === b.side && soft === 0 && a.still !== b.still) wa = a.still < b.still ? 1 : 0;
       // xe chạy gặp xe đứng, hoặc hai xe chạy đối đầu: ngoài đẩy ra còn LÁCH SANG BÊN (vuông góc hướng chạy, phía xa xe kia);
       // đối đầu mà có xe được ưu tiên thì xe đó giữ làn, xe nhường lách
       let aSide = !pa && ((a.moved && !b.moved) || (headOn && ya >= 0));
