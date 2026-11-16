@@ -1,5 +1,6 @@
 /** Phần dùng chung của các drone: cánh quạt và khung bay lơ lửng. */
 import * as THREE from "three";
+import { UNIT_SCALE } from "../../../sim/content";
 import { approach, box, cyl, group, part, type Palette, type Rig, type RigAction } from "../kit";
 
 export interface Rotor {
@@ -40,7 +41,8 @@ export function droneRig(d: DroneParts): Rig {
   const root = group(d.frame, ...(d.ground ?? []));
   let flyY = d.flyY;
   d.frame.position.y = flyY;
-  if (d.scale) d.frame.scale.setScalar(d.scale);
+  // thu thân bay theo đế (d.scale) và theo UNIT_SCALE; độ cao bay và vật bám đất giữ số của sim
+  d.frame.scale.setScalar((d.scale ?? 1) * UNIT_SCALE);
   for (const r of d.rotors) (r.disc.material as THREE.MeshBasicMaterial).opacity = 0.28;
   return {
     root,

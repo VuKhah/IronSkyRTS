@@ -1,5 +1,6 @@
 /**
- * Mô hình Thiết Giáp Lynx (`lynx`), bản 2 (15/11/2026): xe thiết giáp SÁU BÁNH, HAI NÒNG, lọt đế lõi Ø 4,5 m.
+ * Mô hình Thiết Giáp Lynx (`lynx`), bản 2 (15/11/2026): xe thiết giáp SÁU BÁNH, HAI NÒNG. Từ 16/11/2026 lọt đế Nhẹ Ø 3,6 m
+ * (thu ×S, xem dưới); trước đó đế lõi Ø 4,5 m.
  * Người dùng chốt 06/11: bọc thép, hai nòng nâng lên bắn máy bay / hạ xuống bắn ngang. 15/11: 6 bánh, thân 1,6 : 1.
  *
  * Ý đồ hình khối:
@@ -17,6 +18,12 @@ import { box, cyl, facets, group, muzzleFlash, part, surfaceTools, tubeZ, wheel,
 import { vehicleRig, barrel } from "./ground";
 
 type P3 = [number, number, number];
+
+/**
+ * Thu đều cả xe (16/11/2026, người dùng: Lynx nhỏ hơn Titan): đế Nhẹ Ø 3,6 (bodyR 1,8). Mọi số trong file là số TRƯỚC khi thu;
+ * tầm với lớn nhất 2,06 m (móc kéo) × S = 1,75 m < 1,8.
+ */
+const S = 0.85;
 
 const WHEEL_R = 0.42;
 const WHEEL_X = 0.96;
@@ -151,11 +158,17 @@ export function buildLynx(p: Palette): Rig {
   turret.add(gun);
   add(turret);
 
+  // thu đều cả xe cho lọt đế Nhẹ Ø 3,6 (16/11/2026); bánh lăn theo bán kính thật sau khi thu
+  const shrink = group(...[...body.children]);
+  shrink.scale.setScalar(S);
+  body.add(shrink);
+  for (const w of wheels) w.r *= S;
+
   return vehicleRig(
     "lynx",
     p,
     { body, wheels, turret, gun, barrels, muzzles: barrels, flashes, spinners: [], aimPitch: 0.05, airPitch: 1.15, recoil: 0.1 },
-    2.6,
+    2.6 * S,
     [{ id: "aimAir", label: "Ngắm máy bay" }]
   );
 }

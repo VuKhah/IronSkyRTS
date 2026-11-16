@@ -230,9 +230,16 @@ function probesOf(kind: keyof typeof UNITS): Float64Array {
   if (p) return p;
   const R = wallRadius(kind);
   const pts: number[] = [];
+  // vòng điểm dò phải đối xứng qua tâm TUYỆT ĐỐI (luật công bằng số 4): số điểm chẵn, nửa sau là âm đúng của nửa đầu. Trước
+  // 16/11/2026 n có thể lẻ (đổi cỡ đế ra n lẻ thì bãi mỏ hai phe bố trí lệch nhau) và dcos / dsin chỉ xấp xỉ nên cặp đối nhau
+  // không bằng âm của nhau.
   const ring = (r: number): void => {
-    const n = Math.max(8, Math.ceil((TAU * r) / PROBE_STEP));
-    for (let i = 0; i < n; i++) pts.push(r * dcos((TAU * i) / n), r * dsin((TAU * i) / n));
+    const half = Math.max(4, Math.ceil((TAU * r) / PROBE_STEP / 2));
+    const n = half * 2;
+    const a: number[] = [];
+    for (let i = 0; i < half; i++) a.push(r * dcos((TAU * i) / n), r * dsin((TAU * i) / n));
+    pts.push(...a);
+    for (let i = 0; i < a.length; i++) pts.push(-a[i]);
   };
   ring(R);
   if (R > 2) ring(R * 0.5);

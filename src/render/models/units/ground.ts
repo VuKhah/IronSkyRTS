@@ -1,6 +1,6 @@
 /** Khung xe mặt đất: tháp pháo xoay, nòng giật, bánh lăn, xích. Mọi xe dùng vehicleRig. */
 import * as THREE from "three";
-import { RULES, UNITS, type UnitId } from "../../../sim/content";
+import { RULES, UNIT_SCALE, UNITS, type UnitId } from "../../../sim/content";
 import { approach, approachAngle, box, FireClock, group, part, partIfUnnamed, Spring, tubeZ, wheel, type Palette, type Rig, type RigAction } from "../kit";
 import { V, Shots, missileMesh } from "./common";
 
@@ -150,7 +150,8 @@ export function vehicleRig(
     },
     update(dt, t, a) {
       const moving = a.has("move");
-      for (const w of parts.wheels) if (moving) w.g.rotation.x += (speed / w.r) * dt;
+      // cả mô hình thu theo UNIT_SCALE (buildUnit) nên bánh thật nhỏ hơn số trong file: quay nhanh hơn cho khớp tốc độ xe
+      for (const w of parts.wheels) if (moving) w.g.rotation.x += (speed / (w.r * UNIT_SCALE)) * dt;
       baseY = moving ? Math.sin(t * 14) * 0.025 : approach(baseY, 0, 10, dt);
       parts.body.position.y = baseY;
       braced = a.has("deploy");

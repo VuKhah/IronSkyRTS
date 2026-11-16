@@ -1,4 +1,10 @@
 import type { ArmorClass, DmgType, Res } from "./types";
+/**
+ * Thu / phóng đồng bộ mọi binh chủng (người dùng 16/11/2026): nhân kích thước thân (`radius`, `halfLen`), đế (`bodyR`, `spaceR`)
+ * khi nạp bảng UNITS (units/index.ts) và nhân mô hình 3D cùng số đó (render/models/units/index.ts). Số trong file quân và file
+ * mô hình là số TRƯỚC khi nhân. Không nhân: tầm bắn, tầm nhìn, tốc độ, độ cao bay, công trình, bản đồ (đó là luật, không phải cỡ).
+ */
+export const UNIT_SCALE: number = 0.8;
 /** Luật chơi MVP (số tạm). */
 export const RULES = {
   tickRate: 10,

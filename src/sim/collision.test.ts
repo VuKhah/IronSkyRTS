@@ -4,7 +4,7 @@
  * một cạnh phẳng quay về mũi lúc hạ bệ); thân tròn chạm vách như nhau ở mọi hướng mũi. Chỉ kiểm HÀNH VI.
  */
 import { describe, expect, it } from "vitest";
-import { UNITS, type UnitId } from "./content";
+import { UNIT_SCALE, UNITS, type UnitId } from "./content";
 import { arenaPoint } from "./scenarios";
 import type { Unit } from "./types";
 import { sec, World } from "./world";
@@ -38,10 +38,10 @@ function hexDist(h: Unit, a: number, px: number, pz: number): number {
 const space = (k: UnitId): number => UNITS[k].spaceR!;
 
 describe("va chạm theo đế tròn", () => {
-  it("mọi quân mặt đất đã khai đế: thân và vùng giãn (giãn = thân + 0,2 m)", () => {
+  it("mọi quân mặt đất đã khai đế: thân và vùng giãn (giãn = thân + 0,2 m, thu theo UNIT_SCALE)", () => {
     for (const k of ["hauler", "lynx", "titan", "skyguard", "rocket", "artillery"] as UnitId[]) {
       expect(UNITS[k].bodyR, k).toBeGreaterThan(0);
-      expect(space(k), k).toBeCloseTo(UNITS[k].bodyR! + 0.2, 6);
+      expect(space(k), k).toBeCloseTo(UNITS[k].bodyR! + 0.2 * UNIT_SCALE, 6);
     }
   });
 

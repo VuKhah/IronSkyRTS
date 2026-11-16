@@ -6,8 +6,8 @@
  * Quy ước: mặt trước là +Z, mặt đất là y = 0, 1 đơn vị ≈ 1 mét (đã thu nhỏ để dễ nhìn).
  */
 
-import type { Faction, UnitId } from "../../../sim/content";
-import { palette, type Palette, type Rig } from "../kit";
+import { UNIT_SCALE, UNITS, type Faction, type UnitId } from "../../../sim/content";
+import { group, palette, type Palette, type Rig } from "../kit";
 import { buildCommander } from "./commander";
 import { buildLynx } from "./lynx";
 import { buildArtillery } from "./artillery";
@@ -40,5 +40,15 @@ const BUILDERS: Record<UnitId, (p: Palette) => Rig> = {
 };
 
 export function buildUnit(id: UnitId, faction: Faction): Rig {
-  return BUILDERS[id](palette(faction));
+  const rig = BUILDERS[id](palette(faction));
+  // thu / phóng đồng bộ theo UNIT_SCALE (rules.ts). Quân mặt đất: bọc cả mô hình trong một khung tỉ lệ, gốc vẫn để phần
+  // chiến trường đặt vị trí / thu nhỏ khi đậu. Drone và máy bay tự thu THÂN BAY trong droneRig / aircraftRig, vì độ cao bay
+  // và vật bám đất (vùng khiên) là số của sim, không được thu theo.
+  if (UNIT_SCALE !== 1 && UNITS[id].domain === "ground") {
+    const inner = group(...[...rig.root.children]);
+    inner.scale.setScalar(UNIT_SCALE);
+    rig.root.add(inner);
+  }
+  rig.radius *= UNIT_SCALE;
+  return rig;
 }

@@ -1,6 +1,6 @@
 /** Mô hình Xe Vận Tải (`hauler`). */
 import * as THREE from "three";
-import { UNITS } from "../../../sim/content";
+import { UNIT_SCALE, UNITS } from "../../../sim/content";
 import { approach, box, cyl, facets, group, part, sphere, tubeZ, wheel, type Palette, type Rig } from "../kit";
 import { vehicleRig } from "./ground";
 
@@ -29,7 +29,8 @@ const LIFT_MAX = 0.75;
  * cần vẫn trong đế: |mâm + tầm ngang × (sin θ, cos θ)| ≤ bodyR / S − chừa. Chia đôi vì hàm tăng dần trên [0, π].
  */
 const CRANE_SLEW = ((): number => {
-  const lim = UNITS.hauler.bodyR! / S - CRANE_MARGIN;
+  // bodyR trong UNITS đã nhân UNIT_SCALE, còn cả mô hình cũng được thu UNIT_SCALE ở buildUnit: chia lại để về số trong file
+  const lim = UNITS.hauler.bodyR! / UNIT_SCALE / S - CRANE_MARGIN;
   const reach = BOOM_L * Math.cos(LIFT_MIN);
   const r = (a: number): number => Math.hypot(CRANE_X + reach * Math.sin(a), CRANE_Z + reach * Math.cos(a));
   let lo = 0;

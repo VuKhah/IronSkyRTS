@@ -1,5 +1,6 @@
 /** Khung máy bay: cánh, càng thu, lửa động cơ, cất cánh / nghiêng cánh. Mọi máy bay dùng aircraftRig. */
 import * as THREE from "three";
+import { UNIT_SCALE } from "../../../sim/content";
 import { approach, box, group, part, partIfUnnamed, wheel, type Palette, type Rig, type RigAction } from "../kit";
 
 export function wingShape(points: [number, number][], thickness: number, mat: THREE.Material, mirror: boolean): THREE.Mesh {
@@ -45,10 +46,12 @@ export function aircraftRig(parts: AirParts, radius: number): Rig {
     const inner = group(...[...parts.frame.children]);
     inner.position.z = fit.dz;
     parts.frame.add(inner);
-    parts.frame.scale.setScalar(fit.scale);
   }
+  // thu theo đế (fit) và theo UNIT_SCALE (rules.ts); độ cao bay là của sim nên không thu
+  const k = (fit?.scale ?? 1) * UNIT_SCALE;
+  parts.frame.scale.setScalar(k);
   // càng đáp phóng theo mô hình nên độ cao đậu cũng phóng theo
-  const parkY = parts.parkY * (fit?.scale ?? 1);
+  const parkY = parts.parkY * k;
   const root = group(parts.frame);
   let alt = parkY;
   let gearT = 1;

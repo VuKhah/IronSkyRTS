@@ -192,7 +192,9 @@ describe("đội hình khi ra lệnh cho cả nhóm", () => {
     }
   });
 
-  it("qua cầu hẹp: đội hình co thành hàng một / hàng đôi, qua hết rồi giãn lại ở đích", () => {
+  // HỎNG ĐÃ BIẾT (16/11/2026, người dùng duyệt): từ UNIT_SCALE 0,8 hệ squad.ts cũ co hàng một rồi xếp ô chốt sang bờ bên kia
+  // sông. A1 viết lại đội hình ở đích (Docs/plans/2026-11-16-A1-doi-hinh-dich-lach-mem.md); sửa xong thì bỏ `.fails`.
+  it.fails("qua cầu hẹp: đội hình co thành hàng một / hàng đôi, qua hết rồi giãn lại ở đích", () => {
     // cầu trên Thung Lũng Sông Sắt: rộng 9 m, vuông góc dòng sông chạy chéo bản đồ
     const S = Math.SQRT1_2;
     const bx = -56 * S;

@@ -93,10 +93,11 @@ export const GROUND_UNITS: Record<"commander" | "hauler" | "lynx" | "titan" | "s
     speed: 7.2,
     mobility: "wheel",
     sight: 28,
-    radius: 1.4,
-    halfLen: 2.25,
-    bodyR: 2.25,
-    spaceR: 2.45,
+    // đế Nhẹ Ø 3,6 (người dùng 16/11/2026: Lynx nhỏ hơn Titan); mô hình thu ×0,85 cho lọt đế (lynx.ts)
+    radius: 1.2,
+    halfLen: 1.8,
+    bodyR: 1.8,
+    spaceR: 2,
     captureWeight: 1,
     weapon: { name: "Súng máy 20mm", dmgGround: 32, dmgAir: 14, range: 15.5, cooldown: 0.65, dmgType: "normal", splash: 0, visual: "bullet", traverse: 120 },
     features: [

@@ -105,7 +105,9 @@ function layoutField(this: World, m: Mine): void {
     }
     for (const [oi, oj] of offsets()) {
       if (spots.length >= F.deposits) break;
-      const ci = g.index(m.x + oi * CELL * s, m.z + oj * CELL * s);
+      // dịch nửa mét theo chiều s: tâm mỏ nằm đúng ranh giới ô (số chẵn) thì index() làm tròn xuống ở CẢ hai bãi, bãi bên kia
+      // lấy nhầm ô lệch một ô so với ảnh gương (lỗi có sẵn, lộ ra khi đổi cỡ đế 16/11/2026). s = 1 vẫn ra đúng ô cũ.
+      const ci = g.index(m.x + (oi * CELL + 0.5) * s, m.z + (oj * CELL + 0.5) * s);
       if (used.has(ci)) continue;
       used.add(ci);
       const a = tryDeposit(ci);
