@@ -163,7 +163,14 @@ export class Overlay {
         g.arc(x, y + 6, 9, Math.PI, 0);
         g.stroke();
         break;
-      case "XA": // chấm: hỏa lực gián tiếp
+      case "RT": // ba chấm thành hàng: rải thảm tầm trung (pháo phản lực)
+        for (const dx of [-6, 0, 6]) {
+          g.moveTo(x + dx + 2, y);
+          g.arc(x + dx, y, 2, 0, Math.PI * 2);
+        }
+        g.fill();
+        break;
+      case "XA": // chấm: hỏa lực gián tiếp tầm xa (pháo nòng)
         g.arc(x, y, 3.6, 0, Math.PI * 2);
         g.fill();
         break;

@@ -205,7 +205,8 @@ export const GROUND_UNITS: Record<"commander" | "hauler" | "lynx" | "titan" | "s
     hotkey: "G",
     role: "Dàn phóng tên lửa loạt: chọn một vùng, xe dựng dàn rồi xả cả loạt 24 quả. San phẳng cụm xe giáp mỏng và nhà xưởng.",
     domain: "ground",
-    group: "XA",
+    // rải thảm tầm trung: tầng riêng, đứng trước Pháo (người dùng 16/11/2026)
+    group: "RT",
     batch: 2,
     turnRate: 60,
     mvp: true,

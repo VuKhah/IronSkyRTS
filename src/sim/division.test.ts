@@ -107,6 +107,20 @@ describe("đúc và điều theo lô", () => {
   });
 });
 
+describe("Pháo và Tên Lửa Loạt là hai tầng khác nhau (người dùng 16/11/2026)", () => {
+  for (const f of Object.keys(FORMATIONS) as FormationId[])
+    it(`đội hình ${FORMATIONS[f].name}: Pháo đứng hàng riêng, sau hàng Tên Lửa Loạt`, () => {
+      const w = new World(1, { sandbox: true });
+      const us = group(w, ["titan", "titan", "rocket", "rocket", "artillery", "artillery"]);
+      go(w, us, 22, "move", f);
+      const sq: Squad = w.squads[0];
+      const back = (k: UnitId): number[] => sq.ids.map((id, i) => ((w.byId.get(id) as Unit).kind === k ? sq.offBack[i] : NaN)).filter((v) => !Number.isNaN(v));
+      const rocketMax = Math.max(...back("rocket"));
+      const artMin = Math.min(...back("artillery"));
+      expect(artMin, "Pháo lùi sau Tên Lửa Loạt ít nhất một hàng").toBeGreaterThan(rocketMax + 1);
+    });
+});
+
 describe("đội hình chỉ đọc mã phân nhóm", () => {
   it("đổi mã của một quân là đổi chỗ đứng của nó, không cần sửa luật", () => {
     const place = (): { titan: number; lynx: number } => {
