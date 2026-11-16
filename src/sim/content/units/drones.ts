@@ -1,0 +1,116 @@
+import type { UnitSpec } from "../types";
+
+/** Drone: luôn lơ lửng, đúc ở Xưởng Xe Chuyên Dụng. */
+export const DRONE_UNITS: Record<"scout" | "shield" | "repair", UnitSpec> = {
+  scout: {
+    id: "scout",
+    kind: "unit",
+    name: "Drone Trinh Sát",
+    short: "Drone TS",
+    code: "UAV",
+    hotkey: "D",
+    role: "Mắt thần tiền duyên, rẻ, đúc hàng loạt; khi cần thì lao cảm tử vào xe địch.",
+    domain: "air",
+    group: "KQ",
+    batch: 3,
+    mvp: true,
+    // số tạm (11/11/2026): giá rẻ, chờ buổi cân bằng
+    cost: { iron: 50, oil: 0 },
+    buildTime: 3,
+    builtAt: "special-factory",
+    hp: 90,
+    armorClass: "light",
+    speed: 15,
+    sight: 40,
+    radius: 1.3,
+    bodyR: 1.25,
+    spaceR: 1.875,
+    captureWeight: 0,
+    hover: { alt: 8, draw: 0 },
+    // 3 chiếc hạ vừa một Lynx (3 × 150 × 1,25 = 562 > 510), không hạ nổi Titan (3 × 150 × 0,6 = 270 < 960)
+    kamikaze: { dmg: 150, splash: 2.5, dmgType: "he" },
+    features: [
+      "Bay lơ lửng, nhìn xa 40 m: soi sương mù cho Pháo Tự Hành và Xe Tên Lửa Loạt bắn.",
+      "Không cất / hạ cánh, không cần Sân Đáp, không đốt Dầu: bay mãi không cần về nạp.",
+      "Cảm tử: ra lệnh tấn công một xe hay công trình địch thì lao vào nổ (3 chiếc hạ được một Lynx, không đủ hạ Titan).",
+      "Rất mỏng: một loạt của SkyGuard là rơi."
+    ],
+    beats: ["lynx", "hauler"],
+    fears: ["skyguard", "turret"]
+  },
+  shield: {
+    id: "shield",
+    kind: "unit",
+    name: "Drone Khiên",
+    short: "Drone Khiên",
+    code: "KHN",
+    hotkey: "K",
+    role: "Bay theo cụm quân, gặp nguy tự bật vòm khiên 12 m hứng đạn cho quân bên dưới trong 10 giây.",
+    domain: "air",
+    group: "KQ",
+    batch: 1,
+    mvp: true,
+    // số tạm (11/11/2026), chờ buổi cân bằng
+    cost: { iron: 200, oil: 40 },
+    buildTime: 8,
+    builtAt: "special-factory",
+    hp: 260,
+    armorClass: "light",
+    speed: 9,
+    sight: 22,
+    radius: 2.2,
+    bodyR: 2.25,
+    spaceR: 3.375,
+    captureWeight: 0,
+    hover: { alt: 6, draw: 6 },
+    energy: { max: 1000, charge: 50, low: 0.25 },
+    shield: { radius: 12, trigger: 150, fade: 1.5, minStart: 200, drain: 25, perDmg: 1, idleOff: 3 },
+    features: [
+      "Vòm khiên bán kính 12 m, ở lại tiền tuyến làm lớp giáp cho cả cụm quân.",
+      "Khó bị câu: chỉ bật khi quân bên dưới hứng hỏa lực thật (cộng dồn từ 150 sát thương trở lên), một phát lẻ không đủ.",
+      "Đang bật thì hứng trước mọi sát thương vào quân và công trình phe mình trong vùng; tốn năng lượng theo sát thương hứng và theo thời gian bật.",
+      "Hết bị bắn 3 giây thì tự tắt, giữ phần năng lượng còn lại cho lần sau.",
+      "Kho năng lượng 1000, không tự bay về nạp; nạp trong vùng lưới điện (sau này: đơn vị tiếp năng lượng chở tới). Sắp cạn thì hậu cần báo.",
+      "Không vũ khí, bay mãi không cần về nạp."
+    ],
+    beats: ["rocket", "artillery"],
+    fears: ["skyguard", "falcon"]
+  },
+  repair: {
+    id: "repair",
+    kind: "unit",
+    name: "Drone Sửa Chữa",
+    short: "Drone Sửa",
+    code: "SUA",
+    hotkey: "J",
+    role: "Bay theo mũi thọc sâu, hàn sửa xe tại trận; ưu tiên cứu Xe Tư Lệnh.",
+    domain: "air",
+    group: "KQ",
+    batch: 1,
+    mvp: true,
+    // số tạm (11/11/2026), chờ buổi cân bằng
+    cost: { iron: 120, oil: 20 },
+    buildTime: 6,
+    builtAt: "special-factory",
+    hp: 200,
+    armorClass: "light",
+    speed: 10,
+    sight: 20,
+    radius: 1.8,
+    bodyR: 1.75,
+    spaceR: 2.625,
+    captureWeight: 0,
+    hover: { alt: 5, draw: 4 },
+    energy: { max: 800, charge: 40, low: 0.25 },
+    repair: { radius: 10, rate: 30, perHp: 1 },
+    features: [
+      "Tia hàn sửa xe phe mình trong vùng 10 m, 30 máu mỗi giây, mỗi lúc một xe.",
+      "Ưu tiên Xe Tư Lệnh, rồi tới xe hỏng nặng nhất; không còn xe nào hỏng thì sửa công trình.",
+      "Kho năng lượng 800 (1 năng lượng mỗi điểm máu sửa), không tự bay về nạp; nạp trong vùng lưới điện (sau này: đơn vị tiếp năng lượng chở tới). Sắp cạn thì hậu cần báo.",
+      "Máu mỏng, không vũ khí: để sau tuyến giáp.",
+      "Bay mãi không cần về nạp, không cất / hạ cánh."
+    ],
+    beats: [],
+    fears: ["skyguard", "falcon", "lynx"]
+  }
+};
