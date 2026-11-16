@@ -2,7 +2,7 @@
 import { BUILDINGS, doorDir, lotTime, RULES, UNITS, type Side } from "../content";
 import { dist2 } from "../fmath";
 import type { Building } from "../types";
-import { DT, sec, FORMATION_GAP } from "./shared";
+import { DT, sec, FORMATION_GAP, spaceRadius } from "./shared";
 import { World } from "./core";
 
 
@@ -189,7 +189,7 @@ function produce(this: World, b: Building): void {
   const lot = this.nextId++;
   const ids: number[] = [];
   for (let k = 0; k < us.batch; k++) {
-  const offset = (k - (us.batch - 1) / 2) * (2 * us.radius + FORMATION_GAP);
+  const offset = (k - (us.batch - 1) / 2) * (2 * (us.domain === "air" ? us.radius : spaceRadius(kind)) + FORMATION_GAP);
   if (us.domain === "air" && !us.hover) {
     // Nhà Máy Máy Bay: cả lô ra đời trong cùng tick này và giữ chỗ bãi đậu ngay (đã kiểm đủ bãi cho cả lô ở trên), nên hai
     // xưởng không bao giờ tranh một bãi. Có giếng phóng (`pads` + `launch`): chiếc k dùng giếng k mod số giếng, chiếc dùng

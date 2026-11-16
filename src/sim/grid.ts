@@ -75,6 +75,8 @@ export class Grid {
    */
   private clear: Float32Array;
   private clearDirty = true;
+  /** Nhãn vùng liên thông theo từng nửa bề ngang xe (xem `regions`); xóa khi bảng khoảng trống tính lại. */
+  private regionCache = new Map<number, Int32Array>();
   private nearX: Int16Array;
   private nearZ: Int16Array;
   private fields = new Map<string, SpeedField>();
@@ -294,6 +296,7 @@ export class Grid {
   clearance(): Float32Array {
     if (!this.clearDirty) return this.clear;
     this.clearDirty = false;
+    this.regionCache.clear();
     const C = this.cols;
     const R = this.rows;
     const d2 = new Float64Array(this.size).fill(Infinity);
@@ -485,6 +488,83 @@ export class Grid {
   }
 
   /**
+   * Nhãn vùng liên thông cho xe nửa bề ngang `half` (16/11/2026): ô không bị chặn, khoảng trống ≥ half, loang 8 hướng không cắt
+   * góc (đúng luật đi của `findPath`); −1 = ô xe không đứng được. Tính một lần cho mỗi cỡ, tính lại khi bản đồ chiếm chỗ đổi.
+   * Dùng để trả "không có đường" ngay, thay vì A* quét hết bản đồ mới biết (đế tròn làm lộ nhiều đích không tới được: bãi mỏ
+   * trên bậc núi hẹp, lối 4 m; đo two-crossings 38 ms/tick, 83% thời gian ở A* thất bại).
+   */
+  private regions(half: number): Int32Array {
+    const clr = this.clearance();
+    let lab = this.regionCache.get(half);
+    if (lab) return lab;
+    const C = this.cols;
+    const R = this.rows;
+    lab = new Int32Array(this.size).fill(-2);
+    const q: number[] = [];
+    let next = 0;
+    for (let i = 0; i < this.size; i++) {
+      if (lab[i] !== -2) continue;
+      if (this.blockedIdx(i) || clr[i] < half) {
+        lab[i] = -1;
+        continue;
+      }
+      const id = next++;
+      lab[i] = id;
+      q.length = 0;
+      q.push(i);
+      while (q.length) {
+        const cur = q.pop() as number;
+        const cx = cur % C;
+        const cz = (cur - cx) / C;
+        for (const [dx, dz] of NEIGHBORS) {
+          const nx = cx + dx;
+          const nz = cz + dz;
+          if (nx < 0 || nz < 0 || nx >= C || nz >= R) continue;
+          const ni = nz * C + nx;
+          if (lab[ni] !== -2) continue;
+          if (this.blockedIdx(ni) || clr[ni] < half) continue;
+          if (dx !== 0 && dz !== 0 && (this.blockedIdx(cz * C + nx) || this.blockedIdx(nz * C + cx))) continue;
+          lab[ni] = id;
+          q.push(ni);
+        }
+      }
+    }
+    this.regionCache.set(half, lab);
+    return lab;
+  }
+
+  /**
+   * Xe nửa bề ngang `half` từ ô s có thể tới ô t không (kiểm nhanh trước A*). A* cho đi qua ô hẹp trong 2 ô quanh chỗ đứng và
+   * 1 ô quanh đích, nên lấy mọi nhãn trong 3 ô quanh s và 2 ô quanh t: không chung nhãn nào thì A* chắc chắn thất bại. Hai ô
+   * gần nhau (vùng ngoại lệ chạm nhau) thì không kết luận.
+   */
+  private mayReach(s: number, t: number, half: number): boolean {
+    const C = this.cols;
+    const sx = s % C;
+    const sz = (s - sx) / C;
+    const tx = t % C;
+    const tz = (t - tx) / C;
+    if (Math.max(Math.abs(sx - tx), Math.abs(sz - tz)) <= 6) return true;
+    const lab = this.regions(half);
+    const near = (cx: number, cz: number, r: number, out: number[]): void => {
+      for (let dz = -r; dz <= r; dz++)
+        for (let dx = -r; dx <= r; dx++) {
+          const x = cx + dx;
+          const z = cz + dz;
+          if (x < 0 || z < 0 || x >= C || z >= this.rows) continue;
+          const l = lab[z * C + x];
+          if (l >= 0 && !out.includes(l)) out.push(l);
+        }
+    };
+    const a: number[] = [];
+    const b: number[] = [];
+    near(sx, sz, 3, a);
+    near(tx, tz, 2, b);
+    for (const l of a) if (b.includes(l)) return true;
+    return false;
+  }
+
+  /**
    * Tìm đường từ (x0, z0) tới (x1, z1). Trả về dãy điểm [x, z, x, z, …] (không gồm điểm xuất phát),
    * hoặc null nếu không có đường. Đích bị chặn thì đi tới ô trống gần đích nhất.
    * `f`: hệ số tốc độ theo ô của kiểu xe (field()): có thì tìm đường nhanh nhất, không có thì đường ngắn nhất.
@@ -531,6 +611,8 @@ export class Grid {
       if (f.kMax <= 1 && this.minSpeedAlong(f, x0, z0, gx, gz) >= need) return [gx, gz];
     }
 
+    // đích nằm ở vùng xe cỡ này không thông tới: khỏi quét A*
+    if (clr && !this.mayReach(s, t, half)) return null;
     this.gen++;
     const gen = this.gen;
     this.heapSize = 0;

@@ -4,21 +4,19 @@ import { assignMin } from "../assign";
 import { clamp, dcos, DEG, dist2, turnStep, turnToward } from "../fmath";
 import { CELL } from "../maps";
 import type { Squad, Target, Unit } from "../types";
-import { DT, sec, BODY_W, BODY_L, FORMATION_GAP, SQUAD_CATCHUP, AIR_FORMATION_GAP, SQUAD_RESHAPE_EXTRA, SQUAD_MIN_TURN_R, SQUAD_PIVOT_COS, PIVOT_COS, ALIGNED_COS, SQUAD_LAG, SQUAD_LOOK, SQUAD_FAR, SQUAD_FORM_MAX, SQUAD_DIRECT, SQUAD_SETTLE_MAX, SQUAD_PIVOT_MAX, SQUAD_WIDEN_CHECKS, SHIFT_OFFSETS, SLOT_NUDGE, TMP, traverseStep } from "./shared";
+import { DT, sec, bodyRadius, spaceRadius, FORMATION_GAP, SQUAD_CATCHUP, AIR_FORMATION_GAP, SQUAD_RESHAPE_EXTRA, SQUAD_MIN_TURN_R, SQUAD_PIVOT_COS, PIVOT_COS, ALIGNED_COS, SQUAD_LAG, SQUAD_LOOK, SQUAD_FAR, SQUAD_FORM_MAX, SQUAD_DIRECT, SQUAD_SETTLE_MAX, SQUAD_PIVOT_MAX, SQUAD_WIDEN_CHECKS, SHIFT_OFFSETS, SLOT_NUDGE, TMP, traverseStep } from "./shared";
 import { World } from "./core";
 
-/** Ô đội hình phải có khoảng trống ≥ bán kính xe × chừng này (cùng cỡ điểm dò thân `bodyContact`). */
+/** Ô đội hình phải có khoảng trống ≥ bán kính thân × chừng này (cùng vòng với điểm dò thân `bodyContact`, WALL_PROBE). */
 const SLOT_BODY = 0.95;
 /** Đội xoay tại chỗ: hướng đội chỉ quay tiếp khi mọi thân xe lệch hướng đội dưới 10°. */
 const PIVOT_SYNC_COS = dcos(10 * DEG);
 /** Độ dạt ngang thử khi chốt hình đội ở đích (m), thứ tự cố định: giữa trước, rồi lệch dần hai bên. */
 const SETTLE_SHIFTS = [0, 2, -2, 4, -4, 6, -6, 8, -8, 10, -10];
 
-/** Bán kính vòng quét khi xe xoay tại chỗ: nửa đường chéo thân × SLOT_BODY. */
+/** Bán kính vòng quét khi xe xoay tại chỗ: đế tròn nên đúng bằng bán kính thân (16/11/2026; trước đó nửa đường chéo thân). */
 function turnRadius(u: Unit): number {
-  const s = UNITS[u.kind];
-  const L = Math.max(s.halfLen ?? s.radius, s.radius);
-  return Math.sqrt(L * L + s.radius * s.radius) * SLOT_BODY;
+  return bodyRadius(u.kind) * SLOT_BODY;
 }
 
 /**
@@ -29,16 +27,11 @@ function turnRadius(u: Unit): number {
  * (10 Titan thành cột dài 76 m thay vì hàng đôi 26 m).
  */
 function colSpacing(kinds: Iterable<Unit["kind"]>, wide = true): number {
+  // đế tròn (16/11/2026): xoay tại chỗ không quét rộng hơn vòng thân, nên khoảng rộng chỉ cần thêm khe FORMATION_GAP; khoảng
+  // hẹp (đội co hàng qua chỗ hẹp) là hai vòng giãn sát nhau
   let r = 0;
-  let d = 0;
-  for (const k of kinds) {
-    const s = UNITS[k];
-    const w = s.radius * BODY_W;
-    const l = Math.max(s.halfLen ?? s.radius, s.radius) * BODY_L;
-    r = Math.max(r, s.radius);
-    d = Math.max(d, Math.sqrt(w * w + l * l));
-  }
-  return wide ? Math.max(2 * r + FORMATION_GAP, 2 * d) : 2 * r + FORMATION_GAP;
+  for (const k of kinds) r = Math.max(r, spaceRadius(k));
+  return wide ? 2 * r + FORMATION_GAP : 2 * r;
 }
 
 /**
@@ -208,10 +201,10 @@ function formation(this: World, units: readonly Unit[], x: number, z: number): {
     if (!row || row.length >= cols || rank(row[0]) !== rank(u)) rows.push([u]);
     else row.push(u);
   }
-  // nửa chiều dài lớn nhất trong hàng (hai hàng cách theo chiều dài thân, như `squadLayout`)
+  // vòng giãn lớn nhất trong hàng (hai hàng cách tổng hai vòng giãn + khe, như `squadLayout`)
   const lMax = (row: Unit[]): number => {
     let l = 0;
-    for (const u of row) l = Math.max(l, UNITS[u.kind].halfLen ?? 0, UNITS[u.kind].radius);
+    for (const u of row) l = Math.max(l, spaceRadius(u.kind));
     return l;
   };
   // vị trí từng hàng theo chiều sâu (hàng đầu = 0, lùi dần), rồi dời cho tâm khối nằm ở đích
@@ -556,7 +549,7 @@ function squadAdopt(this: World, sq: Squad, hx: number, hz: number): void {
       sq.offBack.push(front - fwd(u));
       minL = Math.min(minL, lat(u));
       maxL = Math.max(maxL, lat(u));
-      rMax = Math.max(rMax, UNITS[u.kind].radius);
+      rMax = Math.max(rMax, bodyRadius(u.kind));
     }
   });
   sq.cols = cols;
@@ -643,17 +636,14 @@ function squadLayout(this: World, sq: Squad): void {
   });
   const rMax = (row: number[]): number => {
     let r = 0;
-    for (const i of row) r = Math.max(r, UNITS[unit(sq.ids[i]).kind].radius);
+    for (const i of row) r = Math.max(r, bodyRadius(unit(sq.ids[i]).kind));
     return r;
   };
-  // nửa chiều dài thân lớn nhất trong hàng: hai hàng liền nhau cách theo CHIỀU DÀI thân (người dùng 12/11/2026: xếp theo bán
-  // kính thì hai hàng Titan lồng nhau 2,4 m dọc thân, Pháo 3,6 m), hai xe cạnh nhau trong hàng cách theo bề ngang
+  // vòng giãn lớn nhất trong hàng: hai hàng liền nhau cách tổng hai vòng giãn + khe (đế tròn 16/11/2026; trước đó theo chiều
+  // dài thân chữ nhật, người dùng 12/11/2026: theo bán kính cũ thì hai hàng Titan lồng nhau 2,4 m dọc thân)
   const lMax = (row: number[]): number => {
     let l = 0;
-    for (const i of row) {
-      const s = UNITS[unit(sq.ids[i]).kind];
-      l = Math.max(l, s.halfLen ?? s.radius, s.radius);
-    }
+    for (const i of row) l = Math.max(l, spaceRadius(unit(sq.ids[i]).kind));
     return l;
   };
   sq.offLat = new Array<number>(sq.ids.length).fill(0);
@@ -699,7 +689,7 @@ function squadFlanks(this: World, sq: Squad, flank: readonly number[], rows: rea
     from = to = 0;
   }
   let r = 0;
-  for (const i of flank) r = Math.max(r, UNITS[(this.byId.get(sq.ids[i]) as Unit).kind].radius);
+  for (const i of flank) r = Math.max(r, spaceRadius((this.byId.get(sq.ids[i]) as Unit).kind));
   const lat = halfW + sq.rMax + r + FORMATION_GAP;
   const perSide = Math.ceil(flank.length / 2);
   flank.forEach((i, k) => {

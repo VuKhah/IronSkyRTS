@@ -206,15 +206,20 @@ export interface UnitSpec {
   radius: number;
   /**
    * Nửa chiều dài thân xe mặt đất (m), đo theo mô hình (`npm run model-report`). Thân xe dài hơn bán kính va chạm nhiều (Titan
-   * rộng 3,6 m nhưng dài 6,5 m): sim giữ mũi / đuôi xe khỏi lấn vào vách theo số này. Bỏ trống = bằng `radius`.
+   * rộng 3,6 m nhưng dài 6,5 m). Từ 16/11/2026 va chạm và dò vách theo đế tròn `bodyR`; số này chỉ còn cho phần vẽ / thân cũ.
+   * Bỏ trống = bằng `radius`.
    */
   halfLen?: number;
   /**
    * Bán kính đế thân (m): mô hình nằm gọn trong vòng này ở mọi góc xoay tháp, kể cả nòng (Docs/design/UNIT_BASES_PLAN.md).
-   * Kiểm bằng `npm run model-report` và `src/render/models/bases.test.ts`. Sim chưa dùng (bước 1 của kế hoạch đế).
+   * Kiểm bằng `npm run model-report` và `src/render/models/bases.test.ts`. Sim dùng cho dò vách và tìm đường của quân mặt đất
+   * (`bodyRadius` trong world/shared.ts, từ 16/11/2026).
    */
   bodyR?: number;
-  /** Bán kính vùng giãn (m): khoảng tối thiểu với quân cùng lớp; mặt đất = bodyR + 0,2; trên không = 1,5 × bodyR (người dùng 15/11). Sim chưa dùng. */
+  /**
+   * Bán kính vùng giãn (m): khoảng tối thiểu với quân cùng lớp; mặt đất = bodyR + 0,2; trên không = 1,5 × bodyR (người dùng
+   * 15/11). Sim dùng cho va chạm xe–xe và ORCA mặt đất (`spaceRadius`, từ 16/11/2026); trên không chưa dùng.
+   */
   spaceR?: number;
   /** Độ cao đặt thanh máu trên quân (m), chỉ dùng cho phần vẽ. Bỏ trống = theo cỡ thường. */
   barHeight?: number;

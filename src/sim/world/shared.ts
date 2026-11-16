@@ -1,5 +1,5 @@
 /** Hằng số và hàm phụ dùng chung cho các phần của World (tách từ world.ts). */
-import { PAD_OFFSETS, RULES, type WeaponVisual } from "../content";
+import { BUILDINGS, PAD_OFFSETS, RULES, UNITS, type WeaponVisual } from "../content";
 import { dcos, DEG, dsin, TAU, turnStep, type TurnStep } from "../fmath";
 import { CELL, GameMap } from "../maps";
 import type { SideState } from "../types";
@@ -29,9 +29,24 @@ export const SALVAGE_RETRIES = 5;
 
 /** Đội hình: khe hở giữa hai thân xe cạnh nhau (m). Hình dạng từng kiểu đội hình nằm ở `FORMATIONS` trong content.ts. */
 export const FORMATION_GAP = 1.4;
-/** Thân xe để tính va chạm: nửa bề ngang = bán kính × BODY_W, nửa chiều dài = halfLen × BODY_L (thùng / giáp hơi tròn góc). */
-export const BODY_W = 0.85;
-export const BODY_L = 0.9;
+/**
+ * VA CHẠM THEO ĐẾ TRÒN (bước 1 kế hoạch đế, 16/11/2026; Docs/design/UNIT_BASES_PLAN.md). Mô hình đã nằm gọn trong vòng `bodyR`
+ * ở mọi góc xoay, nên thân xe là một vòng tròn: xoay tại chỗ không bao giờ quệt, hướng đẩy luôn theo đường nối hai tâm (không
+ * nhảy cạnh như hình chữ nhật). Quân chưa khai đế (Xe Tư Lệnh) dùng `radius`.
+ */
+export function bodyRadius(kind: keyof typeof UNITS): number {
+  const s = UNITS[kind];
+  return s.bodyR ?? s.radius;
+}
+/** Khe mỗi bên giữa hai thân mặt đất (m): vùng giãn = thân + chừng này (người dùng chốt 15/11/2026). */
+export const SPACE_GAP = 0.2;
+/** Bán kính vùng giãn (m): hai quân mặt đất giữ tâm cách nhau ≥ tổng hai số này (khe giữa hai thân 0,4 m). */
+export function spaceRadius(kind: keyof typeof UNITS): number {
+  const s = UNITS[kind];
+  return s.spaceR ?? bodyRadius(kind) + SPACE_GAP;
+}
+/** cos 30° = √3 / 2: lục giác đều có cạnh đối diện cách tâm a (trung đoạn) thì đỉnh cách tâm a / cos 30°. */
+export const HEX_COS30 = 0.8660254037844386;
 /** Xe chậm hơn tốc độ khối được chạy nhanh hơn khối một chút để còn đuổi kịp ô của mình. */
 export const SQUAD_CATCHUP = 1.08;
 /** Khoảng cách giữa hai máy bay cạnh nhau trong đội hình mũi tên (m). */
@@ -72,10 +87,14 @@ export const EXIT_D = 2;
 export const EXIT_ESCAPE = 12;
 export const EXIT_ROOM = 300;
 export const N4: readonly (readonly [number, number])[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-/** Ô đỗ dỡ hàng của Xe Vận Tải: số ô mỗi cạnh Tổng Hành Dinh, khoảng cách giữa hai ô (m), tâm ô cách mép nhà (m). */
+/**
+ * Ô đỗ dỡ hàng của Xe Vận Tải: số ô mỗi cạnh Tổng Hành Dinh, khoảng cách giữa hai ô (m), tâm ô cách mép nhà (m). Đế tròn
+ * (16/11/2026): hai ô cạnh nhau cách đúng hai vòng giãn (trước 3,2 m, hai xe đỗ cạnh nhau sẽ xô nhau), và ô đầu hàng của hai
+ * cạnh kề nhau ở góc nhà cũng phải cách chừng đó: (nửa cạnh nhà + DOCK_OUT − DOCK_GAP) × √2 ≥ DOCK_GAP.
+ */
 export const DOCK_PER_SIDE = 3;
-export const DOCK_GAP = 3.2;
-export const DOCK_OUT = 2.6;
+export const DOCK_GAP = 2 * spaceRadius("hauler");
+export const DOCK_OUT = Math.max(2.6, DOCK_GAP * 0.7071067811865476 + DOCK_GAP - BUILDINGS.hq.half[0] + 0.1);
 /** Đội hình hành quân: bán kính quay nhỏ nhất của người dẫn đầu (m) khi đội hình hẹp (một hai xe mỗi hàng). */
 export const SQUAD_MIN_TURN_R = 3;
 /** Hướng đội hình lệch hướng đi mới quá góc này thì cả đội xoay tại chỗ trước rồi mới hành quân. */

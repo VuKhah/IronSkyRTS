@@ -390,7 +390,9 @@ describe("lõi mô phỏng", () => {
     const c = w.commanderOf(0)!;
     const hq = w.hqOf(0)!;
     const cmds: Command[] = [];
-    for (let i = 0; i < 3; i++) cmds.push({ side: 1, order: { t: "sbSpawn", kind: "lynx", side: 1, x: 6 + i * 3, z: -6, gx: -10, gz: 10, go: "amove" } });
+    // Lynx thả ở bãi trống (16/11/2026, đế tròn Ø 4,5 m): thả ở (6, −6) thì Lynx đứng bắn chắn khe đá, hai xe sau kẹt (xe đứng
+    // chưa in lên lưới tìm đường, bước 2 kế hoạch đế); bài này chỉ kiểm việc rút lui
+    for (let i = 0; i < 3; i++) cmds.push({ side: 1, order: { t: "sbSpawn", kind: "lynx", side: 1, x: -30 + i * 5, z: -2, gx: -10, gz: 10, go: "amove" } });
     w.step(cmds);
     let retreatAt = -1;
     let retreats = 0;

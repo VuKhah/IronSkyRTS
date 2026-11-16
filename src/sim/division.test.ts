@@ -97,7 +97,7 @@ describe("đúc và điều theo lô", () => {
     go(w, us, 30);
     const sq: Squad = w.squads[0];
     // mỗi xe có ít nhất một xe cùng lô ngay bên cạnh (kể cả lô vắt qua hai hàng)
-    const reach = (2 * UNITS.lynx.radius + 1.4) * 1.5;
+    const reach = (2 * UNITS.lynx.spaceR! + 1.4) * 1.5;
     sq.ids.forEach((id, i) => {
       const lot = (w.byId.get(id) as Unit).lot;
       const near = sq.ids.some((o, j) => j !== i && (w.byId.get(o) as Unit).lot === lot && Math.sqrt((sq.offLat[i] - sq.offLat[j]) ** 2 + (sq.offBack[i] - sq.offBack[j]) ** 2) <= reach);

@@ -2,11 +2,11 @@
  * Bãi tài nguyên (người dùng 12/11/2026: mỏ không còn là một khối mà là một bãi, nhiều điểm tiếp xúc hơn): bố trí các khối
  * quặng / giếng Dầu và chỗ đỗ Xe Vận Tải quanh tâm mỏ, theo địa hình thật (bậc núi hẹp thì bãi tự xếp thành dãy).
  */
-import { RULES, UNITS } from "../content";
+import { RULES } from "../content";
 import { CELL } from "../maps";
 import type { Mine, MineSpot, Unit } from "../types";
 import { World } from "./core";
-import { R2 } from "./shared";
+import { bodyRadius, R2, spaceRadius } from "./shared";
 
 /** 8 hướng đỗ (cos, sin viết sẵn: sim không gọi Math.cos). */
 const DIRS8: readonly (readonly [number, number])[] = [
@@ -26,30 +26,25 @@ function offsets(): readonly (readonly [number, number])[] {
   return (OFFSETS = out);
 }
 
-/** Khoảng cách từ tâm khối tới tâm chỗ đỗ theo hướng (ux, uz) (m): tới mép ô theo hướng đó + nửa thân xe + khe `gap`. */
+/** Khoảng cách từ tâm khối tới tâm chỗ đỗ theo hướng (ux, uz) (m): tới mép ô theo hướng đó + bán kính đế xe + khe `gap`. */
 function parkOffset(ux: number, uz: number): number {
   const edge = (CELL / 2) / Math.max(ux < 0 ? -ux : ux, uz < 0 ? -uz : uz);
-  return edge + (UNITS.hauler.halfLen ?? UNITS.hauler.radius) + RULES.field.gap;
+  return edge + bodyRadius("hauler") + RULES.field.gap;
 }
 
-/** Hai xe đỗ (tâm, hướng) có chồng thân không (hình chữ nhật thân thật + `pad` m mỗi bên, phép tách trục). */
+/**
+ * Hai xe đỗ có chồng đế không: đế tròn (16/11/2026), hai tâm phải cách nhau ít nhất hai vòng giãn (luật va chạm `separate`,
+ * không thì hai xe đang lấy hàng xô nhau) và hai thân + `pad` m mỗi bên.
+ */
 function parkedOverlap(a: MineSpot, b: MineSpot, pad: number): boolean {
-  const W = UNITS.hauler.radius + pad;
-  const L = (UNITS.hauler.halfLen ?? UNITS.hauler.radius) + pad;
-  const dx = b.px - a.px;
-  const dz = b.pz - a.pz;
-  for (const [ux, uz] of [[a.fx, a.fz], [a.fz, -a.fx], [b.fx, b.fz], [b.fz, -b.fx]]) {
-    const ra = L * Math.abs(a.fx * ux + a.fz * uz) + W * Math.abs(a.fz * ux - a.fx * uz);
-    const rb = L * Math.abs(b.fx * ux + b.fz * uz) + W * Math.abs(b.fz * ux - b.fx * uz);
-    if (Math.abs(dx * ux + dz * uz) >= ra + rb) return false;
-  }
-  return true;
+  const r = Math.max(spaceRadius("hauler"), bodyRadius("hauler") + pad / 2);
+  return (b.px - a.px) * (b.px - a.px) + (b.pz - a.pz) * (b.pz - a.pz) < 4 * r * r;
 }
 
 /**
  * Bố trí bãi của mỏ `m`. Khối quặng / giếng: ô trong bán kính `spread` m quanh tâm, cùng tầng với tâm, không trên dốc / vùng
- * quanh dốc, không bị chặn, cách các khối khác ≥ `minGap` m. Mỗi khối một chỗ đỗ: thử 8 hướng, hướng quay ra ngoài bãi trước;
- * hợp lệ khi chỗ đỗ cùng tầng, thân Xe Vận Tải đỗ ở đó (mũi vào khối) không chạm vật cản nào, không chồng thân xe đỗ chỗ khác,
+ * quanh dốc, không bị chặn, cách các khối khác ≥ `minGap` m. Mỗi khối một chỗ đỗ: thử 8 hướng, hướng quay ra ngoài bãi trước
+ * (bãi thiếu `minDeposits` khối thì xếp lại, cho đỗ cả hướng vào trong); hợp lệ khi chỗ đỗ cùng tầng, thân Xe Vận Tải đỗ ở đó (mũi vào khối) không chạm vật cản nào, không chồng thân xe đỗ chỗ khác,
  * và khối mới không đè lên thân xe đỗ chỗ đã chọn. Chọn tham lam theo thứ tự cố định, tối đa `deposits` chỗ. Bãi ở nửa bản đồ
  * bên kia (đối xứng qua tâm) lật ngược mọi độ lệch và hướng, nên hai bãi đối xứng có bố trí đối xứng (luật công bằng số 4).
  * Đặt `spots`, `slots` (toàn 0), `cells` (đã chặn trên lưới), `radius`.
@@ -65,6 +60,8 @@ function layoutField(this: World, m: Mine): void {
   const spots: MineSpot[] = [];
   const cells: number[] = [];
   const used = new Set<number>();
+  // lượt đầu chỉ đỗ quay ra ngoài bãi; thiếu khối (bậc núi hẹp, đế tròn Ø 4,5 m từ 16/11/2026) thì xếp lại, cho đỗ cả phía trong
+  let inward = false;
   /** Khối ở ô `ci` với chỗ đỗ hợp lệ (đã tạm chặn ô ci trên lưới khi trả về khác null; null thì không chặn gì). */
   const tryDeposit = (ci: number): MineSpot | null => {
     const x = g.centerX(ci % C);
@@ -82,7 +79,7 @@ function layoutField(this: World, m: Mine): void {
     const oz = z - m.z;
     const order = DIRS8.map((d, k) => [k, d[0] * s * ox + d[1] * s * oz] as const).sort((a, b) => b[1] - a[1] || a[0] - b[0]);
     for (const [k, out] of order) {
-      if (out < -1e-9 && (ox !== 0 || oz !== 0)) break; // không đỗ phía trong bãi
+      if (out < -1e-9 && (ox !== 0 || oz !== 0) && !inward) break; // không đỗ phía trong bãi
       const ux = DIRS8[k][0] * s;
       const uz = DIRS8[k][1] * s;
       const off = parkOffset(ux, uz);
@@ -97,31 +94,41 @@ function layoutField(this: World, m: Mine): void {
     g.block([ci], -1);
     return null;
   };
-  for (const [oi, oj] of offsets()) {
-    if (spots.length >= F.deposits) break;
-    const ci = g.index(m.x + oi * CELL * s, m.z + oj * CELL * s);
-    if (used.has(ci)) continue;
-    used.add(ci);
-    const a = tryDeposit(ci);
-    if (!a) continue;
-    if (!self) {
+  for (let pass = 0; pass < 2; pass++) {
+    if (pass === 1) {
+      if (spots.length >= F.minDeposits) break;
+      g.block(cells, -1);
+      spots.length = 0;
+      cells.length = 0;
+      used.clear();
+      inward = true;
+    }
+    for (const [oi, oj] of offsets()) {
+      if (spots.length >= F.deposits) break;
+      const ci = g.index(m.x + oi * CELL * s, m.z + oj * CELL * s);
+      if (used.has(ci)) continue;
+      used.add(ci);
+      const a = tryDeposit(ci);
+      if (!a) continue;
+      if (!self) {
+        spots.push(a);
+        cells.push(ci);
+        continue;
+      }
+      // bãi ở tâm: ảnh xoay 180° của khối này cũng phải đặt được, với chỗ đỗ đúng là ảnh xoay của chỗ đỗ này
+      const cj = g.index(-a.x, -a.z);
+      used.add(cj);
       spots.push(a);
-      cells.push(ci);
-      continue;
+      const b = spots.length < F.deposits ? tryDeposit(cj) : null;
+      if (!b || b.px !== -a.px || b.pz !== -a.pz) {
+        spots.pop();
+        if (b) g.block([cj], -1);
+        g.block([ci], -1);
+        continue;
+      }
+      spots.push(b);
+      cells.push(ci, cj);
     }
-    // bãi ở tâm: ảnh xoay 180° của khối này cũng phải đặt được, với chỗ đỗ đúng là ảnh xoay của chỗ đỗ này
-    const cj = g.index(-a.x, -a.z);
-    used.add(cj);
-    spots.push(a);
-    const b = spots.length < F.deposits ? tryDeposit(cj) : null;
-    if (!b || b.px !== -a.px || b.pz !== -a.pz) {
-      spots.pop();
-      if (b) g.block([cj], -1);
-      g.block([ci], -1);
-      continue;
-    }
-    spots.push(b);
-    cells.push(ci, cj);
   }
   // ô trống bị các khối vây kín bên trong bãi (không thông ra ngoài) cũng là bãi: chặn luôn, không thì thành "đảo" không xe nào
   // tới được và xe bị đẩy vào đó thì kẹt
@@ -129,7 +136,7 @@ function layoutField(this: World, m: Mine): void {
   m.spots = spots;
   m.slots = spots.map(() => 0);
   m.cells = cells;
-  const L = UNITS.hauler.halfLen ?? UNITS.hauler.radius;
+  const L = bodyRadius("hauler");
   m.radius = spots.reduce((r, p) => Math.max(r, Math.sqrt((p.px - m.x) * (p.px - m.x) + (p.pz - m.z) * (p.pz - m.z)) + L), CELL);
 }
 
