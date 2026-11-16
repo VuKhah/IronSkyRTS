@@ -19,10 +19,10 @@
  * nhớ nên không làm lộ nhà địch trong sương mù.
  */
 import * as THREE from "three";
-import { BUILDINGS, doorDir } from "../sim/content";
-import { CELL, type GameMap } from "../sim/maps";
-import type { Building } from "../sim/types";
-import { dirToCenter, type World } from "../sim/world";
+import { BUILDINGS, doorDir } from "../../sim/content";
+import { CELL, type GameMap } from "../../sim/maps";
+import type { Building } from "../../sim/types";
+import { dirToCenter, type World } from "../../sim/world";
 
 /** Mặt đường nổi trên mặt đất bao nhiêu (m): đủ để không bị cỏ xuyên qua, đủ thấp để không thấy là một tấm ván. */
 const LIFT = 0.05;

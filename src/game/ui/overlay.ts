@@ -2,11 +2,11 @@
  * Lớp vẽ 2D phủ lên cảnh 3D: thanh máu, thanh dầu máy bay, vòng tiến độ chiếm mỏ,
  * khung quét chọn và đường tới điểm tập kết. Vẽ bằng canvas 2D cho nét và rẻ.
  */
-import { BUILDINGS, canStrike, RULES, UNITS, type GroupCode, type Side } from "../sim/content";
-import type { Unit } from "../sim/types";
-import type { World } from "../sim/world";
-import type { RtsCamera } from "./camera";
-import { Views } from "./views";
+import { BUILDINGS, canStrike, RULES, UNITS, type GroupCode, type Side } from "../../sim/content";
+import type { Unit } from "../../sim/types";
+import type { World } from "../../sim/world";
+import type { RtsCamera } from "../camera/camera";
+import { Views } from "../scene/views";
 
 const SIDE_COLOR = ["#3ea8ff", "#ff4d4d"];
 

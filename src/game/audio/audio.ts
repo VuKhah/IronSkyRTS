@@ -3,7 +3,7 @@
  * Tiếng súng = một nhát nhiễu trắng qua bộ lọc; tiếng pháo = sóng sin trầm trượt xuống + nhiễu;
  * tiếng nổ = nhiễu qua bộ lọc thấp tắt dần. Trình duyệt chỉ cho phát âm thanh sau cú chạm đầu tiên (unlock).
  */
-import type { WeaponVisual } from "../sim/content";
+import type { WeaponVisual } from "../../sim/content";
 
 export type UiSound = "click" | "ack" | "error" | "alert" | "build" | "ready" | "win" | "lose" | "rank" | "salvage" | "incoming" | "horn";
 

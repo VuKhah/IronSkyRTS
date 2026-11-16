@@ -4,7 +4,7 @@
  * cửa đi ra như dòng chảy, nên chỉ nhìn là biết xe sẽ chạy ra phía nào. Chỉ để nhìn, không có trong sim.
  */
 import * as THREE from "three";
-import type { GameMap } from "../sim/maps";
+import type { GameMap } from "../../sim/maps";
 
 /** Khoảng cách giữa hai mũi (m) và chu kỳ một lượt sáng (giây). */
 const STEP = 1.6;

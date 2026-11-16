@@ -3,10 +3,10 @@
  * Không ảnh hưởng tới trận đấu nên được dùng Math.random thoải mái.
  */
 import * as THREE from "three";
-import type { WeaponVisual } from "../sim/content";
-import type { GameMap } from "../sim/maps";
-import type { SimEvent } from "../sim/types";
-import { DT, type World } from "../sim/world";
+import type { WeaponVisual } from "../../sim/content";
+import type { GameMap } from "../../sim/maps";
+import type { SimEvent } from "../../sim/types";
+import { DT, type World } from "../../sim/world";
 
 interface Particle {
   mesh: THREE.Mesh;

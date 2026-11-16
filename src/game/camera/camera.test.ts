@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getMap } from "../sim/maps";
+import { getMap } from "../../sim/maps";
 import { RtsCamera } from "./camera";
 
 function rig(id: string): RtsCamera {

@@ -3,11 +3,11 @@
  * Bảng lệnh chỉ dựng lại khi NGỮ CẢNH đổi (chọn thứ khác); còn số liệu (máu, tiền, hàng chờ)
  * được cập nhật tại chỗ — dựng lại nút liên tục sẽ làm hỏng cú chạm đang bấm dở trên điện thoại.
  */
-import { BUILDINGS, canStrike, FORMATIONS, lotCost, lotTime, MVP_BUILDABLE, RES_NAME, RULES, SIDE_NAME, UNITS, type BuildingId, type FormationId, type Side, type UnitId } from "../sim/content";
-import { TERRAIN } from "../sim/maps";
-import type { Building, Mine, Unit } from "../sim/types";
-import { sec, TICK_RATE } from "../sim/world";
-import type { Match } from "./match";
+import { BUILDINGS, canStrike, FORMATIONS, lotCost, lotTime, MVP_BUILDABLE, RES_NAME, RULES, SIDE_NAME, UNITS, type BuildingId, type FormationId, type Side, type UnitId } from "../../sim/content";
+import { TERRAIN } from "../../sim/maps";
+import type { Building, Mine, Unit } from "../../sim/types";
+import { sec, TICK_RATE } from "../../sim/world";
+import type { Match } from "../match";
 
 export type PanelCtx =
   | { t: "none" }

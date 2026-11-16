@@ -3,8 +3,8 @@
  * tự có thẻ ở menu. Lựa chọn nhớ trong localStorage (chỉ là tiện ích cho người xem; mất thì về mặc định), `?map=` / `&side=`
  * trên link thắng lựa chọn đã nhớ.
  */
-import type { Side } from "../sim/content";
-import { DEV_MAP_DEFS, getMap, MAP_DEFS, MENU_MAP_ID, type GameMap } from "../sim/maps";
+import type { Side } from "../../sim/content";
+import { DEV_MAP_DEFS, getMap, MAP_DEFS, MENU_MAP_ID, type GameMap } from "../../sim/maps";
 import { paintTerrain, RES_COLOR, SIDE_COLOR } from "./minimap";
 
 const KEY = "ironsky.pick";

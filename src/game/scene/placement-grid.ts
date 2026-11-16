@@ -5,7 +5,7 @@
  * để Tư lệnh thấy trước đất nào bị cấm (người dùng 10/11/2026). Chỉ là phần vẽ, sim không biết tới.
  */
 import * as THREE from "three";
-import { CELL, type GameMap } from "../sim/maps";
+import { CELL, type GameMap } from "../../sim/maps";
 
 /** Lưới lan ra quanh khối ô bao nhiêu ô, ô ngoài cùng mờ hẳn. */
 const MARGIN = 8;

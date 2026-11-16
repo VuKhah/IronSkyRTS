@@ -7,20 +7,20 @@
  * Trên máy tính: nhấp trái để chọn, nhấp phải để ra lệnh. Trên điện thoại: chạm đất khi đang chọn quân là ra lệnh đi.
  */
 import * as THREE from "three";
-import { ExitArrows } from "./exit-arrows";
-import { strategicMarks } from "./overlay";
-import { BUILDINGS, canStrike, DEFAULT_FORMATION, defaultRot, doorDir, FACTION_OF, rotHalf, RES_NAME, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
-import type { Building, Entity, Mine, Order, Unit, Wreck } from "../sim/types";
-import { buildModel, disposeRig, type Rig } from "../render/models";
-import type { Sfx } from "./audio";
-import type { RtsCamera } from "./camera";
-import type { Fx } from "./fx";
-import type { Hud, Mode, PanelCtx } from "./hud";
+import { ExitArrows } from "../scene/exit-arrows";
+import { strategicMarks } from "../ui/overlay";
+import { BUILDINGS, canStrike, DEFAULT_FORMATION, defaultRot, doorDir, FACTION_OF, rotHalf, RES_NAME, UNITS, type BuildingId, type Side, type UnitId } from "../../sim/content";
+import type { Building, Entity, Mine, Order, Unit, Wreck } from "../../sim/types";
+import { buildModel, disposeRig, type Rig } from "../../render/models";
+import type { Sfx } from "../audio/audio";
+import type { RtsCamera } from "../camera/camera";
+import type { Fx } from "../scene/fx";
+import type { Hud, Mode, PanelCtx } from "../ui/hud";
 import type { GestureHandlers, TapInfo } from "./input";
-import type { Match } from "./match";
-import { Views } from "./views";
-import { PlacementGrid } from "./placement-grid";
-import { CELL } from "../sim/maps";
+import type { Match } from "../match";
+import { Views } from "../scene/views";
+import { PlacementGrid } from "../scene/placement-grid";
+import { CELL } from "../../sim/maps";
 
 /** Dải tường kéo một lần dài tối đa bấy nhiêu ô. */
 const STRIP_MAX = 40;

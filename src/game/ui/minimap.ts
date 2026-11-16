@@ -3,12 +3,12 @@
  * Góc xoay cố định theo phe: Lam 0°, Đỏ 180° (nhà mình luôn ở góc dưới trái). Khung có tỉ lệ của bản đồ.
  * Chạm / nhấp để đưa camera tới đó; chuột phải để ra lệnh di chuyển cho quân đang chọn.
  */
-import { rotHalf, type Side } from "../sim/content";
-import { TERRAIN, type GameMap, type TerrainKind } from "../sim/maps";
+import { rotHalf, type Side } from "../../sim/content";
+import { TERRAIN, type GameMap, type TerrainKind } from "../../sim/maps";
 
 /** Loại địa hình do bản đồ tô được hiện màu riêng trên minimap (độ đậm). */
 const TINT: Partial<Record<TerrainKind, number>> = { road: 0.85, sand: 0.8, mud: 0.85, snow: 0.9, forest: 0.8 };
-import type { World } from "../sim/world";
+import type { World } from "../../sim/world";
 
 export const SIDE_COLOR = ["#3ea8ff", "#ff4d4d"];
 export const RES_COLOR = { iron: "#8fc7f5", oil: "#d17af2" };

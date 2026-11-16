@@ -9,10 +9,10 @@ import { BUILDINGS, SIDE_NAME, UNITS, type BuildingId, type Side, type UnitId } 
 import { ARENA_CENTER, arenaPoint, formation, SCENARIOS, ScenarioRun } from "../sim/scenarios";
 import type { Order } from "../sim/types";
 import { TICK_RATE } from "../sim/world";
-import type { RtsCamera } from "./camera";
-import type { Controller } from "./controller";
-import type { Fx } from "./fx";
-import type { Hud } from "./hud";
+import type { RtsCamera } from "./camera/camera";
+import type { Controller } from "./input/controller";
+import type { Fx } from "./scene/fx";
+import type { Hud } from "./ui/hud";
 import type { Match } from "./match";
 
 type Tool = { t: "spawn"; kind: UnitId | BuildingId } | { t: "remove" } | { t: "heal" } | null;

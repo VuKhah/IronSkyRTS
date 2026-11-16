@@ -3,7 +3,7 @@
  * xoay quanh trục đứng (`yaw`) và nghiêng (`pitch`, giới hạn 30°–75° để trận luôn dễ đọc).
  */
 import * as THREE from "three";
-import type { GameMap } from "../sim/maps";
+import type { GameMap } from "../../sim/maps";
 
 const clamp = (v: number, a: number, b: number): number => (v < a ? a : v > b ? b : v);
 /** Số điểm ảnh mỗi mét: lớn hơn PPM_NEAR là chiến trường 3D, nhỏ hơn PPM_FAR là bản đồ giấy, ở giữa thì chuyển dần. */

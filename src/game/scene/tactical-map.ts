@@ -7,7 +7,7 @@
  * lên cảnh 3D mà không bị địa hình nhô lên che mất.
  */
 import * as THREE from "three";
-import { colName, mapRuler, type GameMap, type Vec2 } from "../sim/maps";
+import { colName, mapRuler, type GameMap, type Vec2 } from "../../sim/maps";
 
 const TEX = 2048;
 /** Lề ngoài bản đồ, tính theo tỉ lệ cạnh dài (chỗ ghi chữ cái, số lưới). */

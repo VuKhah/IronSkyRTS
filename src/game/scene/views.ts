@@ -7,17 +7,17 @@
 import * as THREE from "three";
 import { ExitArrows } from "./exit-arrows";
 import { Paving } from "./paving";
-import { sec } from "../sim/world";
-import { BUILDINGS, doorDir, FACTION_OF, PARK_GROW_ALT, parkScale, RULES, rotOffset, UNITS, type Side, lotTime } from "../sim/content";
-import type { GameMap } from "../sim/maps";
-import type { Building, Mine, Target, Unit, Uplink, Wreck } from "../sim/types";
-import { AIRBORNE_ALT, DT, type World } from "../sim/world";
-import { CELL, RAMP_LEN, TIER_H } from "../sim/maps";
+import { sec } from "../../sim/world";
+import { BUILDINGS, doorDir, FACTION_OF, PARK_GROW_ALT, parkScale, RULES, rotOffset, UNITS, type Side, lotTime } from "../../sim/content";
+import type { GameMap } from "../../sim/maps";
+import type { Building, Mine, Target, Unit, Uplink, Wreck } from "../../sim/types";
+import { AIRBORNE_ALT, DT, type World } from "../../sim/world";
+import { CELL, RAMP_LEN, TIER_H } from "../../sim/maps";
 
 /** 4 hướng ô bên cạnh (tường nối hình). */
 const DIRS4: readonly [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-import { buildField, buildModel, disposeRig, type NodeRig, type Rig } from "../render/models";
-import { bakeObject, bakeStatic } from "../render/models/bake";
+import { buildField, buildModel, disposeRig, type NodeRig, type Rig } from "../../render/models";
+import { bakeObject, bakeStatic } from "../../render/models/bake";
 
 const wrap = (a: number): number => {
   a = (a + Math.PI) % (Math.PI * 2);

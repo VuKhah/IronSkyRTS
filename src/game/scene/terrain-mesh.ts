@@ -11,7 +11,7 @@
  * Chỉ để vẽ, không ảnh hưởng luật.
  */
 import * as THREE from "three";
-import { CELL, mapRuler, TERRAIN, type GameMap, type TerrainKind } from "../sim/maps";
+import { CELL, mapRuler, TERRAIN, type GameMap, type TerrainKind } from "../../sim/maps";
 
 /** Điểm ảnh texture màu mặt đất trên mỗi mét. */
 const TEX_PER_M = 1;
