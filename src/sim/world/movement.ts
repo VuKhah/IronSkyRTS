@@ -3,6 +3,7 @@ import { RULES, UNITS } from "../content";
 import { dcos, DEG, dist2, dsin, TAU, turnToward } from "../fmath";
 import { orcaLine, orcaSolve, type OrcaLine } from "../orca";
 import type { Target, Unit } from "../types";
+import type { StandLayer } from "../grid";
 import { DT, sec, bodyRadius, spaceRadius, HEX_COS30, MOVER_SHARE, WALL_PUSH, GOAL_SHIFT, PIVOT_COS, ALIGNED_COS, TMP, traverseStep } from "./shared";
 import { World } from "./core";
 
@@ -48,6 +49,18 @@ const PROBE_STEP = 1;
 const WALL_PROBE = 0.95;
 /** Số lần đẩy ra khỏi vật cản tối đa trong một tick (× WALL_PUSH m). */
 const STATIC_ITERS = 6;
+
+/** Đứng yên từ chừng này giây thì xe là vật cản khi xe cùng phe tìm đường (bước 2 kế hoạch đế). */
+const STAND_AFTER = 1;
+/** Lớp xe đứng chỉ in trong chừng này mét ngoài vòng giãn (xa hơn thì không ảnh hưởng A*: nửa thân lớn nhất 3,8 + dư 3 m). */
+const STAND_REACH = 7;
+/** Xe đi đường còn dài hơn chừng này (m) thì tìm lại đường mỗi REPLAN_EVERY giây (xe đứng chắn đường có thể đã đi, hoặc mới đứng). */
+const REPLAN_MIN = 12;
+const REPLAN_EVERY = 2;
+/** Kiểm chừng này đoạn đường phía trước xem có xe đứng chắn không (chỉ tìm lại khi bị chắn). */
+const REPLAN_LOOK = 3;
+/** Lớp xe đứng dựng lại sau chừng này tick (0,5 s; xe đứng từ 1 s mới là vật cản nên trễ chừng này không đáng kể). */
+const STAND_REBUILD = 5;
 
 /** Bán kính thân khi tìm / nối tắt đường (cùng vòng với điểm dò thân `bodyContact`); máy bay: 0,7 m như cũ. */
 function pathHalf(u: Unit): number {
@@ -158,6 +171,59 @@ function halt(this: World, u: Unit): void {
   u.pathI = 0;
 }
 
+/**
+ * Lớp xe đứng của phe `side` cho tick này (dựng lười, một lần mỗi tick mỗi phe): mọi quân mặt đất cùng phe đã đứng yên từ
+ * STAND_AFTER giây hoặc đã hạ bệ, in khoảng cách từ tâm từng ô tới vòng giãn của chúng (quân hạ bệ: vòng ngoại tiếp lục giác)
+ * trong STAND_REACH m. Chỉ xe cùng phe (như ORCA): không tránh trước xe địch, không lộ xe địch trong sương mù.
+ */
+function standLayer(this: World, side: 0 | 1): [Float32Array, Int32Array] {
+  const g = this.grid;
+  let clear = this.standClear[side];
+  let owner = this.standOwner[side];
+  if (!clear || !owner) {
+    clear = this.standClear[side] = new Float32Array(g.size);
+    owner = this.standOwner[side] = new Int32Array(g.size);
+    this.standTick[side] = -1;
+  }
+  if (this.standTick[side] >= 0 && this.tick - this.standTick[side] < STAND_REBUILD) return [clear, owner];
+  this.standTick[side] = this.tick;
+  clear.fill(Infinity);
+  owner.fill(-1);
+  const still = sec(STAND_AFTER);
+  for (const v of this.units) {
+    if (v.side !== side || v.hp <= 0 || v.air !== "none") continue;
+    const anch = this.anchored(v);
+    if (!anch && v.still < still) continue;
+    const r = anch ? spaceRadius(v.kind) / HEX_COS30 : spaceRadius(v.kind);
+    const R = r + STAND_REACH;
+    const c0 = g.colOf(v.x - R, v.z);
+    const c1 = g.colOf(v.x + R, v.z);
+    const r0 = g.rowOf(v.x, v.z - R);
+    const r1 = g.rowOf(v.x, v.z + R);
+    for (let cz = r0; cz <= r1; cz++)
+      for (let cx = c0; cx <= c1; cx++) {
+        const dx = g.centerX(cx) - v.x;
+        const dz = g.centerZ(cz) - v.z;
+        const d = Math.sqrt(dx * dx + dz * dz) - r;
+        if (d > STAND_REACH) continue;
+        const i = cz * g.cols + cx;
+        // bằng nhau thì giữ xe mã nhỏ (thứ tự duyệt cố định), không phụ thuộc phe
+        if (d < clear[i]) {
+          clear[i] = d;
+          owner[i] = v.id;
+        }
+      }
+  }
+  return [clear, owner];
+}
+
+/** Lớp xe đứng cho xe u tự tìm đường (bỏ qua thân chính nó); máy bay không dùng. */
+function standFor(this: World, u: Unit): StandLayer | null {
+  if (u.air !== "none") return null;
+  const [clear, owner] = this.standLayer(u.side);
+  return { clear, owner, self: u.id };
+}
+
 function setPath(this: World, u: Unit, x: number, z: number): boolean {
   // tìm đường nhanh nhất theo kiểu xe (bánh / xích) và địa hình (B3b)
   const spec = UNITS[u.kind];
@@ -165,8 +231,14 @@ function setPath(this: World, u: Unit, x: number, z: number): boolean {
   // Tìm theo bảng khoảng trống của lưới cho đúng bề ngang xe (`findPath` với half): không qua lối hẹp hơn thân, ô càng sát vật
   // cản (vách, nhà, khối quặng) càng tính như chậm nên đường đi giữa lối, đoạn nối tắt chừa đủ nửa bề ngang thân. Trước
   // 12/11/2026 đường men sát vách từng ô và nối tắt sát góc: thân xe quẹt mép dốc rồi mũi quay vào vách (dốc B7)
-  const p = this.grid.findPath(u.x, u.z, x, z, this.grid.field(spec.mobility ?? "wheel", !!spec.slowResist), pathHalf(u));
+  // BƯỚC 2 (16/11/2026): xe cùng phe đang đứng / hạ bệ là vật cản (lớp `standLayer`): xe tìm đường VÒNG qua chúng như Art of
+  // War 3, không lao vào rồi đẩy / lách. Đích bị xe đứng vây kín (A* duyệt quá STAND_SEARCH_MAX ô) thì tìm lại như cũ, bỏ lớp này
+  const field = this.grid.field(spec.mobility ?? "wheel", !!spec.slowResist);
+  const st = this.standFor(u);
+  let p = st ? this.grid.findPath(u.x, u.z, x, z, field, pathHalf(u), st) : null;
+  if (!p) p = this.grid.findPath(u.x, u.z, x, z, field, pathHalf(u));
   u.path = p ?? [];
+  u.replanAt = this.tick + sec(REPLAN_EVERY);
   u.pathI = 0;
   u.stuck = 0;
   return p !== null;
@@ -324,6 +396,37 @@ function follow(this: World, u: Unit): boolean {
     u.packing = true;
     return false;
   }
+  // TÌM LẠI KHI BỊ CHẮN (bước 2): đường còn dài thì mỗi REPLAN_EVERY giây xem REPLAN_LOOK đoạn phía trước có xe cùng phe mới
+  // đứng chắn không; có thì tìm lại theo lớp xe đứng. Không bị chắn thì giữ đường (tìm lại vô cớ từ giữa đường làm xe bánh rời
+  // đường cái sớm: so thời gian trên lưới 8 hướng có sai số). Tìm không ra thì giữ đường cũ
+  if (this.tick >= u.replanAt && u.path.length >= 2) {
+    const ex = u.path[u.path.length - 2];
+    const ez = u.path[u.path.length - 1];
+    u.replanAt = this.tick + sec(REPLAN_EVERY);
+    const st = this.standFor(u);
+    let blocked = false;
+    if (st && dist2(u.x, u.z, ex, ez) > REPLAN_MIN * REPLAN_MIN) {
+      let ax = u.x;
+      let az = u.z;
+      for (let k = u.pathI; k * 2 < u.path.length && k < u.pathI + REPLAN_LOOK && !blocked; k++) {
+        const bx = u.path[k * 2];
+        const bz = u.path[k * 2 + 1];
+        if (!this.grid.los(ax, az, bx, bz, pathHalf(u), st) && this.grid.los(ax, az, bx, bz, pathHalf(u))) blocked = true;
+        ax = bx;
+        az = bz;
+      }
+    }
+    if (blocked) {
+      const old = u.path;
+      const oi = u.pathI;
+      const s = u.stuck;
+      if (!this.setPath(u, ex, ez)) {
+        u.path = old;
+        u.pathI = oi;
+      }
+      u.stuck = s;
+    }
+  }
   // Điểm qua giữa đường có BÁN KÍNH CHẤP NHẬN: tới gần trong WAYPOINT_R và từ đây nhìn thẳng được (bằng cả thân xe) tới điểm
   // kế tiếp thì coi như đã qua. Không thì hai xe cùng nhắm đúng một điểm (chân dốc: đường "hành lang" của mọi xe qua cùng
   // một ô) đẩy nhau chia đôi rồi quay vòng quanh điểm đó mãi.
@@ -335,7 +438,8 @@ function follow(this: World, u: Unit): boolean {
     const nx = u.path[u.pathI * 2 + 2];
     const nz = u.path[u.pathI * 2 + 3];
     if (dist2(u.x, u.z, wx, wz) > WAYPOINT_R * WAYPOINT_R) break;
-    if (!this.grid.los(u.x, u.z, nx, nz, pathHalf(u))) break;
+    // nối tắt cũng không được cắt sát xe cùng phe đang đứng (đường A* vừa đi vòng qua chúng)
+    if (!this.grid.los(u.x, u.z, nx, nz, pathHalf(u), this.standFor(u) ?? undefined)) break;
     const f = this.grid.field(spec.mobility ?? "wheel", !!spec.slowResist);
     const need = Math.min(f.k[this.grid.index(wx, wz)], f.k[this.grid.index(nx, nz)]);
     if (this.grid.minSpeedAlong(f, u.x, u.z, nx, nz) < need) break;
@@ -744,7 +848,7 @@ function anchored(this: World, u: Unit): boolean {
   return !!dep && u.still >= sec(dep.time);
 }
 
-const methods = { turnHull, stepToward, setIdle, halt, setPath, bodyContact, wallNormal, clearGoal, tryMove, terrainFactor, moveFactor, follow, chase, separate, keepOffWalls, anchored, steer, orcaPass, brakeNear };
+const methods = { standLayer, standFor, turnHull, stepToward, setIdle, halt, setPath, bodyContact, wallNormal, clearGoal, tryMove, terrainFactor, moveFactor, follow, chase, separate, keepOffWalls, anchored, steer, orcaPass, brakeNear };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

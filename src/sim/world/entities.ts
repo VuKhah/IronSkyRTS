@@ -51,6 +51,7 @@ function spawnUnit(this: World, kind: UnitId, side: Side, x: number, z: number):
     path: [],
     pathI: 0,
     repathAt: 0,
+    replanAt: 0,
     stuck: 0,
     moved: false,
     avX: 0,

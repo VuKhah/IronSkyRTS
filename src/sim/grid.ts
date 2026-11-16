@@ -28,6 +28,21 @@ export interface SpeedField {
   kMax: number;
 }
 
+/**
+ * Lớp vật cản ĐỘNG (bước 2 kế hoạch đế, 16/11/2026): xe cùng phe đang đứng / hạ bệ, do World dựng mỗi tick (`World.standLayer`).
+ * `clear[i]` = khoảng cách (m) từ tâm ô i tới vòng giãn của xe đứng gần nhất (Infinity = không có xe nào trong tầm in),
+ * `owner[i]` = mã xe đó. `self` = mã xe đang tìm đường: ô mà xe gần nhất là chính nó thì bỏ qua lớp này (thân của chính mình
+ * không chắn đường mình). A* và `los` coi `clear` như khoảng trống tĩnh: ô có min(khoảng trống, clear) < nửa bề ngang là chặn.
+ */
+export interface StandLayer {
+  clear: Float32Array;
+  owner: Int32Array;
+  self: number;
+}
+
+/** A* có lớp xe đứng mà duyệt quá chừng này ô thì thôi (đích bị xe đứng vây kín): người gọi tìm lại không có lớp này. */
+export const STAND_SEARCH_MAX = 4000;
+
 const NEIGHBORS: readonly (readonly [number, number, number])[] = [
   [1, 0, 1],
   [-1, 0, 1],
@@ -432,11 +447,12 @@ export class Grid {
    * ±0,7 m cho mọi xe, nên đường kéo thẳng sát góc vách, thân Titan (nửa ngang 1,9 m) quẹt vào mép dốc, trượt dọc mép mà mũi
    * cứ quay vào vách. Dò theo các đường song song cách nhau không quá 0,7 m (không lọt qua vách mỏng).
    */
-  los(x0: number, z0: number, x1: number, z1: number, half = 0.7): boolean {
+  los(x0: number, z0: number, x1: number, z1: number, half = 0.7, stand?: StandLayer): boolean {
     const dx = x1 - x0;
     const dz = z1 - z0;
     const d = Math.sqrt(dx * dx + dz * dz);
     if (d < 1e-6) return !this.blockedAt(x0, z0);
+    if (stand && !this.standClear(x0, z0, x1, z1, half, stand)) return false;
     const steps = Math.ceil(d / (CELL * 0.35));
     const lanes = Math.max(1, Math.ceil(half / 0.7));
     const px = -dz / d;
@@ -450,6 +466,23 @@ export class Grid {
         const o = (half * l) / lanes;
         if (this.blockedAt(x + px * o, z + pz * o) || this.blockedAt(x - px * o, z - pz * o)) return false;
       }
+    }
+    return true;
+  }
+
+  /** Đoạn A → B không đi quá sát xe đứng nào (lớp `stand`, trừ chính xe tìm đường): mỗi ô dọc đoạn có clear ≥ half. */
+  private standClear(x0: number, z0: number, x1: number, z1: number, half: number, st: StandLayer): boolean {
+    const dx = x1 - x0;
+    const dz = z1 - z0;
+    const d = Math.sqrt(dx * dx + dz * dz);
+    const steps = Math.ceil(d / (CELL * 0.5));
+    for (let i = 0; i <= steps; i++) {
+      const k = i / steps;
+      const x = x0 + dx * k;
+      const z = z0 + dz * k;
+      if (x <= -this.halfW || x >= this.halfW || z <= -this.halfH || z >= this.halfH) continue;
+      const c = this.index(x, z);
+      if (st.clear[c] < half && st.owner[c] !== st.self) return false;
     }
     return true;
   }
@@ -570,7 +603,7 @@ export class Grid {
    * `f`: hệ số tốc độ theo ô của kiểu xe (field()): có thì tìm đường nhanh nhất, không có thì đường ngắn nhất.
    * `half`: nửa bề ngang của xe, cho bước kéo thẳng (xem `los`): đoạn nối tắt phải chừa đủ chỗ cho cả thân xe.
    */
-  findPath(x0: number, z0: number, x1: number, z1: number, f?: SpeedField, half = 0.7): number[] | null {
+  findPath(x0: number, z0: number, x1: number, z1: number, f?: SpeedField, half = 0.7, stand?: StandLayer): number[] | null {
     // chiều của bài toán: bài toán soi gương (−A → −B) luôn rơi vào chiều kia và xét 8 hướng theo thứ tự soi gương
     const flip = canonPair(x0, z0, x1, z1) ? 1 : -1;
     let s = this.index(x0, z0);
@@ -604,7 +637,7 @@ export class Grid {
     if (s === t) return [gx, gz];
     // Đi thẳng luôn nếu đường thẳng đi được và không băng qua ô chậm hơn hai đầu (và cỏ). Bản đồ có ô nhanh hơn cỏ
     // (đường cái) thì vẫn tìm, vì vòng theo đường có thể nhanh hơn; tìm xong sẽ so với đi thẳng (dưới).
-    const straight = this.los(x0, z0, gx, gz, half);
+    const straight = this.los(x0, z0, gx, gz, half, stand);
     if (straight) {
       if (!f) return [gx, gz];
       const need = Math.min(1, f.k[s], f.k[t]);
@@ -633,10 +666,15 @@ export class Grid {
     this.openGen[s] = gen;
     this.push(s, h(s));
     let found = false;
+    let expanded = 0;
+    const SC = stand?.clear;
+    const SO = stand?.owner;
+    const self = stand?.self ?? -1;
     while (this.heapSize > 0) {
       const cur = this.pop();
       if (this.closedGen[cur] === gen) continue;
       this.closedGen[cur] = gen;
+      if (SC && ++expanded > STAND_SEARCH_MAX) return null;
       if (cur === t) {
         found = true;
         break;
@@ -657,7 +695,9 @@ export class Grid {
         // ô càng sát vật cản càng tính như chậm hơn ("hành lang": đường đi giữa lối, không men sát vách / nhà)
         let corr = 1;
         if (clr) {
-          const m = clr[ni] - half;
+          // xe đứng cùng phe (lớp động) tính như vật cản tĩnh: ô quá sát là chặn, ô gần thì chậm (đường chừa khoảng với xe đứng)
+          const c = SC && SO![ni] !== self && SC[ni] < clr[ni] ? SC[ni] : clr[ni];
+          const m = c - half;
           if (m < 0 && Math.max(Math.abs(nx - (s % C)), Math.abs(nz - Math.floor(s / C))) > 2 && Math.max(Math.abs(nx - tx), Math.abs(nz - tz)) > 1) continue;
           corr = m < 1 ? 0.4 : m < 2 ? 0.6 : m < 3 ? 0.85 : 1;
         }
@@ -693,7 +733,7 @@ export class Grid {
       // dải rộng bằng thân xe (đã thử hạ dần độ rộng ở lối hẹp: đường lại sát góc, quẹt vách nhiều gấp 6; zíc zắc theo ô còn
       // đỡ hơn)
       for (let k = Math.min(n - 1, i + 14); k > i; k--) {
-        if (!this.los(ax, az, pts[k * 2], pts[k * 2 + 1], half)) continue;
+        if (!this.los(ax, az, pts[k * 2], pts[k * 2 + 1], half, stand)) continue;
         if (K) {
           let spanMin = K[this.index(ax, az)];
           for (let q = i; q <= k; q++) spanMin = Math.min(spanMin, K[cells[q + 1]]);

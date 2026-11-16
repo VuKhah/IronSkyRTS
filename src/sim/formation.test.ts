@@ -260,7 +260,7 @@ describe("xoay thân xe tại chỗ (turnRate)", () => {
 });
 
 describe("quân đã hạ bệ không bị xô (người dùng 10/11/2026)", () => {
-  it("Lynx chạy xuyên qua chỗ SkyGuard đã hạ bệ: SkyGuard đứng yên tuyệt đối, Lynx lách qua và tới nơi", () => {
+  it("Lynx được lệnh đi xuyên qua chỗ SkyGuard đã hạ bệ: SkyGuard đứng yên tuyệt đối, Lynx đi vòng và tới nơi", () => {
     const w = new World(1, { sandbox: true });
     const [cx, cz] = arenaPoint(0);
     const sg = spawn(w, "skyguard", cx, cz);
@@ -276,7 +276,8 @@ describe("quân đã hạ bệ không bị xô (người dùng 10/11/2026)", () 
       if (d < UNITS.lynx.spaceR! + UNITS.skyguard.spaceR! / 0.8660254037844386) touched = true;
       expect([sg.x, sg.z]).toEqual([sx, sz]);
     }
-    expect(touched).toBe(true); // phép thử có ý nghĩa: hai xe thật sự chạm nhau
+    // từ 16/11/2026 (bước 2 kế hoạch đế) quân hạ bệ là vật cản khi tìm đường: Lynx đi vòng, không vào vùng chạm
+    expect(touched).toBe(false);
     expect(lx.order).toBe("idle");
     expect(Math.sqrt((lx.x - cx - 10) ** 2 + (lx.z - cz) ** 2)).toBeLessThan(3);
   });

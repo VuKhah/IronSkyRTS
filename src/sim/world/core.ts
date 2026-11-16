@@ -25,6 +25,10 @@ export class World {
   readonly grid: Grid;
   /** Bảng ô đỗ dỡ hàng quanh Tổng Hành Dinh (tính một lần, xem `dockSlots`). */
   docks: (readonly [number, number, number, number])[] | null = null;
+  /** Lớp xe đứng của từng phe (xem `standLayer`), dựng lười mỗi tick: tick dựng gần nhất và hai mảng của mỗi phe. */
+  standTick: [number, number] = [-1, -1];
+  standClear: (Float32Array | null)[] = [null, null];
+  standOwner: (Int32Array | null)[] = [null, null];
   /** Độ cao mặt đất ở tâm từng ô lưới (m), tính một lần lúc tạo trận (địa hình không đổi). */
   /** Vật che tầm nhìn đứng trên mặt đất từng ô (m): rừng cao 4 m, còn lại 0 (TERRAIN.losHeight). */
   readonly cellLos: Float64Array;

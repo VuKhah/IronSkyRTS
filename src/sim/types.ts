@@ -68,6 +68,8 @@ export interface Unit {
   path: number[];
   pathI: number;
   repathAt: number;
+  /** Tick tìm lại đường định kỳ tiếp theo khi đi đường dài (`follow`, bước 2 kế hoạch đế: xe đứng chắn đường thay đổi). */
+  replanAt: number;
   stuck: number;
   moved: boolean;
   /**
