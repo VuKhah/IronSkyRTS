@@ -11,6 +11,8 @@
  */
 import { DEFAULT_TERRAIN, type TerrainKind } from "./terrain";
 import type { Blob, CrossingDef, MapDef, MineDef, RampDef, RampDir, RegionDef, RiverDef, TierDef, Vec2 } from "./types";
+import { ACCEL_EPS, nearestOn, pointInPoly, polyBox, polyInset, segDist, type Box, type RiverHit, type Segment } from "./geometry";
+import { mirrorDef } from "./mirror";
 
 /** Cạnh ô lưới (m): tìm đường, sương mù, độ cao trong sim đều theo lưới này. */
 export const CELL = 2;
@@ -57,8 +59,6 @@ const DECK = 0.45;
 const BUCKET = 16;
 /** Nửa đường chéo khoang, làm tròn lên. */
 const BUCKET_R = BUCKET * 0.7072;
-/** Dư thêm cho sai số làm tròn số thực. */
-const ACCEL_EPS = 1e-6;
 /** Tầm ảnh hưởng xa nhất của dòng sông mà các câu hỏi nhanh quan tâm, tính từ bờ (m). */
 const RIVER_REACH = 0.5;
 
@@ -69,31 +69,11 @@ interface Accel {
   river: Segment[][][];
 }
 
-/** Hộp bao của vùng tô đa giác: x0, z0, x1, z1. */
-type Box = readonly [number, number, number, number];
-
-interface Segment {
-  ax: number;
-  az: number;
-  /** Hướng đơn vị và độ dài đoạn. */
-  dx: number;
-  dz: number;
-  len: number;
-  /** Độ dài dọc sông tính tới đầu đoạn này. */
-  cum: number;
-}
-
 interface River {
   def: RiverDef;
   segs: Segment[];
   /** Vị trí dọc sông của từng lối qua. */
   cross: { along: number; def: CrossingDef }[];
-}
-
-/** Khoảng cách tới dòng sông và vị trí dọc sông của điểm gần nhất. */
-interface RiverHit {
-  dist: number;
-  along: number;
 }
 
 /** Khối dốc đã bám lưới: hình chữ nhật [x0, x1] × [z0, z1], tầng chân dốc `low`. */
@@ -663,150 +643,4 @@ function mirrorRamp(r: Ramp): Ramp {
 /** Điểm thuộc "nửa thứ nhất" của bản đồ (giống Grid): z > 0, hoặc z = 0 và x < 0. */
 function canonPoint(x: number, z: number): boolean {
   return z > 0 || (z === 0 && x < 0);
-}
-
-// ------------------------------------------------------------------ bộ vẽ tự đối xứng
-
-const EPS = 1e-9;
-const atCenter = (x: number, z: number): boolean => Math.abs(x) < EPS && Math.abs(z) < EPS;
-const flip = ([x, z]: Vec2): Vec2 => [-x, -z];
-/** Mỗi phần tử kèm bản xoay 180° ngay sau nó (giữ thứ tự khai báo); phần tử nằm đúng tâm không nhân đôi. */
-function withTwins<T extends { x: number; z: number }>(list: readonly T[], twin: (e: T) => T): T[] {
-  const out: T[] = [];
-  for (const e of list) {
-    out.push(e);
-    if (!atCenter(e.x, e.z)) out.push(twin(e));
-  }
-  return out;
-}
-
-/** Sông tự đối xứng: xoay 180° rồi đảo chiều thì trùng chính nó (ví dụ sông chảy qua tâm theo đường thẳng). */
-function selfSymmetric(path: readonly Vec2[]): boolean {
-  const n = path.length;
-  for (let i = 0; i < n; i++) {
-    const [x, z] = path[i];
-    const [mx, mz] = path[n - 1 - i];
-    if (Math.abs(x + mx) > EPS || Math.abs(z + mz) > EPS) return false;
-  }
-  return true;
-}
-
-/**
- * Dựng đủ bản đồ từ một nửa (MapDef.symmetric): mọi thứ được thêm bản xoay 180° quanh tâm, (x, z) → (-x, -z),
- * mỏ đổi chủ Lam ↔ Đỏ. Sông tự đối xứng (chảy qua tâm) thì chỉ nhân đôi lối qua; sông khác thì nhân đôi cả sông.
- * Khối dốc được soi gương riêng (GameMap.ramps), vì lưới ô chỉ tính ở nửa phía Lam.
- */
-function mirrorDef(def: MapDef): MapDef {
-  const swap = (o: MineDef["owner"]): MineDef["owner"] => (o === 0 ? 1 : o === 1 ? 0 : -1);
-  const blob = (b: Blob): Blob => ({ ...b, x: -b.x, z: -b.z });
-  const rivers: RiverDef[] = [];
-  for (const r of def.rivers) {
-    const crossings = withTwins(r.crossings, (c) => ({ ...c, x: -c.x, z: -c.z }));
-    if (selfSymmetric(r.path)) rivers.push({ ...r, crossings });
-    else rivers.push(r, { ...r, path: r.path.map(flip), crossings: r.crossings.map((c) => ({ ...c, x: -c.x, z: -c.z })) });
-  }
-  const regions: RegionDef[] = [];
-  for (const g of def.regions ?? []) {
-    regions.push(g);
-    if (g.circle && !atCenter(g.circle.x, g.circle.z)) regions.push({ ...g, circle: { ...g.circle, x: -g.circle.x, z: -g.circle.z } });
-    if (g.poly) regions.push({ ...g, poly: g.poly.map(flip) });
-  }
-  return {
-    ...def,
-    bases: def.bases.flatMap((b) => [b, flip(b)]),
-    mines: withTwins(def.mines, (m) => ({ ...m, x: -m.x, z: -m.z, owner: swap(m.owner) })),
-    points: (def.points ?? []).flatMap((p) => (atCenter(p[0], p[1]) ? [p] : [p, flip(p)])),
-    tiers: (def.tiers ?? []).flatMap((t) => [t, { ...t, poly: t.poly.map(flip) }]),
-    rocks: withTwins(def.rocks, blob),
-    rivers,
-    regions
-  };
-}
-
-/** Điểm gần nhất trên danh sách đoạn sông (giữ đúng thứ tự duyệt, để hai đoạn cách đều vẫn chọn như nhau). */
-function nearestOn(segs: readonly Segment[], x: number, z: number): RiverHit {
-  let best = Infinity;
-  let along = 0;
-  for (const s of segs) {
-    const px = x - s.ax;
-    const pz = z - s.az;
-    const t = px * s.dx + pz * s.dz;
-    let d: number;
-    let a: number;
-    if (t <= 0) {
-      d = Math.sqrt(px * px + pz * pz);
-      a = s.cum;
-    } else if (t >= s.len) {
-      const qx = x - (s.ax + s.dx * s.len);
-      const qz = z - (s.az + s.dz * s.len);
-      d = Math.sqrt(qx * qx + qz * qz);
-      a = s.cum + s.len;
-    } else {
-      d = Math.abs(px * s.dz - pz * s.dx);
-      a = s.cum + t;
-    }
-    if (d < best) {
-      best = d;
-      along = a;
-    }
-  }
-  return { dist: best, along };
-}
-
-function segDist(s: Segment, x: number, z: number): number {
-  return nearestOn([s], x, z).dist;
-}
-
-function polyBox(p: readonly Vec2[]): Box {
-  let x0 = Infinity;
-  let z0 = Infinity;
-  let x1 = -Infinity;
-  let z1 = -Infinity;
-  for (const v of p) {
-    x0 = Math.min(x0, v[0]);
-    z0 = Math.min(z0, v[1]);
-    x1 = Math.max(x1, v[0]);
-    z1 = Math.max(z1, v[1]);
-  }
-  return [x0 - ACCEL_EPS, z0 - ACCEL_EPS, x1 + ACCEL_EPS, z1 + ACCEL_EPS];
-}
-
-/** Khoảng cách có dấu (m) từ điểm tới viền đa giác: dương ở trong, âm ở ngoài. */
-function polyInset(b: readonly Vec2[], x: number, z: number): number {
-  let inside = false;
-  let best = Infinity;
-  for (let i = 0, j = b.length - 1; i < b.length; j = i++) {
-    const pi = b[i];
-    const pj = b[j];
-    const xi = pi[0];
-    const zi = pi[1];
-    const xj = pj[0];
-    const zj = pj[1];
-    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
-    const ex = xj - xi;
-    const ez = zj - zi;
-    const l2 = ex * ex + ez * ez;
-    let t = l2 > 0 ? ((x - xi) * ex + (z - zi) * ez) / l2 : 0;
-    t = t < 0 ? 0 : t > 1 ? 1 : t;
-    const px = xi + ex * t - x;
-    const pz = zi + ez * t - z;
-    const d2 = px * px + pz * pz;
-    if (d2 < best) best = d2;
-  }
-  const d = Math.sqrt(best);
-  return inside ? d : -d;
-}
-
-function pointInPoly(p: readonly Vec2[], x: number, z: number): boolean {
-  let inside = false;
-  for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
-    const a = p[i];
-    const b = p[j];
-    const xi = a[0];
-    const zi = a[1];
-    const xj = b[0];
-    const zj = b[1];
-    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
-  }
-  return inside;
 }
