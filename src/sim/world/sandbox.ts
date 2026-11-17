@@ -1,5 +1,5 @@
 /** Phòng Thử Nghiệm: lệnh sb* (chỉ khi World tạo với { sandbox: true }). */
-import { BUILDINGS, defaultRot, normRot, RULES, UNITS, type BuildingId, type UnitId } from "../content";
+import { BUILDINGS, defaultRot, normRot, UNITS, type BuildingId, type UnitId } from "../content";
 import { clamp } from "../fmath";
 import type { Order } from "../types";
 import type { SandboxState } from "./shared";
@@ -41,7 +41,7 @@ function applySandbox(this: World, sb: SandboxState, o: Order): void {
       if (spec.domain === "air") {
         // không có Sân Đáp thì không cất cánh được: thả thẳng lên trời, bay vòng chờ tại chỗ
         u.air = "flying";
-        u.alt = u.palt = RULES.air.cruiseAlt;
+        u.alt = u.palt = this.cruiseAltAt(x, z);
         u.speed = spec.speed;
         u.mission = "move";
         u.mx = clamp(x, -this.map.airX, this.map.airX);

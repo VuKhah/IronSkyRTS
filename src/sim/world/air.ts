@@ -4,6 +4,7 @@ import { clamp, dcos, DEG, dist2, dsin } from "../fmath";
 import type { Building, Target, Unit } from "../types";
 import { TICK_RATE, DT, sec, AIRBORNE_ALT, STEER_SOFT_COS, STEER_SOFT_SIN, STEER_RAMP, BOMB_FALL, cosDeg } from "./shared";
 import { World } from "./core";
+import { TIER_H } from "../maps";
 
 
 // ------------------------------------------------------------------ không quân
@@ -404,14 +405,15 @@ function updateAir(this: World, u: Unit): void {
       } else {
         const k = (u.airT - rise) / out;
         u.speed = spec.speed * Math.min(1, 0.15 + 0.85 * k);
-        u.alt = V.hoverAlt + (A.cruiseAlt - V.hoverAlt) * k * k;
-        u.x += u.hx * u.speed * DT;
-        u.z += u.hz * u.speed * DT;
+        this.airMove(u);
+        // lên tầng bay theo đường cong êm hai đầu: hết quãng thì tốc độ dọc về 0, chuyển sang bay bằng không giật
+        u.alt = easeToward(u.alt, this.cruiseAltAt(u.x, u.z), (u.airT - rise - 1) / out, k);
       }
       if (!this.burn(u, spec)) return;
       if (u.airT >= rise + out) {
         u.air = "flying";
-        u.alt = A.cruiseAlt;
+        u.alt = this.cruiseAltAt(u.x, u.z);
+        u.vy = 0;
       }
       return;
     }
@@ -431,14 +433,14 @@ function updateAir(this: World, u: Unit): void {
       } else {
         const k = (u.airT - rise) / out;
         u.speed = spec.speed * Math.min(1, 0.15 + 0.85 * k);
-        u.alt += (A.cruiseAlt - u.alt) / Math.max(1, rise + out - u.airT + 1);
-        u.x += u.hx * u.speed * DT;
-        u.z += u.hz * u.speed * DT;
+        this.airMove(u);
+        u.alt = easeToward(u.alt, this.cruiseAltAt(u.x, u.z), (u.airT - rise - 1) / out, k);
       }
       if (!this.burn(u, spec)) return;
       if (u.airT >= rise + out) {
         u.air = "flying";
-        u.alt = A.cruiseAlt;
+        u.alt = this.cruiseAltAt(u.x, u.z);
+        u.vy = 0;
       }
       return;
     }
@@ -496,6 +498,7 @@ function updateAir(this: World, u: Unit): void {
         u.hx = phx;
         u.hz = phz;
         u.yawRate = 0;
+        u.vy = 0;
       }
       return;
     }
@@ -518,12 +521,16 @@ function fly(this: World, u: Unit, spec: UnitSpec): void {
   let dx = 0;
   let dz = 0;
   let tgt: Target | null = null;
-  let wantAlt: number = A.cruiseAlt;
+  // độ cao muốn, TÍNH TỪ NỀN (tầng 0): tầng bay cố định, bổ nhào thì theo mặt đất chỗ mục tiêu
+  const cruiseY = A.cruiseTier * TIER_H;
+  let wantY = cruiseY;
   if (u.air === "returning") {
     const pad = this.ensurePad(u);
     if (pad) {
       dx = pad[0] - u.x;
       dz = pad[1] - u.z;
+      // hạ dần theo dốc lượn để tới gần ô đã ở thấp, pha lượn vào ô (`landing`) không phải tụt độ cao gấp
+      wantY = Math.min(cruiseY, this.map.groundY(pad[0], pad[1]) + A.vtol.hoverAlt + Math.sqrt(dx * dx + dz * dz) * A.glideSlope);
       if (dx * dx + dz * dz < 100) {
         u.air = "landing";
         u.airT = 0;
@@ -576,7 +583,9 @@ function fly(this: World, u: Unit, spec: UnitSpec): void {
         dz = u.hz;
       }
       // Bổ nhào: đang lao vào mục tiêu mặt đất (mũi hướng về nó, đã gần) thì hạ độ cao; kéo ra thì lên lại
-      if (spec.diveAlt && !u.ext && !this.isAirborne(tgt) && facing >= 0.5 && d <= w.range + 12) wantAlt = spec.diveAlt;
+      // Bổ nhào theo đường dốc: mũi hướng về mục tiêu mặt đất thì độ cao muốn hạ dần theo quãng còn lại (`diveSlope`)
+      if (spec.diveAlt && !u.ext && !this.isAirborne(tgt) && facing >= 0.5)
+        wantY = Math.min(cruiseY, this.map.groundY(tgt.x, tgt.z) + spec.diveAlt + Math.max(0, d - w.range * A.diveFlat) * A.diveSlope);
     } else {
       u.ext = false;
       [dx, dz] = this.loiter(u, u.mx, u.mz);
@@ -588,11 +597,13 @@ function fly(this: World, u: Unit, spec: UnitSpec): void {
   }
   this.steerAir(u, dx, dz, fuel.turnRate);
   u.speed = spec.speed;
-  // máy bay không bay ra ngoài bản đồ (cách mép 2 m)
-  u.x = clamp(u.x + u.hx * u.speed * DT, -this.map.halfW + 2, this.map.halfW - 2);
-  u.z = clamp(u.z + u.hz * u.speed * DT, -this.map.halfH + 2, this.map.halfH - 2);
-  const climb = A.climbRate * DT;
-  u.alt += clamp(wantAlt - u.alt, -climb, climb);
+  this.airMove(u);
+  // LÊN XUỐNG MƯỢT (17/11/2026): tốc độ dọc muốn tỉ lệ độ lệch (chậm dần khi gần), kẹp climbRate; tốc độ dọc thật đổi dần theo
+  // climbAcc. Trước đó lên xuống đều 5 m/s rồi dừng phắt, và độ cao bám mặt đất nên qua vách nhảy 5 m trong một tick
+  const y = this.map.groundY(u.x, u.z) + u.alt;
+  const vWant = clamp((wantY - y) * A.climbGain, -A.climbRate, A.climbRate);
+  u.vy += clamp(vWant - u.vy, -A.climbAcc * DT, A.climbAcc * DT);
+  u.alt = Math.max(AIRBORNE_ALT + 1, u.alt + u.vy * DT);
   if (w.carpet) {
     // Rải thảm: đã bắt đầu loạt thì thả nốt dọc đường bay; loạt mới chỉ bắt đầu khi bom sẽ rơi trúng mục tiêu
     if (u.cooldown === 0) {
@@ -648,6 +659,29 @@ function steerAir(this: World, u: Unit, dx: number, dz: number, turnRateDeg: num
   u.hz = hz / hl;
 }
 
+/** Độ cao trên mặt đất tại (x, z) của tầng bay cố định (tính từ nền, `RULES.air.cruiseTier`). */
+function cruiseAltAt(this: World, x: number, z: number): number {
+  return RULES.air.cruiseTier * TIER_H - this.map.groundY(x, z);
+}
+
+/**
+ * Máy bay tiến một tick theo mũi và tốc độ, GIỮ ĐỘ CAO TUYỆT ĐỐI: `alt` là độ cao trên mặt đất nên qua vách / dốc phải bù phần
+ * mặt đất đổi (mặt đất cao lên 5 m thì `alt` bớt 5 m). Không bay ra ngoài bản đồ (cách mép 2 m).
+ */
+function airMove(this: World, u: Unit): void {
+  const g0 = this.map.groundY(u.x, u.z);
+  u.x = clamp(u.x + u.hx * u.speed * DT, -this.map.halfW + 2, this.map.halfW - 2);
+  u.z = clamp(u.z + u.hz * u.speed * DT, -this.map.halfH + 2, this.map.halfH - 2);
+  u.alt += g0 - this.map.groundY(u.x, u.z);
+}
+
+/** Đi tiếp từ `cur` về `target` theo đường cong êm hai đầu (smoothstep), từ tiến độ k0 tới k1 (0 → 1): phần còn lại chia đều. */
+function easeToward(cur: number, target: number, k0: number, k1: number): number {
+  const s0 = smooth(Math.max(0, k0));
+  const s1 = smooth(Math.min(1, k1));
+  return s0 >= 1 - 1e-9 ? target : cur + ((target - cur) * (s1 - s0)) / (1 - s0);
+}
+
 /** Hướng bay vòng chờ quanh (cx, cz): xa thì bay thẳng tới, gần thì bay tiếp tuyến bán kính ~11 m. */
 function loiter(this: World, u: Unit, cx: number, cz: number): [number, number] {
   const dx = cx - u.x;
@@ -658,7 +692,7 @@ function loiter(this: World, u: Unit, cx: number, cz: number): [number, number] 
   return [-dz / d + (dx / d) * k, dx / d + (dz / d) * k];
 }
 
-const methods = { padPosOf,  nearestFreePad, freePads, hasFreePad, ensurePad, releasePad, homeDistance, fuelToReturn, burn, takeoff, inGrid, nearestGrid, droneNeedsCharge, updateDrone, updateShield, shieldOff, updateRepair, detonate, updateAir, fly, steerAir, loiter };
+const methods = { padPosOf,  nearestFreePad, freePads, hasFreePad, ensurePad, releasePad, homeDistance, fuelToReturn, burn, takeoff, inGrid, nearestGrid, droneNeedsCharge, updateDrone, updateShield, shieldOff, updateRepair, detonate, updateAir, fly, steerAir, loiter, cruiseAltAt, airMove };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

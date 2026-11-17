@@ -136,6 +136,8 @@ export interface Unit {
   ext: boolean;
   /** Máy bay: tốc độ ngoặt hiện tại (radian mỗi tick, dấu = chiều ngoặt). Tăng giảm dần cho đường bay mượt. */
   yawRate: number;
+  /** Máy bay: tốc độ lên / xuống (m/s, + = lên), đổi dần theo `RULES.air.climbAcc`. */
+  vy: number;
   /** Drone Khiên: vòm đang bật (1/0), số tick liền không hứng phát nào, mức nguy hiểm đang đo (sát thương danh nghĩa, phai dần). */
   shieldOn: number;
   shieldIdle: number;

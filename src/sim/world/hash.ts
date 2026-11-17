@@ -53,6 +53,7 @@ export function hashWorld(w: World): number {
     num(u.aimZ);
     num(u.pd);
     num(u.yawRate);
+    num(u.vy);
     num(u.shieldOn);
     num(u.shieldIdle);
     num(u.threat);

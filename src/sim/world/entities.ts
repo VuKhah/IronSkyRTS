@@ -96,6 +96,7 @@ function spawnUnit(this: World, kind: UnitId, side: Side, x: number, z: number):
     crashed: false,
     ext: false,
     yawRate: 0,
+    vy: 0,
     cd2: 0,
     ammo2: spec.secondary?.ammo ?? 0,
     xp: 0,

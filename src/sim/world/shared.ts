@@ -174,7 +174,8 @@ export const AIM_COS = dcos(5 * DEG);
 /** Lái máy bay: vùng nắn nhẹ ±30° và thời gian để tốc độ ngoặt lên hết cỡ (giây). */
 export const STEER_SOFT_COS = dcos(30 * DEG);
 export const STEER_SOFT_SIN = dsin(30 * DEG);
-export const STEER_RAMP = 0.25;
+// 0,25 → 0,45 (17/11/2026, người dùng: "bổ nhào và các cơ chế khác mượt hơn"): Falcon lật cánh trái → phải trong nửa giây trông giật
+export const STEER_RAMP = 0.45;
 /** Tên lửa treo dưới cánh cách trục thân chừng này (m). */
 export const MISSILE_PYLON = 1.35;
 /** Khoảng cách giữa hai nòng súng đôi (m), ví dụ súng ở hai bên cánh. */

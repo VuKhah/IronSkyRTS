@@ -127,9 +127,25 @@ export const RULES = {
   /** Số Xe Vận Tải tối đa cùng khai thác một bãi = số khối của bãi (tối đa field.deposits). */
   mineSlots: 6,
   air: {
-    cruiseAlt: 12,
-    /** Tốc độ lên / xuống độ cao (m/s) khi bổ nhào và kéo lên. */
-    climbRate: 5,
+    /**
+     * TẦNG BAY cố định của máy bay cánh cố định (người dùng 17/11/2026): tầng 4, mỗi tầng `TIER_H` = 5 m, TÍNH TỪ NỀN (tầng 0),
+     * không theo mặt đất dưới thân: bay qua vách / đồi không nhảy độ cao. Độ cao trên mặt đất = cruiseTier × TIER_H − groundY.
+     */
+    cruiseTier: 4,
+    /** Tốc độ lên / xuống độ cao lớn nhất (m/s) khi bổ nhào và kéo lên. */
+    climbRate: 8,
+    /** Gia tốc lên / xuống (m/s²): tốc độ dọc đổi dần, không giật (17/11/2026). */
+    climbAcc: 10,
+    /** Lệch độ cao 1 m thì muốn lên / xuống chừng này m/s (tới gần độ cao muốn thì chậm dần). */
+    climbGain: 2.5,
+    /**
+     * Bổ nhào theo ĐƯỜNG DỐC (17/11/2026): độ cao muốn = mặt đất chỗ mục tiêu + `diveAlt` + (quãng còn lại − diveFlat × tầm bắn)
+     * × diveSlope, kẹp ở tầng bay. Máy bay vào đường dốc từ xa, hạ đều, chạm độ thấp nhất khi còn diveFlat tầm bắn, bắn, kéo lên.
+     */
+    diveSlope: 0.3,
+    diveFlat: 0.6,
+    /** Về Sân Đáp: hạ dần theo dốc lượn (m độ cao mỗi m quãng ngang còn lại) tới độ lơ lửng `vtol.hoverAlt` trên ô. */
+    glideSlope: 0.35,
     /** Tỉ lệ dầu tối thiểu để cất cánh. */
     takeoffMin: 0.35,
     /** Mức Bingo: tự bay về Sân Đáp. */

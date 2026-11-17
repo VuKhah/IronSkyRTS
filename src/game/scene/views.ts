@@ -416,11 +416,15 @@ export class Views {
       const parked = u.air === "parked";
       // drone: gốc mô hình trên mặt đất (vùng khiên bám đất), thân treo ở độ cao của sim
       if (spec.hover) v.rig.setHover?.(alt);
-      const y = this.map.groundY(x, z) + (spec.hover ? 0 : parked || alt < 0.05 ? 0.22 : alt);
+      // máy bay: nội suy ĐỘ CAO TUYỆT ĐỐI giữa hai tick (mặt đất + alt ở mỗi tick), không lấy mặt đất ở điểm nội suy cộng alt nội
+      // suy: qua mép vách mặt đất nhảy 5 m giữa hai tick, cách cũ làm máy bay nhảy theo (17/11/2026, tầng bay tính từ nền)
+      const yPrev = this.map.groundY(u.px, u.pz) + u.palt;
+      const yNow = this.map.groundY(u.x, u.z) + u.alt;
+      const y = spec.hover ? this.map.groundY(x, z) : parked || alt < 0.05 ? this.map.groundY(x, z) + 0.22 : yPrev + (yNow - yPrev) * alpha;
       root.position.set(x, y, z);
-      // chúc mũi khi bổ nhào, ngóc mũi khi kéo lên: theo tốc độ đổi độ cao của sim
+      // chúc mũi khi bổ nhào, ngóc mũi khi kéo lên: theo tốc độ đổi độ cao tuyệt đối của sim
       const flying = u.air === "flying" || u.air === "returning";
-      const sink = flying ? (u.palt - u.alt) / DT : 0;
+      const sink = flying ? (yPrev - yNow) / DT : 0;
       const pitchTarget = Math.atan2(sink, Math.max(1, u.speed));
       v.pitch += (pitchTarget - v.pitch) * Math.min(1, dt * 5);
       root.rotation.set(v.pitch, v.yaw, 0, "YXZ");
@@ -605,6 +609,10 @@ export class Views {
     let z = u.pz + (u.z - u.pz) * alpha;
     if (Views.curved(u)) [x, z] = Views.hermite(u, alpha);
     const alt = u.palt + (u.alt - u.palt) * alpha;
-    return [x, map.groundY(x, z) + (alt < 0.05 ? 0.22 * (u.air === "parked" ? 1 : 0) : alt), z];
+    if (alt < 0.05) return [x, map.groundY(x, z) + 0.22 * (u.air === "parked" ? 1 : 0), z];
+    // độ cao tuyệt đối nội suy (như `updateUnit`): qua mép vách không nhảy
+    const yPrev = map.groundY(u.px, u.pz) + u.palt;
+    const yNow = map.groundY(u.x, u.z) + u.alt;
+    return [x, yPrev + (yNow - yPrev) * alpha, z];
   }
 }

@@ -19,7 +19,7 @@ export const AIR_UNITS: Record<"falcon" | "valkyrie", UnitSpec> = {
     builtAt: "aircraft-factory",
     hp: 540,
     armorClass: "light",
-    speed: 22,
+    speed: 25.3, // +15% (người dùng 17/11/2026; trước 22)
     minSpeed: 12,
     sight: 30,
     radius: 1.8,
@@ -83,7 +83,7 @@ export const AIR_UNITS: Record<"falcon" | "valkyrie", UnitSpec> = {
     builtAt: "aircraft-factory",
     hp: 870,
     armorClass: "heavy",
-    speed: 14,
+    speed: 16.1, // +15% (người dùng 17/11/2026; trước 14)
     minSpeed: 10,
     sight: 26,
     radius: 2.4,

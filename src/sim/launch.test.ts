@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { BUILDINGS, RULES, UNITS, rotOffset, type BuildingId } from "./content";
 import type { Building, Unit } from "./types";
+import { TIER_H } from "./maps";
 import { hashWorld, sec, World } from "./world";
 
 /** Đặt công trình (đã xây xong) bằng công cụ Phòng Thử Nghiệm ở chỗ trống đầu tiên quanh Tổng Hành Dinh phe 0. */
@@ -73,7 +74,8 @@ describe("Nhà Máy Máy Bay phóng thẳng đứng từ giếng", () => {
     for (let i = 0; i < sec(L.climbOut) + 2; i++) w.step([]);
     // phóng xong là bay về bãi đậu đã giữ (máy bay mới xuất xưởng mang cờ về sân, như cất cánh kiểu cũ)
     expect(["flying", "returning"]).toContain(u.air);
-    expect(u.alt).toBeCloseTo(RULES.air.cruiseAlt, 0);
+    // tầng bay cố định tính từ nền (tầng 4 × 5 m), không theo mặt đất dưới thân
+    expect(w.map.groundY(u.x, u.z) + u.alt).toBeCloseTo(RULES.air.cruiseTier * TIER_H, 0);
   });
 
   it("lô lớn hơn số giếng (ví dụ trực thăng lô 3 sau này): chiếc dùng chung giếng chờ thêm một lượt", () => {
