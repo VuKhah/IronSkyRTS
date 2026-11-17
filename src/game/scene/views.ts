@@ -414,14 +414,14 @@ export class Views {
       const rollTarget = Math.max(-0.95, Math.min(0.95, (-turn / Math.max(dt, 1e-3)) * 0.35));
       v.roll += (rollTarget - v.roll) * Math.min(1, dt * 6);
       const parked = u.air === "parked";
-      // drone: gốc mô hình trên mặt đất (vùng khiên bám đất), thân treo ở độ cao của sim
-      if (spec.hover) v.rig.setHover?.(alt);
       // máy bay: nội suy ĐỘ CAO TUYỆT ĐỐI giữa hai tick (mặt đất + alt ở mỗi tick), không lấy mặt đất ở điểm nội suy cộng alt nội
       // suy: qua mép vách mặt đất nhảy 5 m giữa hai tick, cách cũ làm máy bay nhảy theo (17/11/2026, tầng bay tính từ nền)
       const yPrev = this.map.groundY(u.px, u.pz) + u.palt;
       const yNow = this.map.groundY(u.x, u.z) + u.alt;
       const y = spec.hover ? this.map.groundY(x, z) : parked || alt < 0.05 ? this.map.groundY(x, z) + 0.22 : yPrev + (yNow - yPrev) * alpha;
       root.position.set(x, y, z);
+      // drone: gốc mô hình trên mặt đất (vùng khiên bám đất), thân treo ở độ cao TUYỆT ĐỐI nội suy (qua mép vách không nhảy)
+      if (spec.hover) v.rig.setHover?.(yPrev + (yNow - yPrev) * alpha - y);
       // chúc mũi khi bổ nhào, ngóc mũi khi kéo lên: theo tốc độ đổi độ cao tuyệt đối của sim
       const flying = u.air === "flying" || u.air === "returning";
       const sink = flying ? (yPrev - yNow) / DT : 0;

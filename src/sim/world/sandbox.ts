@@ -41,8 +41,9 @@ function applySandbox(this: World, sb: SandboxState, o: Order): void {
       if (spec.domain === "air") {
         // không có Sân Đáp thì không cất cánh được: thả thẳng lên trời, bay vòng chờ tại chỗ
         u.air = "flying";
-        u.alt = u.palt = this.cruiseAltAt(x, z);
-        u.speed = spec.speed;
+        // drone lơ lửng theo mặt đất dưới thân; máy bay ở tầng bay cố định tính từ nền
+        u.alt = u.palt = spec.hover ? spec.hover.alt : this.cruiseAltAt(x, z);
+        u.speed = spec.hover ? 0 : spec.speed;
         u.mission = "move";
         u.mx = clamp(x, -this.map.airX, this.map.airX);
         u.mz = clamp(z, -this.map.airZ, this.map.airZ);

@@ -146,6 +146,12 @@ export const RULES = {
     diveFlat: 0.6,
     /** Về Sân Đáp: hạ dần theo dốc lượn (m độ cao mỗi m quãng ngang còn lại) tới độ lơ lửng `vtol.hoverAlt` trên ô. */
     glideSlope: 0.35,
+    /**
+     * Quân LƠ LỬNG (drone, sau này trực thăng; 17/11/2026): vẫn giữ `hover.alt` so với MẶT ĐẤT DƯỚI THÂN, nhưng có quán tính cho
+     * mượt: tăng / hãm tốc `accel` (m/s², tới gần đích tự hãm để dừng đúng chỗ), quay mũi tối đa `turnRate` °/s, lên xuống tối đa
+     * `climbRate` m/s với gia tốc `climbAcc`, lệch 1 m muốn `climbGain` m/s; nhìn trước `look` giây đường bay để lên sớm trước vách.
+     */
+    hover: { accel: 12, turnRate: 300, climbRate: 6, climbAcc: 15, climbGain: 3, look: 1.2 },
     /** Tỉ lệ dầu tối thiểu để cất cánh. */
     takeoffMin: 0.35,
     /** Mức Bingo: tự bay về Sân Đáp. */

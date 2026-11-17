@@ -1,8 +1,8 @@
 /** Không quân và drone: sân bay, nhiên liệu, pin, bay, bổ nhào, Drone Khiên, sửa chữa, cảm tử. */
 import { BUILDINGS, PAD_OFFSETS, RULES, UNITS, type Side, type UnitSpec } from "../content";
-import { clamp, dcos, DEG, dist2, dsin } from "../fmath";
+import { clamp, dcos, DEG, dist2, dsin, turnToward } from "../fmath";
 import type { Building, Target, Unit } from "../types";
-import { TICK_RATE, DT, sec, AIRBORNE_ALT, STEER_SOFT_COS, STEER_SOFT_SIN, STEER_RAMP, BOMB_FALL, cosDeg } from "./shared";
+import { TICK_RATE, DT, sec, AIRBORNE_ALT, STEER_SOFT_COS, STEER_SOFT_SIN, STEER_RAMP, BOMB_FALL, cosDeg, TMP, traverseStep } from "./shared";
 import { World } from "./core";
 import { TIER_H } from "../maps";
 
@@ -211,7 +211,6 @@ function droneNeedsCharge(this: World, u: Unit): boolean {
  */
 function updateDrone(this: World, u: Unit): void {
   const spec = UNITS[u.kind];
-  u.alt = spec.hover!.alt;
   const home = this.inGrid(u.side, u.x, u.z);
   const E = spec.energy;
   if (E) {
@@ -252,15 +251,37 @@ function updateDrone(this: World, u: Unit): void {
   const d = Math.sqrt(dx * dx + dz * dz);
   // lao cảm tử nhanh hơn bay thường
   const v = spec.speed * (u.mission === "attack" ? 1.4 : 1) * (this.mobilized(u) ? 1 + RULES.abilities.mobilize.speed : 1);
+  const H = RULES.air.hover;
+  // ĐI NGANG CÓ QUÁN TÍNH (17/11/2026; trước đó đổi hướng 172° và 0 ↔ 15 m/s trong một tick): mũi quay dần về phía đích, tốc độ
+  // muốn = min(tốc độ, tốc độ còn hãm kịp trước đích) × độ thẳng mũi (đích ở sau lưng thì hãm lại, quay rồi mới đi)
+  let want = 0;
   if (d > 1e-6) {
-    const step = Math.min(d, v * DT);
-    u.x = clamp(u.x + (dx / d) * step, -this.map.airX, this.map.airX);
-    u.z = clamp(u.z + (dz / d) * step, -this.map.airZ, this.map.airZ);
-    u.hx = dx / d;
-    u.hz = dz / d;
-    u.speed = step / DT;
+    turnToward(u.hx, u.hz, dx / d, dz / d, traverseStep(H.turnRate), TMP);
+    u.hx = TMP.x;
+    u.hz = TMP.z;
+    const facing = (u.hx * dx + u.hz * dz) / d;
+    want = Math.min(v, Math.sqrt(2 * H.accel * d)) * Math.max(0, facing);
+  }
+  u.speed += clamp(want - u.speed, -H.accel * DT, H.accel * DT);
+  if (u.speed < 1e-3) u.speed = 0;
+  const g0 = this.map.groundY(u.x, u.z);
+  if (u.speed > 0) {
+    // đi theo mũi; sắp tới đích thì không vượt quá đích
+    const step = d > 1e-6 && d < u.speed * DT ? d : u.speed * DT;
+    u.x = clamp(u.x + u.hx * step, -this.map.airX, this.map.airX);
+    u.z = clamp(u.z + u.hz * step, -this.map.airZ, this.map.airZ);
     u.moved = true;
-  } else u.speed = 0;
+  }
+  // LÊN XUỐNG MƯỢT, vẫn theo mặt đất dưới thân: giữ độ cao tuyệt đối khi mặt đất đổi, rồi tiến dần về mặt đất + hover.alt; lấy mặt
+  // đất cao hơn giữa chỗ đang đứng và chỗ sắp tới (`look` giây) để lên sớm trước vách, xuống sau khi đã qua mép
+  const g1 = this.map.groundY(u.x, u.z);
+  u.alt += g0 - g1;
+  const ahead = this.map.groundY(u.x + u.hx * u.speed * H.look, u.z + u.hz * u.speed * H.look);
+  const wantY = Math.max(g1, ahead) + spec.hover!.alt;
+  const vWant = clamp((wantY - (g1 + u.alt)) * H.climbGain, -H.climbRate, H.climbRate);
+  u.vy += clamp(vWant - u.vy, -H.climbAcc * DT, H.climbAcc * DT);
+  // không bao giờ tụt dưới ngưỡng "đang bay" (luật bắn / sương mù theo độ cao)
+  u.alt = Math.max(AIRBORNE_ALT + 0.5, u.alt + u.vy * DT);
 }
 
 /**
