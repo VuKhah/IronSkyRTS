@@ -500,7 +500,10 @@ function squadAssign(this: World, sq: Squad): void {
     const row: number[] = [];
     for (let j = 0; j < n; j++) {
       const u = units[j];
-      row.push(sq.byRank && key(u) !== want ? 1e9 : Math.sqrt(dist2(u.x, u.z, sx, sz)));
+      // BÌNH PHƯƠNG quãng (17/11/2026), không phải quãng thẳng: tổng quãng thẳng bằng nhau khi hai xe và hai ô cùng một đường
+      // thẳng (xe sau nhận ô trước = phải vượt xe trước, chọn bừa; đo: hai Titan cùng cột đối đầu 16 s). Bình phương thì
+      // phương án tối ưu luôn giữ thứ tự: (a − b)·(ô a − ô b) ≥ 0, không xe nào phải vượt hay cắt đường xe nào
+      row.push(sq.byRank && key(u) !== want ? 1e9 : dist2(u.x, u.z, sx, sz));
     }
     cost.push(row);
   }

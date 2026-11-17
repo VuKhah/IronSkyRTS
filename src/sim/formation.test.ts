@@ -263,6 +263,29 @@ describe("đội hình khi ra lệnh cho cả nhóm", () => {
   });
 });
 
+describe("10 Titan xếp hai hàng không chặn nhau (người dùng 17/11/2026: hai xe cùng cột giằng co mãi mới vào hàng)", () => {
+  /** Thả 10 Titan lộn xộn (14 m) quanh arenaPoint(−dist/2), ra lệnh tới arenaPoint(dist/2); trả về số giây tới khi cả đội đứng. */
+  const settle = (seed: number, dist: number): number => {
+    const w = new World(1, { sandbox: true });
+    const rng = new Rng(seed);
+    const [ax, az] = arenaPoint(-dist / 2);
+    const [bx, bz] = arenaPoint(dist / 2);
+    for (let k = 0; k < 10; k++) spawn(w, "titan", ax + (rng.next() - 0.5) * 14, az + (rng.next() - 0.5) * 14);
+    const us = w.units.filter((u) => u.side === 0 && u.kind === "titan");
+    for (let t = 0; t < sec(1); t++) w.step([]);
+    w.step([{ side: 0, order: { t: "move", ids: us.map((u) => u.id), x: bx, z: bz } }]);
+    let t = 0;
+    for (; t < sec(60) && us.some((u) => u.order !== "idle"); t++) w.step([]);
+    return t / 10;
+  };
+  // seed 10 / 20 m (đo 17/11): xe ô hàng sau chạy trước xe ô hàng trước cùng cột, bị húc vượt qua ô rồi hai xe đối đầu 16 s
+  // (chia ô theo tổng quãng thẳng: hai xe cùng một đường thẳng thì "giữ chỗ" và "vượt nhau" bằng điểm, chọn bừa). Chạy thẳng 20 m
+  // của Titan cộng xoay thân ≈ 8 s
+  it("hai xe cùng cột: xe sau không phải vượt xe trước (seed 10, 20 m)", () => {
+    expect(settle(10, 20)).toBeLessThan(12);
+  });
+});
+
 describe("xoay thân xe tại chỗ (turnRate)", () => {
   it("xe đổi hướng nhiều thì đứng lại xoay tại chỗ, mất thời gian theo tốc độ quay thân, rồi mới chạy", () => {
     const w = new World(1, { sandbox: true });
