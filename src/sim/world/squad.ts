@@ -843,8 +843,15 @@ function trailAt(this: World, sq: Squad, s: number): [number, number, number, nu
     const d = t[4] - s;
     return [t[0] - t[2] * d, t[1] - t[3] * d, t[2], t[3]];
   }
-  let k = n - 1;
-  while (k > 0 && t[k * 6 + 4] > s) k--;
+  // điểm cuối cùng có quãng ≤ s (tìm nhị phân: vệt giữ đủ dài cho cột hàng một, dò tuần tự thì tốn theo độ dài vệt × số xe)
+  let lo = 0;
+  let hi = n - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (t[mid * 6 + 4] > s) hi = mid - 1;
+    else lo = mid;
+  }
+  const k = lo;
   if (k === n - 1) return [t[k * 6], t[k * 6 + 1], t[k * 6 + 2], t[k * 6 + 3]];
   const a = k * 6;
   const b = a + 6;
@@ -882,6 +889,13 @@ function squadMarch(this: World, sq: Squad): void {
   // hàng một, 90 s chưa tới (đường từ bãi trống ngay bên ngoài ngắn hơn 25 m)
   const [hx0, hz0] =
     this.grid.nearestFree(sq.x, sq.z, SQUAD_START_R, (x, z) => this.grid.clearanceAt(x, z) >= SQUAD_START_CLEAR) ?? this.grid.nearestFree(sq.x, sq.z, 6) ?? [sq.x, sq.z];
+  // đội dựng từ quân lộn xộn: TÂM KHỐI đặt luôn ở điểm xuất phát đó. Tâm hình học của quân lộn xộn có thể rơi vào chỗ không ai
+  // đi được (6 xe trong túi đá, 4 xe ngoài: tâm ở trong túi), khối ảo neo ở đó kéo cả đội qua dải hẹp. Đội đã vào hàng thì xe đang
+  // đứng đúng hình khối: giữ nguyên
+  if (sq.byRank) {
+    sq.x = hx0;
+    sq.z = hz0;
+  }
   let mob: Mobility = "wheel";
   let slowest = Infinity;
   for (const id of sq.ids) {
@@ -895,11 +909,71 @@ function squadMarch(this: World, sq: Squad): void {
   sq.path = this.grid.findPath(hx0, hz0, gx, gz, this.grid.corridor(mob)) ?? this.grid.findPath(hx0, hz0, gx, gz, this.grid.field(mob, false)) ?? [gx, gz];
   sq.pathI = 0;
   sq.trail = [];
-  const L = sq.depth + 12;
-  for (let b = L; b >= 0; b -= 1) sq.trail.push(sq.x - sq.hx * b, sq.z - sq.hz * b, sq.hx, sq.hz, sq.s - b, 0);
+  if (!sq.byRank || !this.squadTrailBack(sq)) {
+    const L = sq.depth + 12;
+    for (let b = L; b >= 0; b -= 1) sq.trail.push(sq.x - sq.hx * b, sq.z - sq.hz * b, sq.hx, sq.hz, sq.s - b, 0);
+  }
   sq.phase = "march";
   sq.phaseT = 0;
 }
+
+/**
+ * VỆT PHÍA SAU THEO VỊ TRÍ THẬT (hướng (b), người dùng chọn 17/11/2026): đội dựng từ quân lộn xộn chưa có vệt nào sau lưng; trước
+ * đây vệt khởi tạo là đường thẳng kéo ngược ra sau tâm đội, các hàng sau nằm trên đó dù không xe nào đứng, một hàng rơi vào đá là
+ * cả đội co hàng một mãi (`LESSONS.md` "Đội lộn xộn hành quân xa"). Giờ vệt sau lưng là ĐOẠN THẲNG THẬT từ xe ở xa nhất phía sau
+ * (theo hướng đi) có đường thẳng thông tới tâm đội: các hàng sau nằm trên đúng chỗ xe đuôi sẽ đi qua. Trả về false (để khởi tạo
+ * kiểu cũ) khi không có xe nào ở sau tâm quá 1 m có đường thẳng thông.
+ */
+function squadTrailBack(this: World, sq: Squad): boolean {
+  // xe xếp theo độ lùi sau tâm đội (theo hướng đi), xa nhất trước; bằng nhau thì theo thứ tự sq.ids (không phụ thuộc phe)
+  const cand = sq.ids
+    .map((id) => {
+      const u = this.byId.get(id) as Unit;
+      return { u, d: -((u.x - sq.x) * sq.hx + (u.z - sq.z) * sq.hz) };
+    })
+    .filter((c) => c.d >= 1)
+    .sort((m, n) => n.d - m.d);
+  // xe đuôi xa nhất mà ĐƯỜNG THẲNG tới tâm đội thông (`los`): xe bị đá / sông chắn giữa (trong túi đá…) tự tìm đường ra, không dựng
+  // vệt theo nó (vệt qua dải hẹp của riêng nó làm cả khối co hàng một; đo 17/11: 10 Titan, 6 xe trong túi đá). Chỉ dò đường
+  // thẳng, không A*: A* tới xe ở vùng không thông quét gần hết bản đồ (p99 tick trận AI tăng gần gấp đôi khi thử)
+  let rear: Unit | null = null;
+  for (let k = 0; k < cand.length && k < TRAIL_TRIES; k++) {
+    if (!this.grid.los(cand[k].u.x, cand[k].u.z, sq.x, sq.z, 0.7)) continue;
+    rear = cand[k].u;
+    break;
+  }
+  if (!rear) return false;
+  const path = [sq.x, sq.z];
+  // điểm gấp khúc từ xe đuôi tới tâm đội (điểm cuối đúng tâm đội, nơi người dẫn đầu đứng)
+  const pts = [rear.x, rear.z, ...path];
+  pts[pts.length - 2] = sq.x;
+  pts[pts.length - 1] = sq.z;
+  // rải điểm mỗi 1 m, đi NGƯỢC từ tâm đội về xe đuôi; hướng mỗi điểm = hướng đi tới (về phía tâm đội)
+  const back: number[] = [];
+  let d = 0;
+  for (let k = pts.length - 2; k >= 2; k -= 2) {
+    const bx = pts[k];
+    const bz = pts[k + 1];
+    const ax = pts[k - 2];
+    const az = pts[k - 1];
+    const l = Math.sqrt(dist2(ax, az, bx, bz));
+    if (l < 1e-6) continue;
+    const hx = (bx - ax) / l;
+    const hz = (bz - az) / l;
+    for (let t = d === 0 ? 0 : Math.ceil(d) - d; t <= l + 1e-9; t += 1) {
+      // điểm đầu tiên (tâm đội) giữ hướng đội hình, để vệt nối liền với đường đi tới
+      back.push(bx - hx * t, bz - hz * t, d + t === 0 ? sq.hx : hx, d + t === 0 ? sq.hz : hz, sq.s - (d + t), 0);
+    }
+    d += l;
+  }
+  if (back.length < 12) return false;
+  // đảo lại thành thứ tự s tăng dần
+  for (let k = back.length - 6; k >= 0; k -= 6) sq.trail.push(back[k], back[k + 1], back[k + 2], back[k + 3], back[k + 4], back[k + 5]);
+  return true;
+}
+
+/** Dựng vệt sau lưng: thử tối đa chừng này xe đuôi (xa nhất trước) tìm xe có đường thẳng thông tới tâm đội. */
+const TRAIL_TRIES = 6;
 
 /** Người dẫn đầu xuất phát từ ô gần tâm đội nhất có khoảng trống ≥ chừng này (m), tìm trong SQUAD_START_R m. */
 const SQUAD_START_CLEAR = 4;
@@ -1091,7 +1165,9 @@ function stepSquad(this: World, sq: Squad): void {
   t.push(sq.x, sq.z, sq.hx, sq.hz, sq.s, turned ? 1 : 0);
   // bỏ phần vệt đã ở quá xa phía sau hàng cuối
   let drop = 0;
-  while (drop + 12 < t.length && t[drop + 6 + 4] < sq.s - sq.depth - 12) drop += 6;
+  // giữ vệt đủ dài cho cột dài nhất (đội co hàng một), không chỉ độ sâu hiện tại: co hàng thì hàng sau cần vệt thật phía sau
+  const keep = Math.max(sq.depth, sq.ids.length * (2 * sq.rMax + FORMATION_GAP)) + 12;
+  while (drop + 12 < t.length && t[drop + 6 + 4] < sq.s - keep) drop += 6;
   if (drop) t.splice(0, drop);
   if (sq.pathI * 2 >= sq.path.length) this.squadSettle(sq, speed);
 }
@@ -1194,7 +1270,9 @@ function squadFit(this: World, sq: Squad): void {
     right.push(this.freeSide(x, z, hx, hz, 1, scan));
   };
   for (const b of new Set(sq.offBack)) {
-    const p = this.trailAt(sq, sq.s - b);
+    // đội dựng từ quân lộn xộn: hàng còn trước đầu vệt (sau xe đuôi) đo TẠI ĐẦU VỆT (chỗ xe đuôi thật), không kéo thẳng ra sau
+    // vào chỗ không xe nào đứng (xem `squadTrailBack`)
+    const p = this.trailAt(sq, sq.byRank && sq.trail.length ? Math.max(sq.trail[4], sq.s - b) : sq.s - b);
     sample(p[0], p[1], p[2], p[3]);
   }
   // nhìn trước theo đường đi
@@ -1353,7 +1431,7 @@ function squadLag(this: World, sq: Squad, i: number, u: Unit): [number, number, 
   return [Math.sqrt(dist2(u.x, u.z, sx, sz)), hx, hz, sx, sz];
 }
 
-const methods = { formationOf, airSlots, orderMove, formation, freeSlot, arrive, createSquad, squadDirect, squadFits, squadAssign, slotKey, squadUnjam, squadAdopt, squadArrange, squadLayout, squadFlanks, squadRanks, squadSpeed, speedOf, squadSlot, trailAt, squadAfterPivot, squadMarch, slowestMobility, squadById, squadReady, leaveSquad, disbandSquad, updateSquads, stepSquad, squadSettle, squadFit, freeSide, squadMember, squadLag, squadTurnR };
+const methods = { formationOf, airSlots, orderMove, formation, freeSlot, arrive, createSquad, squadDirect, squadFits, squadAssign, slotKey, squadUnjam, squadTrailBack, squadAdopt, squadArrange, squadLayout, squadFlanks, squadRanks, squadSpeed, speedOf, squadSlot, trailAt, squadAfterPivot, squadMarch, slowestMobility, squadById, squadReady, leaveSquad, disbandSquad, updateSquads, stepSquad, squadSettle, squadFit, freeSide, squadMember, squadLag, squadTurnR };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

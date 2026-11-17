@@ -292,6 +292,26 @@ describe("10 Titan xếp hai hàng không chặn nhau (người dùng 17/11/2026
 });
 
 describe("đường hành quân xuất phát từ chỗ đủ rộng (17/11/2026)", () => {
+  // Sư đoàn 20 xe lộn xộn quanh arenaPoint(0) + (−20, 20), lệnh đi 56 m. Trước đây vệt khởi tạo kéo thẳng ra sau tâm đội: hàng
+  // tưởng tượng thứ 6 rơi vào đá ở (−30, 31), đội co hàng một ở tick thứ 2 và không bao giờ giãn (cột 88 m, 60 s chưa xe nào
+  // tới). Vệt sau lưng giờ là đường thật từ xe đuôi (hướng (b), người dùng chọn 17/11)
+  it("sư đoàn 20 xe lộn xộn: không co hàng một vì hàng tưởng tượng sau lưng", () => {
+    const w = new World(1, { sandbox: true });
+    const rng = new Rng(11);
+    const [cx, cz] = arenaPoint(0);
+    const us: Unit[] = [];
+    for (const [k, n] of [["titan", 6], ["lynx", 8], ["artillery", 3], ["rocket", 3]] as const)
+      for (let i = 0; i < n; i++) us.push(spawn(w, k, cx - 20 + (rng.next() - 0.5) * 22, cz + 20 + (rng.next() - 0.5) * 22));
+    w.step([{ side: 0, order: { t: "move", ids: us.map((u) => u.id), x: cx + 20, z: cz - 20 } }]);
+    const sq = w.squads[0];
+    let narrowest = sq.cols;
+    for (let t = 0; t < sec(10); t++) {
+      w.step([]);
+      narrowest = Math.min(narrowest, sq.cols);
+    }
+    expect(narrowest, "số xe mỗi hàng ít nhất trong 10 s đầu").toBeGreaterThanOrEqual(3);
+  });
+
   // 10 Titan lộn xộn quanh arenaPoint(−45) (Thung Lũng Sắt): tâm đội nằm sát vòng đá ở miệng một túi kín giữa đá và mép bản đồ.
   // Trước đây đường bắt đầu từ ô trống gần tâm nhất (trong túi): cả đội đi dọc dải 8 m trong túi (113 m), co hàng một, 90 s chưa
   // tới. Giờ xuất phát từ bãi trống bên ngoài (88 m)
