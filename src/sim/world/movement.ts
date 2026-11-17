@@ -17,6 +17,8 @@ const PROBE_STEP = 1;
 
 /** Đứng yên từ chừng này giây thì xe là vật cản khi xe cùng phe tìm đường (bước 2 kế hoạch đế). */
 const STAND_AFTER = 1;
+/** Xe xích chạy theo mũi: điểm giữa đường A* coi như đã qua khi tới gần chừng này (m). */
+const WAYPOINT_PASS = 1;
 /** Đích đè vòng giãn quân đứng: dời tối đa chừng này bước 0,5 m (`clearGoal`). */
 const STAND_GOAL_STEPS = 24;
 /** Lớp xe đứng chỉ in trong chừng này mét ngoài vòng giãn (xa hơn thì không ảnh hưởng A*: nửa thân lớn nhất 3,8 + dư 3 m). */
@@ -130,7 +132,10 @@ function stepToward(this: World, u: Unit, x: number, z: number, d: number): void
   const step = Math.min(this.speedOf(u) * DT * rally * this.moveFactor(u, dx, dz) * this.brakeNear(u, x, z), d);
   const ox = u.x;
   const oz = u.z;
-  this.tryMove(u, u.x + dx * step, u.z + dz * step);
+  // XE XÍCH CHẠY THEO MŨI (người dùng 17/11/2026: "xe chỉ có thể đi theo phương tới"): thân đã gần đúng hướng (lệch < 30°) thì
+  // tiến dọc trục thân, vừa chạy vừa quay nốt; không trượt chéo thẳng tới đích
+  const go = this.mateLimit(u, step, 1);
+  if (go > 1e-4) this.tryMove(u, u.x + u.hx * go, u.z + u.hz * go);
   u.moved = u.moved || dist2(ox, oz, u.x, u.z) > 1e-6;
 }
 
@@ -166,8 +171,10 @@ function driveTo(this: World, u: Unit, x: number, z: number, d: number, careful 
   const step = Math.min(this.speedOf(u) * DT * rally * this.moveFactor(u, u.hx * dir, u.hz * dir) * (dir < 0 ? REVERSE_SPEED : 1), want);
   const ox = u.x;
   const oz = u.z;
-  const nx = u.x + u.hx * dir * step;
-  const nz = u.z + u.hz * dir * step;
+  const lim = this.mateLimit(u, step, dir);
+  if (lim <= 1e-4) return;
+  const nx = u.x + u.hx * dir * lim;
+  const nz = u.z + u.hz * dir * lim;
   // `careful` (xe dạt nhường đường): nhìn trước, bước tới làm thân lấn sâu hơn vào xe mặt đất khác thì đứng chờ tick này, không
   // lái đâm vào rồi bị đẩy trượt ngang
   if (careful) {
@@ -181,6 +188,47 @@ function driveTo(this: World, u: Unit, x: number, z: number, d: number, careful 
   }
   this.tryMove(u, nx, nz);
   u.moved = u.moved || dist2(ox, oz, u.x, u.z) > 1e-6;
+}
+
+/**
+ * KHÔNG LÁI ĐÂM VÀO ĐỒNG ĐỘI (17/11/2026): xe xích chỉ chạy theo mũi, không bị đẩy trượt ngang được nữa, nên xe đi sau mà lái lún
+ * vào đuôi đồng đội (đang xoay tại chỗ, đang chờ) thì hai xe lồng nhau mãi (đo sư đoàn 20 xe: chồng thân gấp 4). Đồng đội cùng
+ * đội hình / cùng sư đoàn không né nhau bằng ORCA, nên ở đây: bước tiến dọc mũi (dấu `dir`) bị cắt ngắn để vòng giãn không lấn
+ * sâu thêm vào đồng đội nào. Trả về quãng được đi (≥ 0).
+ */
+/** Đi lướt bên đồng đội được khi khoảng cách ngang tới trục chạy còn ≥ tổng hai vòng giãn trừ chừng này (m). */
+const MATE_PASS = 0.3;
+function mateLimit(this: World, u: Unit, step: number, dir: number): number {
+  if ((!u.squad && !u.division) || isSquad(u.kind)) return step;
+  const ru = spaceRadius(u.kind);
+  let s = step;
+  for (const v of this.units) {
+    if (v === u || v.hp <= 0 || v.air !== "none" || v.side !== u.side) continue;
+    if (!((u.squad && v.squad === u.squad) || (u.division && v.division === u.division))) continue;
+    const lim = ru + spaceRadius(v.kind);
+    const ex = v.x - u.x;
+    const ez = v.z - u.z;
+    if (ex > lim + s || ex < -lim - s || ez > lim + s || ez < -lim - s) continue;
+    // khoảng cách tới v khi tiến t dọc (hx, hz)·dir: |e − t·h|² = |e|² − 2t(e·h) + t²
+    const eh = (ex * u.hx + ez * u.hz) * dir;
+    if (eh <= 0) continue; // v ở sau lưng hướng chạy: tiến không lại gần
+    const e2 = ex * ex + ez * ez;
+    // đi lướt bên cạnh (khoảng cách ngang tới trục chạy đủ hai vòng giãn, trừ MATE_PASS): không đâm, không chặn. Không thì hai xe
+    // song song sát nhau, xe kia nhích trước một chút là chặn nhau đứng chờ mãi
+    const perp = lim - MATE_PASS;
+    if (e2 - eh * eh >= perp * perp) continue;
+    const l2 = lim * lim;
+    if (e2 <= l2) {
+      s = 0; // đã chạm mà còn tiến lại gần: đứng chờ
+      break;
+    }
+    // nghiệm nhỏ của t² − 2t(e·h) + |e|² − lim² = 0
+    const disc = eh * eh - (e2 - l2);
+    if (disc < 0) continue;
+    const t = eh - Math.sqrt(disc);
+    if (t < s) s = t < 0 ? 0 : t;
+  }
+  return s;
 }
 
 // ------------------------------------------------------------------ quân mặt đất
@@ -620,7 +668,9 @@ function follow(this: World, u: Unit): boolean {
   if (sx !== 0 || sz !== 0) {
     if (!this.turnHull(u, sx, sz)) return false;
     const full = this.speedOf(u) * DT * rally * this.moveFactor(u, sx, sz) * brake;
-    this.tryMove(u, u.x + sx * full, u.z + sz * full);
+    // né xe cũng chạy theo mũi (thân đã quay về hướng né), không trượt ngang
+    const go = this.mateLimit(u, full, 1);
+    if (go > 1e-4) this.tryMove(u, u.x + u.hx * go, u.z + u.hz * go);
     const moved2 = dist2(ox, oz, u.x, u.z);
     u.moved = u.moved || moved2 > 1e-6;
     if (moved2 < full * full * 0.04) u.stuck++;
@@ -630,21 +680,35 @@ function follow(this: World, u: Unit): boolean {
   // lệch hướng nhiều: đứng lại xoay tại chỗ (chưa chạy, không tính là kẹt)
   if (fd > 1e-6 && !this.turnHull(u, fdx / fd, fdz / fd)) return false;
   const full = this.speedOf(u) * DT * rally * (fd > 1e-6 ? this.moveFactor(u, fdx / fd, fdz / fd) : this.moveFactor(u, 0, 0)) * brake;
-  let step = full;
-  while (step > 1e-9 && u.pathI * 2 < u.path.length) {
-    const wx = u.path[u.pathI * 2];
-    const wz = u.path[u.pathI * 2 + 1];
-    const dx = wx - u.x;
-    const dz = wz - u.z;
-    const d = Math.sqrt(dx * dx + dz * dz);
-    if (d <= step) {
-      if (!this.tryMove(u, wx, wz)) break;
-      step -= d;
-      u.pathI++;
-      continue;
+  // XE XÍCH CHẠY THEO MŨI (17/11/2026): tiến dọc trục thân, không trượt thẳng tới điểm của đường. Điểm giữa đường coi như đã qua
+  // khi tới gần trong WAYPOINT_PASS (thân lệch < 30° thì vừa chạy vừa quay, lệch hơn thì `turnHull` xoay tại chỗ ở trên);
+  // điểm CUỐI thì nhích vào bằng `driveTo` (chạy theo xích, quay thân trước khi đích lệch ngang) cho tới khi sát đích
+  const last = (u.pathI + 1) * 2 >= u.path.length;
+  if (last && fd < 3) {
+    this.driveTo(u, u.path[u.pathI * 2], u.path[u.pathI * 2 + 1], fd);
+    if (fd <= DRIVE_LAT_TOL + 0.05) u.pathI++;
+  } else if (isSquad(u.kind)) {
+    // tiểu đội bộ binh bước tới đúng điểm như cũ
+    let step = full;
+    while (step > 1e-9 && u.pathI * 2 < u.path.length) {
+      const wx = u.path[u.pathI * 2];
+      const wz = u.path[u.pathI * 2 + 1];
+      const dx = wx - u.x;
+      const dz = wz - u.z;
+      const d = Math.sqrt(dx * dx + dz * dz);
+      if (d <= step) {
+        if (!this.tryMove(u, wx, wz)) break;
+        step -= d;
+        u.pathI++;
+        continue;
+      }
+      this.tryMove(u, u.x + (dx / d) * step, u.z + (dz / d) * step);
+      break;
     }
-    this.tryMove(u, u.x + (dx / d) * step, u.z + (dz / d) * step);
-    break;
+  } else {
+    const go = this.mateLimit(u, Math.min(full, last ? fd : full), 1);
+    if (go > 1e-4) this.tryMove(u, u.x + u.hx * go, u.z + u.hz * go);
+    while (u.pathI * 2 < u.path.length && (u.pathI + 1) * 2 < u.path.length && dist2(u.x, u.z, u.path[u.pathI * 2], u.path[u.pathI * 2 + 1]) <= WAYPOINT_PASS * WAYPOINT_PASS) u.pathI++;
   }
   const moved2 = dist2(ox, oz, u.x, u.z);
   u.moved = u.moved || moved2 > 1e-6;
@@ -696,7 +760,7 @@ function chase(this: World, u: Unit, t: Target): void {
  * GIỮ BÊN PHẢI (cùng một quy ước cho mọi xe, mọi phe): hai xe ngược chiều cùng giữ phải thì tự lệch về hai phía, qua được nhau.
  * Trước đây hòa thì chọn theo chẵn / lẻ của mã xe, không đối xứng giữa hai phe.
  */
-const methods = { standLayer, standFor, turnHull, stepToward, driveTo, setIdle, halt, setPath, bodyContact, wallNormal, clearGoal, clearStand, goalTaken, spotTaken, tryMove, terrainFactor, moveFactor, follow, chase, steer, brakeNear };
+const methods = { mateLimit, standLayer, standFor, turnHull, stepToward, driveTo, setIdle, halt, setPath, bodyContact, wallNormal, clearGoal, clearStand, goalTaken, spotTaken, tryMove, terrainFactor, moveFactor, follow, chase, steer, brakeNear };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

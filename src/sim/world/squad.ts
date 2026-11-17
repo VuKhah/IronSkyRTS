@@ -1362,6 +1362,7 @@ function squadFit(this: World, sq: Squad): void {
     }
     return lo <= hi ? [lo, hi] : null;
   };
+  if (process.env.DBG && this.tick < 30) console.log(`DBG tick ${this.tick} L ${left.map((v) => v.toFixed(1)).join(",")} R ${right.map((v) => v.toFixed(1)).join(",")} w5 ${widthOf(5).toFixed(1)} trail0 ${sq.trail[4]?.toFixed(1)} s ${sq.s.toFixed(1)}`);
   let c = sq.cols;
   if (!range(c, 0)) {
     // hẹp: co ngay tới mức vừa (1 xe mỗi hàng thì đành chịu)
@@ -1424,6 +1425,15 @@ function squadMember(this: World, u: Unit, w: WeaponSpec | undefined, range: num
   }
   // đi-và-đánh: cả đội đang dừng bắn thì xe đang tự đi tới ô cũng đứng lại
   if (sq.phase === "direct" && sq.kind === "amove" && sq.holding) return fireAt;
+  // NHƯỜNG ĐỒNG ĐỘI (`yield.ts canYield`): xe đúng ô ở đích được yêu cầu dạt thì chạy theo xích tới chỗ dạt, hết hạn thì về ô
+  if (u.yieldAway) {
+    if (this.tick < u.yieldUntil && sq.phase !== "march") {
+      const dy = Math.sqrt(dist2(u.x, u.z, u.yieldX, u.yieldZ));
+      if (dy > DRIVE_LAT_TOL + 0.05) this.driveTo(u, u.yieldX, u.yieldZ, dy, true);
+      return fireAt;
+    }
+    u.yieldAway = false;
+  }
   const lagAt = this.squadLag(sq, i, u);
   const shx = lagAt[1];
   const shz = lagAt[2];
@@ -1441,6 +1451,11 @@ function squadMember(this: World, u: Unit, w: WeaponSpec | undefined, range: num
   // cách ô THẬT (kể cả xe đang đứng chờ phía trước ô lúc hành quân): ORCA chỉ cho xe cùng đội né nhau khi có xe lệch ô
   const [ox, oz] = this.squadSlot(sq, i);
   u.slotOff = Math.sqrt(dist2(u.x, u.z, ox, oz));
+  // ô nhà khi nhường đường (`planYield` tính chỗ dạt từ tx, tz): ô của đội hình lúc chốt hình ở đích
+  if (sq.phase !== "march" && u.slotOff < 1) {
+    u.tx = ox;
+    u.tz = oz;
+  }
   // TỚI GẦN LÀ TỚI (T1, 16/11/2026): ô ở đích bị quân cùng phe ngoài đội đang đứng chiếm và xe đã sát quân đó thì đứng lại
   // tại chỗ, không lái lún vào quân đứng. Lúc hành quân ô còn di động nên không xét. Đội hình mới (T3/T4) sẽ thay chốt này.
   if (sq.phase !== "march" && this.spotTaken(u, ox, oz)) {

@@ -40,14 +40,28 @@ const LANE_AHEAD_MIN = 1.5;
 const LANE_WAIT_MAX = sec(3);
 const YIELD_BLOCK = sec(8);
 
+/** Xe đúng ô ở đích (đội hình pha `direct` / `settle`) được coi như xe đứng: lệch ô dưới chừng này (m). */
+const SQUAD_PLACED = 1;
+
 function canYield(this: World, v: Unit): boolean {
+  if (v.air !== "none" || v.hp <= 0 || v.kind === "hauler" || isSquad(v.kind) || this.anchored(v) || this.tick < v.yieldBlock) return false;
   // xe sư đoàn đang về ô mới sau khi xoay (`divisionReform`) là xe đang đi, không nhường (không thì các xe cùng về ô đòi nhau dạt mãi)
-  return v.air === "none" && v.hp > 0 && v.order === "idle" && v.squad === 0 && v.kind !== "hauler" && !isSquad(v.kind) && !this.anchored(v) && this.tick >= v.yieldBlock && !this.divisionReform(v);
+  if (v.order === "idle" && v.squad === 0) return !this.divisionReform(v);
+  // XE ĐÚNG Ô Ở ĐÍCH NHƯỜNG ĐỒNG ĐỘI ĐANG VỀ Ô (A2, 17/11/2026): xe xích không trượt ngang nên xe về ô không chen qua xe đứng được
+  // nữa; đội đang chốt hình ở đích (không phải lúc hành quân) thì xe đã vào ô dạt theo xích cho đồng đội qua rồi về ô, như xe lẻ
+  if (v.squad === 0) return false;
+  const sq = this.squadById(v.squad);
+  return !!sq && (sq.phase === "settle" || (sq.phase === "direct" && (!sq.rigid || sq.rolling))) && v.slotOff < SQUAD_PLACED;
+}
+
+/** Xe đang dạt nhường đường (xe lẻ đứng chờ, hoặc xe đúng ô của đội hình ở đích). */
+function yielding(this: World, v: Unit): boolean {
+  return v.yieldAway && (v.order === "idle" || v.squad !== 0);
 }
 
 /** Xe đang tự đi (có đường còn lại, hoặc vừa chạy trong đội hình) và đòi lối; xe đang nhường / về ô thì không đòi. */
 function lane(this: World, m: Unit): number[] | null {
-  if (m.air !== "none" || m.hp <= 0 || this.anchored(m) || isSquad(m.kind) || (m.order === "idle" && m.yieldAway)) return null;
+  if (m.air !== "none" || m.hp <= 0 || this.anchored(m) || isSquad(m.kind) || this.yielding(m)) return null;
   const look = Math.max(YIELD_LOOK_MIN, Math.min(YIELD_LOOK_MAX, UNITS[m.kind].speed * YIELD_LOOK_T));
   const pts = [m.x, m.z];
   let left = look;
@@ -301,7 +315,7 @@ function yieldPass(this: World): void {
   }
 }
 
-const methods = { canYield, lane, yieldPass };
+const methods = { canYield, yielding, lane, yieldPass };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

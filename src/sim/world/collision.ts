@@ -39,20 +39,33 @@ function sideStep(m: Unit, ox: number, oz: number): [number, number] {
   return [m.hz * sg, -m.hx * sg];
 }
 
-/** Đẩy xe đi (dx, dz) qua tryMove (trượt dọc vách, không lấn vào vách); trả về quãng thật sự đi được. */
+/** Cú đẩy lệch trục thân quá chừng này (|cos| < 0,35, tức lệch hơn ~70°) thì xe không gánh được: phần đẩy chuyển cho xe kia. */
+const AXIS_PUSH_MIN = 0.35;
+
+/**
+ * Đẩy xe để tách ra (dx, dz) qua tryMove; trả về phần tách được THEO HƯỚNG ĐẨY. XE XÍCH KHÔNG TRƯỢT NGANG (người dùng 16/11 và
+ * 17/11/2026: "xe chỉ có thể đi theo phương tới, không có chuyện đi ngang"): xe mặt đất chỉ bị đẩy tiến / lùi DỌC TRỤC THÂN, đủ
+ * xa để tách đúng quãng cần theo hướng đẩy (tối đa 1,5 lần + 0,2 m); cú đẩy gần vuông góc thân thì không nhận, phần thiếu chuyển
+ * cho xe kia (`separate`). Tiểu đội bộ binh (lính bước ngang được) vẫn bị đẩy theo đúng hướng.
+ */
 function shove(w: World, u: Unit, dx: number, dz: number): [number, number] {
-  if (dx * dx + dz * dz < 1e-12) return [0, 0];
-  // xe đang dạt nhường đường chạy theo xích: chỉ nhận phần đẩy DỌC TRỤC THÂN (lùi / tiến), không bị đẩy trượt ngang
-  if (u.order === "idle" && u.yieldAway) {
-    const a = dx * u.hx + dz * u.hz;
-    dx = u.hx * a;
-    dz = u.hz * a;
-    if (dx * dx + dz * dz < 1e-12) return [0, 0];
-  }
+  const l2 = dx * dx + dz * dz;
+  if (l2 < 1e-12) return [0, 0];
   const ox = u.x;
   const oz = u.z;
-  w.tryMove(u, u.x + dx, u.z + dz);
-  return [u.x - ox, u.z - oz];
+  if (isSquad(u.kind)) {
+    w.tryMove(u, u.x + dx, u.z + dz);
+    return [u.x - ox, u.z - oz];
+  }
+  const l = Math.sqrt(l2);
+  const nx = dx / l;
+  const nz = dz / l;
+  const c = u.hx * nx + u.hz * nz;
+  if (c > -AXIS_PUSH_MIN && c < AXIS_PUSH_MIN) return [0, 0];
+  const t = Math.min(l / (c < 0 ? -c : c), 1.5 * l + 0.2) * (c < 0 ? -1 : 1);
+  w.tryMove(u, u.x + u.hx * t, u.z + u.hz * t);
+  const m = (u.x - ox) * nx + (u.z - oz) * nz;
+  return [nx * m, nz * m];
 }
 
 /**
@@ -171,7 +184,7 @@ function orcaPass(this: World, g: readonly Unit[]): void {
       if (release && crawling(b)) continue;
       // xe cùng phe BIẾT NHƯỜNG ĐƯỜNG (`world/yield.ts`) tự dạt khỏi lối, xe đi giữ đúng lối và chờ nếu lối chưa mở (`laneWait`):
       // không né (né thì ORCA bẻ xe lệch khỏi lối trước khi xe kia kịp dạt, đâm vào chỗ xe vừa dạt tới rồi kẹt; đo 16/11 lưới 3×3)
-      if (this.canYield(b) || (b.order === "idle" && b.yieldAway)) continue;
+      if (this.canYield(b) || this.yielding(b)) continue;
       const dx = b.x - a.x;
       const dz = b.z - a.z;
       if (dx >= AVOID_LOOK || dx <= -AVOID_LOOK || dz >= AVOID_LOOK || dz <= -AVOID_LOOK) continue;
@@ -239,8 +252,8 @@ function separate(this: World): void {
       // va chạm theo ĐẾ TRÒN cho mọi cặp (16/11/2026; trước đó hình chữ nhật thân, phép tách trục): hai tâm cách nhau ≥ tổng hai
       // vòng `spaceRadius` (quân mặt đất = vòng thân). Quân đã hạ bệ là LỤC GIÁC tĩnh (trung đoạn = vòng đó), tầm xét tới đỉnh
       const both = a.moved && b.moved;
-      const ra2 = !a.moved || (a.order === "idle" && a.yieldAway);
-      const rb2 = !b.moved || (b.order === "idle" && b.yieldAway);
+      const ra2 = !a.moved || this.yielding(a);
+      const rb2 = !b.moved || this.yielding(b);
       // tiểu đội với xe: chạm MỀM, được chồng tới nửa đế tiểu đội (`softOverlap`)
       const soft = softOverlap(a.kind, b.kind);
       const touch = (pa ? ra / HEX_COS30 : ra) + (pb ? rb / HEX_COS30 : rb) - soft;
@@ -282,8 +295,9 @@ function separate(this: World): void {
         if ((lat < 0 ? -lat : lat) >= ra + rb) continue;
         const [lax, laz] = sideStep(a, dx, dz);
         const [lbx, lbz] = sideStep(b, -dx, -dz);
-        shove(this, a, lax * PASS_STEER, laz * PASS_STEER);
-        shove(this, b, lbx * PASS_STEER, lbz * PASS_STEER);
+        // chỉ tiểu đội bộ binh bước ngang được; xe xích đối đầu tự lái né bằng ORCA (`steer`)
+        if (isSquad(a.kind)) shove(this, a, lax * PASS_STEER, laz * PASS_STEER);
+        if (isSquad(b.kind)) shove(this, b, lbx * PASS_STEER, lbz * PASS_STEER);
         continue;
       }
       // xe đang chạy nhường xe đã đứng yên: xe chạy chịu phần lớn lực đẩy (lách qua), xe đã vào hàng chỉ xê dịch chút ít
@@ -333,8 +347,9 @@ function separate(this: World): void {
           bSide = !offB;
         }
       }
-      const [lax, laz] = aSide ? sideStep(a, dx, dz) : [0, 0];
-      const [lbx, lbz] = bSide ? sideStep(b, -dx, -dz) : [0, 0];
+      // lách sang bên chỉ còn cho tiểu đội bộ binh: xe xích không trượt ngang (`shove` chỉ đẩy dọc trục thân)
+      const [lax, laz] = aSide && isSquad(a.kind) ? sideStep(a, dx, dz) : [0, 0];
+      const [lbx, lbz] = bSide && isSquad(b.kind) ? sideStep(b, -dx, -dz) : [0, 0];
       // Đẩy qua tryMove: sát vách thì trượt dọc vách thay vì bỏ cả cú đẩy (trước đây cả hai đứng im lồng vào nhau). Hai cú đẩy
       // tính từ cùng một trạng thái; phần xe này không đi được (cả đẩy dọc lẫn lách ngang) thì xe kia đi bù theo hướng ngược
       // lại, một lượt cho cả hai chiều, nên đổi vai a / b (thứ tự mã xe) ra cùng kết quả. Quân đã hạ bệ không bị bù.
