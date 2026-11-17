@@ -453,7 +453,33 @@ function divisionEscort(this: World, d: Division): void {
   }
 }
 
-const methods = { divisionTargets, divisionTargetOf, divisionInZone, divisionBrain, divisionFace, divisionReform, divisionAlert, divisionEscort, divisionById, divGroundCount, dissolveDivision, leaveDivision, formDivision, divisionOrder, stationDivision, updateDivisions };
+/**
+ * Lệnh chế độ (D5): áp cho mọi sư đoàn có xe trong `ids`. Sang trực tiếp thì tướng thôi chiến thuật ngay: hết báo động, bỏ mục
+ * tiêu đã giao, thôi đi về ô mới; xe đứng tại chỗ bắn mục tiêu trong tầm như xe lẻ.
+ */
+function setDivisionMode(this: World, side: Side, ids: readonly number[], mode: "auto" | "direct"): void {
+  for (const u of this.ownUnits(side, ids)) {
+    const d = this.divisionById(u.division);
+    if (!d || d.mode === mode) continue;
+    d.mode = mode;
+    if (mode === "direct") {
+      d.alarm = "none";
+      d.reformUntil = 0;
+      for (const id of d.ids) {
+        const m = this.byId.get(id) as Unit;
+        m.divTarget = 0;
+        if (d.directive === "station" && isDivGround(m)) {
+          m.tx = m.x;
+          m.tz = m.z;
+          m.path = [];
+          m.pathI = 0;
+        }
+      }
+    }
+  }
+}
+
+const methods = { setDivisionMode, divisionTargets, divisionTargetOf, divisionInZone, divisionBrain, divisionFace, divisionReform, divisionAlert, divisionEscort, divisionById, divGroundCount, dissolveDivision, leaveDivision, formDivision, divisionOrder, stationDivision, updateDivisions };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

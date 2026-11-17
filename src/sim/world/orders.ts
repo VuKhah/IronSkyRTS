@@ -24,7 +24,8 @@ function ownBuilding(this: World, side: Side, id: number): Building | null {
 
 function applyOrder(this: World, side: Side, o: Order): void {
   // lệnh mới cho xe nào thì xe đó rời đội hình cũ (lệnh di chuyển nhóm sẽ lập đội hình mới)
-  if ("ids" in o)
+  // (đổi chế độ sư đoàn không phải lệnh cho xe: đội vẫn đi tiếp)
+  if ("ids" in o && o.t !== "divMode")
     for (const id of o.ids) {
       const u = this.byId.get(id);
       if (u && u.cat === "unit" && u.side === side && u.squad) this.leaveSquad(u);
@@ -38,6 +39,9 @@ function applyOrder(this: World, side: Side, o: Order): void {
       break;
     case "barrage":
       this.orderStrike(side, o.ids, o.x, o.z);
+      break;
+    case "divMode":
+      this.setDivisionMode(side, o.ids, o.mode);
       break;
     case "mobilize":
       this.mobilize(side);

@@ -304,6 +304,8 @@ export type Order =
   /** Xe Vận Tải đi kéo xác quân về (mỗi xe một xác: xác được chạm trước, rồi các xác gần đó). */
   | { t: "salvage"; ids: number[]; wreck: number }
   | { t: "rtb"; ids: number[] }
+  /** Chế độ sư đoàn (A2 D5): "direct" = Tư lệnh nắm trực tiếp (tướng thôi tự quyết chiến thuật, vẫn lo giao thông nội bộ). */
+  | { t: "divMode"; ids: number[]; mode: "auto" | "direct" }
   | { t: "build"; kind: BuildingId; x: number; z: number; rot?: number }
   | { t: "produce"; building: number; kind: UnitId }
   | { t: "cancel"; building: number }

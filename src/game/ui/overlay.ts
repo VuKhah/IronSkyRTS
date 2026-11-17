@@ -324,6 +324,48 @@ export class Overlay {
       // chỉ xe bị thương mới có vạch máu, bàn tác chiến đỡ rối
       if (u.hp < u.maxHp) this.bar(p.x, p.y + H + 2, W * 2, u.hp / u.maxHp, u.hp / u.maxHp > 0.6 ? "#6fdc8c" : u.hp / u.maxHp > 0.3 ? "#ffb547" : "#ff6b5e");
     }
+    // sư đoàn (A2): nhãn "TRỰC TIẾP" khi Tư lệnh nắm trực tiếp, "!" đỏ khi tướng đang báo động gần. Xem cả hai phe (Phòng Thử
+    // Nghiệm, AI đấu AI) thì thấy sư đoàn của cả hai phe
+    for (const d of world.divisions) {
+      if ((viewer !== null && d.side !== viewer) || (d.mode !== "direct" && d.alarm !== "near")) continue;
+      let n = 0;
+      let cx = 0;
+      let cz = 0;
+      let top = Infinity;
+      for (const id of d.ids) {
+        const u = world.byId.get(id);
+        if (!u || u.cat !== "unit" || u.air !== "none") continue;
+        n++;
+        cx += u.x;
+        cz += u.z;
+        top = Math.min(top, cam.project(u.x, 0, u.z, w, h).y);
+      }
+      if (!n) continue;
+      const p = cam.project(cx / n, 0, cz / n, w, h);
+      if (off(p)) continue;
+      const y = Math.min(p.y, top) - 16;
+      g.font = "bold 11px 'Be Vietnam Pro', sans-serif";
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      if (d.mode === "direct") {
+        const label = "TRỰC TIẾP";
+        const tw = g.measureText(label).width + 10;
+        g.fillStyle = MARK_BODY;
+        g.strokeStyle = MARK_NEON[d.side];
+        g.lineWidth = 1.2;
+        g.fillRect(p.x - tw / 2, y - 8, tw, 16);
+        g.strokeRect(p.x - tw / 2, y - 8, tw, 16);
+        g.fillStyle = MARK_NEON[d.side];
+        g.fillText(label, p.x, y + 1);
+      } else {
+        g.fillStyle = "#ff6b5e";
+        g.beginPath();
+        g.arc(p.x, y, 8, 0, Math.PI * 2);
+        g.fill();
+        g.fillStyle = "#ffffff";
+        g.fillText("!", p.x, y + 1);
+      }
+    }
     g.globalAlpha = 1;
     g.textBaseline = "alphabetic";
   }

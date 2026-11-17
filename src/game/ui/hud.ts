@@ -244,7 +244,7 @@ export class Hud {
         return "none";
       case "units": {
         const kinds = [...new Set(ctx.units.map((u) => u.kind))].sort().join(",");
-        return `units:${kinds}`;
+        return `units:${kinds}:${ctx.units.some((u) => u.division) ? 1 : 0}`;
       }
       case "building":
         return `b:${ctx.b.id}:${ctx.b.built}:${ctx.own}`;
@@ -271,9 +271,11 @@ export class Hud {
         const hasAir = ctx.units.some((u) => u.air !== "none");
         const hasHauler = ctx.units.some((u) => u.kind === "hauler");
         const hasArmed = ctx.units.some((u) => UNITS[u.kind].weapon);
+        const hasDiv = ctx.units.some((u) => u.division);
         html = `<div class="row">
           ${hasArmed ? `<button class="btn" data-act="amove" data-mode="amove"><span class="key">A</span><span>⚔</span><span>Tấn công</span><span class="cost">di chuyển</span></button>` : ""}
           <button class="btn" data-act="stop"><span class="key">S</span><span>■</span><span>Dừng</span></button>
+          ${hasDiv ? `<button class="btn" data-act="divMode" data-divmode title="Sư đoàn tự chủ: tướng tự báo động, quay mặt về phía địch, cùng bắn trong vùng 20 m. Nắm trực tiếp: tướng chỉ lo giữ đội hình và nhường đường, xe làm đúng lệnh"><span class="key">D</span><span data-divicon>🎖</span><span data-divlabel>Tự chủ</span><span class="cost" data-divnote>bấm: nắm trực tiếp</span></button>` : ""}
           ${hasAir ? `<button class="btn" data-act="rtb"><span class="key">B</span><span>⤓</span><span>Về sân</span><span class="cost">nạp dầu</span></button>` : ""}
           ${hasHauler ? `<button class="btn" data-act="harvest" data-mode="harvest"><span>⛏</span><span>Khai thác</span><span class="cost">chọn mỏ</span></button>` : ""}
           ${hasHauler ? `<button class="btn" data-act="salvage" data-mode="salvage" title="Chọn một xác quân để Xe Vận Tải kéo về Tổng Hành Dinh (mỗi xe một xác)"><span>🔧</span><span>Trục vớt</span><span class="cost">chọn xác</span></button>` : ""}
@@ -518,6 +520,19 @@ export class Hud {
         b.setAttribute("aria-pressed", String(mode === "place" && placeKind === b.dataset.build));
       });
       this.rows.querySelectorAll<HTMLButtonElement>("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", String(mode === b.dataset.mode)));
+      // nút chế độ sư đoàn: nhãn theo chế độ hiện tại (lệnh đi qua hàng lệnh, đổi ở tick sau)
+      const divBtn = this.rows.querySelector<HTMLButtonElement>("[data-divmode]");
+      if (divBtn && ctx.t === "units") {
+        const direct = ctx.units.some((u) => u.division && w.divisionById(u.division)?.mode === "direct");
+        const txt = (sel: string, v: string): void => {
+          const el = divBtn.querySelector<HTMLElement>(sel);
+          if (el && el.textContent !== v) el.textContent = v;
+        };
+        txt("[data-divicon]", direct ? "🎯" : "🎖");
+        txt("[data-divlabel]", direct ? "Trực tiếp" : "Tự chủ");
+        txt("[data-divnote]", direct ? "bấm: giao lại tướng" : "bấm: nắm trực tiếp");
+        divBtn.setAttribute("aria-pressed", String(direct));
+      }
       if (ctx.t === "building" && ctx.own) {
         const bd = ctx.b;
         this.rows.querySelectorAll<HTMLButtonElement>("[data-unit]").forEach((btn) => {

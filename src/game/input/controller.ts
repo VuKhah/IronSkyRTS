@@ -689,6 +689,18 @@ export class Controller implements GestureHandlers {
         if (ids.length) this.issue({ t: "stop", ids });
         break;
       }
+      case "divMode": {
+        // một nút cho các sư đoàn đang chọn: còn sư đoàn nào tự chủ thì chuyển cả sang trực tiếp, không thì về tự chủ
+        const w = this.world;
+        const units = this.ownUnits().filter((u) => u.division);
+        const divs = new Set(units.map((u) => w.divisionById(u.division)).filter((d) => !!d));
+        if (!divs.size) break;
+        const mode = [...divs].some((d) => d!.mode === "auto") ? "direct" : "auto";
+        this.issue({ t: "divMode", ids: units.map((u) => u.id), mode });
+        this.hud?.alert(mode === "direct" ? "Nắm trực tiếp: tướng sư đoàn chỉ lo giữ đội hình, không tự đánh" : "Tự chủ: tướng sư đoàn tự báo động, quay mặt, cùng bắn", "");
+        this.sfx.ui("ack");
+        break;
+      }
       case "rtb": {
         const ids = this.ownUnits()
           .filter((u) => u.air !== "none")
@@ -935,6 +947,7 @@ export class Controller implements GestureHandlers {
     } else if (k === "s" && units.length) this.act("stop");
     else if (k === "a" && units.length) this.mode = "amove";
     else if (k === "b") this.act("rtb");
+    else if (k === "d" && units.length) this.act("divMode");
     else if (k === "h") this.act("hq");
     else if (k === "f1") {
       e.preventDefault();

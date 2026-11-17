@@ -529,3 +529,46 @@ describe("tướng sư đoàn: cùng bắn, vùng phản công, về ô (A2 D4)"
   });
 });
 
+
+describe("chế độ trực tiếp (A2 D5)", () => {
+  it("bị đánh sườn ở chế độ trực tiếp: không báo động chung, không xoay, không tiến; chỉ xe trong tầm bắn", () => {
+    const w = new World(1, { sandbox: true });
+    const us = group(w, Array<UnitId>(8).fill("titan"));
+    go(w, us, 10);
+    finish(w, us);
+    for (let i = 0; i < 10; i++) w.step([]);
+    const d = w.divisions.find((x) => x.id === us[0].division)!;
+    w.step([{ side: 0, order: { t: "divMode", ids: [us[0].id], mode: "direct" } }]);
+    expect(d.mode).toBe("direct");
+    const home = us.map((u) => [u.x, u.z]);
+    const sx = d.hz;
+    const sz = -d.hx;
+    const foes = [-4, 0, 4].map((k) => spawn(w, "lynx", d.cx + sx * 24 + d.hx * k, d.cz + sz * 24 + d.hz * k, 1));
+    for (let t = 0; t < sec(8); t++) {
+      w.step([]);
+      foes.forEach((f) => (f.hp = f.maxHp));
+      expect(d.alarm).toBe("none");
+    }
+    expect(d.fx * d.hx + d.fz * d.hz).toBeGreaterThan(0.99);
+    // không tiến quá luật xích cũ của xe lẻ (12 m quanh ô)
+    us.forEach((u, i) => expect(Math.hypot(u.x - home[i][0], u.z - home[i][1])).toBeLessThan(12.5));
+    // về lại tự chủ: tướng nhận lại việc
+    w.step([{ side: 0, order: { t: "divMode", ids: [us[0].id], mode: "auto" } }]);
+    for (let t = 0; t < sec(2); t++) {
+      w.step([]);
+      foes.forEach((f) => (f.hp = f.maxHp));
+    }
+    expect(d.alarm).toBe("near");
+  });
+
+  it("đổi chế độ lúc đang hành quân không làm xe rời đội hình; chế độ nhớ qua lệnh sau", () => {
+    const w = new World(1, { sandbox: true });
+    const us = group(w, ["titan", "titan", "lynx", "lynx"]);
+    go(w, us, 10);
+    const sq = us[0].squad;
+    w.step([{ side: 0, order: { t: "divMode", ids: us.map((u) => u.id), mode: "direct" } }]);
+    expect(us.every((u) => u.squad === sq)).toBe(true);
+    go(w, us, -10);
+    expect(w.divisions.find((x) => x.id === us[0].division)!.mode).toBe("direct");
+  });
+});

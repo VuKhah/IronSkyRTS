@@ -160,6 +160,57 @@ export const SCENARIOS: Record<string, () => Scenario> = {
       }
     };
   },
+  "division-flank": () => {
+    // A2 D3 (17/11/2026): sư đoàn 8 Titan đóng quân, 3 Lynx đánh vào sườn phải. Tướng phải báo động trong 1 s và xoay cả sư đoàn
+    // về phía địch trong 4 s (đo từ lúc Lynx xuất hiện). Lynx lao vào (tấn công-di chuyển) nên trận tự ngã ngũ.
+    let ordered = false;
+    let sentAt = -1;
+    let alarmAt = -1;
+    let turnedAt = -1;
+    let fx = 0;
+    let fz = 0;
+    const div = (w: World) => w.divisions.find((d) => d.side === 0);
+    return {
+      id: "division-flank",
+      name: "Sư đoàn bị đánh sườn",
+      intent: "Sư đoàn 8 Titan đã đóng quân bị 3 Lynx đánh vào sườn 90°: cả sư đoàn báo động trong 1 giây, xoay về phía địch trong 4 giây, cùng bắn.",
+      seconds: 60,
+      setup: () => group(0, "titan", 8, -12, -30),
+      step(w) {
+        const out: Command[] = [];
+        if (!ordered) {
+          ordered = true;
+          const ids = w.units.filter((u) => u.side === 0 && u.kind === "titan").map((u) => u.id);
+          const [x, z] = arenaPoint(8);
+          out.push({ side: 0, order: { t: "move", ids, x, z } });
+          return out;
+        }
+        const d = div(w);
+        if (sentAt < 0 && d && d.directive === "station") {
+          sentAt = w.tick;
+          fx = d.hz;
+          fz = -d.hx;
+          for (const k of [-4, 0, 4])
+            out.push({ side: 1, order: { t: "sbSpawn", kind: "lynx", side: 1, x: d.cx + fx * 26 + d.hx * k, z: d.cz + fz * 26 + d.hz * k, gx: d.cx, gz: d.cz, go: "amove" } });
+        }
+        if (d && sentAt >= 0) {
+          if (alarmAt < 0 && d.alarm === "near") alarmAt = w.tick;
+          if (turnedAt < 0 && d.fx * fx + d.fz * fz > 0.87) turnedAt = w.tick;
+        }
+        return out;
+      },
+      done: (w) => sentAt >= 0 && w.tick > sentAt + 5 && (alive(w, 1, "lynx") === 0 || alive(w, 0, "titan") === 0),
+      judge(w) {
+        if (sentAt < 0) return { ok: false, text: "Sư đoàn chưa đóng quân xong" };
+        const a = alarmAt < 0 ? Infinity : (alarmAt - sentAt) / TICK_RATE;
+        const t = turnedAt < 0 ? Infinity : (turnedAt - sentAt) / TICK_RATE;
+        return {
+          ok: a <= 1.2 && t <= 4.2,
+          text: `Báo động sau ${a === Infinity ? "—" : a.toFixed(1) + " s"}, xoay về phía địch sau ${t === Infinity ? "—" : t.toFixed(1) + " s"}; Titan còn ${alive(w, 0, "titan")}/8, Lynx còn ${alive(w, 1, "lynx")}/3`
+        };
+      }
+    };
+  },
   "falcon-flyover-skyguard": () => {
     const N = 10;
     const [dx, dz] = arenaPoint(55);
