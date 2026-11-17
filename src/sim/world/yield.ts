@@ -49,9 +49,15 @@ function canYield(this: World, v: Unit): boolean {
   if (v.order === "idle" && v.squad === 0) return !this.divisionReform(v);
   // XE ĐÚNG Ô Ở ĐÍCH NHƯỜNG ĐỒNG ĐỘI ĐANG VỀ Ô (A2, 17/11/2026): xe xích không trượt ngang nên xe về ô không chen qua xe đứng được
   // nữa; đội đang chốt hình ở đích (không phải lúc hành quân) thì xe đã vào ô dạt theo xích cho đồng đội qua rồi về ô, như xe lẻ
-  if (v.squad === 0) return false;
-  const sq = this.squadById(v.squad);
-  return !!sq && (sq.phase === "settle" || (sq.phase === "direct" && (!sq.rigid || sq.rolling))) && v.slotOff < SQUAD_PLACED;
+  // Cả XE LỆCH Ô ĐANG BỊ CHẶN (đứng yên tick này): hai xe khác loại cùng về ô đối đầu nhau thì một xe phải dạt (thứ tự ở `yieldPass`)
+  if (v.squad === 0 || !this.squadSettling(v)) return false;
+  return v.slotOff < SQUAD_PLACED || !v.moved;
+}
+
+/** Xe trong đội hình đang chốt hình ở đích (pha `settle`, hoặc `direct` đã lăn bánh): giao thông nội bộ kiểu xe đứng / xe đi. */
+function squadSettling(this: World, v: Unit): boolean {
+  const sq = v.squad ? this.squadById(v.squad) : undefined;
+  return !!sq && (sq.phase === "settle" || (sq.phase === "direct" && (!sq.rigid || sq.rolling)));
 }
 
 /** Xe đang dạt nhường đường (xe lẻ đứng chờ, hoặc xe đúng ô của đội hình ở đích). */
@@ -80,6 +86,20 @@ function lane(this: World, m: Unit): number[] | null {
       az = bz;
     }
     return pts.length >= 4 ? pts : null;
+  }
+  // xe đội hình về ô ở đích (kể cả đang bị chặn, đứng yên): lối là đoạn thẳng tới ô
+  if (m.squad && m.slotOff >= SQUAD_PLACED && this.squadSettling(m)) {
+    const t = this.squadTarget(m);
+    if (t) {
+      const ex = t[0] - m.x;
+      const ez = t[1] - m.z;
+      const l = Math.sqrt(ex * ex + ez * ez);
+      if (l > 0.3) {
+        const k = Math.min(1, look / l);
+        pts.push(m.x + ex * k, m.z + ez * k);
+        return pts;
+      }
+    }
   }
   // nhích trong đội hình (không có đường): theo hướng vừa chạy
   if (!m.squad || !m.moved) return null;
@@ -297,6 +317,8 @@ function yieldPass(this: World): void {
       // xe đứng ở sau lưng xe đi (gần nhất là điểm đầu đường và nằm phía sau) và không chạm thân xe đi: không cản đường. Đang chạm
       // thì vẫn phải tránh (không thì nó lùi về ô đè lên xe đi, hai xe chặn nhau mãi: đo 16/11 lưới 3×3)
       if (first && ox * px + oz * pz < 0 && ox * ox + oz * oz >= (rm + rs) * (rm + rs)) continue;
+      // hai xe đội hình cùng lệch ô, cùng bị chặn: xe mã nhỏ đi trước, xe mã lớn nhường (tất định, không cả hai cùng dạt)
+      if (s.squad !== 0 && s.slotOff >= SQUAD_PLACED && m.squad === s.squad && m.id > s.id) continue;
       const spot = planYield(this, s, pts, need, null, ground, m);
       if (!spot) continue;
       request(this, s, spot[0], spot[1]);
@@ -315,7 +337,7 @@ function yieldPass(this: World): void {
   }
 }
 
-const methods = { canYield, yielding, lane, yieldPass };
+const methods = { canYield, squadSettling, yielding, lane, yieldPass };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

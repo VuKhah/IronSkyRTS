@@ -1451,10 +1451,10 @@ function squadMember(this: World, u: Unit, w: WeaponSpec | undefined, range: num
   // cách ô THẬT (kể cả xe đang đứng chờ phía trước ô lúc hành quân): ORCA chỉ cho xe cùng đội né nhau khi có xe lệch ô
   const [ox, oz] = this.squadSlot(sq, i);
   u.slotOff = Math.sqrt(dist2(u.x, u.z, ox, oz));
-  // ô nhà khi nhường đường (`planYield` tính chỗ dạt từ tx, tz): ô của đội hình lúc chốt hình ở đích
-  if (sq.phase !== "march" && u.slotOff < 1) {
-    u.tx = ox;
-    u.tz = oz;
+  // ô nhà khi nhường đường (`planYield` tính chỗ dạt từ tx, tz): ô của đội hình lúc chốt hình ở đích; xe lệch ô thì chỗ đang đứng
+  if (sq.phase !== "march") {
+    u.tx = u.slotOff < 1 ? ox : u.x;
+    u.tz = u.slotOff < 1 ? oz : u.z;
   }
   // TỚI GẦN LÀ TỚI (T1, 16/11/2026): ô ở đích bị quân cùng phe ngoài đội đang đứng chiếm và xe đã sát quân đó thì đứng lại
   // tại chỗ, không lái lún vào quân đứng. Lúc hành quân ô còn di động nên không xét. Đội hình mới (T3/T4) sẽ thay chốt này.
@@ -1540,6 +1540,15 @@ function squadLane(this: World, sq: Squad, i: number, u: Unit): [number, number]
   return null;
 }
 
+/** Điểm xe trong đội hình đang nhắm tới (ô của nó, theo `squadLag`); null nếu không còn trong đội. */
+function squadTarget(this: World, u: Unit): [number, number] | null {
+  const sq = this.squadById(u.squad);
+  const i = sq ? sq.ids.indexOf(u.id) : -1;
+  if (!sq || i < 0) return null;
+  const l = this.squadLag(sq, i, u);
+  return [l[3], l[4]];
+}
+
 /**
  * Độ tụt của xe thứ i so với ô (m) và điểm nó nên tới: [tụt, hướng x, hướng z, đích x, đích z]. Lúc hành quân, xe đang
  * đứng TRƯỚC ô của mình (ví dụ đoàn vừa co thành hàng một trước cầu) thì chờ tới lượt: chỉ chỉnh ngang cho thẳng cột,
@@ -1556,7 +1565,7 @@ function squadLag(this: World, sq: Squad, i: number, u: Unit): [number, number, 
   return [Math.sqrt(dist2(u.x, u.z, sx, sz)), hx, hz, sx, sz];
 }
 
-const methods = { formationOf, airSlots, orderMove, formation, freeSlot, arrive, createSquad, squadDirect, squadFits, squadAssign, slotKey, squadUnjam, squadTrailBack, squadAdopt, squadArrange, squadLayout, squadFlanks, squadRanks, squadSpeed, speedOf, squadSlot, trailAt, squadAfterPivot, squadMarch, slowestMobility, squadById, squadReady, leaveSquad, disbandSquad, updateSquads, stepSquad, squadSettle, squadFit, freeSide, squadMember, squadLag, squadLane, squadTurnR };
+const methods = { formationOf, airSlots, orderMove, formation, freeSlot, arrive, createSquad, squadDirect, squadFits, squadAssign, slotKey, squadUnjam, squadTrailBack, squadAdopt, squadArrange, squadLayout, squadFlanks, squadRanks, squadSpeed, speedOf, squadSlot, trailAt, squadAfterPivot, squadMarch, slowestMobility, squadById, squadReady, leaveSquad, disbandSquad, updateSquads, stepSquad, squadSettle, squadFit, freeSide, squadMember, squadLag, squadLane, squadTarget, squadTurnR };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
