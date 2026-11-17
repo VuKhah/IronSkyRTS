@@ -3,7 +3,7 @@
  * cả khối đi cùng một tốc độ nhưng không phải tốc độ xe chậm nhất. Chỉ kiểm HÀNH VI, không khóa số tạm.
  */
 import { describe, expect, it } from "vitest";
-import { FORMATIONS, lotCost, RULES, UNITS, type FormationId, type GroupCode, type UnitId } from "./content";
+import { FORMATIONS, lotCost, RULES, UNITS, type FormationId, type GroupCode, type Side, type UnitId } from "./content";
 import { Rng } from "./fmath";
 import { arenaPoint } from "./scenarios";
 import type { Building, Squad, Unit } from "./types";
@@ -570,5 +570,50 @@ describe("chế độ trực tiếp (A2 D5)", () => {
     expect(us.every((u) => u.squad === sq)).toBe(true);
     go(w, us, -10);
     expect(w.divisions.find((x) => x.id === us[0].division)!.mode).toBe("direct");
+  });
+});
+
+describe("tướng sư đoàn công bằng hai phe (A2 D6, soi gương qua tâm bản đồ)", () => {
+  /** Sư đoàn 6 Titan + 1 Pháo của phe `side` đi tới đóng quân, rồi 3 Lynx địch đánh vào sườn; phe 1 là ảnh gương của phe 0. */
+  function run(side: Side) {
+    const w = new World(1, { sandbox: true });
+    const sg = side === 0 ? 1 : -1;
+    const foe = (1 - side) as Side;
+    const rng = new Rng(5);
+    const [ax, az] = arenaPoint(-20);
+    const us: Unit[] = [];
+    for (const k of ["titan", "titan", "titan", "titan", "titan", "titan", "artillery"] as const) {
+      const x = (ax + (rng.next() - 0.5) * 18) * sg;
+      const z = (az + (rng.next() - 0.5) * 18) * sg;
+      us.push(spawn(w, k, x, z, side));
+    }
+    const [gx, gz] = arenaPoint(10);
+    w.step([{ side, order: { t: "move", ids: us.map((u) => u.id), x: gx * sg, z: gz * sg } }]);
+    for (let t = 0; t < sec(60) && us.some((u) => u.order !== "idle"); t++) w.step([]);
+    for (let t = 0; t < sec(3); t++) w.step([]);
+    const d = w.divisions.find((x) => x.id === us[0].division)!;
+    const foes = [-4, 0, 4].map((k) => spawn(w, "lynx", d.cx + d.hz * 24 + d.hx * k, d.cz - d.hx * 24 + d.hz * k, foe));
+    const trace: number[] = [];
+    const alarms: string[] = [];
+    for (let t = 0; t < sec(10); t++) {
+      w.step([]);
+      foes.forEach((f) => (f.hp = f.maxHp));
+      alarms.push(d.alarm);
+      for (const u of us) trace.push(u.x * sg, u.z * sg, u.hx * sg, u.hz * sg);
+    }
+    return { trace, alarms, fx: d.fx * sg, fz: d.fz * sg, targets: us.map((u) => foes.findIndex((f) => f.id === u.divTarget)) };
+  }
+
+  it("cùng tình huống, hai phe soi gương: báo động, hướng xoay, mục tiêu giao, đường đi từng xe trùng khớp", () => {
+    const a = run(0);
+    const b = run(1);
+    expect(b.alarms).toEqual(a.alarms);
+    expect(a.alarms).toContain("near");
+    expect(b.fx).toBeCloseTo(a.fx, 9);
+    expect(b.fz).toBeCloseTo(a.fz, 9);
+    expect(b.targets).toEqual(a.targets);
+    let worst = 0;
+    for (let i = 0; i < a.trace.length; i++) worst = Math.max(worst, Math.abs(a.trace[i] - b.trace[i]));
+    expect(worst, "lệch lớn nhất giữa hai phe (m)").toBeLessThan(1e-6);
   });
 });
