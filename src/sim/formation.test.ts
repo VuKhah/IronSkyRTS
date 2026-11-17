@@ -284,6 +284,11 @@ describe("10 Titan xếp hai hàng không chặn nhau (người dùng 17/11/2026
   it("hai xe cùng cột: xe sau không phải vượt xe trước (seed 10, 20 m)", () => {
     expect(settle(10, 20)).toBeLessThan(12);
   });
+  // seed 11 / 30 m (đo 17/11): Titan nhận ô hàng trước kẹt sau hàng sau (khe giữa hai xe đã vào ô 2,6 m), đi vòng 10 s, cả đội
+  // 22,5 s. Gỡ kẹt: xe hàng sau đứng chắn tiến thẳng lên ô trước, xe kẹt vào chỗ nó bỏ trống (13,7 s)
+  it("xe kẹt sau hàng sau: đổi ô với xe đang chắn, không đi vòng (seed 11, 30 m)", () => {
+    expect(settle(11, 30)).toBeLessThan(16);
+  });
 });
 
 describe("xoay thân xe tại chỗ (turnRate)", () => {

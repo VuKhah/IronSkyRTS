@@ -324,7 +324,10 @@ function createSquad(this: World, side: Side, units: readonly Unit[], x: number,
     shift: 0,
     shiftWant: 0,
     wideFor: 0,
-    settleMax: 0
+    settleMax: 0,
+    prog: {},
+    stuck: {},
+    swapAt: 0
   };
   // Đội vừa cùng nhau tới nơi (cùng nhận một hướng đội hình, ai cũng còn đứng gần ô cuối của mình) là ĐÃ VÀO HÀNG:
   // giữ nguyên hình dạng đang đứng (người dùng chốt 06/11/2026: không ai đổi chỗ), dù nó có giống lưới chuẩn hay không.
@@ -491,8 +494,7 @@ function squadAssign(this: World, sq: Squad): void {
   const units = sq.ids.map((id) => this.byId.get(id) as Unit);
   // mỗi ô thuộc về tuyến + lô của xe đang giữ nó: đổi chỗ trong cùng lô, xe cùng lô luôn đứng cạnh nhau
   // (xe "hai cánh" chỉ đổi chỗ với xe hai cánh, không thì phân công đẩy chúng vào giữa đội hình)
-  const flankCode = FORMATIONS[sq.formation].flank;
-  const key = (u: Unit): string => `${sq.rankOf[u.id]}:${u.lot}:${UNITS[u.kind].group === flankCode ? 1 : 0}`;
+  const key = (u: Unit): string => this.slotKey(sq, u);
   const cost: number[][] = [];
   for (let i = 0; i < n; i++) {
     const [sx, sz] = this.squadSlot(sq, i);
@@ -509,6 +511,79 @@ function squadAssign(this: World, sq: Squad): void {
   }
   const a = assignMin(cost);
   sq.ids = a.map((j) => units[j].id);
+}
+
+/** Nhóm ô của xe: tuyến + lô + "hai cánh". Xe chỉ đổi ô với xe cùng nhóm (xe cùng lô luôn đứng cạnh nhau). */
+function slotKey(this: World, sq: Squad, u: Unit): string {
+  return `${sq.rankOf[u.id]}:${u.lot}:${UNITS[u.kind].group === FORMATIONS[sq.formation].flank ? 1 : 0}`;
+}
+
+/**
+ * GỠ KẸT Ở ĐÍCH (người dùng 17/11/2026: "10 Titan xếp hai hàng thì chiếc nào ở đâu có quan trọng đâu, miễn là nhanh và đúng"):
+ * pha `direct` / `settle`, mỗi UNJAM_EVERY tick đo xe nào không tiến gần ô được (kẹt UNJAM_STUCK lần đo liền). Xe kẹt X có đồng đội
+ * Y cùng nhóm ô đứng CHẮN phía trước (sát thân, trong nón hướng về ô của X) thì hai xe ĐỔI Ô khi: Y đã đứng yên trong ô (Y tiến
+ * thẳng sang ô của X, X vào chỗ Y bỏ trống: đo 17/11 seed 11, Titan kẹt sau hàng sau đi vòng 10 s), hoặc đổi làm tổng bình
+ * phương quãng giảm (hai xe đối đầu). Chọn Y có tổng bình phương quãng sau khi đổi nhỏ nhất; đổi xong cả đội chờ UNJAM_COOL.
+ * Hình khối, số hàng, ô giữ nguyên, chỉ đổi xe nào vào ô nào. Không chạy lúc hành quân (pha `march`: thứ tự "gấp dây").
+ */
+const UNJAM_EVERY = 5;
+const UNJAM_PROGRESS = 0.15;
+const UNJAM_STUCK = 2;
+const UNJAM_COOL = sec(2);
+function squadUnjam(this: World, sq: Squad): void {
+  if (sq.phaseT % UNJAM_EVERY !== 0 || sq.ids.length < 2) return;
+  const n = sq.ids.length;
+  const units = sq.ids.map((id) => this.byId.get(id) as Unit);
+  const slots = sq.ids.map((_, i) => this.squadSlot(sq, i));
+  const d2 = units.map((u, i) => dist2(u.x, u.z, slots[i][0], slots[i][1]));
+  for (let i = 0; i < n; i++) {
+    const u = units[i];
+    const d = Math.sqrt(d2[i]);
+    const prev = sq.prog[u.id];
+    sq.stuck[u.id] = d > 1 && prev !== undefined && prev - d < UNJAM_PROGRESS ? (sq.stuck[u.id] ?? 0) + 1 : 0;
+    sq.prog[u.id] = d;
+  }
+  if (this.tick < sq.swapAt) return;
+  for (let i = 0; i < n; i++) {
+    const u = units[i];
+    if ((sq.stuck[u.id] ?? 0) < UNJAM_STUCK) continue;
+    const d = Math.sqrt(d2[i]);
+    const ux = (slots[i][0] - u.x) / d;
+    const uz = (slots[i][1] - u.z) / d;
+    const want = this.slotKey(sq, u);
+    let best = -1;
+    let bestCost = Infinity;
+    for (let j = 0; j < n; j++) {
+      if (j === i) continue;
+      const v = units[j];
+      if (sq.byRank && this.slotKey(sq, v) !== want) continue;
+      const ex = v.x - u.x;
+      const ez = v.z - u.z;
+      const e = Math.sqrt(ex * ex + ez * ez);
+      if (e > bodyRadius(u.kind) + bodyRadius(v.kind) + 1 || e < 1e-6) continue;
+      // trong nón ±60° hướng về ô của X, và Y gần ô của X hơn X
+      if (ex * ux + ez * uz < 0.5 * e) continue;
+      const after = dist2(v.x, v.z, slots[i][0], slots[i][1]) + dist2(u.x, u.z, slots[j][0], slots[j][1]);
+      const placed = d2[j] < 0.36;
+      if (!placed && after >= d2[i] + d2[j]) continue;
+      if (after < bestCost) {
+        bestCost = after;
+        best = j;
+      }
+    }
+    if (best < 0) continue;
+    const v = units[best];
+    sq.ids[i] = v.id;
+    sq.ids[best] = u.id;
+    for (const m of [u, v]) {
+      m.path = [];
+      m.pathI = 0;
+      delete sq.prog[m.id];
+      sq.stuck[m.id] = 0;
+    }
+    sq.swapAt = this.tick + UNJAM_COOL;
+    return;
+  }
 }
 
 /**
@@ -938,6 +1013,7 @@ function stepSquad(this: World, sq: Squad): void {
       return;
     }
     case "settle":
+      this.squadUnjam(sq);
       // 0,4 m: giải tán là xe đứng luôn tại chỗ; xe vừa đổi ô (đội co / giãn hàng ở đích) còn cách ô 0,8 m thì lệch hẳn khỏi hàng
       if (lag < 0.4 || sq.phaseT > sq.settleMax) this.disbandSquad(sq);
       return;
@@ -951,6 +1027,7 @@ function stepSquad(this: World, sq: Squad): void {
         return;
       }
       // mỗi xe tự đi thẳng tới ô; xong khi ai cũng tới ô (hoặc quá lâu)
+      this.squadUnjam(sq);
       if (lag < 0.8 || sq.phaseT > sec(SQUAD_FORM_MAX + SQUAD_DIRECT / speed)) this.disbandSquad(sq);
       return;
     case "march":
@@ -1268,7 +1345,7 @@ function squadLag(this: World, sq: Squad, i: number, u: Unit): [number, number, 
   return [Math.sqrt(dist2(u.x, u.z, sx, sz)), hx, hz, sx, sz];
 }
 
-const methods = { formationOf, airSlots, orderMove, formation, freeSlot, arrive, createSquad, squadDirect, squadFits, squadAssign, squadAdopt, squadArrange, squadLayout, squadFlanks, squadRanks, squadSpeed, speedOf, squadSlot, trailAt, squadAfterPivot, squadMarch, slowestMobility, squadById, squadReady, leaveSquad, disbandSquad, updateSquads, stepSquad, squadSettle, squadFit, freeSide, squadMember, squadLag, squadTurnR };
+const methods = { formationOf, airSlots, orderMove, formation, freeSlot, arrive, createSquad, squadDirect, squadFits, squadAssign, slotKey, squadUnjam, squadAdopt, squadArrange, squadLayout, squadFlanks, squadRanks, squadSpeed, speedOf, squadSlot, trailAt, squadAfterPivot, squadMarch, slowestMobility, squadById, squadReady, leaveSquad, disbandSquad, updateSquads, stepSquad, squadSettle, squadFit, freeSide, squadMember, squadLag, squadTurnR };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

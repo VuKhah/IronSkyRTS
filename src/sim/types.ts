@@ -468,4 +468,10 @@ export interface Squad {
   wideFor: number;
   /** Ổn định chỗ khi tới nơi tối đa bao nhiêu tick (theo độ dài cột lúc tới). */
   settleMax: number;
+  /** GỠ KẸT Ở ĐÍCH (`squadUnjam`): khoảng cách tới ô ở lần đo trước, theo mã xe. */
+  prog: Record<number, number>;
+  /** Số lần đo liền xe không tiến gần ô được (kẹt), theo mã xe. */
+  stuck: Record<number, number>;
+  /** Tick sớm nhất được đổi ô lần nữa (chống đổi qua lại). */
+  swapAt: number;
 }
