@@ -46,18 +46,40 @@ const SQUAD_PLACED = 1;
 function canYield(this: World, v: Unit): boolean {
   if (v.air !== "none" || v.hp <= 0 || v.kind === "hauler" || isSquad(v.kind) || this.anchored(v) || this.tick < v.yieldBlock) return false;
   // xe sư đoàn đang về ô mới sau khi xoay (`divisionReform`) là xe đang đi, không nhường (không thì các xe cùng về ô đòi nhau dạt mãi)
-  if (v.order === "idle" && v.squad === 0) return !this.divisionReform(v);
-  // XE ĐÚNG Ô Ở ĐÍCH NHƯỜNG ĐỒNG ĐỘI ĐANG VỀ Ô (A2, 17/11/2026): xe xích không trượt ngang nên xe về ô không chen qua xe đứng được
-  // nữa; đội đang chốt hình ở đích (không phải lúc hành quân) thì xe đã vào ô dạt theo xích cho đồng đội qua rồi về ô, như xe lẻ
-  // Cả XE LỆCH Ô ĐANG BỊ CHẶN (đứng yên tick này): hai xe khác loại cùng về ô đối đầu nhau thì một xe phải dạt (thứ tự ở `yieldPass`)
-  if (v.squad === 0 || !this.squadSettling(v)) return false;
-  return v.slotOff < SQUAD_PLACED || !v.moved;
+  // xe sư đoàn đang báo động gần (đang đánh) giữ vị trí bắn, không dạt nhường: xe cần tiến lên tìm đường vòng qua nó (A* lớp xe
+  // đứng). Không thì cả hàng đang bắn dạt qua lại nhường nhau, xe hàng sau không lên được tầm (17/11/2026)
+  if (v.order === "idle" && v.squad === 0) return !this.divisionReform(v) && !this.divisionAlert(v);
+  // Xe trong đội hình (17/11/2026): ở đích, xe tuyến chưa tới lượt vào ô thì nhường như xe đứng (`squadWaiting`, triển khai từng
+  // tuyến); xe đã tới lượt mà đã vào ô là VẬT CẢN CỨNG khi tìm đường (`standLayer`), xe đến sau chạy vòng. Đã thử cho mọi đồng đội
+  // đã vào ô dạt nhường: khối dày 3–4 hàng thì chỗ dạt của hàng giữa bị hàng khác chiếm, chuỗi nhường tắc
+  return !process.env.NOWAIT && this.squadWaiting(v);
 }
 
 /** Xe trong đội hình đang chốt hình ở đích (pha `settle`, hoặc `direct` đã lăn bánh): giao thông nội bộ kiểu xe đứng / xe đi. */
 function squadSettling(this: World, v: Unit): boolean {
   const sq = v.squad ? this.squadById(v.squad) : undefined;
   return !!sq && (sq.phase === "settle" || (sq.phase === "direct" && (!sq.rigid || sq.rolling)));
+}
+
+/**
+ * Xe s có dạt nhường cho xe m không: xe biết nhường (`canYield`), hoặc ĐỒNG ĐỘI ĐÃ VÀO Ô nhường cho xe cùng đội mà ô bị vây kín
+ * (`squeezeUntil`: A* tính cả xe đứng không ra đường, ví dụ đích sát bãi đá, Titan đến muộn không vòng lên hàng đầu được). Chỉ lúc
+ * đó: thường thì đồng đội là vật cản cứng, xe đi vòng (không chuỗi nhường trong khối dày).
+ */
+function yieldsFor(this: World, s: Unit, m: Unit): boolean {
+  // xe đội hình chưa tới lượt vào ô chỉ nhường xe đã tới lượt (hoặc xe ngoài đội), không nhường nhau
+  if (this.canYield(s)) return !(s.squad !== 0 && m.squad === s.squad && this.squadWaiting(m));
+  return (
+    m.squad !== 0 &&
+    s.squad === m.squad &&
+    m.squeezeUntil > this.tick &&
+    s.slotOff < SQUAD_PLACED &&
+    s.air === "none" &&
+    s.hp > 0 &&
+    // quân đã hạ bệ cũng nhường lúc này: thu bệ rồi dạt (`driveTo` tự thu bệ), không thì đồng đội kẹt sau nó mãi
+    this.tick >= s.yieldBlock &&
+    this.squadSettling(s)
+  );
 }
 
 /** Xe đang dạt nhường đường (xe lẻ đứng chờ, hoặc xe đúng ô của đội hình ở đích). */
@@ -94,9 +116,13 @@ function lane(this: World, m: Unit): number[] | null {
       const ex = t[0] - m.x;
       const ez = t[1] - m.z;
       const l = Math.sqrt(ex * ex + ez * ez);
+      // lối là CẢ đoạn thẳng tới ô (không cắt ở tầm nhìn trước): xe dạt phải ra khỏi toàn bộ đường về ô, không dạt tiến lên đúng vào
+      // vùng ô của xe đi (đo 17/11: Titan đoạn hậu dạt vào ô Pháo, Pháo kẹt sau lưng)
       if (l > 0.3) {
-        const k = Math.min(1, look / l);
-        pts.push(m.x + ex * k, m.z + ez * k);
+        if (process.env.CUTLANE) {
+          const k = Math.min(1, look / l);
+          pts.push(m.x + ex * k, m.z + ez * k);
+        } else pts.push(t[0], t[1]);
         return pts;
       }
     }
@@ -201,10 +227,13 @@ function planYield(w: World, s: Unit, lane: readonly number[], clear: number, ke
         for (const o of ground) {
           if (o === s) continue;
           const lim = rs + bodyRadius(o.kind) - 0.05;
-          // xe biết nhường xét theo ô nhà của nó (sẽ dạt dây chuyền); xe khác theo chỗ đang đứng
-          const yo = o !== m && o.side === s.side && w.canYield(o);
-          const qx = yo ? o.tx : o.x;
-          const qz = yo ? o.tz : o.z;
+          // xe biết nhường xét theo ô nhà của nó (sẽ dạt dây chuyền); xe khác theo chỗ đang đứng. Xe ĐANG DẠT dở thì xét theo CHỖ
+          // DẠT nó đang tới, là vật cản cứng (17/11/2026: hai xe trong hàng dạt cùng phía, chỗ dạt trùng nhau, xe giữa kẹt trên lối;
+          // trước đây xe đi trượt ngang chen qua được nên không lộ)
+          const going = o !== m && o.yieldAway && w.tick < o.yieldUntil;
+          const yo = !going && o !== m && o.side === s.side && w.canYield(o);
+          const qx = going ? o.yieldX : yo ? o.tx : o.x;
+          const qz = going ? o.yieldZ : yo ? o.tz : o.z;
           const ex = x - qx;
           const ez = z - qz;
           if (ex > lim || ex < -lim || ez > lim || ez < -lim || ex * ex + ez * ez >= lim * lim) continue;
@@ -244,11 +273,11 @@ function yieldPass(this: World): void {
     const reach = YIELD_LOOK_MAX + rm + 4;
     // CHỜ LỐI: xe nhường (vị trí THẬT lúc này) còn lấn vào đoạn lối ngay trước mũi thì xe đi đứng chờ (quay thân sẵn), không lao
     // vào; chờ quá LANE_WAIT_MAX thì những xe đó tạm thành vật cản cứng (`yieldBlock`), xe đi tìm đường vòng
+    const near: Unit[] = [];
     if (m.path.length >= 2) {
       const ahead = Math.max(LANE_AHEAD_MIN, UNITS[m.kind].speed * LANE_AHEAD_T) + rm;
-      const near: Unit[] = [];
       for (const s of ground) {
-        if (s === m || s.side !== m.side || !this.canYield(s)) continue;
+        if (s === m || s.side !== m.side || !this.yieldsFor(s, m)) continue;
         const dx = s.x - m.x;
         const dz = s.z - m.z;
         const lim = rm + bodyRadius(s.kind) + 0.05;
@@ -272,7 +301,7 @@ function yieldPass(this: World): void {
       } else m.laneWait = 0;
     } else m.laneWait = 0;
     for (const s of ground) {
-      if (s === m || s.side !== m.side || !this.canYield(s)) continue;
+      if (s === m || s.side !== m.side || !this.yieldsFor(s, m)) continue;
       // xe đứng xét theo Ô NHÀ (tx, tz): đang dạt dở vẫn tính đúng chỗ nó sẽ về
       const sx0 = s.tx;
       const sz0 = s.tz;
@@ -313,19 +342,19 @@ function yieldPass(this: World): void {
       }
       const need = rm + rs + YIELD_MARGIN;
       if (best >= need * need) continue;
-      if (end && cut) continue;
+      // xe nằm quá điểm cuối đoạn nhìn trước thì chưa cần nhường; TRỪ xe mà xe đi đang đứng chờ (`near`): không thì xe đi chờ một xe
+      // chẳng bao giờ được yêu cầu dạt (17/11/2026: Pháo chờ Titan đoạn hậu đứng sát cuối lối, cả hai đứng im tới khi hết hạn chờ)
+      if (end && cut && !near.includes(s)) continue;
       // xe đứng ở sau lưng xe đi (gần nhất là điểm đầu đường và nằm phía sau) và không chạm thân xe đi: không cản đường. Đang chạm
       // thì vẫn phải tránh (không thì nó lùi về ô đè lên xe đi, hai xe chặn nhau mãi: đo 16/11 lưới 3×3)
       if (first && ox * px + oz * pz < 0 && ox * ox + oz * oz >= (rm + rs) * (rm + rs)) continue;
-      // hai xe đội hình cùng lệch ô, cùng bị chặn: xe mã nhỏ đi trước, xe mã lớn nhường (tất định, không cả hai cùng dạt)
-      if (s.squad !== 0 && s.slotOff >= SQUAD_PLACED && m.squad === s.squad && m.id > s.id) continue;
       const spot = planYield(this, s, pts, need, null, ground, m);
       if (!spot) continue;
       request(this, s, spot[0], spot[1]);
       // chỗ dạt đè ô nhà xe đứng bên cạnh: xe đó dạt tiếp (một tầng), tránh cả lối lẫn chỗ dạt của xe trước
       const [yx, yz] = spot;
       for (const s2 of ground) {
-        if (s2 === s || s2 === m || s2.side !== s.side || !this.canYield(s2)) continue;
+        if (s2 === s || s2 === m || s2.side !== s.side || !this.yieldsFor(s2, m)) continue;
         const r2 = rs + bodyRadius(s2.kind) + 0.1;
         const ex = s2.tx - yx;
         const ez = s2.tz - yz;
@@ -337,7 +366,7 @@ function yieldPass(this: World): void {
   }
 }
 
-const methods = { canYield, squadSettling, yielding, lane, yieldPass };
+const methods = { canYield, yieldsFor, squadSettling, yielding, lane, yieldPass };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

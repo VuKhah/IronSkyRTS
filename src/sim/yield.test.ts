@@ -90,7 +90,9 @@ describe("nhường đường chủ động", () => {
       expect(gap(mover, arena(side).at(0.5, 16))).toBeLessThan(2);
       expect(r.overlap, "giây chồng thân").toBeLessThan(1);
       expect(r.sideSlip, "số tick xe đứng trượt ngang").toBe(0);
-      expect(r.farthest, "xe nhường không dạt quá xa").toBeLessThan(4);
+      // chỗ dạt tối đa 4 m (YIELD_MAX) + sai số ngang khi chạy theo xích (DRIVE_LAT_TOL 0,3 m): từ 17/11/2026 hai xe trong hàng không
+      // dạt trùng chỗ nhau nữa nên xe giữa có khi dạt chéo xa hơn một chút
+      expect(r.farthest, "xe nhường không dạt quá xa").toBeLessThan(4.4);
       expect(r.back, "xe nhường về lại ô").toBeLessThan(0.6);
     });
 

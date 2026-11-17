@@ -113,6 +113,14 @@ export interface Unit {
   hitZ: number;
   /** Mục tiêu tướng sư đoàn giao (D4: ưu tiên kẻ đang bắn sư đoàn, dồn hỏa lực, không bắn quá tay); 0 = tự chọn. */
   divTarget: number;
+  /** Tới tick này đồng đội đã vào ô dạt nhường cho xe (ô của nó bị đồng đội vây kín, không còn đường vòng). */
+  squeezeUntil: number;
+  /** Điểm đầu đoạn đường đang đi (chỗ đứng lúc tìm đường, rồi điểm vừa qua): xe xích bám ĐOẠN đường, không chỉ nhắm đỉnh kế tiếp. */
+  pathFromX: number;
+  pathFromZ: number;
+  /** Chiều xe muốn chạy dọc thân ở lần gần nhất (+1 tiến, −1 lùi) và tick đó: luật hai xe chặn lẫn nhau xét đúng chiều xe kia muốn đi. */
+  driveDir: number;
+  driveTick: number;
   // Xe Vận Tải
   hState: HaulState;
   mineId: number;
@@ -532,4 +540,12 @@ export interface Squad {
   lagT: Record<number, number>;
   /** Số tick liền xe đứng cách ô dưới SETTLE_NEAR (pha `settle`): đủ SETTLE_NEAR_T thì coi là đã tới ("tới gần là tới"). */
   nearT: Record<number, number>;
+  /** Tốc độ thật của người dẫn đầu ở tick vừa rồi (m/s, 0 khi đứng / không hành quân): xe bám ô chỉnh tốc độ theo nó. */
+  v: number;
+  /** Phía làn ngoài (+1 phải, −1 trái) xe đang dùng để vượt / chờ, giữ nguyên tới khi về ngang hàng (không đổi phía giữa chừng). */
+  laneSide: Record<number, number>;
+  /** Chỗ và tick xe bắt đầu đứng quanh quẩn (chưa đi xa quá 0,5 m), theo mã xe: đo "không tới được" ở đích (`squadGaveUp`). */
+  moveRef: Record<number, [number, number, number]>;
+  /** Ở đích: độ lùi (`offBack`) của tuyến trước nhất còn xe chưa vào ô; tuyến sau nó chưa tới lượt (xe biết nhường). */
+  admitBack: number;
 }

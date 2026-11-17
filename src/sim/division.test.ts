@@ -469,8 +469,9 @@ describe("tướng sư đoàn: báo động và quay mặt (A2 D3, người dùn
     expect(Math.hypot(art.tx - ax, art.tz - az)).toBeLessThan(0.01);
     // quay đầu 180°: ô mới cách 2·off (> 10 m nếu Pháo đứng xa tâm hơn 5 m) → đi tới ô mới
     w.divisionFace(d, -d.hx, -d.hz);
+    // (dải sát ngưỡng 9,5–10,5 m không kiểm: ô mới có thể bị dời tới ô trống gần nhất)
     if (2 * off > 10.5) expect(Math.hypot(art.tx - ax, art.tz - az)).toBeGreaterThan(10);
-    else expect(Math.hypot(art.tx - ax, art.tz - az)).toBeLessThan(0.01);
+    else if (2 * off < 9.5) expect(Math.hypot(art.tx - ax, art.tz - az)).toBeLessThan(0.01);
   });
 
   it("Drone Khiên của sư đoàn bay theo tâm sư đoàn", () => {

@@ -3,7 +3,7 @@ import { UNITS } from "../content";
 import { dcos, DEG, dsin } from "../fmath";
 import { orcaLine, orcaSolve, type OrcaLine } from "../orca";
 import type { Unit } from "../types";
-import { DT, sec, spaceRadius, softOverlap, isSquad, HEX_COS30, MOVER_SHARE, WALL_PUSH } from "./shared";
+import { DT, sec, bodyRadius, spaceRadius, softOverlap, isSquad, HEX_COS30, MOVER_SHARE, WALL_PUSH } from "./shared";
 import { World } from "./core";
 
 /** Hai xe cùng chạy coi là "ngược chiều" khi góc giữa hai hướng thân lớn hơn 120° (cos < −0,5). */
@@ -37,6 +37,33 @@ function sideStep(m: Unit, ox: number, oz: number): [number, number] {
   const lo = ox * m.hz - oz * m.hx; // xe kia lệch về bên (+) hay (−) hướng chạy
   const sg = lo > 1e-9 ? -1 : 1;
   return [m.hz * sg, -m.hx * sg];
+}
+
+/**
+ * Đưa xe u tiến / lùi DỌC TRỤC THÂN quãng ngắn nhất để tâm cách (ox, oz) ít nhất `target` m (nghiệm của |e − t·h| = target, e từ u
+ * tới điểm kia), tối đa 3 lần phần thiếu + 0,2 m mỗi tick (phần còn lại gỡ tiếp tick sau); qua tryMove (không lấn vách).
+ */
+/** Phép tách dọc thân dời xe tối đa chừng này (m) mỗi tick. */
+const AXIS_STEP_MAX = 1;
+function axisApart(w: World, u: Unit, ox: number, oz: number, target: number): void {
+  const ex = ox - u.x;
+  const ez = oz - u.z;
+  const e2 = ex * ex + ez * ez;
+  const T2 = target * target;
+  if (e2 >= T2) return;
+  const eh = ex * u.hx + ez * u.hz;
+  const disc = eh * eh - e2 + T2;
+  const r = Math.sqrt(disc);
+  const t1 = eh - r;
+  const t2 = eh + r;
+  // xe đang chạy: gỡ theo CHIỀU ĐANG CHẠY (đang lách qua khe vừa thân thì đi tiếp, không bị đẩy lùi ra); xe đứng: chiều gần nhất
+  const mv = u.moved ? (u.x - u.px) * u.hx + (u.z - u.pz) * u.hz : 0;
+  let t = mv > 1e-4 ? t2 : mv < -1e-4 ? t1 : -t1 < t2 ? t1 : t2;
+  // tối đa AXIS_STEP_MAX m mỗi tick (lồng sâu thì gỡ dần qua vài tick, không giật xa trong một tick)
+  const cap = Math.min(3 * (target - Math.sqrt(e2)) + 0.2, AXIS_STEP_MAX);
+  if (t > cap) t = cap;
+  else if (t < -cap) t = -cap;
+  w.tryMove(u, u.x + u.hx * t, u.z + u.hz * t);
 }
 
 /** Cú đẩy lệch trục thân quá chừng này (|cos| < 0,35, tức lệch hơn ~70°) thì xe không gánh được: phần đẩy chuyển cho xe kia. */
@@ -179,7 +206,11 @@ function orcaPass(this: World, g: readonly Unit[]): void {
       if (b === a || b.side !== a.side) continue;
       // xe cùng đội hình không né nhau bằng ORCA: đội hình lo khoảng cách, xe đúng ô nhường đường cho xe đang về ô (`separate`).
       // Cho né nhau thì xe đúng ô cũng lách, cả đội lệch hàng; xe về ô gặp hàng xe đứng (khe hẹp hơn thân) thì chỉ biết phanh
-      if (a.squad !== 0 && a.squad === b.squad) continue;
+      // Từ 17/11/2026 (xe xích không trượt ngang, không chen qua nhau được nữa): XE LỆCH Ô né đồng đội như né xe khác, để lái vòng
+      // qua đồng đội khi đuổi về ô; xe đúng ô vẫn không né đồng đội (khối giữ hàng)
+      // Chỉ lúc hành quân: ở đích khối đứng yên, đồng đội đã vào ô là vật cản của A* (`standLayer`), ORCA giữa đồng đội chỉ làm hai xe
+      // về ô phanh chờ nhau (đo: Titan phanh còn 1% sau lưng Tên Lửa Loạt cũng đang về ô)
+      if (a.squad !== 0 && a.squad === b.squad && (a.slotOff < SQUAD_IN_SLOT || this.squadById(a.squad)?.phase !== "march")) continue;
       // đã kẹt: thôi né xe đứng yên và xe cũng đang kẹt (hai xe đối đầu chờ nhau trong lối hẹp); luật va chạm gỡ tiếp
       if (release && crawling(b)) continue;
       // xe cùng phe BIẾT NHƯỜNG ĐƯỜNG (`world/yield.ts`) tự dạt khỏi lối, xe đi giữ đúng lối và chờ nếu lối chưa mở (`laneWait`):
@@ -209,11 +240,16 @@ function orcaPass(this: World, g: readonly Unit[]): void {
       // bán kính chung = tổng hai vòng giãn (quân hạ bệ: vòng ngoại tiếp lục giác); tâm đã gần hơn thế thì coi như vừa chạm,
       // không bắt bật ra trong một tick (luật va chạm `separate` gỡ phần lồng)
       const sb = this.anchored(b) ? spaceRadius(b.kind) / HEX_COS30 : spaceRadius(b.kind);
-      // tiểu đội với xe chạm mềm: né theo khoảng đã trừ phần được chồng (nửa đế tiểu đội)
-      const r = Math.min(sa + sb - softOverlap(a.kind, b.kind), d * 0.98);
+      // tiểu đội với xe chạm mềm: né theo khoảng đã trừ phần được chồng (nửa đế tiểu đội). Quân đã hạ bệ (đứng yên hẳn) thì né theo
+      // THÂN THẬT hai xe như A* (lớp xe đứng tính bằng `bodyR`): khe giữa hai quân hạ bệ vừa thân thì đi qua được (17/11/2026, xe
+      // xích không trượt ngang chen qua được nữa nên ORCA phải cho lái thẳng vào khe)
+      const rr = this.anchored(b) ? bodyRadius(a.kind) + bodyRadius(b.kind) : sa + sb - softOverlap(a.kind, b.kind);
+      const r = Math.min(rr, d * 0.98);
       const [vbx, vbz] = vel(b);
       const y = yieldsTo(a, b);
-      const share = !solver(b) ? 1 : y > 0 ? ORCA_YIELD : y < 0 ? 1 - ORCA_YIELD : 0.5;
+      // đồng đội đúng ô không né (giữ hàng): xe lệch ô gánh trọn; hai xe cùng lệch ô chia đôi
+      const mate = a.squad !== 0 && a.squad === b.squad;
+      const share = !solver(b) || (mate && b.slotOff < SQUAD_IN_SLOT) ? 1 : mate ? 0.5 : y > 0 ? ORCA_YIELD : y < 0 ? 1 - ORCA_YIELD : 0.5;
       const L = { px: 0, pz: 0, dx: 0, dz: 0 };
       orcaLine(rx, rz, vax, vaz, vbx, vbz, r, AVOID_T, share, DT, L);
       lines.push(L);
@@ -353,6 +389,35 @@ function separate(this: World): void {
       // Đẩy qua tryMove: sát vách thì trượt dọc vách thay vì bỏ cả cú đẩy (trước đây cả hai đứng im lồng vào nhau). Hai cú đẩy
       // tính từ cùng một trạng thái; phần xe này không đi được (cả đẩy dọc lẫn lách ngang) thì xe kia đi bù theo hướng ngược
       // lại, một lượt cho cả hai chiều, nên đổi vai a / b (thứ tự mã xe) ra cùng kết quả. Quân đã hạ bệ không bị bù.
+      // XE XÍCH (không phải bộ binh): mỗi xe chỉ tiến / lùi DỌC TRỤC THÂN đúng quãng cần để tách phần của mình (`axisApart`, tính
+      // trên cùng một trạng thái), phần còn thiếu thì xe kia (rồi xe này) đi bù tới đủ khoảng chạm. Hai xe đứng ngang hàng lồng nhau
+      // vẫn gỡ được: tiến / lùi dọc thân là xa nhau ra
+      if (!isSquad(a.kind) && !isSquad(b.kind) && (pa || pb)) {
+        // một bên là quân đã hạ bệ (lục giác tĩnh): xe kia tiến / lùi dọc thân tới khi ra khỏi lục giác (tính lại theo lục giác)
+        const h = pa ? a : b;
+        const m = pa ? b : a;
+        const rr = spaceRadius(m.kind) - soft;
+        for (let k = 0; k < 3; k++) {
+          const ox = m.x - h.x;
+          const oz = m.z - h.z;
+          const c = hexOverlap(h, ox, oz, spaceRadius(h.kind), rr);
+          if (c[0] <= 0.005) break;
+          axisApart(this, m, h.x, h.z, Math.sqrt(ox * ox + oz * oz) + c[0] + 0.01);
+        }
+        continue;
+      }
+      if (!isSquad(a.kind) && !isSquad(b.kind)) {
+        const ax0 = a.x;
+        const az0 = a.z;
+        const bx0 = b.x;
+        const bz0 = b.z;
+        if (!pa && wa > 0) axisApart(this, a, bx0, bz0, d + over * wa);
+        if (!pb && wa < 1) axisApart(this, b, ax0, az0, d + over * (1 - wa));
+        const need = d + over;
+        if (!pb && wa < 1) axisApart(this, b, a.x, a.z, need);
+        if (!pa && wa > 0) axisApart(this, a, b.x, b.z, need);
+        continue;
+      }
       const dax = -nx * over * wa + lax * over;
       const daz = -nz * over * wa + laz * over;
       const dbx = nx * over * (1 - wa) + lbx * over;

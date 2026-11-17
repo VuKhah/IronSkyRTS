@@ -402,7 +402,12 @@ describe("lõi mô phỏng", () => {
       for (const e of w.events)
         if (e.t === "retreat" && e.side === 0) {
           retreats++;
-          if (retreatAt < 0) retreatAt = c.hp / c.maxHp;
+          if (retreatAt < 0) {
+            retreatAt = c.hp / c.maxHp;
+            // bài này chỉ kiểm việc rút lui: Lynx ngừng bắn sau mốc đầu (17/11/2026: xe bám đường A* tốt hơn, ba Lynx đuổi theo bắn tụt
+            // qua cả mốc thứ hai trước khi Xe Tư Lệnh về tới nhà, đó là chuyện truy đuổi chứ không phải luật rút)
+            w.step([{ side: 1, order: { t: "sbHold", side: 1, on: true } }]);
+          }
         }
     }
     expect(retreatAt).toBeGreaterThan(0.4);

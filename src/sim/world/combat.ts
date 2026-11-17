@@ -191,6 +191,11 @@ function updateGround(this: World, u: Unit): void {
         // xe lẻ đuổi trong LEASH quanh ô; xe sư đoàn tiến lên trong VÙNG PHẢN CÔNG quanh tâm sư đoàn (D4), ra tới mép thì dừng
         else if (!w.deploy && (dt ? this.divisionInZone(u) : dist2(u.x, u.z, u.tx, u.tz) < LEASH * LEASH)) this.chase(u, t);
         else this.halt(u);
+      } else if (dist2(u.x, u.z, u.tx, u.tz) > 16 && this.spotTaken(u, u.tx, u.tz)) {
+        // ô nhà đã có quân khác đứng chiếm (bị đẩy dọc thân ra xa khỏi chỗ đè lên quân hạ bệ…): nhận chỗ đang đứng làm ô mới, không
+        // lái về đè lên nó rồi bị đẩy ra mãi (17/11/2026)
+        u.tx = u.x;
+        u.tz = u.z;
       } else if (dist2(u.x, u.z, u.tx, u.tz) > 16) {
         if (u.chasing || u.path.length === 0) {
           u.chasing = false;
