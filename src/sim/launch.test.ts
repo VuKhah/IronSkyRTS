@@ -109,3 +109,45 @@ describe("Nhà Máy Máy Bay phóng thẳng đứng từ giếng", () => {
     expect(run()).toBe(run());
   });
 });
+
+describe("máy bay mất mục tiêu (lỗi 7, 17/11/2026: lượn mãi chỗ mục tiêu cũ tới khi cạn dầu)", () => {
+  for (const side of [0, 1] as const) {
+    const foe = (1 - side) as 0 | 1;
+    const sg = side === 0 ? 1 : -1;
+    /** Falcon phe `side` được lệnh đánh một Titan đứng yên; xóa Titan sau 2 s. `extra`: thêm một Titan địch cách đó 12 m. */
+    const run = (extra: boolean) => {
+      const w = new World(1, { sandbox: true });
+      w.step([{ side: 0, order: { t: "sbFuel", on: true } }]);
+      w.step([{ side: foe, order: { t: "sbHold", side: foe, on: true } }]);
+      w.step([{ side, order: { t: "sbSpawn", kind: "falcon", side, x: 0, z: 0 } }]); // gần: thấy mục tiêu ngay (sương mù)
+      w.step([{ side: foe, order: { t: "sbSpawn", kind: "titan", side: foe, x: 20 * sg, z: 0 } }]);
+      if (extra) w.step([{ side: foe, order: { t: "sbSpawn", kind: "titan", side: foe, x: 20 * sg, z: 12 * sg } }]);
+      const f = w.units.find((u) => u.kind === "falcon")!;
+      const [t1, t2] = w.units.filter((u) => u.kind === "titan");
+      w.step([{ side, order: { t: "attack", ids: [f.id], target: t1.id } }]);
+      for (let t = 0; t < sec(2); t++) w.step([]);
+      w.step([{ side: 0, order: { t: "sbRemove", ids: [t1.id] } }]);
+      return { w, f, t2 };
+    };
+    it(`không còn mục tiêu nào quanh đó: bay về trong vài giây, không lượn tới cạn dầu (phe ${side})`, () => {
+      const { w, f } = run(false);
+      let back = -1;
+      for (let t = 0; t < sec(20) && back < 0; t++) {
+        w.step([]);
+        if (f.air === "returning") back = t / 10;
+      }
+      expect(back, "giây tới khi bay về").toBeGreaterThan(0);
+      expect(back).toBeLessThan(RULES.air.huntTime + 2);
+    });
+    it(`còn mục tiêu khác gần đó: đánh tiếp, không về (phe ${side})`, () => {
+      const { w, f, t2 } = run(true);
+      let returned = false;
+      for (let t = 0; t < sec(8); t++) {
+        w.step([]);
+        if (f.air === "returning") returned = true;
+      }
+      expect(returned, "chưa về khi còn mục tiêu").toBe(false);
+      expect(t2.hp, "Titan thứ hai bị đánh").toBeLessThan(t2.maxHp);
+    });
+  }
+});

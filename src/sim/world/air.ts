@@ -538,17 +538,26 @@ function fly(this: World, u: Unit, spec: UnitSpec): void {
   } else {
     if (u.mission === "attack") {
       const t = this.target(u.targetId);
-      if (t && t.side !== u.side && this.canHit(w, t) && this.visibleTo(u.side, t)) tgt = t;
-      else {
-        u.mission = "move";
-        u.mx = clamp(u.x, -this.map.airX, this.map.airX);
-        u.mz = clamp(u.z, -this.map.airZ, this.map.airZ);
+      if (t && t.side !== u.side && this.canHit(w, t) && this.visibleTo(u.side, t)) {
+        tgt = t;
+        // nhớ chỗ mục tiêu: mất mục tiêu thì tìm mục tiêu mới quanh đó
+        u.mx = clamp(t.x, -this.map.airX, this.map.airX);
+        u.mz = clamp(t.z, -this.map.airZ, this.map.airZ);
+      } else {
+        // mục tiêu mất: tìm mục tiêu mới quanh chỗ mục tiêu cũ (HUNT, `mx`, `mz`), không thấy trong `huntTime` giây thì về sân.
+        // Trước 17/11/2026 chuyển sang "đi tới chỗ máy bay đang bay" và lượn vòng ở đó tới khi cạn dầu (lỗi 7)
+        u.mission = "hunt";
+        u.huntUntil = this.tick + sec(A.huntTime);
         u.targetId = 0;
       }
     }
     if (!tgt) {
       tgt = this.acquireFrom(u, u.side, u.mx, u.mz, w, 26, u.autoTarget);
       u.autoTarget = tgt ? tgt.id : 0;
+      if (u.mission === "hunt") {
+        if (tgt) u.huntUntil = this.tick + sec(A.huntTime);
+        else if (this.tick >= u.huntUntil) u.rtb = true;
+      }
     }
     if (tgt) {
       dx = tgt.x - u.x;

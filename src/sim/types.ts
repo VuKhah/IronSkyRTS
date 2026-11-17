@@ -13,7 +13,8 @@ export type UnitOrder = "idle" | "move" | "amove" | "attack" | "strike";
 export type HaulState = "idle" | "toMine" | "mining" | "toDock" | "unloading" | "toWreck" | "salvaging";
 /** `launch`: phóng thẳng đứng từ giếng Nhà Máy Máy Bay (airT < 0 = còn chờ dưới giếng, được che chắn). */
 export type AirState = "none" | "parked" | "takeoff" | "launch" | "flying" | "returning" | "landing";
-export type AirMission = "none" | "move" | "attack";
+/** "hunt": mục tiêu tấn công vừa mất, tìm mục tiêu mới quanh đó tới `Unit.huntUntil` rồi về sân. */
+export type AirMission = "none" | "move" | "attack" | "hunt";
 
 export interface Unit {
   id: number;
@@ -123,6 +124,8 @@ export interface Unit {
   speed: number;
   airT: number;
   mission: AirMission;
+  /** Nhiệm vụ "hunt": tới tick này mà không có mục tiêu mới thì bay về sân. */
+  huntUntil: number;
   mx: number;
   mz: number;
   rtb: boolean;

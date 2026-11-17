@@ -134,6 +134,8 @@ export const RULES = {
     takeoffMin: 0.35,
     /** Mức Bingo: tự bay về Sân Đáp. */
     bingo: 0.24,
+    /** Mục tiêu tấn công mất (bị hạ / khuất): tìm mục tiêu mới quanh đó chừng này giây, không thấy thì bay về sân (lỗi 7, 17/11/2026). */
+    huntTime: 3,
     /** Lít/giây khi nạp ở bãi đậu. */
     refuelRate: 10,
     repairRate: 25,

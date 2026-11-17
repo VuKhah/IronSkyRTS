@@ -87,6 +87,7 @@ function spawnUnit(this: World, kind: UnitId, side: Side, x: number, z: number):
     speed: 0,
     airT: 0,
     mission: "none",
+    huntUntil: 0,
     mx: px,
     mz: pz,
     rtb: false,
