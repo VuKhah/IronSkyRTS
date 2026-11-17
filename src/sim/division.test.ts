@@ -9,6 +9,7 @@ import { arenaPoint } from "./scenarios";
 import type { Building, Squad, Unit } from "./types";
 import { hashWorld, sec, World } from "./world";
 import { spaceRadius } from "./world/shared";
+import { DIV_ZONE } from "./world/division";
 
 function spawn(w: World, kind: UnitId, x: number, z: number, side: 0 | 1 = 0): Unit {
   w.step([{ side, order: { t: "sbSpawn", kind, side, x, z } }]);
@@ -484,3 +485,47 @@ describe("tướng sư đoàn: báo động và quay mặt (A2 D3, người dùn
     expect(Math.hypot(sh.x - cx, sh.z - cz)).toBeLessThan(8);
   });
 });
+
+describe("tướng sư đoàn: cùng bắn, vùng phản công, về ô (A2 D4)", () => {
+  function stationed(kinds: UnitId[]): { w: World; us: Unit[]; d: World["divisions"][number] } {
+    const w = new World(1, { sandbox: true });
+    const us = group(w, kinds);
+    go(w, us, 10);
+    finish(w, us);
+    for (let i = 0; i < 10; i++) w.step([]);
+    return { w, us, d: w.divisions.find((x) => x.id === us[0].division)! };
+  }
+
+  it("địch trước mặt trong tầm với: mọi Titan vào cuộc, không xe nào ra khỏi vùng 20 m; hết địch thì về ô lệch dưới 1 m", () => {
+    const { w, us, d } = stationed(Array<UnitId>(8).fill("titan"));
+    const home = new Map(us.map((u) => [u.id, [u.x, u.z] as const]));
+    const foes = [-6, 0, 6].map((k) => spawn(w, "lynx", d.cx + d.hx * 23 + d.hz * k, d.cz + d.hz * 23 - d.hx * k, 1));
+    const fired = new Set<number>();
+    let out = 0;
+    for (let t = 0; t < sec(12); t++) {
+      w.step([]);
+      foes.forEach((f) => (f.hp = f.maxHp));
+      for (const e of w.events) if (e.t === "shot") fired.add(e.src);
+      for (const u of us) out = Math.max(out, Math.hypot(u.x - d.cx, u.z - d.cz) - DIV_ZONE);
+    }
+    expect(us.filter((u) => fired.has(u.id)).length, "số Titan đã bắn").toBe(us.length);
+    expect(out, "xa nhất ra ngoài vùng (m)").toBeLessThan(1);
+    w.step([{ side: 1, order: { t: "sbRemove", ids: foes.map((f) => f.id) } }]);
+    for (let t = 0; t < sec(18); t++) w.step([]);
+    expect(d.alarm).toBe("none");
+    for (const u of us) expect(Math.hypot(u.x - home.get(u.id)![0], u.z - home.get(u.id)![1]), `Titan #${u.id} cách ô`).toBeLessThan(1);
+  });
+
+  it("không bắn dồn quá tay: 10 Titan, hai Lynx trong tầm: sư đoàn chia hỏa lực cho cả hai (mỗi Lynx chỉ cần ~5 Titan trong 2 s)", () => {
+    const { w, us, d } = stationed(Array<UnitId>(10).fill("titan"));
+    const foes = [-5, 5].map((k) => spawn(w, "lynx", d.cx + d.hx * 18 + d.hz * k, d.cz + d.hz * 18 - d.hx * k, 1));
+    w.step([{ side: 1, order: { t: "sbHold", side: 1, on: true } }]);
+    for (let t = 0; t < sec(1); t++) {
+      w.step([]);
+      foes.forEach((f) => (f.hp = f.maxHp));
+    }
+    const on = foes.map((f) => us.filter((u) => u.divTarget === f.id).length);
+    expect(Math.min(...on), `số Titan nhắm từng mục tiêu ${on.join("/")}`).toBeGreaterThanOrEqual(2);
+  });
+});
+

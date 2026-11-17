@@ -13,7 +13,7 @@
  *  - sư đoàn còn một xe mặt đất thì tan (ngưỡng 3 chỉ áp khi lập: đang đánh mất xe còn 2 thì vẫn giữ tướng);
  *  - mọi xe mặt đất đã đứng (hết đội hình hành quân) thì sư đoàn đóng quân: ghi tâm, hướng mặt, ô từng xe.
  */
-import { UNITS, type Side } from "../content";
+import { RULES, UNITS, type Side } from "../content";
 import { assignMin } from "../assign";
 import { dist2 } from "../fmath";
 import type { Division, Unit } from "../types";
@@ -262,10 +262,14 @@ function divisionBrain(this: World, d: Division): void {
   if (d.alarm !== "none" && tick >= d.alarmUntil) {
     const was = d.alarm;
     d.alarm = "none";
-    // hết báo động: đội hình về hướng cũ, xe về ô cũ
-    if (was === "near" && (d.fx !== d.hx || d.fz !== d.hz)) this.divisionFace(d, d.hx, d.hz);
+    // hết báo động: đội hình về hướng cũ, mọi xe về đúng ô cũ (kể cả xe chỉ tiến lên đánh trong vùng, chưa xoay)
+    if (was === "near") {
+      for (const u of ground) u.divTarget = 0;
+      this.divisionFace(d, d.hx, d.hz);
+    }
     return;
   }
+  if (d.alarm === "near" && (tick + d.id) % 3 === 0) this.divisionTargets(d, ground);
   if (d.alarm !== "near" || tick < d.pivotAt) return;
   const ex = d.threatX - cx;
   const ez = d.threatZ - cz;
@@ -318,6 +322,70 @@ function divisionFace(this: World, d: Division, fx: number, fz: number): void {
   d.fx = fx;
   d.fz = fz;
   d.reformUntil = this.tick + REFORM_MAX;
+}
+
+/** Hỏa lực dồn vào một mục tiêu đủ hạ nó trong chừng này giây thì xe khác chọn mục tiêu kế (người dùng duyệt 17/11/2026). */
+const KILL_WINDOW = 2;
+
+/**
+ * CÙNG BẮN (D4): giao mục tiêu cho từng xe theo thứ tự trong sư đoàn. Mục tiêu: địch thấy được trong tầm với của sư đoàn mà xe
+ * bắn tới được (đã trong tầm, hoặc xe chạy được mà địch nằm trong vùng phản công + tầm bắn; quân cố định chỉ bắn trong tầm). Ưu
+ * tiên (1) kẻ đang bắn sư đoàn, (2) mục tiêu đồng đội đang đánh mà chưa đủ hỏa lực (dồn hỏa lực), (3) gần nhất; mục tiêu đã đủ
+ * hỏa lực hạ trong KILL_WINDOW giây thì chỉ chọn khi không còn gì khác (không bắn quá tay).
+ */
+function divisionTargets(this: World, d: Division, ground: readonly Unit[]): void {
+  const member = new Set(d.ids);
+  const foes: Unit[] = [];
+  const lim = d.reach + 5;
+  for (const e of this.units)
+    if (e.side !== d.side && e.hp > 0 && dist2(e.x, e.z, d.cx, d.cz) <= lim * lim && this.visibleTo(d.side, e)) foes.push(e);
+  const committed = new Map<number, number>();
+  for (const m of ground) {
+    m.divTarget = 0;
+    const w = UNITS[m.kind].weapon;
+    if (!w || !foes.length) continue;
+    const r = this.reach(m, w);
+    const fixed = !!w.deploy;
+    let best: Unit | null = null;
+    let bestScore = Infinity;
+    for (const e of foes) {
+      if (!this.canHit(w, e)) continue;
+      const d2 = dist2(m.x, m.z, e.x, e.z);
+      const rr = r + UNITS[e.kind].radius * 0.5;
+      const inR = d2 <= rr * rr && (!w.minRange || d2 >= w.minRange * w.minRange);
+      if (!inR && (fixed || dist2(e.x, e.z, d.cx, d.cz) > (DIV_ZONE + r) * (DIV_ZONE + r))) continue;
+      const c = committed.get(e.id) ?? 0;
+      const over = c >= e.hp;
+      const shooting = member.has(e.autoTarget) || member.has(e.targetId);
+      const score = d2 + (inR ? 0 : 2500) + (shooting ? -1e4 : 0) + (c > 0 && !over ? -5e3 : 0) + (over ? 1e7 : 0);
+      if (score < bestScore) {
+        bestScore = score;
+        best = e;
+      }
+    }
+    if (!best) continue;
+    m.divTarget = best.id;
+    const dmg = (best.air !== "none" ? w.dmgAir : w.dmgGround) * RULES.damageMatrix[UNITS[best.kind].armorClass][w.dmgType];
+    committed.set(best.id, (committed.get(best.id) ?? 0) + (dmg / w.cooldown) * KILL_WINDOW);
+  }
+}
+
+/** Mục tiêu tướng giao cho xe, nếu còn hợp lệ (sư đoàn tự chủ, đang báo động gần, địch còn sống và thấy được). */
+function divisionTargetOf(this: World, u: Unit): Unit | null {
+  if (!u.divTarget || !u.division) return null;
+  const d = this.divisionById(u.division);
+  if (!d || d.alarm !== "near" || d.mode !== "auto") return null;
+  const e = this.byId.get(u.divTarget);
+  const w = UNITS[u.kind].weapon;
+  if (!e || e.cat !== "unit" || e.hp <= 0 || e.side === u.side || !w || !this.canHit(w, e) || !this.visibleTo(u.side, e)) return null;
+  return e;
+}
+
+/** Xe còn trong vùng phản công của sư đoàn (được tiến lên đánh); ra tới mép thì dừng. */
+function divisionInZone(this: World, u: Unit): boolean {
+  const d = this.divisionById(u.division);
+  const z = DIV_ZONE - 0.5;
+  return !!d && dist2(u.x, u.z, d.cx, d.cz) < z * z;
 }
 
 /** Xe của sư đoàn đang đi về ô mới sau khi xoay (vừa đi vừa bắn). */
@@ -385,7 +453,7 @@ function divisionEscort(this: World, d: Division): void {
   }
 }
 
-const methods = { divisionBrain, divisionFace, divisionReform, divisionAlert, divisionEscort, divisionById, divGroundCount, dissolveDivision, leaveDivision, formDivision, divisionOrder, stationDivision, updateDivisions };
+const methods = { divisionTargets, divisionTargetOf, divisionInZone, divisionBrain, divisionFace, divisionReform, divisionAlert, divisionEscort, divisionById, divGroundCount, dissolveDivision, leaveDivision, formDivision, divisionOrder, stationDivision, updateDivisions };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

@@ -75,6 +75,7 @@ function spawnUnit(this: World, kind: UnitId, side: Side, x: number, z: number):
     division: 0,
     hitX: 0,
     hitZ: 0,
+    divTarget: 0,
     hState: "idle",
     mineId: 0,
     manual: false,

@@ -154,7 +154,9 @@ function updateGround(this: World, u: Unit): void {
       break;
     }
     case "idle": {
-      const t = w ? this.acquire(u, w, range + IDLE_ACQUIRE_BONUS) : null;
+      // xe sư đoàn đang báo động: bắn mục tiêu tướng giao (`divisionTargets`); không có thì tự chọn như xe lẻ
+      const dt = w ? this.divisionTargetOf(u) : null;
+      const t = w ? (dt ?? this.acquire(u, w, range + IDLE_ACQUIRE_BONUS)) : null;
       if (u.yieldAway && !u.squad) {
         // NHƯỜNG ĐƯỜNG (`world/yield.ts`): dạt tới chỗ được yêu cầu, hết hạn thì về ô nhà; chạy theo xích. Vẫn bắn mục tiêu
         // trong tầm (tháp pháo quay), không bỏ chỗ đi đuổi
@@ -186,7 +188,8 @@ function updateGround(this: World, u: Unit): void {
         fireAt = t;
         if (this.inRange(u.x, u.z, w, t, range)) this.halt(u);
         // quân cố định (SkyGuard, Pháo, Tên Lửa Loạt) giữ chỗ đứng: không tự bỏ vị trí đuổi theo mục tiêu
-        else if (!w.deploy && dist2(u.x, u.z, u.tx, u.tz) < LEASH * LEASH) this.chase(u, t);
+        // xe lẻ đuổi trong LEASH quanh ô; xe sư đoàn tiến lên trong VÙNG PHẢN CÔNG quanh tâm sư đoàn (D4), ra tới mép thì dừng
+        else if (!w.deploy && (dt ? this.divisionInZone(u) : dist2(u.x, u.z, u.tx, u.tz) < LEASH * LEASH)) this.chase(u, t);
         else this.halt(u);
       } else if (dist2(u.x, u.z, u.tx, u.tz) > 16) {
         if (u.chasing || u.path.length === 0) {

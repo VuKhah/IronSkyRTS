@@ -111,6 +111,8 @@ export interface Unit {
   /** Gốc phát của phát đạn trúng xe gần nhất (`lastHit`): tướng sư đoàn biết bị bắn từ đâu. */
   hitX: number;
   hitZ: number;
+  /** Mục tiêu tướng sư đoàn giao (D4: ưu tiên kẻ đang bắn sư đoàn, dồn hỏa lực, không bắn quá tay); 0 = tự chọn. */
+  divTarget: number;
   // Xe Vận Tải
   hState: HaulState;
   mineId: number;
