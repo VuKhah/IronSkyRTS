@@ -988,8 +988,14 @@ const TRAIL_TRIES = 6;
 /** Tới gần là tới ở đích: cách ô dưới chừng này (m) liền SETTLE_NEAR_T tick. */
 const SETTLE_NEAR = 1;
 const SETTLE_NEAR_T = sec(2);
-/** Xe tụt quá SQUAD_LAG liền chừng này tick thì thành xe lạc (khối thôi chờ, xe tự tìm đường về ô). */
-const STRAY_AFTER = sec(4);
+/**
+ * Xe tụt quá SQUAD_LAG liền chừng này tick thì thành xe lạc (khối thôi chờ, xe tự tìm đường về ô); có xe lạc thì khối chạy tối
+ * đa STRAY_PACE. Thiết kế duyệt 4 s / 70%; dò 17/11/2026 trên 6 seed sư đoàn 20 xe (thả lộn xộn, đi 56 m): 4 s / 70% trung bình
+ * 51 s, 2 s / 85% 41,5 s, 1 s / 85% 37,4 s, 1 s / 100% 35,8 s (đội trộn 10 xe 42 m: 19 s). Chọn 1 s / 85%: gần nhanh nhất mà
+ * khối vẫn chậm lại chút cho xe lạc. Xe chậm vì xoay xích tại chỗ, đợi lâu chỉ làm cả khối đứng theo.
+ */
+const STRAY_AFTER = sec(1);
+const STRAY_PACE = 0.85;
 
 /** Người dẫn đầu xuất phát từ ô gần tâm đội nhất có khoảng trống ≥ chừng này (m), tìm trong SQUAD_START_R m. */
 const SQUAD_START_CLEAR = 4;
@@ -1082,6 +1088,7 @@ function stepSquad(this: World, sq: Squad): void {
   // STRAY_AFTER thì khối thôi chờ nó; xe đó tự tìm đường về ô (`squadMember`). Một xe kẹt vì lý do riêng không kéo cả khối bò
   // 25% tốc độ (đo 17/11: sư đoàn 20 xe 60 s chưa tới). Đội đang co hàng (qua cầu, khe hẹp) vẫn chờ đủ như cũ.
   const open = sq.phase === "march";
+  let strays = 0;
   for (let i = 0; i < sq.ids.length; i++) {
     const id = sq.ids[i];
     const l = this.squadLag(sq, i, this.byId.get(id) as Unit)[0];
@@ -1089,11 +1096,16 @@ function stepSquad(this: World, sq: Squad): void {
     // về sát ô (dưới nửa ngưỡng)
     const t0 = sq.lagT[id] ?? 0;
     sq.lagT[id] = l > SQUAD_LAG ? t0 + 1 : t0 > STRAY_AFTER && l > SQUAD_LAG / 2 ? t0 : Math.max(0, t0 - 2);
-    if (open && sq.lagT[id] > STRAY_AFTER) continue;
+    if (open && sq.lagT[id] > STRAY_AFTER) {
+      strays++;
+      continue;
+    }
     lag = Math.max(lag, l);
   }
-  // xe tụt khỏi ô thì cả khối chậm lại chờ; lúc hành quân không dừng hẳn (tối thiểu 25%) để không bao giờ kẹt chết
-  const wait = clamp(1 - (lag - SQUAD_LAG) / SQUAD_LAG, sq.phase === "march" ? 0.25 : 0, 1);
+  // xe tụt khỏi ô thì cả khối chậm lại chờ; lúc hành quân không dừng hẳn (tối thiểu 25%) để không bao giờ kẹt chết. Có xe lạc thì
+  // khối chạy tối đa STRAY_PACE: xe nhanh nhất cũng chỉ hơn tốc độ khối (trung bình cả đội) chừng 8%, khối chạy đủ tốc thì xe lạc
+  // không bao giờ đuổi kịp (đo: 14–18 / 20 xe thành xe lạc, tới đích mới xếp lại 17 s)
+  const wait = Math.min(clamp(1 - (lag - SQUAD_LAG) / SQUAD_LAG, sq.phase === "march" ? 0.25 : 0, 1), strays ? STRAY_PACE : 1);
   switch (sq.phase) {
     case "form":
       if (lag < 1.2 || sq.phaseT > sec(SQUAD_FORM_MAX)) this.squadMarch(sq);
@@ -1412,7 +1424,19 @@ function squadMember(this: World, u: Unit, w: WeaponSpec | undefined, range: num
   }
   // đi-và-đánh: cả đội đang dừng bắn thì xe đang tự đi tới ô cũng đứng lại
   if (sq.phase === "direct" && sq.kind === "amove" && sq.holding) return fireAt;
-  const [, shx, shz, sx, sz] = this.squadLag(sq, i, u);
+  const lagAt = this.squadLag(sq, i, u);
+  const shx = lagAt[1];
+  const shz = lagAt[2];
+  let sx = lagAt[3];
+  let sz = lagAt[4];
+  // xe lệch hàng lúc hành quân: đi vòng theo làn ngoài mép khối, không xuyên qua giữa khối đang chạy (`squadLane`)
+  if (sq.phase === "march" && sq.byRank) {
+    const ln = this.squadLane(sq, i, u);
+    if (ln) {
+      sx = ln[0];
+      sz = ln[1];
+    }
+  }
   const d = Math.sqrt(dist2(u.x, u.z, sx, sz));
   // cách ô THẬT (kể cả xe đang đứng chờ phía trước ô lúc hành quân): ORCA chỉ cho xe cùng đội né nhau khi có xe lệch ô
   const [ox, oz] = this.squadSlot(sq, i);
@@ -1464,6 +1488,43 @@ function squadMember(this: World, u: Unit, w: WeaponSpec | undefined, range: num
   return fireAt;
 }
 
+/** Làn vượt: lệch hàng quá chừng này (m, dọc hướng đi) thì đi làn ngoài; làn cách mép khối chừng này (m) ngoài thân xe. */
+const LANE_ROW = 3;
+const LANE_GAP = 1;
+/** Trên làn, điểm nhắm ở trước xe chừng này (m) dọc hướng đi (tới ngang hàng của mình thì thôi). */
+const LANE_STEP = 5;
+
+/**
+ * LÀN VƯỢT (A2 D2, 17/11/2026): đội lộn xộn lăn bánh ngay (người dùng chọn hướng (b)), xe ở sai hàng (Titan đứng sau phải lên
+ * hàng đầu, Lynx đứng trước phải về sau) mà lái thẳng tới ô thì xuyên giữa khối đang chạy: Titan nhanh hơn khối có 0,35 m/s nên
+ * chen qua các hàng hàng chục giây, xô xe khác trượt ngang và lồng thân (đo: sư đoàn 20 xe 50–100 cặp·s chồng thân). Như đoàn
+ * xe ngoài đời: xe lệch hàng quá LANE_ROW ra LÀN NGOÀI MÉP KHỐI (phía nó đang đứng; giữa thì phía ô, giữa nữa thì bên phải),
+ * chạy dọc làn tới ngang hàng của mình rồi mới vào ô; xe đứng trước ô thì dạt ra làn đứng chờ khối đi tới. Làn bị chặn thì thử
+ * phía kia; cả hai bị chặn thì null (lái thẳng tới ô như cũ). Trả về điểm nhắm.
+ */
+function squadLane(this: World, sq: Squad, i: number, u: Unit): [number, number] | null {
+  const [ox, oz, hx, hz] = this.squadSlot(sq, i);
+  const ex = u.x - ox;
+  const ez = u.z - oz;
+  const ahead = ex * hx + ez * hz;
+  if (ahead <= LANE_ROW && ahead >= -LANE_ROW) return null;
+  const latS = sq.offLat[i] + sq.shift;
+  const latU = latS + ex * hz - ez * hx;
+  const r = bodyRadius(u.kind);
+  const laneLat = sq.width / 2 + r + LANE_GAP;
+  const pref = latU > 0.5 ? 1 : latU < -0.5 ? -1 : latS < 0 ? -1 : 1;
+  // khung thẳng tại ô (không theo vệt: xe nằm ngoài vệt thì điểm trên vệt có thể lùi xa dần, xe đuổi theo nó mãi; đo 10 Titan:
+  // một xe tụt 50 m): xe tụt sau nhắm trước mặt mình LANE_STEP (không quá hàng của mình), xe đứng trước ô giữ nguyên chỗ dọc
+  const along = ahead < 0 ? Math.min(0, ahead + LANE_STEP) : ahead;
+  for (const side of [pref, -pref]) {
+    const lat = side * laneLat - latS;
+    const lx = ox + hx * along + hz * lat;
+    const lz = oz + hz * along - hx * lat;
+    if (!this.grid.blockedAt(lx, lz) && this.map.inset(lx, lz) >= 1 && this.grid.clearanceAt(lx, lz) >= r * SLOT_BODY) return [lx, lz];
+  }
+  return null;
+}
+
 /**
  * Độ tụt của xe thứ i so với ô (m) và điểm nó nên tới: [tụt, hướng x, hướng z, đích x, đích z]. Lúc hành quân, xe đang
  * đứng TRƯỚC ô của mình (ví dụ đoàn vừa co thành hàng một trước cầu) thì chờ tới lượt: chỉ chỉnh ngang cho thẳng cột,
@@ -1480,7 +1541,7 @@ function squadLag(this: World, sq: Squad, i: number, u: Unit): [number, number, 
   return [Math.sqrt(dist2(u.x, u.z, sx, sz)), hx, hz, sx, sz];
 }
 
-const methods = { formationOf, airSlots, orderMove, formation, freeSlot, arrive, createSquad, squadDirect, squadFits, squadAssign, slotKey, squadUnjam, squadTrailBack, squadAdopt, squadArrange, squadLayout, squadFlanks, squadRanks, squadSpeed, speedOf, squadSlot, trailAt, squadAfterPivot, squadMarch, slowestMobility, squadById, squadReady, leaveSquad, disbandSquad, updateSquads, stepSquad, squadSettle, squadFit, freeSide, squadMember, squadLag, squadTurnR };
+const methods = { formationOf, airSlots, orderMove, formation, freeSlot, arrive, createSquad, squadDirect, squadFits, squadAssign, slotKey, squadUnjam, squadTrailBack, squadAdopt, squadArrange, squadLayout, squadFlanks, squadRanks, squadSpeed, speedOf, squadSlot, trailAt, squadAfterPivot, squadMarch, slowestMobility, squadById, squadReady, leaveSquad, disbandSquad, updateSquads, stepSquad, squadSettle, squadFit, freeSide, squadMember, squadLag, squadLane, squadTurnR };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
