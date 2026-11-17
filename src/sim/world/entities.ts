@@ -73,6 +73,8 @@ function spawnUnit(this: World, kind: UnitId, side: Side, x: number, z: number):
     laneWait: 0,
     squad: 0,
     division: 0,
+    hitX: 0,
+    hitZ: 0,
     hState: "idle",
     mineId: 0,
     manual: false,

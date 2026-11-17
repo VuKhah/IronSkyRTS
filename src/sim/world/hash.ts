@@ -48,6 +48,8 @@ export function hashWorld(w: World): number {
     num(u.laneWait);
     num(u.squad);
     num(u.division);
+    num(u.hitX);
+    num(u.hitZ);
     num(u.lot);
     num(u.formation === null ? -1 : Object.keys(FORMATIONS).indexOf(u.formation));
     num(u.aimX);
@@ -75,6 +77,12 @@ export function hashWorld(w: World): number {
     num(d.cz);
     num(d.hx);
     num(d.hz);
+    num(d.fx);
+    num(d.fz);
+    num(["none", "far", "near"].indexOf(d.alarm));
+    num(d.alarmUntil);
+    num(d.pivotAt);
+    num(d.reformUntil);
   }
   for (const sq of w.squads) {
     num(sq.id);

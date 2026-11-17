@@ -14,11 +14,25 @@
  *  - mọi xe mặt đất đã đứng (hết đội hình hành quân) thì sư đoàn đóng quân: ghi tâm, hướng mặt, ô từng xe.
  */
 import { UNITS, type Side } from "../content";
+import { assignMin } from "../assign";
+import { dist2 } from "../fmath";
 import type { Division, Unit } from "../types";
+import { bodyRadius, sec } from "./shared";
 import { World } from "./core";
 
 /** Số xe mặt đất tối thiểu để lập sư đoàn (người dùng chốt 17/11/2026). */
 export const DIV_MIN = 3;
+/** Vùng phản công quanh tâm sư đoàn lúc đóng quân (m, số tạm người dùng duyệt 17/11/2026). */
+export const DIV_ZONE = 20;
+/** Hết báo động sau chừng này không thấy địch gần / không bị bắn. */
+const ALARM_HOLD = sec(6);
+/** Địch lệch hướng mặt sư đoàn quá 60° (cos 60° = 0,5) thì cả sư đoàn xoay; xoay xong chờ PIVOT_COOL mới xoay tiếp. */
+const PIVOT_COS = 0.5;
+const PIVOT_COOL = sec(3);
+/** Sau khi xoay, xe đi về ô mới (vừa đi vừa bắn, không dừng lại đánh) tối đa chừng này. */
+const REFORM_MAX = sec(10);
+/** Quân đã hạ bệ mà ô mới cách chỗ đứng không quá chừng này (m) thì đứng nguyên, chỉ quay mâm (người dùng chốt 17/11/2026). */
+const DEPLOY_STAY = 10;
 
 /** Xe được tính là quân mặt đất của sư đoàn. */
 function isDivGround(u: Unit): boolean {
@@ -86,7 +100,28 @@ function formDivision(this: World, side: Side, units: readonly Unit[], kind: "mo
   for (const u of members) if (u.division && u.division !== keep?.id) this.leaveDivision(u);
   let d = keep;
   if (!d) {
-    d = { id: this.nextDivId++, side, ids: [], mode, directive: kind, cx: 0, cz: 0, hx: 0, hz: 1, homeX: {}, homeZ: {} };
+    d = {
+      id: this.nextDivId++,
+      side,
+      ids: [],
+      mode,
+      directive: kind,
+      cx: 0,
+      cz: 0,
+      hx: 0,
+      hz: 1,
+      homeX: {},
+      homeZ: {},
+      alarm: "none",
+      alarmUntil: 0,
+      threatX: 0,
+      threatZ: 0,
+      fx: 0,
+      fz: 1,
+      pivotAt: 0,
+      reformUntil: 0,
+      reach: 0
+    };
     this.divisions.push(d);
   }
   d.ids = members.map((u) => u.id);
@@ -94,6 +129,8 @@ function formDivision(this: World, side: Side, units: readonly Unit[], kind: "mo
   d.directive = kind;
   d.homeX = {};
   d.homeZ = {};
+  d.alarm = "none";
+  d.reformUntil = 0;
   for (const u of members) u.division = d.id;
 }
 
@@ -150,7 +187,148 @@ function stationDivision(this: World, d: Division): void {
   }
   d.hx = fx / l;
   d.hz = fz / l;
+  d.fx = d.hx;
+  d.fz = d.hz;
   d.directive = "station";
+  // tầm với: vùng phản công + tầm bắn trực tiếp xa nhất (vũ khí không có tầm tối thiểu: không tính Pháo, Tên Lửa Loạt)
+  let direct = 0;
+  for (const id of d.ids) {
+    const w = UNITS[(this.byId.get(id) as Unit).kind].weapon;
+    if (w && !w.minRange && w.dmgGround > 0) direct = Math.max(direct, w.range);
+  }
+  d.reach = DIV_ZONE + direct;
+}
+
+/**
+ * BỘ NÃO TƯỚNG (D3): báo động và quay mặt. Chỉ khi tự chủ và đang đóng quân (đang đi thì `Squad` lo: tấn công-di chuyển đã
+ * dừng lại bắn, lệnh đi thì không dừng). Chỉ dùng thông tin phe mình thấy (`visibleTo`, luật bắt buộc số 2).
+ */
+function divisionBrain(this: World, d: Division): void {
+  if (d.mode !== "auto" || d.directive !== "station") return;
+  const tick = this.tick;
+  const ground: Unit[] = [];
+  let cx = 0;
+  let cz = 0;
+  let far = 0;
+  for (const id of d.ids) {
+    const u = this.byId.get(id) as Unit;
+    if (!isDivGround(u)) continue;
+    ground.push(u);
+    cx += u.x;
+    cz += u.z;
+    const w = UNITS[u.kind].weapon;
+    if (w && w.dmgGround > 0) far = Math.max(far, this.reach(u, w));
+  }
+  cx /= ground.length;
+  cz /= ground.length;
+  // bị bắn trong tick vừa rồi: biết đạn tới từ đâu
+  let hit = false;
+  let sx = 0;
+  let sz = 0;
+  let k = 0;
+  for (const u of ground) {
+    if (u.lastHit !== tick - 1) continue;
+    hit = true;
+    if (dist2(u.hitX, u.hitZ, cx, cz) <= d.reach * d.reach) {
+      sx += 2 * u.hitX;
+      sz += 2 * u.hitZ;
+      k += 2;
+    }
+  }
+  // quét địch mỗi 3 tick, lệch pha theo mã sư đoàn (không dồn mọi sư đoàn vào một tick)
+  let seenFar = false;
+  if ((tick + d.id) % 3 === 0) {
+    for (const e of this.units) {
+      if (e.side === d.side || e.hp <= 0 || e.air !== "none") continue;
+      const d2 = dist2(e.x, e.z, cx, cz);
+      if (d2 > far * far && d2 > d.reach * d.reach) continue;
+      if (!this.visibleTo(d.side, e)) continue;
+      if (d2 <= d.reach * d.reach) {
+        sx += e.x;
+        sz += e.z;
+        k++;
+      } else seenFar = true;
+    }
+  }
+  if (k > 0) {
+    d.alarm = "near";
+    d.alarmUntil = tick + ALARM_HOLD;
+    d.threatX = sx / k;
+    d.threatZ = sz / k;
+  } else if ((hit || seenFar) && d.alarm !== "near") {
+    d.alarm = "far";
+    d.alarmUntil = tick + ALARM_HOLD;
+  }
+  if (d.alarm !== "none" && tick >= d.alarmUntil) {
+    const was = d.alarm;
+    d.alarm = "none";
+    // hết báo động: đội hình về hướng cũ, xe về ô cũ
+    if (was === "near" && (d.fx !== d.hx || d.fz !== d.hz)) this.divisionFace(d, d.hx, d.hz);
+    return;
+  }
+  if (d.alarm !== "near" || tick < d.pivotAt) return;
+  const ex = d.threatX - cx;
+  const ez = d.threatZ - cz;
+  const l = Math.sqrt(ex * ex + ez * ez);
+  if (l < 1) return;
+  const ux = ex / l;
+  const uz = ez / l;
+  if (ux * d.fx + uz * d.fz >= PIVOT_COS) return;
+  this.divisionFace(d, ux, uz);
+  d.pivotAt = tick + PIVOT_COOL;
+}
+
+/**
+ * Xoay cả sư đoàn về hướng (fx, fz): xoay hình ô lúc đóng quân quanh tâm, rồi chia ô mới bằng phân công tối ưu (bình phương
+ * quãng, chỉ đổi giữa xe cùng mã phân nhóm) để xe đi ít nhất và không cắt đường nhau. Giáp vẫn ra trước về phía địch vì ô của
+ * hàng đầu xoay theo. Quân đã hạ bệ mà ô mới cách không quá DEPLOY_STAY thì đứng nguyên (quay mâm), xa hơn thì thu bệ đi theo.
+ */
+function divisionFace(this: World, d: Division, fx: number, fz: number): void {
+  const c = d.hx * fx + d.hz * fz;
+  const s = d.hx * fz - d.hz * fx;
+  const ground: Unit[] = [];
+  for (const id of d.ids) {
+    const u = this.byId.get(id) as Unit;
+    if (isDivGround(u) && d.homeX[id] !== undefined) ground.push(u);
+  }
+  const slots = ground.map((g): [number, number] => {
+    const ox = d.homeX[g.id] - d.cx;
+    const oz = d.homeZ[g.id] - d.cz;
+    return [d.cx + c * ox - s * oz, d.cz + s * ox + c * oz];
+  });
+  const cost = slots.map(([px, pz], k) => ground.map((u) => (UNITS[u.kind].group === UNITS[ground[k].kind].group ? dist2(u.x, u.z, px, pz) : 1e9)));
+  const a = assignMin(cost);
+  for (let k = 0; k < slots.length; k++) {
+    const u = ground[a[k]];
+    let [px, pz] = slots[k];
+    const r = bodyRadius(u.kind);
+    if (this.grid.blockedAt(px, pz) || this.grid.clearanceAt(px, pz) < r * 0.95)
+      [px, pz] = this.grid.nearestFree(px, pz, 6, (x, z) => this.grid.clearanceAt(x, z) >= r * 0.95) ?? [u.x, u.z];
+    if (this.anchored(u) && dist2(u.x, u.z, px, pz) <= DEPLOY_STAY * DEPLOY_STAY) {
+      px = u.x;
+      pz = u.z;
+    }
+    u.tx = px;
+    u.tz = pz;
+    u.faceX = fx;
+    u.faceZ = fz;
+    u.path = [];
+    u.pathI = 0;
+  }
+  d.fx = fx;
+  d.fz = fz;
+  d.reformUntil = this.tick + REFORM_MAX;
+}
+
+/** Xe của sư đoàn đang đi về ô mới sau khi xoay (vừa đi vừa bắn). */
+function divisionReform(this: World, u: Unit): boolean {
+  const d = u.division ? this.divisionById(u.division) : undefined;
+  return !!d && this.tick < d.reformUntil && dist2(u.x, u.z, u.tx, u.tz) > 1;
+}
+
+/** Sư đoàn của xe đang báo động gần (xe đứng bắn vẫn quay thân về hướng sư đoàn: giáp trước ra đón). */
+function divisionAlert(this: World, u: Unit): boolean {
+  return !!u.division && this.divisionById(u.division)?.alarm === "near";
 }
 
 /** Mỗi tick, sau `updateSquads`: dọn xe đã mất, tan sư đoàn còn một xe, đóng quân khi mọi xe mặt đất đã đứng. */
@@ -166,21 +344,48 @@ function updateDivisions(this: World): void {
       this.dissolveDivision(d);
       continue;
     }
-    if (d.directive === "station") continue;
-    let settled = true;
-    for (const id of d.ids) {
-      const u = this.byId.get(id) as Unit;
-      if (isDivGround(u) && (u.order !== "idle" || u.squad !== 0)) {
-        settled = false;
-        break;
+    if (d.directive !== "station") {
+      let settled = true;
+      for (const id of d.ids) {
+        const u = this.byId.get(id) as Unit;
+        if (isDivGround(u) && (u.order !== "idle" || u.squad !== 0)) {
+          settled = false;
+          break;
+        }
       }
+      if (settled) this.stationDivision(d);
     }
-    if (settled) this.stationDivision(d);
+    this.divisionBrain(d);
+    // Drone Khiên bay theo tâm quân mặt đất của sư đoàn (mỗi giây, lệch pha theo mã)
+    if ((this.tick + d.id) % 10 === 0) this.divisionEscort(d);
   }
   this.divisions = this.divisions.filter((d) => d.ids.length > 0);
 }
 
-const methods = { divisionById, divGroundCount, dissolveDivision, leaveDivision, formDivision, divisionOrder, stationDivision, updateDivisions };
+function divisionEscort(this: World, d: Division): void {
+  let n = 0;
+  let cx = 0;
+  let cz = 0;
+  for (const id of d.ids) {
+    const u = this.byId.get(id) as Unit;
+    if (!isDivGround(u)) continue;
+    n++;
+    cx += u.x;
+    cz += u.z;
+  }
+  cx /= n;
+  cz /= n;
+  for (const id of d.ids) {
+    const u = this.byId.get(id) as Unit;
+    if (!isDivEscort(u) || u.rtb || (u.mission !== "none" && u.mission !== "move")) continue;
+    if (dist2(u.x, u.z, cx, cz) <= 16 && u.mission === "none") continue;
+    u.mission = "move";
+    u.mx = cx;
+    u.mz = cz;
+  }
+}
+
+const methods = { divisionBrain, divisionFace, divisionReform, divisionAlert, divisionEscort, divisionById, divGroundCount, dissolveDivision, leaveDivision, formDivision, divisionOrder, stationDivision, updateDivisions };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

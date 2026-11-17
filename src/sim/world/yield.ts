@@ -41,7 +41,8 @@ const LANE_WAIT_MAX = sec(3);
 const YIELD_BLOCK = sec(8);
 
 function canYield(this: World, v: Unit): boolean {
-  return v.air === "none" && v.hp > 0 && v.order === "idle" && v.squad === 0 && v.kind !== "hauler" && !isSquad(v.kind) && !this.anchored(v) && this.tick >= v.yieldBlock;
+  // xe sư đoàn đang về ô mới sau khi xoay (`divisionReform`) là xe đang đi, không nhường (không thì các xe cùng về ô đòi nhau dạt mãi)
+  return v.air === "none" && v.hp > 0 && v.order === "idle" && v.squad === 0 && v.kind !== "hauler" && !isSquad(v.kind) && !this.anchored(v) && this.tick >= v.yieldBlock && !this.divisionReform(v);
 }
 
 /** Xe đang tự đi (có đường còn lại, hoặc vừa chạy trong đội hình) và đòi lối; xe đang nhường / về ô thì không đòi. */

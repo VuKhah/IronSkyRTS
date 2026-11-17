@@ -172,6 +172,16 @@ function updateGround(this: World, u: Unit): void {
         else if (!going) u.yieldAway = false;
         break;
       }
+      // sư đoàn vừa xoay về phía địch: đi về ô mới, vừa đi vừa bắn (tháp pháo quay), không dừng lại đánh giữa đường
+      if (this.divisionReform(u)) {
+        if (t && w && this.inRange(u.x, u.z, w, t, range)) fireAt = t;
+        if (u.path.length === 0 || this.tick >= u.repathAt) {
+          this.setPath(u, u.tx, u.tz);
+          u.repathAt = this.tick + sec(1);
+        }
+        if (this.follow(u)) u.path = [];
+        break;
+      }
       if (t && w) {
         fireAt = t;
         if (this.inRange(u.x, u.z, w, t, range)) this.halt(u);
@@ -203,7 +213,8 @@ function updateGround(this: World, u: Unit): void {
   }
   if (fireAt && w) this.tryFire(u, w, fireAt);
   // đứng chờ: thân xoay dần về hướng được giao (hướng đội hình khi tới nơi); đang bắn thì thôi
-  if (u.order === "idle" && !u.squad && !u.moved && !fireAt && (u.faceX !== 0 || u.faceZ !== 0) && u.hx * u.faceX + u.hz * u.faceZ < ALIGNED_COS)
+  // sư đoàn báo động gần: xe đứng bắn vẫn quay thân về hướng sư đoàn (giáp trước ra đón địch, tháp pháo bắn độc lập)
+  if (u.order === "idle" && !u.squad && !u.moved && (!fireAt || this.divisionAlert(u)) && (u.faceX !== 0 || u.faceZ !== 0) && u.hx * u.faceX + u.hz * u.faceZ < ALIGNED_COS)
     this.turnHull(u, u.faceX, u.faceZ);
   // Lockdown: đếm thời gian đứng yên (chạy là mất triển khai; đang thu bệ thì follow() đã trừ dần)
   if (!u.packing) u.still = u.moved ? 0 : Math.min(u.still + 1, 100000);
@@ -466,7 +477,11 @@ function damage(this: World, e: Target, s: Shot): void {
   const real = Math.min(dealt, e.hp);
   this.sides[by].stats.damageDealt += real;
   e.hp -= dealt;
-  if (e.cat === "unit") e.lastHit = this.tick;
+  if (e.cat === "unit") {
+    e.lastHit = this.tick;
+    e.hitX = s.sx;
+    e.hitZ = s.sz;
+  }
   if (real > 0 && e.side !== by) this.gainXp(s.src, (real / e.maxHp) * valueOf(e.kind));
   if (e.cat === "unit") {
     if (e.kind === "commander") this.alert(e.side, "commander", e.x, e.z);

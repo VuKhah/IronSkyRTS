@@ -388,3 +388,99 @@ describe("sư đoàn bền vững (A2 bước D1, người dùng duyệt 17/11/2
     expect(divOf(w, us[0])).toBe(d);
   });
 });
+
+describe("tướng sư đoàn: báo động và quay mặt (A2 D3, người dùng duyệt 17/11/2026)", () => {
+  /** Sư đoàn đóng quân ở arenaPoint(10), mặt quay theo hướng vừa đi (từ arenaPoint(-20) sang). */
+  function stationed(kinds: UnitId[]): { w: World; us: Unit[]; d: World["divisions"][number] } {
+    const w = new World(1, { sandbox: true });
+    const us = group(w, kinds);
+    go(w, us, 10);
+    finish(w, us);
+    for (let i = 0; i < 10; i++) w.step([]);
+    const d = w.divisions.find((x) => x.id === us[0].division)!;
+    return { w, us, d };
+  }
+  const center = (us: Unit[]): [number, number] => [us.reduce((s, u) => s + u.x, 0) / us.length, us.reduce((s, u) => s + u.z, 0) / us.length];
+
+  it("bị đánh sườn 90°: cả sư đoàn báo động trong 1 s, xoay về phía địch trong 4 s; xe quay thân về phía địch", () => {
+    const { w, us, d } = stationed(Array<UnitId>(8).fill("titan"));
+    expect(d.directive).toBe("station");
+    const [cx, cz] = center(us);
+    // sườn phải của hướng đội hình, cách tâm 24 m
+    const sx = d.hz;
+    const sz = -d.hx;
+    const foes = [-4, 0, 4].map((k) => spawn(w, "lynx", cx + sx * 24 + d.hx * k, cz + sz * 24 + d.hz * k, 1));
+    const keep = () => foes.forEach((f) => (f.hp = f.maxHp));
+    let alarmAt = -1;
+    let turnedAt = -1;
+    for (let t = 0; t < sec(8); t++) {
+      w.step([]);
+      keep();
+      if (alarmAt < 0 && d.alarm === "near") alarmAt = t;
+      if (turnedAt < 0 && d.fx * sx + d.fz * sz > 0.87) turnedAt = t;
+    }
+    expect(alarmAt, "tick báo động").toBeGreaterThanOrEqual(0);
+    expect(alarmAt).toBeLessThanOrEqual(sec(1));
+    expect(turnedAt, "tick sư đoàn xoay hướng").toBeGreaterThanOrEqual(0);
+    expect(turnedAt).toBeLessThanOrEqual(sec(4));
+    // phần lớn Titan đã quay thân về phía địch (giáp trước ra đón)
+    const facing = us.filter((u) => u.hx * sx + u.hz * sz > 0.7).length;
+    expect(facing, "số Titan quay thân về phía địch").toBeGreaterThanOrEqual(6);
+  });
+
+  it("địch xa (drone trinh sát thấy, chỉ Pháo bắn tới): quân khác đứng yên ở ô, sư đoàn không xoay", () => {
+    const { w, us, d } = stationed(["titan", "titan", "titan", "titan", "artillery"]);
+    const [cx, cz] = center(us);
+    const fx0 = d.fx;
+    const fz0 = d.fz;
+    // địch ở sườn trái, cách 60 m: ngoài tầm với của Titan (vùng 20 m + tầm 19,5 m), trong tầm Pháo (90 m)
+    const lx = -d.hz;
+    const lz = d.hx;
+    const foe = spawn(w, "titan", cx + lx * 60, cz + lz * 60, 1);
+    w.step([{ side: 1, order: { t: "sbHold", side: 1, on: true } }]);
+    spawn(w, "scout", cx + lx * 50, cz + lz * 50);
+    const titans = us.filter((u) => u.kind === "titan");
+    const home = titans.map((u) => [u.x, u.z]);
+    let fired = false;
+    for (let t = 0; t < sec(10); t++) {
+      w.step([]);
+      foe.hp = foe.maxHp;
+      if (w.events.some((e) => e.t === "shot" && e.src === us.find((u) => u.kind === "artillery")!.id)) fired = true;
+    }
+    expect(d.alarm).not.toBe("near");
+    expect(d.fx * fx0 + d.fz * fz0).toBeGreaterThan(0.99);
+    titans.forEach((u, i) => expect(Math.hypot(u.x - home[i][0], u.z - home[i][1]), `Titan ${i} rời ô`).toBeLessThan(1));
+    expect(fired, "Pháo bắn địch ở xa").toBe(true);
+  });
+
+  it("quân đã hạ bệ khi sư đoàn xoay: ô mới trong 10 m thì đứng nguyên, xa hơn thì thu bệ đi tới ô mới", () => {
+    const { w, us, d } = stationed(["titan", "titan", "titan", "titan", "artillery"]);
+    const art = us.find((u) => u.kind === "artillery")!;
+    // tới nơi Pháo còn xoay thân về hướng đội (~2,6 s) rồi mới hạ bệ (2 s)
+    for (let i = 0; i < sec(6); i++) w.step([]);
+    expect(w.anchored(art), "Pháo đã hạ bệ").toBe(true);
+    const [ax, az] = [art.x, art.z];
+    const off = Math.hypot(d.homeX[art.id] - d.cx, d.homeZ[art.id] - d.cz);
+    // xoay 30°: ô mới cách chỗ cũ 2·off·sin 15° (nhỏ) → đứng nguyên
+    const c30 = Math.cos(Math.PI / 6);
+    const s30 = Math.sin(Math.PI / 6);
+    w.divisionFace(d, d.hx * c30 - d.hz * s30, d.hx * s30 + d.hz * c30);
+    expect(Math.hypot(art.tx - ax, art.tz - az)).toBeLessThan(0.01);
+    // quay đầu 180°: ô mới cách 2·off (> 10 m nếu Pháo đứng xa tâm hơn 5 m) → đi tới ô mới
+    w.divisionFace(d, -d.hx, -d.hz);
+    if (2 * off > 10.5) expect(Math.hypot(art.tx - ax, art.tz - az)).toBeGreaterThan(10);
+    else expect(Math.hypot(art.tx - ax, art.tz - az)).toBeLessThan(0.01);
+  });
+
+  it("Drone Khiên của sư đoàn bay theo tâm sư đoàn", () => {
+    const w = new World(1, { sandbox: true });
+    const us = group(w, ["titan", "titan", "lynx", "shield"]);
+    const ground = us.filter((u) => u.air === "none");
+    go(w, us, 10);
+    finish(w, ground);
+    for (let i = 0; i < sec(6); i++) w.step([]);
+    const [cx, cz] = center(ground);
+    const sh = us.find((u) => u.kind === "shield")!;
+    expect(Math.hypot(sh.x - cx, sh.z - cz)).toBeLessThan(8);
+  });
+});

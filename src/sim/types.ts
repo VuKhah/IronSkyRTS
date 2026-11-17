@@ -108,6 +108,9 @@ export interface Unit {
   squad: number;
   /** Thuộc sư đoàn nào (`Division.id`, 0 = xe lẻ). Bền hơn `squad`: còn giữ sau khi tới nơi. */
   division: number;
+  /** Gốc phát của phát đạn trúng xe gần nhất (`lastHit`): tướng sư đoàn biết bị bắn từ đâu. */
+  hitX: number;
+  hitZ: number;
   // Xe Vận Tải
   hState: HaulState;
   mineId: number;
@@ -431,6 +434,23 @@ export interface Division {
   hz: number;
   homeX: Record<number, number>;
   homeZ: Record<number, number>;
+  /**
+   * BÁO ĐỘNG (D3): "near" = địch trong tầm với của sư đoàn (`reach`: vùng phản công + tầm bắn trực tiếp xa nhất), cả sư đoàn phản
+   * ứng; "far" = chỉ bị bắn / thấy địch ở xa (Pháo, Tên Lửa Loạt tự bắn, quân khác đứng yên). Hết hạn `alarmUntil` thì thôi.
+   */
+  alarm: "none" | "far" | "near";
+  alarmUntil: number;
+  /** Nguồn đe dọa (trọng tâm các địch gần đã thấy, nghiêng về kẻ vừa bắn). */
+  threatX: number;
+  threatZ: number;
+  /** Hướng mặt hiện tại của sư đoàn (đã xoay về phía địch thì khác `hx/hz`, hướng lúc đóng quân). */
+  fx: number;
+  fz: number;
+  /** Tick sớm nhất được xoay lần nữa; xe đi về ô mới tới tick `reformUntil` (bỏ qua mục tiêu, vừa đi vừa bắn). */
+  pivotAt: number;
+  reformUntil: number;
+  /** Tầm với (m) tính từ tâm khi đóng quân. */
+  reach: number;
 }
 
 /**
