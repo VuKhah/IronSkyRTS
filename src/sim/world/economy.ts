@@ -1,5 +1,5 @@
 /** Kinh tế: điện, công trình (xây, đúc quân), mỏ và chiếm mỏ. */
-import { BUILDINGS, doorDir, lotTime, RULES, UNITS, type Side } from "../content";
+import { BUILDINGS, doorDir, lotTime, RULES, UNITS, type Side, type UnitId } from "../content";
 import { dist2 } from "../fmath";
 import type { Building } from "../types";
 import { DT, sec, FORMATION_GAP, spaceRadius } from "./shared";
@@ -244,7 +244,51 @@ function produce(this: World, b: Building): void {
   }
   this.sides[b.side].stats.unitsBuilt++;
   }
-  if (ids.length && kind !== "hauler" && b.rallySet) this.orderMove(b.side, ids, b.rallyX, b.rallyZ, "move");
+  if (ids.length && kind !== "hauler") {
+    // chưa đặt điểm tập kết: hậu cần tự đưa lô mới ra chỗ trống trước cửa (lỗi 6, 17/11/2026: không có lệnh thì xe đứng lại trên
+    // bệ ráp, chiếc sau chồng lên chiếc trước, drone lơ lửng che kín xưởng, bấm vào xưởng trúng drone)
+    const [rx, rz] = b.rallySet ? [b.rallyX, b.rallyZ] : this.exitSpot(b, kind, ids.length);
+    this.orderMove(b.side, ids, rx, rz, "move");
+  }
+}
+
+/** Ngoài mép nền móng phía cửa chừng này (m): qua hết ô cửa ra cấm xây, xe mới ra không chắn lối xe sau. */
+const EXIT_SPOT_CLEAR = 6;
+
+/**
+ * Chỗ đứng chờ mặc định cho lô `n` chiếc `kind` vừa ra xưởng `b` (khi chưa đặt điểm tập kết): trước cửa, ngoài nền móng, thẳng
+ * hàng với ô cửa ra; chỗ đã có quân cùng phe cùng tầng (mặt đất / bay) đứng thì lấy chỗ kế bên (giữa, phải, trái, rồi lùi xa
+ * thêm một hàng). Không chỗ nào trống thì lấy chỗ đầu.
+ */
+function exitSpot(this: World, b: Building, kind: UnitId, n: number): [number, number] {
+  const [ddx, ddz] = doorDir(b.rot);
+  const [bw, bd] = this.blockHalf(b.kind, b.rot);
+  const e = this.exitRect(b.kind, b.x, b.z, b.rot);
+  const air = UNITS[kind].domain === "air";
+  const r = n * spaceRadius(kind) + 0.5;
+  const step = 2 * r + 1;
+  const bx = ddz !== 0 ? (e ? e[0] : b.x) : b.x + ddx * (bw + EXIT_SPOT_CLEAR + r);
+  const bz = ddz !== 0 ? b.z + ddz * (bd + EXIT_SPOT_CLEAR + r) : e ? e[1] : b.z;
+  // hướng ngang: bên phải người đứng trong cửa nhìn ra (xoay nhà thì xoay theo, hai phe đối xứng)
+  const lx = -ddz;
+  const lz = ddx;
+  for (let row = 0; row < 4; row++)
+    for (const col of [0, 1, -1, 2, -2]) {
+      const x = bx + ddx * row * step + lx * col * step;
+      const z = bz + ddz * row * step + lz * col * step;
+      if (this.grid.blockedAt(x, z) || this.map.inset(x, z) < 2) continue;
+      let taken = false;
+      for (const o of this.units) {
+        if (o.side !== b.side || o.hp <= 0 || (o.air !== "none") !== air) continue;
+        const lim = r + spaceRadius(o.kind);
+        if (dist2(o.x, o.z, x, z) < lim * lim) {
+          taken = true;
+          break;
+        }
+      }
+      if (!taken) return [x, z];
+    }
+  return [bx, bz];
 }
 
 // ------------------------------------------------------------------ mỏ
@@ -321,7 +365,7 @@ function captureStep(this: World, m: { x: number; z: number; owner: Side | -1; c
   return null;
 }
 
-const methods = { computePower, updateBuildings, produce, updateMines, captureStep };
+const methods = { computePower, updateBuildings, produce, exitSpot, updateMines, captureStep };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

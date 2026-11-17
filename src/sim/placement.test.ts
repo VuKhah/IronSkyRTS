@@ -137,6 +137,37 @@ describe("Đặt công trình lên lưới", () => {
   });
 });
 
+describe("Quân mới ra xưởng khi chưa đặt điểm tập kết (lỗi 6, 17/11/2026: drone treo trên bệ, che kín xưởng)", () => {
+  for (const side of [0, 1] as const)
+    for (const [kind, list] of [
+      ["special-factory", ["shield", "scout", "artillery", "rocket", "shield"]],
+      ["factory", ["lynx", "titan", "lynx"]]
+    ] as const)
+      it(`${kind}: mọi lô tự ra khỏi nền móng, không chiếc nào chồng chiếc nào (phe ${side})`, () => {
+        const w = new World(1, { sandbox: true });
+        const sg = side === 0 ? 1 : -1;
+        expect(put(w, side, kind, -27 * sg, 27 * sg)).toBeNull();
+        const f = w.buildings.find((b) => b.kind === kind)!;
+        w.sides[side].iron = 1e6;
+        w.sides[side].oil = 1e6;
+        const before = new Set(w.units.map((u) => u.id));
+        for (const k of list) w.step([{ side, order: { t: "produce", building: f.id, kind: k } }]);
+        for (let t = 0; t < sec(150) && f.queue.length; t++) w.step([]);
+        for (let t = 0; t < sec(30); t++) w.step([]);
+        const made = w.units.filter((u) => !before.has(u.id));
+        expect(f.queue.length, "đúc hết hàng chờ").toBe(0);
+        const [bw, bd] = w.blockHalf(kind, f.rot);
+        for (const u of made) expect(Math.abs(u.x - f.x) > bw || Math.abs(u.z - f.z) > bd, `${u.kind} #${u.id} còn trong nền móng xưởng`).toBe(true);
+        for (let i = 0; i < made.length; i++)
+          for (let j = i + 1; j < made.length; j++) {
+            const a = made[i];
+            const b = made[j];
+            if ((a.air !== "none") !== (b.air !== "none")) continue;
+            expect(Math.hypot(a.x - b.x, a.z - b.z), `${a.kind} #${a.id} chồng ${b.kind} #${b.id}`).toBeGreaterThan(1);
+          }
+      });
+});
+
 describe("Xoay công trình (người dùng 10/11/2026)", () => {
   it("Sân Đáp xoay 90°: nền móng đổi chiều, ô đáp nằm trong nền móng, máy bay đậu quay theo nhà", () => {
     const w = new World(1, { sandbox: true });
