@@ -12,6 +12,8 @@ const HEAD_ON_COS = -0.5;
 const PASS_LOOK = 6;
 /** Lách sang bên mỗi tick khi chưa chạm (m; 1,5 m/s, chậm hơn nhiều so với tốc độ chạy). */
 const PASS_STEER = 0.15;
+/** Xe xích đối đầu: độ lệch lái sang bên (≈ 30°) cộng vào hướng đi khi còn cách nhau trong PASS_LOOK. */
+const PASS_BIAS = 0.55;
 /** ORCA: không va xe nào trong chừng này giây tới (theo vận tốc hiện tại của xe kia). */
 const AVOID_T = 2.5;
 /** Xét láng giềng trong chừng này mét (đủ cho hai xe 5 m/s lao vào nhau trong AVOID_T giây). */
@@ -56,9 +58,12 @@ function axisApart(w: World, u: Unit, ox: number, oz: number, target: number): v
   const r = Math.sqrt(disc);
   const t1 = eh - r;
   const t2 = eh + r;
-  // xe đang chạy: gỡ theo CHIỀU ĐANG CHẠY (đang lách qua khe vừa thân thì đi tiếp, không bị đẩy lùi ra); xe đứng: chiều gần nhất
-  const mv = u.moved ? (u.x - u.px) * u.hx + (u.z - u.pz) * u.hz : 0;
-  let t = mv > 1e-4 ? t2 : mv < -1e-4 ? t1 : -t1 < t2 ? t1 : t2;
+  // Tách bằng cách ĐI RA XA điểm kia dọc thân: điểm kia ở trước thì lùi, ở sau thì tiến (xe sau đâm đuôi xe trước thì lùi ra, không
+  // tiến lún sâu thêm). Chạm ở SƯỜN (điểm kia lệch trục thân hơn 60°, như đang lách qua khe vừa thân) thì xe đang chạy đi tiếp
+  // theo chiều đang chạy, xe đứng theo chiều gần nhất
+  const side = eh * eh < 0.25 * e2;
+  const mv = side && u.moved ? (u.x - u.px) * u.hx + (u.z - u.pz) * u.hz : 0;
+  let t = !side ? (eh > 0 ? t1 : t2) : mv > 1e-4 ? t2 : mv < -1e-4 ? t1 : -t1 < t2 ? t1 : t2;
   // tối đa AXIS_STEP_MAX m mỗi tick (lồng sâu thì gỡ dần qua vài tick, không giật xa trong một tick)
   const cap = Math.min(3 * (target - Math.sqrt(e2)) + 0.2, AXIS_STEP_MAX);
   if (t > cap) t = cap;
@@ -331,9 +336,18 @@ function separate(this: World): void {
         if ((lat < 0 ? -lat : lat) >= ra + rb) continue;
         const [lax, laz] = sideStep(a, dx, dz);
         const [lbx, lbz] = sideStep(b, -dx, -dz);
-        // chỉ tiểu đội bộ binh bước ngang được; xe xích đối đầu tự lái né bằng ORCA (`steer`)
+        // tiểu đội bộ binh bước ngang; XE XÍCH LÁI LỆCH sang bên (cộng độ lệch lái vào `avX/avZ`, `steer` dùng ở tick sau): hai xe đối
+        // đầu cùng giữ bên phải rồi lướt qua nhau, không trượt ngang (17/11/2026)
         if (isSquad(a.kind)) shove(this, a, lax * PASS_STEER, laz * PASS_STEER);
+        else {
+          a.avX += lax * PASS_BIAS;
+          a.avZ += laz * PASS_BIAS;
+        }
         if (isSquad(b.kind)) shove(this, b, lbx * PASS_STEER, lbz * PASS_STEER);
+        else {
+          b.avX += lbx * PASS_BIAS;
+          b.avZ += lbz * PASS_BIAS;
+        }
         continue;
       }
       // xe đang chạy nhường xe đã đứng yên: xe chạy chịu phần lớn lực đẩy (lách qua), xe đã vào hàng chỉ xê dịch chút ít

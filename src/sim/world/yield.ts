@@ -52,7 +52,7 @@ function canYield(this: World, v: Unit): boolean {
   // Xe trong đội hình (17/11/2026): ở đích, xe tuyến chưa tới lượt vào ô thì nhường như xe đứng (`squadWaiting`, triển khai từng
   // tuyến); xe đã tới lượt mà đã vào ô là VẬT CẢN CỨNG khi tìm đường (`standLayer`), xe đến sau chạy vòng. Đã thử cho mọi đồng đội
   // đã vào ô dạt nhường: khối dày 3–4 hàng thì chỗ dạt của hàng giữa bị hàng khác chiếm, chuỗi nhường tắc
-  return !process.env.NOWAIT && this.squadWaiting(v);
+  return this.squadWaiting(v);
 }
 
 /** Xe trong đội hình đang chốt hình ở đích (pha `settle`, hoặc `direct` đã lăn bánh): giao thông nội bộ kiểu xe đứng / xe đi. */
@@ -82,9 +82,29 @@ function yieldsFor(this: World, s: Unit, m: Unit): boolean {
   );
 }
 
-/** Xe đang dạt nhường đường (xe lẻ đứng chờ, hoặc xe đúng ô của đội hình ở đích). */
+/** Xe đang dạt nhường đường (xe đứng chờ, xe đúng ô của đội hình ở đích, hoặc xe đang chạy dạt cho xe đối đầu `dodgeFor`). */
 function yielding(this: World, v: Unit): boolean {
-  return v.yieldAway && (v.order === "idle" || v.squad !== 0);
+  return v.yieldAway;
+}
+
+/**
+ * HAI XE ĐANG CHẠY CHẶN LẪN NHAU (đối đầu trong lối hẹp, cắt ngang nhau), xe s nhường (`mateStep`, xe mã lớn hơn): tính chỗ dạt
+ * nhanh nhất theo xích ra khỏi lối của xe m (`planYield`, từ chỗ đang đứng), ghi yêu cầu dạt; `follow` cho xe chạy tới đó rồi tìm
+ * đường đi tiếp. Như tài xế xe xích: dạt vừa đủ cho xe kia qua, không lùi thẳng cả quãng dài (17/11/2026). Trả về false nếu không
+ * có chỗ dạt.
+ */
+function dodgeFor(this: World, s: Unit, m: Unit): boolean {
+  const pts = this.lane(m);
+  if (!pts) return false;
+  const ground: Unit[] = [];
+  for (const u of this.units) if (u.air === "none" && u.hp > 0) ground.push(u);
+  const spot = planYield(this, s, pts, bodyRadius(m.kind) + bodyRadius(s.kind) + YIELD_MARGIN, null, ground, m, s.x, s.z);
+  if (!spot) return false;
+  s.yieldX = spot[0];
+  s.yieldZ = spot[1];
+  s.yieldUntil = this.tick + YIELD_HOLD;
+  s.yieldAway = true;
+  return true;
 }
 
 /** Xe đang tự đi (có đường còn lại, hoặc vừa chạy trong đội hình) và đòi lối; xe đang nhường / về ô thì không đòi. */
@@ -119,10 +139,7 @@ function lane(this: World, m: Unit): number[] | null {
       // lối là CẢ đoạn thẳng tới ô (không cắt ở tầm nhìn trước): xe dạt phải ra khỏi toàn bộ đường về ô, không dạt tiến lên đúng vào
       // vùng ô của xe đi (đo 17/11: Titan đoạn hậu dạt vào ô Pháo, Pháo kẹt sau lưng)
       if (l > 0.3) {
-        if (process.env.CUTLANE) {
-          const k = Math.min(1, look / l);
-          pts.push(m.x + ex * k, m.z + ez * k);
-        } else pts.push(t[0], t[1]);
+        pts.push(t[0], t[1]);
         return pts;
       }
     }
@@ -200,13 +217,13 @@ const CHAIN_COST = 1;
  * (độ ÷ turnRate) + quãng ÷ tốc độ (lùi nửa tốc độ) + CHAIN_COST mỗi xe đứng bị đè. Tính từ Ô NHÀ (tx, tz): yêu cầu lặp mỗi tick
  * không cộng dồn. Trả về [x, z] hoặc null nếu không có chỗ.
  */
-function planYield(w: World, s: Unit, lane: readonly number[], clear: number, keepOff: readonly [number, number, number] | null, ground: readonly Unit[], m: Unit): [number, number] | null {
+function planYield(w: World, s: Unit, lane: readonly number[], clear: number, keepOff: readonly [number, number, number] | null, ground: readonly Unit[], m: Unit, fromX = s.tx, fromZ = s.tz): [number, number] | null {
   const spec = UNITS[s.kind];
   const turnRate = spec.turnRate ?? 90;
   const speed = spec.speed;
   const rs = bodyRadius(s.kind);
-  const ox = s.tx;
-  const oz = s.tz;
+  const ox = fromX;
+  const oz = fromZ;
   let best = Infinity;
   let bx = 0;
   let bz = 0;
@@ -366,7 +383,7 @@ function yieldPass(this: World): void {
   }
 }
 
-const methods = { canYield, yieldsFor, squadSettling, yielding, lane, yieldPass };
+const methods = { canYield, dodgeFor, yieldsFor, squadSettling, yielding, lane, yieldPass };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

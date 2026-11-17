@@ -234,11 +234,13 @@ function mateLimit(this: World, u: Unit, step: number, dir: number): number {
   MATE_BACK = null;
   u.driveDir = dir;
   u.driveTick = this.tick;
-  if ((!u.squad && !u.division) || isSquad(u.kind)) return step;
+  if (isSquad(u.kind)) return step;
   let s = step;
   for (const v of this.units) {
-    if (v === u || v.hp <= 0 || v.air !== "none" || v.side !== u.side) continue;
-    if (!((u.squad && v.squad === u.squad) || (u.division && v.division === u.division))) continue;
+    if (v === u || v.hp <= 0 || v.air !== "none" || v.side !== u.side || isSquad(v.kind)) continue;
+    // xe ngoài đội hình / sư đoàn đang đứng mà BIẾT NHƯỜNG thì hệ nhường đường lo (nó dạt ra, xe đi chờ lối); xe đứng không nhường
+    // được (đã hạ bệ, đang nhường dở, hết lượt nhường) và xe đang chạy thì không lái lún vào
+    if (!((u.squad && v.squad === u.squad) || (u.division && v.division === u.division)) && !v.moved && this.canYield(v)) continue;
     const t = mateHit(u, v, s, dir);
     if (t >= s) continue;
     // HAI XE CHẶN LẪN NHAU (cả hai cùng muốn đi, mỗi xe nằm trước mũi xe kia): xe mã nhỏ được đi, xe mã lớn lùi lại nhường
@@ -289,7 +291,8 @@ function mateHit(u: Unit, v: Unit, step: number, dir: number): number {
  * nhường dọc trục, nửa tốc độ, nếu sau lưng trống. Trả về true nếu đã nhích.
  */
 function mateStep(this: World, u: Unit, step: number): boolean {
-  const go = this.mateLimit(u, step, 1);
+  // dò xe chặn bằng quãng đi danh nghĩa (phanh né có thể làm `step` ≈ 0, khi đó không thấy ai chặn, xe nhường không biết mình phải lùi)
+  const go = Math.min(step, this.mateLimit(u, Math.max(step, this.speedOf(u) * DT), 1));
   const ox = u.x;
   const oz = u.z;
   if (go > 1e-4) {
@@ -314,8 +317,14 @@ function mateStep(this: World, u: Unit, step: number): boolean {
         }
       }
     }
+  } else if (MATE_BACK && !u.yieldAway && !u.squad && this.dodgeFor(u, MATE_BACK)) {
+    // xe lẻ: dạt vừa đủ ra khỏi lối xe kia (`dodgeFor`), `follow` chạy tới chỗ dạt từ tick sau
   } else if (MATE_BACK) {
-    const back = this.mateLimit(u, step * REVERSE_SPEED, -1);
+    // LÙI CHÉO NHƯỜNG: vừa lùi vừa xoay mũi sang trái (đuôi sang phải) nên xe lùi chéo về bên phải của nó, xe kia (lái lệch phải)
+    // đi qua; như tài xế xe xích gặp nhau trong lối hẹp
+    this.turnHull(u, u.hx - u.hz * 0.8, u.hz + u.hx * 0.8);
+    // tốc độ lùi của chính xe, không theo phanh né (ORCA phanh về 0 thì xe nhường đứng im, hai xe chờ nhau mãi)
+    const back = this.mateLimit(u, this.speedOf(u) * DT * REVERSE_SPEED, -1);
     if (back > 1e-4) this.tryMove(u, u.x - u.hx * back, u.z - u.hz * back);
   }
   const moved = dist2(ox, oz, u.x, u.z) > 1e-8;
@@ -717,6 +726,17 @@ function follow(this: World, u: Unit): boolean {
     u.still = Math.min(u.still, sec(dep.time)) - 1;
     u.packing = true;
     return false;
+  }
+  // ĐANG DẠT CHO XE ĐỐI ĐẦU (`dodgeFor`): chạy theo xích tới chỗ dạt, hết hạn thì tìm đường đi tiếp từ chỗ mới
+  if (u.yieldAway && u.order !== "idle" && !u.squad) {
+    if (this.tick < u.yieldUntil) {
+      const dy = Math.sqrt(dist2(u.x, u.z, u.yieldX, u.yieldZ));
+      if (dy > DRIVE_LAT_TOL + 0.05) this.driveTo(u, u.yieldX, u.yieldZ, dy, true);
+      return false;
+    }
+    u.yieldAway = false;
+    this.setPath(u, u.path[u.path.length - 2], u.path[u.path.length - 1]);
+    if (u.pathI * 2 >= u.path.length) return true;
   }
   // CHỜ LỐI (`world/yield.ts`): xe phía trước đang dạt nhường chưa xong thì đứng chờ, quay thân sẵn về hướng sắp đi
   if (u.laneWait > 0) {

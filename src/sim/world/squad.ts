@@ -1490,7 +1490,6 @@ function squadFit(this: World, sq: Squad): void {
     }
     return lo <= hi ? [lo, hi] : null;
   };
-  if (process.env.DBG && this.tick < 30) console.log(`DBG tick ${this.tick} L ${left.map((v) => v.toFixed(1)).join(",")} R ${right.map((v) => v.toFixed(1)).join(",")} w5 ${widthOf(5).toFixed(1)} trail0 ${sq.trail[4]?.toFixed(1)} s ${sq.s.toFixed(1)}`);
   let c = sq.cols;
   if (!range(c, 0)) {
     // hẹp: co ngay tới mức vừa (1 xe mỗi hàng thì đành chịu)
