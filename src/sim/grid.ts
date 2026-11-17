@@ -732,7 +732,7 @@ export class Grid {
         let corr = 1;
         if (clr) {
           // xe đứng cùng phe (lớp động) tính như vật cản tĩnh: ô quá sát là chặn, ô gần thì chậm (đường chừa khoảng với xe đứng)
-          // xe đứng so với ngưỡng riêng `need` (luật lách mềm), vật cản tĩnh so với nửa bề ngang
+          // xe đứng so với ngưỡng riêng `need` (bán kính dò vách của người đi, `standFor`), vật cản tĩnh so với nửa bề ngang
           const sm = smAt(ni);
           if (sm < smFloor) continue;
           const m = Math.min(clr[ni] - half, sm);

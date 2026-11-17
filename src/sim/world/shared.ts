@@ -86,12 +86,9 @@ export const SQUAD_RESHAPE_EXTRA = 8;
 /** Va chạm giữa xe đang chạy và xe đứng yên: phần lực đẩy xe chạy phải chịu (xe đứng chịu phần còn lại). */
 export const MOVER_SHARE = 0.85;
 /**
- * Đẩy khỏi vách (địa hình bậc thang, 11/11/2026): tâm xe đã không vào được ô bị chặn, nhưng thân xe còn lấn vào vách / đá /
- * sông tới gần một bán kính (đo: Titan bán kính 1,9 m sát vách còn 1,0 m). Mỗi tick dò 8 điểm quanh thân ở chừng này lần bán
- * kính; điểm nào rơi vào ô bị chặn cố định thì đẩy xe ngược lại, tối đa WALL_PUSH m mỗi tick. Đẩy chứ không cấm bước: ở khe
- * hẹp hai bên đẩy triệt tiêu nhau nên xe vẫn đi giữa khe, không kẹt ở chỗ A* cho là đi được.
+ * Đẩy khỏi vách (địa hình bậc thang, 11/11/2026): thân xe lấn vào vách / đá / sông thì bị đẩy ra tối đa chừng này (m) mỗi lần
+ * (`keepOffWalls`, lặp trong tick). Điểm dò quanh thân: `probesOf` / `wallNormal` trong movement.ts (elip theo thân xe).
  */
-export const WALL_CLEAR = 0.85;
 export const WALL_PUSH = 0.3;
 /** Đích sát vách được dời ra xa nhất chừng này (m) cho vừa thân xe (World.clearGoal). */
 export const GOAL_SHIFT = 3;
