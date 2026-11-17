@@ -106,6 +106,8 @@ export interface Unit {
   laneWait: number;
   /** Đang hành quân trong đội hình nào (`Squad.id`, 0 = đi riêng). */
   squad: number;
+  /** Thuộc sư đoàn nào (`Division.id`, 0 = xe lẻ). Bền hơn `squad`: còn giữ sau khi tới nơi. */
+  division: number;
   // Xe Vận Tải
   hState: HaulState;
   mineId: number;
@@ -406,6 +408,29 @@ export interface SideState {
   oilBurn: number;
   alerts: Record<AlertKind, number>;
   stats: SideStats;
+}
+
+/**
+ * SƯ ĐOÀN (A2, người dùng duyệt 17/11/2026, `Docs/plans/2026-11-17-A2-tuong-su-doan-thiet-ke.md`): nhóm quân bền vững có
+ * "tướng dưới trướng". Sinh ra từ lệnh đi / tấn công-di chuyển cho từ 3 xe mặt đất; không tan khi tới nơi mà đóng quân.
+ * Lúc đang đi, phần hành quân vẫn do `Squad` lo; sư đoàn nhớ những gì còn lại sau khi đội hình hành quân xong việc.
+ */
+export interface Division {
+  id: number;
+  side: Side;
+  /** Xe mặt đất và Drone Khiên của sư đoàn, theo mã tăng dần. */
+  ids: number[];
+  /** `auto` = tướng tự quyết chiến thuật; `direct` = Tư lệnh nắm trực tiếp, tướng chỉ lo giao thông nội bộ. */
+  mode: "auto" | "direct";
+  /** Chỉ thị đang làm: đang đi (thường / tấn công-di chuyển) hay đã tới nơi đóng quân. */
+  directive: "move" | "amove" | "station";
+  /** Chỗ đóng quân: tâm, hướng mặt (vectơ đơn vị), và ô của từng xe (chỗ đứng lúc tới nơi). */
+  cx: number;
+  cz: number;
+  hx: number;
+  hz: number;
+  homeX: Record<number, number>;
+  homeZ: Record<number, number>;
 }
 
 /**

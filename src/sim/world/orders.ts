@@ -29,6 +29,8 @@ function applyOrder(this: World, side: Side, o: Order): void {
       const u = this.byId.get(id);
       if (u && u.cat === "unit" && u.side === side && u.squad) this.leaveSquad(u);
     }
+  // sư đoàn: lệnh đi tự lập / giữ sư đoàn (`orderMove`); lệnh khác cho một phần sư đoàn thì phần đó rời sư đoàn
+  if (o.t === "attack" || o.t === "stop" || o.t === "harvest" || o.t === "salvage" || o.t === "rtb") this.divisionOrder(side, o.ids);
   switch (o.t) {
     case "move":
     case "amove":

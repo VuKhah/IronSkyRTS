@@ -47,6 +47,7 @@ export function hashWorld(w: World): number {
     num(u.yieldBlock);
     num(u.laneWait);
     num(u.squad);
+    num(u.division);
     num(u.lot);
     num(u.formation === null ? -1 : Object.keys(FORMATIONS).indexOf(u.formation));
     num(u.aimX);
@@ -63,6 +64,17 @@ export function hashWorld(w: World): number {
     num(u.rank);
     num(u.wreckId);
     num(u.scrap);
+  }
+  num(w.nextDivId);
+  for (const d of w.divisions) {
+    num(d.id);
+    num(d.mode === "direct" ? 1 : 0);
+    num(["move", "amove", "station"].indexOf(d.directive));
+    for (const id of d.ids) num(id);
+    num(d.cx);
+    num(d.cz);
+    num(d.hx);
+    num(d.hz);
   }
   for (const sq of w.squads) {
     num(sq.id);

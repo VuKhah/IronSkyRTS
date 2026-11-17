@@ -302,3 +302,89 @@ describe("tốc độ chung của khối", () => {
     expect(best).toBeGreaterThan(UNITS.artillery.speed);
   });
 });
+
+describe("sư đoàn bền vững (A2 bước D1, người dùng duyệt 17/11/2026)", () => {
+  const divOf = (w: World, u: Unit) => w.divisions.find((d) => d.id === u.division);
+
+  it("lệnh cho từ 3 xe mặt đất lập một sư đoàn; tới nơi không tan mà đóng quân", () => {
+    const w = new World(1, { sandbox: true });
+    const us = group(w, ["titan", "titan", "lynx", "lynx"]);
+    go(w, us, 10);
+    const d = divOf(w, us[0])!;
+    expect(d).toBeTruthy();
+    expect(us.every((u) => u.division === d.id)).toBe(true);
+    expect(d.directive).toBe("move");
+    expect(d.mode).toBe("auto");
+    finish(w, us);
+    for (let i = 0; i < 5; i++) w.step([]);
+    expect(us.every((u) => u.squad === 0 && u.division === d.id)).toBe(true);
+    expect(d.directive).toBe("station");
+    // ô đóng quân là chỗ xe đứng khi tới nơi; hướng mặt là hướng đội
+    for (const u of us) expect(Math.hypot(d.homeX[u.id] - u.x, d.homeZ[u.id] - u.z)).toBeLessThan(0.5);
+    expect(Math.hypot(d.hx, d.hz)).toBeCloseTo(1, 5);
+  });
+
+  it("2 xe không lập sư đoàn", () => {
+    const w = new World(1, { sandbox: true });
+    const us = group(w, ["titan", "lynx"]);
+    go(w, us, 10);
+    expect(us.every((u) => u.division === 0)).toBe(true);
+    expect(w.divisions.length).toBe(0);
+  });
+
+  it("Drone Khiên đi cùng lệnh thì vào sư đoàn, Drone Sửa Chữa thì không; drone không tính vào ngưỡng 3 xe", () => {
+    const w = new World(1, { sandbox: true });
+    const us = group(w, ["titan", "titan", "lynx", "shield", "repair"]);
+    go(w, us, 10);
+    const d = divOf(w, us[0])!;
+    const shield = us.find((u) => u.kind === "shield")!;
+    const repair = us.find((u) => u.kind === "repair")!;
+    expect(shield.division).toBe(d.id);
+    expect(repair.division).toBe(0);
+    const w2 = new World(1, { sandbox: true });
+    const us2 = group(w2, ["titan", "lynx", "shield"]);
+    go(w2, us2, 10);
+    expect(w2.divisions.length).toBe(0);
+  });
+
+  it("ra lệnh riêng cho một xe thì xe đó rời sư đoàn; còn 2 xe vẫn giữ, còn 1 thì tan", () => {
+    const w = new World(1, { sandbox: true });
+    const us = group(w, ["titan", "titan", "lynx"]);
+    go(w, us, 10);
+    finish(w, us);
+    const d = divOf(w, us[0])!;
+    go(w, [us[2]], 0);
+    expect(us[2].division).toBe(0);
+    expect(w.divisions).toContain(d);
+    expect(d.ids.length).toBe(2);
+    go(w, [us[1]], 0);
+    w.step([]);
+    expect(w.divisions).not.toContain(d);
+    expect(us[0].division).toBe(0);
+  });
+
+  it("ra lệnh lại cho cả sư đoàn thì giữ nguyên sư đoàn (mã, chế độ); xe bị hạ thì rời sư đoàn", () => {
+    const w = new World(1, { sandbox: true });
+    const us = group(w, ["titan", "titan", "lynx", "lynx"]);
+    go(w, us, 10);
+    finish(w, us);
+    const d = divOf(w, us[0])!;
+    d.mode = "direct";
+    go(w, us, -10, "amove");
+    expect(divOf(w, us[0])).toBe(d);
+    expect(d.mode).toBe("direct");
+    expect(d.directive).toBe("amove");
+    w.step([{ side: 0, order: { t: "sbRemove", ids: [us[3].id] } }]);
+    w.step([]);
+    expect(d.ids).not.toContain(us[3].id);
+  });
+
+  it("lệnh dừng cho cả sư đoàn không làm tan sư đoàn", () => {
+    const w = new World(1, { sandbox: true });
+    const us = group(w, ["titan", "titan", "lynx"]);
+    go(w, us, 10);
+    const d = divOf(w, us[0])!;
+    w.step([{ side: 0, order: { t: "stop", ids: us.map((u) => u.id) } }]);
+    expect(divOf(w, us[0])).toBe(d);
+  });
+});

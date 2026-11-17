@@ -13,7 +13,7 @@ import { BUILDINGS, RULES, UNITS, type Side, type WeaponSpec } from "../content"
 import { Rng } from "../fmath";
 import { Grid } from "../grid";
 import { GameMap, getMap, TERRAIN, TERRAIN_KINDS } from "../maps";
-import type { Squad, AlertKind, Building, Command, Entity, Mine, Shot, SideState, SimEvent, Target, Unit, Uplink, WinReason, Wreck } from "../types";
+import type { Division, Squad, AlertKind, Building, Command, Entity, Mine, Shot, SideState, SimEvent, Target, Unit, Uplink, WinReason, Wreck } from "../types";
 import { DT, sec, AIRBORNE_ALT, dirToCenter, newSide, type WorldOptions, type SandboxState, SANDBOX_RES } from "./shared";
 
 
@@ -40,6 +40,9 @@ export class World {
   units: Unit[] = [];
   /** Các đội hình đang hành quân (lệnh di chuyển cho từ 2 xe chiến đấu trở lên). */
   squads: Squad[] = [];
+  /** Các sư đoàn (bền vững, `world/division.ts`). Mã riêng, không lấy từ `nextId` để không đổi mã thực thể. */
+  divisions: Division[] = [];
+  nextDivId = 1;
   buildings: Building[] = [];
   readonly mines: Mine[] = [];
   shots: Shot[] = [];
@@ -206,6 +209,7 @@ export class World {
     this.updateBuildings();
     this.updateMines();
     this.updateSquads();
+    this.updateDivisions();
     for (const u of this.units) {
       if (u.hp <= 0) continue;
       if (u.air !== "none") this.updateAir(u);

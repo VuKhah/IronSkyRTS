@@ -106,6 +106,8 @@ function airSlots(this: World, units: readonly Unit[], x: number, z: number): Ma
 
 function orderMove(this: World, side: Side, ids: readonly number[], x: number, z: number, kind: "move" | "amove", formation?: FormationId): void {
   const units = this.ownUnits(side, ids);
+  // từ 3 xe mặt đất: lập / giữ sư đoàn bền vững (`world/division.ts`); đội hình hành quân bên dưới vẫn lập từ 2 xe
+  this.formDivision(side, units, kind);
   // từ 2 xe chiến đấu trở lên: hành quân thành đội hình (Xe Vận Tải đi riêng, vì còn việc hậu cần)
   const fighters = units.filter((u) => u.air === "none" && u.kind !== "hauler");
   const inSquad = fighters.length > 1 ? new Set(fighters.map((u) => u.id)) : null;

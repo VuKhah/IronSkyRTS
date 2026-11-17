@@ -17,6 +17,7 @@
  *   orders.ts    Nhận lệnh của người chơi / AI (applyOrder) và các lệnh đơn: tấn công, dừng, xây.
  *   sandbox.ts   Phòng Thử Nghiệm: lệnh sb* (chỉ khi World tạo với { sandbox: true }).
  *   squad.ts     Đội hình hành quân (Squad): xếp ô, chia hàng, xoay đội, hành quân theo khối, chờ xe tụt.
+ *   division.ts  Sư đoàn bền vững (A2): lập / rời / tan, đóng quân khi tới nơi, chế độ tự chủ / trực tiếp.
  *   movement.ts  Di chuyển một xe: quay thân, bước tới, đi theo đường A*, tìm đường vòng qua xe đứng.
  *   collision.ts Va chạm giữa các xe: ORCA, đẩy xe không chồng lên nhau, tách xe khỏi vách.
  *   economy.ts   Kinh tế: điện, công trình (xây, đúc quân), mỏ và chiếm mỏ.
@@ -39,6 +40,7 @@ import "./world/entities";
 import "./world/orders";
 import "./world/sandbox";
 import "./world/squad";
+import "./world/division";
 import "./world/movement";
 import "./world/collision";
 import "./world/yield";
