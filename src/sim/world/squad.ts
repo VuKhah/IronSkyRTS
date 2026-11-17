@@ -1064,13 +1064,18 @@ const TRAIL_TRIES = 6;
  * đường mà vẫn bị đồng đội / địa hình vây kín ô) thì coi như đã tới, đứng tại chỗ; cả đội không chờ nó tới hết `settleMax` (đo:
  * Titan đến muộn sau lưng khối, ô hàng đầu sát bãi đá, đội đứng chờ 30 s).
  */
-const GIVE_UP = sec(4);
+const GIVE_UP = sec(5);
+const GIVE_UP_GAIN = 1;
 function squadGaveUp(this: World, u: Unit): boolean {
   const sq = this.squadById(u.squad);
-  if (!sq) return false;
+  const i = sq ? sq.ids.indexOf(u.id) : -1;
+  if (!sq || i < 0) return false;
+  // đo theo TIẾN BỘ VỀ PHÍA Ô (quãng tới ô nhỏ nhất đã đạt), không theo chỗ đứng: xe nhích qua lại (dạt, lùi nhường) mà không lại gần ô
+  // thêm GIVE_UP_GAIN m trong GIVE_UP là hết cách (đo 17/11: Titan hàng đầu đến muộn kẹt sau đội hình, nhích qua lại giữ cả sư đoàn)
+  const l = this.squadLag(sq, i, u)[0];
   const ref = sq.moveRef[u.id];
-  if (!ref || dist2(u.x, u.z, ref[0], ref[1]) > 0.25) {
-    sq.moveRef[u.id] = [u.x, u.z, this.tick];
+  if (!ref || l < ref[0] - GIVE_UP_GAIN) {
+    sq.moveRef[u.id] = [l, 0, this.tick];
     return false;
   }
   return this.tick - ref[2] >= GIVE_UP;

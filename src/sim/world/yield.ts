@@ -176,6 +176,16 @@ function request(w: World, s: Unit, x: number, z: number): void {
   s.yieldAway = true;
 }
 
+/** Đường gấp khúc `pts` nối dài thêm `ext` m theo hướng đoạn cuối. */
+function extendLane(pts: readonly number[], ext: number): number[] {
+  const n = pts.length;
+  const ex = pts[n - 2] - pts[n - 4];
+  const ez = pts[n - 1] - pts[n - 3];
+  const l = Math.sqrt(ex * ex + ez * ez);
+  if (l < 1e-6) return pts.slice();
+  return [...pts, pts[n - 2] + (ex / l) * ext, pts[n - 1] + (ez / l) * ext];
+}
+
 /** Khoảng cách bình phương từ (x, z) tới đường gấp khúc `pts`. */
 function laneDist2(pts: readonly number[], x: number, z: number): number {
   let best = Infinity;
@@ -365,7 +375,10 @@ function yieldPass(this: World): void {
       // xe đứng ở sau lưng xe đi (gần nhất là điểm đầu đường và nằm phía sau) và không chạm thân xe đi: không cản đường. Đang chạm
       // thì vẫn phải tránh (không thì nó lùi về ô đè lên xe đi, hai xe chặn nhau mãi: đo 16/11 lưới 3×3)
       if (first && ox * px + oz * pz < 0 && ox * ox + oz * oz >= (rm + rs) * (rm + rs)) continue;
-      const spot = planYield(this, s, pts, need, null, ground, m);
+      // đoạn nhìn trước bị cắt: nối dài lối thêm (YIELD_MAX + bề rộng lối) theo hướng đoạn cuối khi tìm chỗ dạt, không thì xe đứng "dạt"
+      // bằng cách tiến dọc lối ra quá điểm cuối, vẫn nằm trên đường xe đi (đo 17/11: hai Titan dạt tiến 4 m, Lynx bị chặn ngay sau)
+      const planPts = cut ? extendLane(pts, YIELD_MAX + need) : pts;
+      const spot = planYield(this, s, planPts, need, null, ground, m);
       if (!spot) continue;
       request(this, s, spot[0], spot[1]);
       // chỗ dạt đè ô nhà xe đứng bên cạnh: xe đó dạt tiếp (một tầng), tránh cả lối lẫn chỗ dạt của xe trước

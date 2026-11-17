@@ -17,6 +17,9 @@ const PROBE_STEP = 1;
 
 /** Đứng yên từ chừng này giây thì xe là vật cản khi xe cùng phe tìm đường (bước 2 kế hoạch đế). */
 const STAND_AFTER = 1;
+/** Lái cẩn thận (`driveTo` careful): được sượt vào vòng thân xe khác tối đa chừng này (m). */
+const CAREFUL_GRAZE = 0.15;
+
 /** Xe xích nhắm trước trên đoạn đường chừng này (m), tối thiểu; xa hơn khi chạy nhanh (tốc độ × PATH_LOOK_T). */
 const PATH_LOOK = 2.5;
 const PATH_LOOK_T = 0.6;
@@ -213,7 +216,9 @@ function driveTo(this: World, u: Unit, x: number, z: number, d: number, careful 
     const ru = bodyRadius(u.kind);
     for (const v of this.units) {
       if (v === u || v.hp <= 0 || v.air !== "none") continue;
-      const lim = ru + bodyRadius(v.kind);
+      // sượt nhẹ (CAREFUL_GRAZE m trong vòng thân) thì vẫn đi: không thì hai xe dạt nhường đứng sát nhau chặn nhau về ô mãi vì vài cm
+      // (đo 17/11: đường về ô của Titan giữa đi sát Titan bên 3,55 / 3,60 m); khoảng giãn `separate` vẫn giữ hai thân không chồng
+      const lim = ru + bodyRadius(v.kind) - CAREFUL_GRAZE;
       const n2 = dist2(nx, nz, v.x, v.z);
       if (n2 < lim * lim && n2 < dist2(ox, oz, v.x, v.z)) return;
     }
@@ -728,7 +733,8 @@ function follow(this: World, u: Unit): boolean {
     return false;
   }
   // ĐANG DẠT CHO XE ĐỐI ĐẦU (`dodgeFor`): chạy theo xích tới chỗ dạt, hết hạn thì tìm đường đi tiếp từ chỗ mới
-  if (u.yieldAway && u.order !== "idle" && !u.squad) {
+  // (Xe Vận Tải chạy bằng máy trạng thái riêng, lệnh luôn là "idle", nên xét riêng)
+  if (u.yieldAway && (u.order !== "idle" || u.kind === "hauler") && !u.squad) {
     if (this.tick < u.yieldUntil) {
       const dy = Math.sqrt(dist2(u.x, u.z, u.yieldX, u.yieldZ));
       if (dy > DRIVE_LAT_TOL + 0.05) this.driveTo(u, u.yieldX, u.yieldZ, dy, true);
