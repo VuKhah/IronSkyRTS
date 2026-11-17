@@ -877,7 +877,11 @@ function squadAfterPivot(this: World, sq: Squad): void {
 /** Bắt đầu hành quân: tìm đường cho người dẫn đầu (tới đích + nửa bề sâu, để tâm khối dừng đúng đích), vệt thẳng phía sau. */
 function squadMarch(this: World, sq: Squad): void {
   const [gx, gz] = this.grid.nearestFree(sq.goalX + sq.wantX * (sq.depth / 2), sq.goalZ + sq.wantZ * (sq.depth / 2), 8) ?? [sq.goalX, sq.goalZ];
-  const [hx0, hz0] = this.grid.nearestFree(sq.x, sq.z, 6) ?? [sq.x, sq.z];
+  // ĐIỂM XUẤT PHÁT CỦA ĐƯỜNG (17/11/2026): ô gần tâm đội nhất mà đủ rộng (SQUAD_START_CLEAR), không phải ô trống gần nhất bất kỳ.
+  // Tâm đội sát đá ở miệng một túi đá thì ô trống gần nhất nằm trong túi: cả đội 10 Titan chui vào dải hẹp 8 m trong túi, co
+  // hàng một, 90 s chưa tới (đường từ bãi trống ngay bên ngoài ngắn hơn 25 m)
+  const [hx0, hz0] =
+    this.grid.nearestFree(sq.x, sq.z, SQUAD_START_R, (x, z) => this.grid.clearanceAt(x, z) >= SQUAD_START_CLEAR) ?? this.grid.nearestFree(sq.x, sq.z, 6) ?? [sq.x, sq.z];
   let mob: Mobility = "wheel";
   let slowest = Infinity;
   for (const id of sq.ids) {
@@ -896,6 +900,10 @@ function squadMarch(this: World, sq: Squad): void {
   sq.phase = "march";
   sq.phaseT = 0;
 }
+
+/** Người dẫn đầu xuất phát từ ô gần tâm đội nhất có khoảng trống ≥ chừng này (m), tìm trong SQUAD_START_R m. */
+const SQUAD_START_CLEAR = 4;
+const SQUAD_START_R = 10;
 
 /** Kiểu di chuyển của xe chậm nhất trong đội (dùng để tìm đường cho cả đội). */
 function slowestMobility(this: World, sq: Squad): Mobility {

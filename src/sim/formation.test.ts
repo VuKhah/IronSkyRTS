@@ -291,6 +291,32 @@ describe("10 Titan xếp hai hàng không chặn nhau (người dùng 17/11/2026
   });
 });
 
+describe("đường hành quân xuất phát từ chỗ đủ rộng (17/11/2026)", () => {
+  // 10 Titan lộn xộn quanh arenaPoint(−45) (Thung Lũng Sắt): tâm đội nằm sát vòng đá ở miệng một túi kín giữa đá và mép bản đồ.
+  // Trước đây đường bắt đầu từ ô trống gần tâm nhất (trong túi): cả đội đi dọc dải 8 m trong túi (113 m), co hàng một, 90 s chưa
+  // tới. Giờ xuất phát từ bãi trống bên ngoài (88 m)
+  it("tâm đội ở miệng túi đá: đường đi ra bãi trống, không vòng qua túi", () => {
+    const w = new World(1, { sandbox: true });
+    const rng = new Rng(9);
+    const [ax, az] = arenaPoint(-45);
+    const [bx, bz] = arenaPoint(45);
+    for (let k = 0; k < 10; k++) spawn(w, "titan", ax + (rng.next() - 0.5) * 14, az + (rng.next() - 0.5) * 14);
+    const us = w.units.filter((u) => u.side === 0 && u.kind === "titan");
+    w.step([{ side: 0, order: { t: "move", ids: us.map((u) => u.id), x: bx, z: bz } }]);
+    const sq = w.squads[0];
+    expect(sq.phase).toBe("march");
+    let len = 0;
+    let px = sq.x;
+    let pz = sq.z;
+    for (let k = 0; k < sq.path.length; k += 2) {
+      len += Math.hypot(sq.path[k] - px, sq.path[k + 1] - pz);
+      px = sq.path[k];
+      pz = sq.path[k + 1];
+    }
+    expect(len, "độ dài đường hành quân (đường chim bay ≈ 90 m)").toBeLessThan(100);
+  });
+});
+
 describe("xoay thân xe tại chỗ (turnRate)", () => {
   it("xe đổi hướng nhiều thì đứng lại xoay tại chỗ, mất thời gian theo tốc độ quay thân, rồi mới chạy", () => {
     const w = new World(1, { sandbox: true });
