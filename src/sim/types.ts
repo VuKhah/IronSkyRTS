@@ -476,7 +476,7 @@ export interface Squad {
   goalZ: number;
   path: number[];
   pathI: number;
-  /** Vệt người dẫn đầu: mỗi điểm 6 số (x, z, hx, hz, quãng đường, đang quay 1/0). */
+  /** Vệt người dẫn đầu: mỗi điểm 6 số (x, z, hx, hz, quãng đường, độ cong 1/m). */
   trail: number[];
   /** Quãng đường người dẫn đầu đã đi (m). */
   s: number;
@@ -504,4 +504,8 @@ export interface Squad {
   stuck: Record<number, number>;
   /** Tick sớm nhất được đổi ô lần nữa (chống đổi qua lại). */
   swapAt: number;
+  /** XE LẠC (A2 D2): số tick liền xe tụt khỏi ô quá `SQUAD_LAG`, theo mã xe. Quá `STRAY_AFTER` thì khối thôi chờ nó. */
+  lagT: Record<number, number>;
+  /** Số tick liền xe đứng cách ô dưới SETTLE_NEAR (pha `settle`): đủ SETTLE_NEAR_T thì coi là đã tới ("tới gần là tới"). */
+  nearT: Record<number, number>;
 }

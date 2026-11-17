@@ -312,6 +312,25 @@ describe("đường hành quân xuất phát từ chỗ đủ rộng (17/11/2026
     expect(narrowest, "số xe mỗi hàng ít nhất trong 10 s đầu").toBeGreaterThanOrEqual(3);
   });
 
+  // A2 D2 (17/11/2026): cùng sư đoàn đó phải TỚI NƠI. Trước D2: 60 s chưa xe nào tới (khối chạy đúng 50% tốc độ vì luật khúc
+  // cua bật suốt trên đường chéo; một xe tụt kéo cả khối bò 25%; đích giữa bãi đá thì xếp hàng một dài 100 m). Sau D2: ~34 s
+  it("sư đoàn 20 xe lộn xộn đi 56 m tới nơi đủ 20 xe trong 45 s", () => {
+    const w = new World(1, { sandbox: true });
+    const rng = new Rng(11);
+    const [cx, cz] = arenaPoint(0);
+    const us: Unit[] = [];
+    for (const [k, n] of [["titan", 6], ["lynx", 8], ["artillery", 3], ["rocket", 3]] as const)
+      for (let i = 0; i < n; i++) us.push(spawn(w, k, cx - 20 + (rng.next() - 0.5) * 22, cz + 20 + (rng.next() - 0.5) * 22));
+    w.step([{ side: 0, order: { t: "move", ids: us.map((u) => u.id), x: cx + 20, z: cz - 20 } }]);
+    let t = 0;
+    for (; t < sec(60) && us.some((u) => u.order !== "idle"); t++) w.step([]);
+    expect(t / 10, "giây tới khi cả sư đoàn đứng").toBeLessThan(45);
+    // tới nơi gần đích (dừng trước bãi đá được, nhưng không bỏ đích quá xa)
+    const mx = us.reduce((a, u) => a + u.x, 0) / us.length;
+    const mz = us.reduce((a, u) => a + u.z, 0) / us.length;
+    expect(Math.hypot(mx - (cx + 20), mz - (cz - 20))).toBeLessThan(20);
+  });
+
   // 10 Titan lộn xộn quanh arenaPoint(−45) (Thung Lũng Sắt): tâm đội nằm sát vòng đá ở miệng một túi kín giữa đá và mép bản đồ.
   // Trước đây đường bắt đầu từ ô trống gần tâm nhất (trong túi): cả đội đi dọc dải 8 m trong túi (113 m), co hàng một, 90 s chưa
   // tới. Giờ xuất phát từ bãi trống bên ngoài (88 m)
