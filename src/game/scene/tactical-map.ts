@@ -8,6 +8,8 @@
  */
 import * as THREE from "three";
 import { colName, mapRuler, type GameMap, type Vec2 } from "../../sim/maps";
+import { CELL } from "../../sim/maps/game-map";
+import type { TerrainKind } from "../../sim/maps/terrain";
 
 const TEX = 2048;
 /** Lề ngoài bản đồ, tính theo tỉ lệ cạnh dài (chỗ ghi chữ cái, số lưới). */
@@ -16,13 +18,32 @@ const PAD = 0.055;
 const SWEEP_SECONDS = 9;
 
 const CYAN = "120, 210, 255";
-const TERRAIN_FILL: Partial<Record<string, string>> = {
-  forest: "rgba(60, 200, 140, 0.13)",
-  road: "rgba(240, 190, 90, 0.22)",
-  sand: "rgba(220, 190, 110, 0.1)",
-  mud: "rgba(170, 120, 70, 0.14)",
-  snow: "rgba(220, 240, 255, 0.14)"
+type RGB = readonly [number, number, number];
+/** Nền theo tầng: tầng càng cao càng sáng, ba bậc tách rõ nhau. */
+const TIER_RGB: readonly RGB[] = [
+  [13, 25, 34],
+  [34, 52, 60],
+  [62, 86, 94]
+];
+/** Vách đá, mép vách: tối hẳn như khe chắn, không đi được. */
+const CLIFF_RGB: RGB = [5, 9, 13];
+const RAMP_RGB: RGB = [96, 82, 46];
+/** Màu mảng theo loại mặt đất, trộn lên nền tầng với độ phủ `a`. */
+const TERRAIN_TINT: Partial<Record<TerrainKind, { rgb: RGB; a: number }>> = {
+  forest: { rgb: [40, 170, 110], a: 0.42 },
+  road: { rgb: [240, 190, 90], a: 0.4 },
+  sand: { rgb: [220, 190, 110], a: 0.3 },
+  mud: { rgb: [150, 100, 55], a: 0.55 },
+  snow: { rgb: [220, 240, 255], a: 0.3 },
+  shallow: { rgb: [60, 160, 210], a: 0.85 },
+  deep: { rgb: [22, 92, 175], a: 1 }
 };
+
+function mix(base: RGB, kind: TerrainKind): RGB {
+  const t = TERRAIN_TINT[kind];
+  if (!t) return base;
+  return [base[0] + (t.rgb[0] - base[0]) * t.a, base[1] + (t.rgb[1] - base[1]) * t.a, base[2] + (t.rgb[2] - base[2]) * t.a];
+}
 
 function drawDisplay(map: GameMap): HTMLCanvasElement {
   const pad = Math.max(map.w, map.h) * PAD;
@@ -65,47 +86,80 @@ function drawDisplay(map: GameMap): HTMLCanvasElement {
   g.fill();
   g.clip();
 
-  for (const r of map.regions) {
-    const fill = TERRAIN_FILL[r.kind];
-    if (!fill) continue;
-    g.fillStyle = fill;
-    if (r.poly) {
-      trace(r.poly);
-      g.fill();
-    } else if (r.circle) {
-      g.beginPath();
-      g.arc(X(r.circle.x), Y(r.circle.z), r.circle.r * s, 0, Math.PI * 2);
-      g.fill();
+  // các mảng địa hình: đọc từng ô 2 m từ bản đồ (tầng, loại mặt đất, dốc), nên bản đồ dựng từ bản vẽ ô lẫn bản đồ vẽ bằng
+  // vùng đa giác đều hiện đủ. Mỗi ô một điểm ảnh trên ảnh nhỏ rồi phóng lên, không làm mịn để mảng có cạnh rõ.
+  const { cols, rows } = map;
+  const x0 = -map.cols * CELL * 0.5;
+  const z0 = -map.rows * CELL * 0.5;
+  const cx = (c: number): number => x0 + (c + 0.5) * CELL;
+  const cz = (r: number): number => z0 + (r + 0.5) * CELL;
+  const tier = new Int8Array(cols * rows);
+  const kind: TerrainKind[] = new Array(cols * rows);
+  const ramp = new Uint8Array(cols * rows);
+  const cells = document.createElement("canvas");
+  cells.width = cols;
+  cells.height = rows;
+  const cg = cells.getContext("2d")!;
+  const img = cg.createImageData(cols, rows);
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++) {
+      const i = r * cols + c;
+      const x = cx(c);
+      const z = cz(r);
+      kind[i] = map.terrainAt(x, z);
+      ramp[i] = map.onRamp(x, z) ? 1 : 0;
+      tier[i] = kind[i] === "cliff" ? -1 : Math.min(2, map.tierAt(x, z));
+      const col = ramp[i] ? RAMP_RGB : kind[i] === "cliff" ? CLIFF_RGB : mix(TIER_RGB[Math.max(0, tier[i])], kind[i]);
+      img.data.set([col[0], col[1], col[2], 255], i * 4);
     }
-  }
+  cg.putImageData(img, 0, 0);
+  g.imageSmoothingEnabled = false;
+  g.drawImage(cells, X(x0), Y(z0), cols * CELL * s, rows * CELL * s);
+  g.imageSmoothingEnabled = true;
 
-  // rừng: chấm thưa như điểm dữ liệu
-  const dot = Math.max(20, 6 * s);
-  g.fillStyle = "rgba(90, 230, 160, 0.5)";
-  for (const r of map.regions) {
-    if (r.kind !== "forest") continue;
-    g.save();
-    if (r.poly) trace(r.poly);
-    else if (r.circle) {
-      g.beginPath();
-      g.arc(X(r.circle.x), Y(r.circle.z), r.circle.r * s, 0, Math.PI * 2);
+  // rừng: chấm thưa như điểm dữ liệu, cách ô một chấm
+  g.fillStyle = "rgba(120, 240, 170, 0.75)";
+  const dotR = Math.max(1.2, Math.min(2.4, CELL * s * 0.22));
+  for (let r = 0; r < rows; r += 2)
+    for (let c = (r / 2) % 2 ? 1 : 0; c < cols; c += 2) if (kind[r * cols + c] === "forest") g.fillRect(X(cx(c)) - dotR, Y(cz(r)) - dotR, dotR * 2, dotR * 2);
+
+  // dốc: vạch chéo vàng trên mảng dốc để nổi khỏi tầng
+  g.strokeStyle = "rgba(255, 220, 130, 0.55)";
+  g.lineWidth = Math.max(1, CELL * s * 0.18);
+  g.beginPath();
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++) {
+      if (!ramp[r * cols + c] || (r + c) % 2) continue;
+      const px = X(x0 + c * CELL);
+      const py = Y(z0 + r * CELL);
+      g.moveTo(px, py + CELL * s);
+      g.lineTo(px + CELL * s, py);
     }
-    g.clip();
-    for (let py = 0, row = 0; py < canvas.height; py += dot * 0.85, row++)
-      for (let px = row % 2 ? dot / 2 : 0; px < canvas.width; px += dot) g.fillRect(px - 1, py - 1, 2.2, 2.2);
-    g.restore();
-  }
+  g.stroke();
 
-  // vùng tầng cao: đường đồng mức phát sáng, tầng càng cao càng đậm
-  glow(`rgba(${CYAN}, 0.8)`, 7);
-  for (const p of map.tiers) {
-    trace(p.poly);
-    g.fillStyle = `rgba(90, 170, 220, ${0.07 * p.tier})`;
-    g.fill();
-    g.strokeStyle = `rgba(${CYAN}, 0.6)`;
-    g.lineWidth = 1.5;
-    g.stroke();
-  }
+  // đường đồng mức: cạnh ô giữa hai tầng khác nhau (không tính dốc, vách đá), phát sáng như vạch số liệu
+  glow(`rgba(${CYAN}, 0.9)`, 6);
+  g.strokeStyle = `rgba(${CYAN}, 0.85)`;
+  g.lineWidth = Math.max(1.4, CELL * s * 0.28);
+  g.lineCap = "square";
+  g.beginPath();
+  const edge = (i: number, j: number): boolean => !ramp[i] && !ramp[j] && tier[i] >= 0 && tier[j] >= 0 && tier[i] !== tier[j];
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++) {
+      const i = r * cols + c;
+      if (c + 1 < cols && edge(i, i + 1)) {
+        const px = X(x0 + (c + 1) * CELL);
+        g.moveTo(px, Y(z0 + r * CELL));
+        g.lineTo(px, Y(z0 + (r + 1) * CELL));
+      }
+      if (r + 1 < rows && edge(i, i + cols)) {
+        const py = Y(z0 + (r + 1) * CELL);
+        g.moveTo(X(x0 + c * CELL), py);
+        g.lineTo(X(x0 + (c + 1) * CELL), py);
+      }
+    }
+  g.stroke();
+  g.lineCap = "butt";
   noGlow();
 
   // sông: lòng tối, viền sáng

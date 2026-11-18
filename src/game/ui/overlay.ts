@@ -7,6 +7,7 @@ import type { Unit } from "../../sim/types";
 import type { World } from "../../sim/world";
 import type { RtsCamera } from "../camera/camera";
 import { Views } from "../scene/views";
+import { buildingMarkHalf, drawBuildingGlyph, isSolidMark } from "./building-glyphs";
 
 const SIDE_COLOR = ["#3ea8ff", "#ff4d4d"];
 
@@ -249,21 +250,30 @@ export class Overlay {
       if (viewer !== null && b.side !== viewer && !world.sides[viewer].known.has(b.id)) continue;
       const p = cam.project(b.x, 0, b.z, w, h);
       if (off(p)) continue;
-      const hq = b.kind === "hq";
-      const size = hq ? 10 : 5;
+      const size = buildingMarkHalf(b.kind);
       const sel = selected.has(b.id);
+      const color = sel ? "#ffffff" : MARK_NEON[b.side];
+      if (isSolidMark(b.kind)) {
+        g.fillStyle = color;
+        g.fillRect(p.x - size, p.y - size, size * 2, size * 2);
+        continue;
+      }
       g.fillStyle = MARK_BODY;
-      g.strokeStyle = sel ? "#ffffff" : MARK_NEON[b.side];
+      g.strokeStyle = color;
       g.lineWidth = sel ? 2.4 : 1.4;
       g.fillRect(p.x - size, p.y - size, size * 2, size * 2);
       g.strokeRect(p.x - size, p.y - size, size * 2, size * 2);
-      if (hq) {
-        g.fillStyle = MARK_NEON[b.side];
-        g.font = "bold 14px 'Be Vietnam Pro', sans-serif";
-        g.textAlign = "center";
-        g.textBaseline = "middle";
-        g.fillText("★", p.x, p.y + 1);
-      }
+      // hình riêng từng loại, thu phóng vừa khung (ô vẽ ±5 chiếm ~80% khung)
+      g.save();
+      g.translate(p.x, p.y);
+      const k = (size * 0.8) / 5;
+      g.scale(k, k);
+      g.fillStyle = color;
+      g.strokeStyle = color;
+      drawBuildingGlyph(g, b.kind);
+      g.restore();
+      // chỉ công trình bị thương mới có vạch máu
+      if (b.hp < b.maxHp) this.bar(p.x, p.y + size + 2, size * 2, b.hp / b.maxHp, b.hp / b.maxHp > 0.6 ? "#6fdc8c" : b.hp / b.maxHp > 0.3 ? "#ffb547" : "#ff6b5e");
     }
 
     const marks = strategicMarks(world, viewer, alpha, cam.ppm());
