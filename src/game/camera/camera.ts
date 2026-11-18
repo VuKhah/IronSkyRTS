@@ -7,8 +7,8 @@ import type { GameMap } from "../../sim/maps";
 
 const clamp = (v: number, a: number, b: number): number => (v < a ? a : v > b ? b : v);
 /** Số điểm ảnh mỗi mét: lớn hơn PPM_NEAR là chiến trường 3D, nhỏ hơn PPM_FAR là bản đồ giấy, ở giữa thì chuyển dần. */
-const PPM_NEAR = 7.2;
-const PPM_FAR = 4.6;
+const PPM_NEAR = 4.8;
+const PPM_FAR = 3.0;
 /** Góc nhìn bàn tác chiến: hơi nghiêng như Tư lệnh đứng bên bàn cờ (radian, khoảng 62°). */
 const TABLE_PITCH = 1.08;
 /** Lề giấy cộng bàn gỗ còn thấy khi kéo xa nhất (m). */
@@ -80,7 +80,9 @@ export class RtsCamera {
   setAspect(w: number, h: number): void {
     this.cam.aspect = w / Math.max(1, h);
     this.viewH = Math.max(1, h);
-    this.maxDist = this.fitDist();
+    // xa nhất phải vừa thấy trọn bàn, vừa đủ cao để bàn tác chiến hiện hẳn (bản đồ nhỏ)
+    const tableDist = this.viewH / (2 * PPM_FAR * Math.tan((this.cam.fov * Math.PI) / 360));
+    this.maxDist = Math.max(this.fitDist(), tableDist * 1.02);
     this.cam.far = Math.max(700, this.maxDist * 4);
     this.cam.updateProjectionMatrix();
   }
