@@ -75,19 +75,21 @@ function watch(w: World, ticks: number, stand: Unit[], all: Unit[], cross?: { u:
 
 describe("nhường đường chủ động", () => {
   for (const side of [0, 1] as const) {
-    it(`Titan đi xuyên hàng 3 Titan đứng: hàng dạt ra theo xích rồi về ô, không chồng thân (phe ${side})`, () => {
+    // Từ 18/11/2026 xe đi vòng đội đang đứng nếu đường vòng < 1,75 lần đường xuyên: thử luật nhường bằng hàng DÀI 9 Titan và quãng
+    // băng qua ngắn (vòng qua đầu hàng xa gấp đôi), xe vẫn phải đi xuyên và hàng dạt
+    it(`Titan đi xuyên hàng dài 9 Titan đứng (vòng quá xa): hàng dạt ra theo xích rồi về ô, không chồng thân (phe ${side})`, () => {
       const { w, spawn, face, move, local } = arena(side);
       const sp = 2 * bodyRadius("titan") + 0.8;
-      const row = [-1, 0, 1].map((k) => spawn("titan", k * sp, 0));
+      const row = [-4, -3, -2, -1, 0, 1, 2, 3, 4].map((k) => spawn("titan", k * sp, 0));
       row.forEach((u) => face(u, 0, 1));
-      const mover = spawn("titan", 0.5, -16);
+      const mover = spawn("titan", 0.5, -9);
       face(mover, 0, 1);
       for (let t = 0; t < sec(2); t++) w.step([]);
-      move(mover, 0.5, 16);
+      move(mover, 0.5, 9);
       const r = watch(w, sec(30), row, [...row, mover], { u: mover, local });
       expect(Math.abs(r.crossAt), "đi xuyên giữa hàng, không vòng qua đầu hàng").toBeLessThan(sp);
       expect(mover.order, "xe đi phải tới nơi").toBe("idle");
-      expect(gap(mover, arena(side).at(0.5, 16))).toBeLessThan(2);
+      expect(gap(mover, arena(side).at(0.5, 9))).toBeLessThan(2);
       expect(r.overlap, "giây chồng thân").toBeLessThan(1);
       expect(r.sideSlip, "số tick xe đứng trượt ngang").toBe(0);
       // chỗ dạt tối đa 4 m (YIELD_MAX) + sai số ngang khi chạy theo xích (DRIVE_LAT_TOL 0,3 m): từ 17/11/2026 hai xe trong hàng không
@@ -96,14 +98,16 @@ describe("nhường đường chủ động", () => {
       expect(r.back, "xe nhường về lại ô").toBeLessThan(0.6);
     });
 
+    // hàng 3 Titan, quãng băng qua ngắn (±4 m): vòng qua đầu hàng xa hơn 1,75 lần nên vẫn đi xuyên. (Hàng 9 Titan với Lynx có một
+    // Titan dạt xong không về ô, lỗi có sẵn trước 18/11/2026, ghi ở TASKS.md A7)
     it(`Lynx đi xuyên hàng 3 Titan đứng song song đường đi (phải xoay chéo mới dạt được) (phe ${side})`, () => {
       const { w, spawn, face, move, local } = arena(side);
       const sp = 2 * bodyRadius("titan") + 0.8;
       const row = [-1, 0, 1].map((k) => spawn("titan", k * sp, 0));
       row.forEach((u) => face(u, 0, 1));
-      const ly = spawn("lynx", sp / 2, -14);
+      const ly = spawn("lynx", sp / 2, -4);
       for (let t = 0; t < sec(2); t++) w.step([]);
-      move(ly, sp / 2, 14);
+      move(ly, sp / 2, 4);
       const r = watch(w, sec(30), row, [...row, ly], { u: ly, local });
       expect(Math.abs(r.crossAt), "đi xuyên giữa hàng").toBeLessThan(sp);
       expect(ly.order).toBe("idle");
@@ -112,6 +116,40 @@ describe("nhường đường chủ động", () => {
       expect(r.back).toBeLessThan(0.6);
       // không đi vòng qua đầu hàng: Lynx phải đi qua giữa hàng (chậm nhất là thời gian chờ hàng dạt)
       expect(r.farthest).toBeGreaterThan(0.3);
+    });
+
+    it(`Titan đi qua hàng ngắn 3 Titan đứng: vòng qua đầu hàng (vòng < 1,75 lần), hàng không xê dịch (phe ${side})`, () => {
+      const { w, spawn, face, move, at } = arena(side);
+      const sp = 2 * bodyRadius("titan") + 0.8;
+      const row = [-1, 0, 1].map((k) => spawn("titan", k * sp, 0));
+      row.forEach((u) => face(u, 0, 1));
+      const mover = spawn("titan", 0.5, -16);
+      face(mover, 0, 1);
+      for (let t = 0; t < sec(2); t++) w.step([]);
+      move(mover, 0.5, 16);
+      const r = watch(w, sec(40), row, [...row, mover]);
+      expect(mover.order, "xe đi phải tới nơi").toBe("idle");
+      expect(gap(mover, at(0.5, 16))).toBeLessThan(2);
+      expect(r.farthest, "hàng đứng không phải dạt").toBeLessThan(0.3);
+      expect(r.overlap).toBeLessThan(0.5);
+    });
+
+    it(`Pháo đổi từ cánh phải sang cánh trái đội 5 Titan (4:1): vòng ra sau, đội không vỡ (phe ${side})`, () => {
+      // người dùng 18/11/2026: đồng bằng rộng thì Pháo phải luồn ra sau theo vòng cung, không xuyên làm vỡ đội
+      const { w, spawn, face, move, at } = arena(side);
+      const sp = 2 * bodyRadius("titan") + 0.8;
+      const team = [-1.5, -0.5, 0.5, 1.5].map((k) => spawn("titan", k * sp, 0));
+      team.push(spawn("titan", 0, -sp));
+      team.forEach((u) => face(u, 0, 1));
+      const art = spawn("artillery", 1.5 * sp + 12, 0);
+      face(art, 0, 1);
+      for (let t = 0; t < sec(4); t++) w.step([]);
+      move(art, -1.5 * sp - 12, 0);
+      const r = watch(w, sec(40), team, [...team, art]);
+      expect(art.order, "Pháo tới nơi").toBe("idle");
+      expect(gap(art, at(-1.5 * sp - 12, 0))).toBeLessThan(2.5);
+      expect(r.farthest, "Titan không bị xô").toBeLessThan(0.3);
+      expect(r.overlap).toBeLessThan(0.5);
     });
 
     it(`Lynx vào giữa lưới 3×3 Titan: các Titan quanh đích dạt cho Lynx đứng, không ai chồng thân (phe ${side})`, () => {

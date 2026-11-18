@@ -66,6 +66,10 @@ const REPLAN_EVERY = 2;
 const REPLAN_LOOK = 3;
 /** Lớp xe đứng dựng lại sau chừng này tick (0,5 s; xe đứng từ 1 s mới là vật cản nên trễ chừng này không đáng kể). */
 const STAND_REBUILD = 5;
+/** Đường vòng qua đội đang đứng dài tối đa chừng này lần đường xuyên thì đi vòng (người dùng chốt 18/11/2026: < 1,75). */
+const DETOUR_MAX = 1.75;
+/** Đường đi cách thân xe đứng dưới (tổng hai vòng thân + chừng này m) là xuyên qua nó (bằng YIELD_MARGIN của luật nhường). */
+const DETOUR_MARGIN = 0.3;
 /** Tới gần là tới (T1): xe cách quân đứng đang chiếm đích không quá tổng hai vòng giãn + chừng này (m) thì coi như đã tới. */
 const ARRIVE_SLACK = 1;
 let MAX_SPACE_R = -1;
@@ -361,11 +365,11 @@ function halt(this: World, u: Unit): void {
  * STAND_AFTER giây hoặc đã hạ bệ, in khoảng cách từ tâm từng ô tới vòng giãn của chúng (quân hạ bệ: vòng ngoại tiếp lục giác)
  * trong STAND_REACH m. Chỉ xe cùng phe (như ORCA): không tránh trước xe địch, không lộ xe địch trong sương mù.
  */
-function standLayer(this: World, side: 0 | 1, mover: Unit["kind"]): [Float32Array, Int32Array] {
+function standLayer(this: World, side: 0 | 1, mover: Unit["kind"], detour = false): [Float32Array, Int32Array] {
   const g = this.grid;
-  // xe và tiểu đội bộ binh thấy xe đứng khác nhau (chạm mềm): mỗi phe hai lớp
-  const sq = isSquad(mover);
-  const L = side * 2 + (sq ? 1 : 0);
+  // xe và tiểu đội bộ binh thấy xe đứng khác nhau (chạm mềm): mỗi phe hai lớp; thêm lớp "đi vòng" cho xe (`detour`)
+  const sq = !detour && isSquad(mover);
+  const L = detour ? 4 + side : side * 2 + (sq ? 1 : 0);
   let clear = this.standClear[L];
   let owner = this.standOwner[L];
   if (!clear || !owner) {
@@ -382,8 +386,9 @@ function standLayer(this: World, side: 0 | 1, mover: Unit["kind"]): [Float32Arra
   for (const v of this.units) {
     if (v.side !== side || v.hp <= 0 || v.air !== "none") continue;
     const anch = this.anchored(v);
-    // xe biết nhường (`canYield`, `world/yield.ts`) không là vật cản: đường đi xuyên qua, xe đứng tự dạt ra cho lối
-    if (!anch && (v.still < still || this.canYield(v))) continue;
+    // xe biết nhường (`canYield`, `world/yield.ts`) không là vật cản: đường đi xuyên qua, xe đứng tự dạt ra cho lối. Lớp "đi vòng"
+    // (`detour`) thì tính cả xe đứng biết nhường ngoài đội hình đang chạy (xe chờ lượt vào ô của đội vẫn nhường như cũ)
+    if (!anch && (v.still < still || (this.canYield(v) && (!detour || v.squad !== 0)))) continue;
     // chạm mềm (tiểu đội đứng với xe tìm đường, hoặc xe đứng với tiểu đội tìm đường): vòng in nhỏ đi nửa đế tiểu đội, nên xe đi
     // qua sát tiểu đội được (chỉ tốn hơn vì ô gần vật cản tính chậm), tiểu đội lọt giữa hai xe đứng sát nhau
     const soft = isSquad(v.kind) !== sq ? bodyRadius(sq ? mover : v.kind) : 0;
@@ -421,12 +426,56 @@ function standLayer(this: World, side: 0 | 1, mover: Unit["kind"]): [Float32Arra
  * Lớp xe đứng cho xe u tự tìm đường (bỏ qua thân chính nó); máy bay không dùng. Xe: ngưỡng = bán kính dò vách của xe, đoạn thẳng
  * kiểm theo vòng in chính xác (`discs`). Tiểu đội: như cũ (ngưỡng nửa bề ngang, tra theo ô).
  */
-function standFor(this: World, u: Unit): StandLayer | null {
+function standFor(this: World, u: Unit, detour = false): StandLayer | null {
   if (u.air !== "none") return null;
-  const [clear, owner] = this.standLayer(u.side, u.kind);
+  const [clear, owner] = this.standLayer(u.side, u.kind, detour);
   if (isSquad(u.kind)) return { clear, owner, self: u.id };
-  const L = u.side * 2;
-  return { clear, owner, self: u.id, need: wallRadius(u.kind), discs: this.standDiscs[L] };
+  const L = detour ? 4 + u.side : u.side * 2;
+  // đi vòng: chừa đúng khoảng luật nhường đòi (tổng hai vòng thân + DETOUR_MARGIN), không thì đường vòng vẫn sượt qua và xe đứng nhích
+  return { clear, owner, self: u.id, need: detour ? bodyRadius(u.kind) + DETOUR_MARGIN : wallRadius(u.kind), discs: this.standDiscs[L] };
+}
+
+/**
+ * Đường `p` (bắt đầu từ chỗ xe u) có lấn vào thân một xe đứng biết nhường ngoài đội hình đang chạy không: chỉ khi đó mới đáng tìm
+ * đường vòng (`setPath`).
+ */
+function crossesYielder(this: World, u: Unit, p: readonly number[]): boolean {
+  const ru = bodyRadius(u.kind);
+  const still = sec(STAND_AFTER);
+  for (const v of this.units) {
+    if (v === u || v.side !== u.side || v.hp <= 0 || v.air !== "none" || v.squad !== 0 || v.still < still || !this.canYield(v)) continue;
+    const need = ru + bodyRadius(v.kind) + DETOUR_MARGIN;
+    let ax = u.x;
+    let az = u.z;
+    for (let k = 0; k + 1 < p.length; k += 2) {
+      const bx = p[k];
+      const bz = p[k + 1];
+      const ex = bx - ax;
+      const ez = bz - az;
+      const l2 = ex * ex + ez * ez;
+      let t = l2 > 1e-9 ? ((v.x - ax) * ex + (v.z - az) * ez) / l2 : 0;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const dx = v.x - ax - ex * t;
+      const dz = v.z - az - ez * t;
+      if (dx * dx + dz * dz < need * need) return true;
+      ax = bx;
+      az = bz;
+    }
+  }
+  return false;
+}
+
+/** Chiều dài đường `p` tính từ (x, z). */
+function pathLen(x: number, z: number, p: readonly number[]): number {
+  let s = 0;
+  for (let k = 0; k + 1 < p.length; k += 2) {
+    const dx = p[k] - x;
+    const dz = p[k + 1] - z;
+    s += Math.sqrt(dx * dx + dz * dz);
+    x = p[k];
+    z = p[k + 1];
+  }
+  return s;
 }
 
 /** Lần `setPath` gần nhất có tìm ra đường VÒNG QUA xe đứng không (false: đích bị xe đứng vây kín, đường bỏ qua lớp xe đứng). */
@@ -448,6 +497,14 @@ function setPath(this: World, u: Unit, x: number, z: number): boolean {
   const st = this.standFor(u);
   let p = st ? this.grid.findPath(u.x, u.z, x, z, field, pathHalf(u), st) : null;
   PATH_STAND = !!p;
+  // ĐI VÒNG ĐỘI ĐANG ĐỨNG (người dùng duyệt 18/11/2026): đường xuyên qua xe đứng biết nhường thì thử đường coi cả chúng là vật cản;
+  // vòng không dài hơn DETOUR_MAX lần thì đi vòng, đội đứng khỏi phải dạt. Không vòng được (cầu, khe hẹp, đích sát xe đứng) hoặc
+  // vòng quá xa thì giữ đường xuyên, xe đứng nhường như luật 16/11
+  if (p && !isSquad(u.kind) && this.crossesYielder(u, p)) {
+    const all = this.standFor(u, true);
+    const q = all ? this.grid.findPath(u.x, u.z, x, z, field, pathHalf(u), all) : null;
+    if (q && pathLen(u.x, u.z, q) <= DETOUR_MAX * pathLen(u.x, u.z, p)) p = q;
+  }
   if (!p) p = this.grid.findPath(u.x, u.z, x, z, field, pathHalf(u));
   u.path = p ?? [];
   u.pathFromX = u.x;
@@ -932,7 +989,7 @@ function chase(this: World, u: Unit, t: Target): void {
  * GIỮ BÊN PHẢI (cùng một quy ước cho mọi xe, mọi phe): hai xe ngược chiều cùng giữ phải thì tự lệch về hai phía, qua được nhau.
  * Trước đây hòa thì chọn theo chẵn / lẻ của mã xe, không đối xứng giữa hai phe.
  */
-const methods = { pathAim, pathAroundStand, mateLimit, mateStep, standLayer, standFor, turnHull, stepToward, driveTo, setIdle, halt, setPath, bodyContact, wallNormal, clearGoal, clearStand, goalTaken, spotTaken, tryMove, terrainFactor, moveFactor, follow, chase, steer, brakeNear };
+const methods = { pathAim, pathAroundStand, mateLimit, mateStep, standLayer, standFor, crossesYielder, turnHull, stepToward, driveTo, setIdle, halt, setPath, bodyContact, wallNormal, clearGoal, clearStand, goalTaken, spotTaken, tryMove, terrainFactor, moveFactor, follow, chase, steer, brakeNear };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

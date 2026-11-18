@@ -26,14 +26,14 @@ export class World {
   /** Bảng ô đỗ dỡ hàng quanh Tổng Hành Dinh (tính một lần, xem `dockSlots`). */
   docks: (readonly [number, number, number, number])[] | null = null;
   /**
-   * Lớp xe đứng (xem `standLayer`), dựng lười: chỉ số = phe × 2 + (người tìm đường là tiểu đội bộ binh ? 1 : 0). Tick dựng gần
-   * nhất và hai mảng của mỗi lớp.
+   * Lớp xe đứng (xem `standLayer`), dựng lười: chỉ số = phe × 2 + (người tìm đường là tiểu đội bộ binh ? 1 : 0); 4 + phe là lớp
+   * "đi vòng" (tính cả xe đứng biết nhường, 18/11/2026). Tick dựng gần nhất và hai mảng của mỗi lớp.
    */
-  standTick: number[] = [-1, -1, -1, -1];
-  standClear: (Float32Array | null)[] = [null, null, null, null];
-  standOwner: (Int32Array | null)[] = [null, null, null, null];
+  standTick: number[] = [-1, -1, -1, -1, -1, -1];
+  standClear: (Float32Array | null)[] = [null, null, null, null, null, null];
+  standOwner: (Int32Array | null)[] = [null, null, null, null, null, null];
   /** Vòng in của từng xe đứng [x, z, r, mã] theo lớp (xem `StandLayer.discs`), dựng cùng lúc với `standClear`. */
-  standDiscs: Float64Array[] = [new Float64Array(0), new Float64Array(0), new Float64Array(0), new Float64Array(0)];
+  standDiscs: Float64Array[] = [new Float64Array(0), new Float64Array(0), new Float64Array(0), new Float64Array(0), new Float64Array(0), new Float64Array(0)];
   /** Độ cao mặt đất ở tâm từng ô lưới (m), tính một lần lúc tạo trận (địa hình không đổi). */
   /** Vật che tầm nhìn đứng trên mặt đất từng ô (m): rừng cao 4 m, còn lại 0 (TERRAIN.losHeight). */
   readonly cellLos: Float64Array;
