@@ -113,6 +113,11 @@ export interface Unit {
   hitZ: number;
   /** Mục tiêu tướng sư đoàn giao (D4: ưu tiên kẻ đang bắn sư đoàn, dồn hỏa lực, không bắn quá tay); 0 = tự chọn. */
   divTarget: number;
+  /** Phi đội: mã chiếc dẫn đầu của nhóm máy bay nhận chung lệnh bay (0 = bay lẻ). Phi đội đánh chung mục tiêu do `updateWings` giao (`divTarget`). */
+  wing: number;
+  /** Chỗ trong mũi tên phi đội so với chiếc dẫn đầu (m): ngang (dương = bên phải hướng bay) và lùi sau. */
+  wingLat: number;
+  wingBack: number;
   /** Tới tick này đồng đội đã vào ô dạt nhường cho xe (ô của nó bị đồng đội vây kín, không còn đường vòng). */
   squeezeUntil: number;
   /** Điểm đầu đoạn đường đang đi (chỗ đứng lúc tìm đường, rồi điểm vừa qua): xe xích bám ĐOẠN đường, không chỉ nhắm đỉnh kế tiếp. */

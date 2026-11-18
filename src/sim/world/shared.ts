@@ -79,8 +79,8 @@ export function softOverlap(a: keyof typeof UNITS, b: keyof typeof UNITS): numbe
 export const HEX_COS30 = 0.8660254037844386;
 /** Xe chậm hơn tốc độ khối được chạy nhanh hơn khối một chút để còn đuổi kịp ô của mình. */
 export const SQUAD_CATCHUP = 1.08;
-/** Khoảng cách giữa hai máy bay cạnh nhau trong đội hình mũi tên (m). */
-export const AIR_FORMATION_GAP = 18;
+/** Khoảng cách giữa hai máy bay cạnh nhau trong đội hình mũi tên (m). 18 → 6 (người dùng duyệt 18/11/2026: đội bay rộng 90–110 m, không dồn được hỏa lực). */
+export const AIR_FORMATION_GAP = 6;
 /** Tới nơi mà phải đổi số xe mỗi hàng thì chờ thêm chừng này giây cho xe vào ô mới. */
 export const SQUAD_RESHAPE_EXTRA = 8;
 /** Va chạm giữa xe đang chạy và xe đứng yên: phần lực đẩy xe chạy phải chịu (xe đứng chịu phần còn lại). */

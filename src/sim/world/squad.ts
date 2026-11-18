@@ -103,9 +103,13 @@ function airSlots(this: World, units: readonly Unit[], x: number, z: number): Ma
     hz /= l;
   }
   air.forEach((u, i) => {
+    // phi đội (18/11/2026): máy bay có cánh (không phải drone lơ lửng) cùng lệnh thành một phi đội, chiếc mã nhỏ nhất dẫn đầu
+    u.wing = UNITS[u.kind].hover ? 0 : air.find((a) => !UNITS[a.kind].hover)?.id ?? 0;
     const wing = Math.ceil(i / 2);
     const lat = (i % 2 === 1 ? -wing : wing) * AIR_FORMATION_GAP;
     const back = wing * AIR_FORMATION_GAP * 0.7;
+    u.wingLat = lat;
+    u.wingBack = back;
     out.set(u.id, [x + hz * lat - hx * back, z - hx * lat - hz * back]);
   });
   return out;
@@ -127,6 +131,8 @@ function orderMove(this: World, side: Side, ids: readonly number[], x: number, z
     if (inSquad?.has(u.id)) continue;
     if (u.air !== "none") {
       const [ax, az] = airSlots.get(u.id) ?? [x, z];
+      // bay lẻ (lệnh chỉ có một máy bay): rời phi đội cũ
+      if (!airSlots.has(u.id)) u.wing = 0;
       u.mission = "move";
       u.mx = clamp(ax, -this.map.airX, this.map.airX);
       u.mz = clamp(az, -this.map.airZ, this.map.airZ);

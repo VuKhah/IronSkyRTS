@@ -51,6 +51,9 @@ export function hashWorld(w: World): number {
     num(u.hitX);
     num(u.hitZ);
     num(u.divTarget);
+    num(u.wing);
+    num(u.wingLat);
+    num(u.wingBack);
     num(u.squeezeUntil);
     num(u.lot);
     num(u.formation === null ? -1 : Object.keys(FORMATIONS).indexOf(u.formation));

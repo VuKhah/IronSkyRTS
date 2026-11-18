@@ -210,6 +210,7 @@ export class World {
     this.updateMines();
     this.updateSquads();
     this.updateDivisions();
+    this.updateWings();
     for (const u of this.units) {
       if (u.hp <= 0) continue;
       if (u.air !== "none") this.updateAir(u);

@@ -541,6 +541,8 @@ function fly(this: World, u: Unit, spec: UnitSpec): void {
   }
   let dx = 0;
   let dz = 0;
+  /** Hệ số tốc độ (giữ đội hình phi đội: chiếc tụt sau bay nhanh hơn chút, chiếc vượt lên bay chậm lại). */
+  let speedK = 1;
   let tgt: Target | null = null;
   // độ cao muốn, TÍNH TỪ NỀN (tầng 0): tầng bay cố định, bổ nhào thì theo mặt đất chỗ mục tiêu
   const cruiseY = A.cruiseTier * TIER_H;
@@ -580,7 +582,8 @@ function fly(this: World, u: Unit, spec: UnitSpec): void {
       }
     }
     if (!tgt) {
-      tgt = this.acquireFrom(u, u.side, u.mx, u.mz, w, 26, u.autoTarget);
+      // phi đội: mục tiêu chung do trưởng phi đội giao (`updateWings`); không có thì tự tìm quanh điểm của mình như bay lẻ
+      tgt = this.wingTargetOf(u) ?? this.acquireFrom(u, u.side, u.mx, u.mz, w, 26, u.autoTarget);
       u.autoTarget = tgt ? tgt.id : 0;
       if (u.mission === "hunt") {
         if (tgt) u.huntUntil = this.tick + sec(A.huntTime);
@@ -609,7 +612,9 @@ function fly(this: World, u: Unit, spec: UnitSpec): void {
         wantY = Math.min(cruiseY, this.map.groundY(tgt.x, tgt.z) + spec.diveAlt + Math.max(0, d - w.range * A.diveFlat) * A.diveSlope);
     } else {
       u.ext = false;
-      [dx, dz] = this.loiter(u, u.mx, u.mz);
+      const slot = this.wingSlot(u);
+      if (slot) [dx, dz, speedK] = slot;
+      else [dx, dz] = this.loiter(u, u.mx, u.mz);
     }
   }
   if (Math.abs(u.x) > this.map.airX || Math.abs(u.z) > this.map.airZ) {
@@ -617,7 +622,7 @@ function fly(this: World, u: Unit, spec: UnitSpec): void {
     dz = -u.z;
   }
   this.steerAir(u, dx, dz, fuel.turnRate);
-  u.speed = spec.speed;
+  u.speed = spec.speed * speedK;
   this.airMove(u);
   // LÊN XUỐNG MƯỢT (17/11/2026): tốc độ dọc muốn tỉ lệ độ lệch (chậm dần khi gần), kẹp climbRate; tốc độ dọc thật đổi dần theo
   // climbAcc. Trước đó lên xuống đều 5 m/s rồi dừng phắt, và độ cao bám mặt đất nên qua vách nhảy 5 m trong một tick
@@ -713,7 +718,125 @@ function loiter(this: World, u: Unit, cx: number, cz: number): [number, number] 
   return [-dz / d + (dx / d) * k, dx / d + (dz / d) * k];
 }
 
-const methods = { padPosOf,  nearestFreePad, freePads, hasFreePad, ensurePad, releasePad, homeDistance, fuelToReturn, burn, takeoff, inGrid, nearestGrid, droneNeedsCharge, updateDrone, updateShield, shieldOff, updateRepair, detonate, updateAir, fly, steerAir, loiter, cruiseAltAt, airMove };
+// ------------------------------------------------------------------ phi đội (người dùng duyệt 18/11/2026)
+
+/** Phi đội quét địch quanh điểm tìm chung trong chừng này m (cộng độ xòe của đội), bằng tầm tìm mục tiêu của một chiếc. */
+const WING_SCAN = 26;
+/** Hỏa lực đã giao cho một mục tiêu tính theo chừng này giây bắn; đủ hạ thì chiếc sau nhận mục tiêu khác (không bắn quá tay). */
+const WING_KILL_WINDOW = 2;
+/** Chia lại mục tiêu mỗi chừng này tick. */
+const WING_EVERY = 3;
+
+/**
+ * "Trưởng phi đội": máy bay cùng lệnh (`wing`) đánh CHUNG mục tiêu thay vì mỗi chiếc tự chọn quanh điểm riêng (đo 18/11: 6 Falcon
+ * đánh đội 5 Titan thì đội bay rộng 90–110 m, trung bình 1,7 mục tiêu, chiếc ở cánh lượn không đánh). Như tướng sư đoàn mặt đất
+ * (`divisionTargets`): ưu tiên kẻ đang bắn phi đội, dồn vào mục tiêu đã có hỏa lực chưa đủ hạ, đủ hạ trong WING_KILL_WINDOW giây thì
+ * chiếc sau nhận mục tiêu kế. Chỉ giao cho chiếc đang bay tìm mục tiêu (lệnh bay / săn); chiếc có lệnh tấn công thẳng giữ mục tiêu
+ * của nó nhưng vẫn tính vào hỏa lực đã giao. Ghi vào `divTarget`; `fly` dùng khi còn hợp lệ.
+ */
+function updateWings(this: World): void {
+  if (this.tick % WING_EVERY !== 0) return;
+  const wings = new Map<number, Unit[]>();
+  for (const u of this.units) {
+    if (u.cat !== "unit" || !u.wing || u.hp <= 0 || u.air !== "flying" || u.rtb) continue;
+    const list = wings.get(u.wing);
+    if (list) list.push(u);
+    else wings.set(u.wing, [u]);
+  }
+  for (const list of wings.values()) {
+    let sx = 0;
+    let sz = 0;
+    for (const m of list) {
+      sx += m.mx / list.length;
+      sz += m.mz / list.length;
+    }
+    let spread = 0;
+    for (const m of list) spread = Math.max(spread, Math.sqrt(dist2(m.mx, m.mz, sx, sz)));
+    const lim = WING_SCAN + spread;
+    const side = list[0].side;
+    const member = new Set(list.map((m) => m.id));
+    const foes: Target[] = [];
+    for (const e of this.units) if (e.side !== side && e.hp > 0 && dist2(e.x, e.z, sx, sz) <= lim * lim && this.visibleTo(side, e)) foes.push(e);
+    for (const b of this.buildings)
+      if (b.side !== side && b.hp > 0 && !BUILDINGS[b.kind].tile && dist2(b.x, b.z, sx, sz) <= lim * lim && this.visibleTo(side, b)) foes.push(b);
+    const committed = new Map<number, number>();
+    const add = (m: Unit, t: Target): void => {
+      const w = UNITS[m.kind].weapon!;
+      const armor = t.cat === "unit" ? UNITS[t.kind].armorClass : BUILDINGS[t.kind].armorClass;
+      const dmg = (t.cat === "unit" && t.air !== "none" ? w.dmgAir : w.dmgGround) * RULES.damageMatrix[armor][w.dmgType];
+      committed.set(t.id, (committed.get(t.id) ?? 0) + (dmg / w.cooldown) * WING_KILL_WINDOW);
+    };
+    // chiếc có lệnh tấn công thẳng: mục tiêu của nó đã có hỏa lực
+    for (const m of list) {
+      if (m.mission !== "attack") continue;
+      const t = this.target(m.targetId);
+      if (t && UNITS[m.kind].weapon) add(m, t);
+    }
+    for (const m of list) {
+      if (m.mission === "attack") continue;
+      m.divTarget = 0;
+      const w = UNITS[m.kind].weapon;
+      if (!w) continue;
+      let best: Target | null = null;
+      let bestScore = Infinity;
+      for (const e of foes) {
+        if (!this.canHit(w, e)) continue;
+        const c = committed.get(e.id) ?? 0;
+        const over = c >= e.hp;
+        const isUnit = e.cat === "unit";
+        const shooting = isUnit && (member.has(e.autoTarget) || member.has(e.targetId));
+        const armed = isUnit ? !!UNITS[e.kind].weapon : !!BUILDINGS[e.kind].weapon;
+        const score =
+          dist2(e.x, e.z, sx, sz) + (isUnit ? 0 : 400) + (armed ? 0 : 60) + (shooting ? -1e4 : 0) + (c > 0 && !over ? -5e3 : 0) + (over ? 1e7 : 0);
+        if (score < bestScore) {
+          bestScore = score;
+          best = e;
+        }
+      }
+      if (!best) continue;
+      m.divTarget = best.id;
+      add(m, best);
+    }
+  }
+}
+
+/** Nhìn trước chỗ trong đội hình chừng này m theo hướng bay của chiếc dẫn đầu (lái bám điểm phía trước, không bám đuôi). */
+const WING_LEAD = 10;
+/** Giữ đội hình: tốc độ đổi tối đa ±chừng này (tỉ lệ) để về đúng chỗ, và đổi theo mỗi mét lệch dọc. */
+const WING_SPEED_SPAN = 0.15;
+const WING_SPEED_GAIN = 0.03;
+
+/**
+ * BAY ĐỘI HÌNH (người dùng duyệt 18/11/2026: cả phi đội lượn quanh tâm chung): chiếc dẫn đầu lượn quanh điểm đến của nó; chiếc
+ * khác không đánh thì giữ đúng chỗ trong mũi tên so với chiếc dẫn đầu (`wingLat`, `wingBack`), lái bám điểm phía trước chỗ đó và
+ * đổi tốc độ ±15% để bắt kịp. Trước đó mỗi chiếc lượn vòng 11 m quanh điểm riêng, lệch pha nhau nên đội xòe rộng. Trả về hướng bay
+ * và hệ số tốc độ, hoặc null nếu không giữ đội hình (là chiếc dẫn đầu, bay lẻ, chiếc dẫn đầu đang đánh / đã về sân).
+ */
+function wingSlot(this: World, u: Unit): [number, number, number] | null {
+  if (!u.wing || u.wing === u.id) return null;
+  const L = this.byId.get(u.wing);
+  if (!L || L.cat !== "unit" || L.hp <= 0 || L.air !== "flying" || L.rtb || L.wing !== u.wing) return null;
+  // chiếc dẫn đầu đang bổ nhào thì cả đội đang đánh: mỗi chiếc tự lượt của mình
+  if (L.targetId || L.autoTarget) return null;
+  const lat = u.wingLat - L.wingLat;
+  const back = u.wingBack - L.wingBack;
+  const sx = L.x + L.hz * lat - L.hx * back;
+  const sz = L.z - L.hx * lat - L.hz * back;
+  const along = (sx - u.x) * L.hx + (sz - u.z) * L.hz;
+  const k = 1 + clamp(along * WING_SPEED_GAIN, -WING_SPEED_SPAN, WING_SPEED_SPAN);
+  return [sx + L.hx * WING_LEAD - u.x, sz + L.hz * WING_LEAD - u.z, k];
+}
+
+/** Mục tiêu trưởng phi đội giao cho máy bay, nếu còn hợp lệ. */
+function wingTargetOf(this: World, u: Unit): Target | null {
+  if (!u.wing || !u.divTarget) return null;
+  const t = this.target(u.divTarget);
+  const w = UNITS[u.kind].weapon;
+  if (!t || t.hp <= 0 || t.side === u.side || !w || !this.canHit(w, t) || !this.visibleTo(u.side, t)) return null;
+  return t;
+}
+
+const methods = { updateWings, wingTargetOf, wingSlot, padPosOf, nearestFreePad, freePads, hasFreePad, ensurePad, releasePad, homeDistance, fuelToReturn, burn, takeoff, inGrid, nearestGrid, droneNeedsCharge, updateDrone, updateShield, shieldOff, updateRepair, detonate, updateAir, fly, steerAir, loiter, cruiseAltAt, airMove };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

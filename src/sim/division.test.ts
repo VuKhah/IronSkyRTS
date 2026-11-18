@@ -254,7 +254,9 @@ describe("đội hình chỉ đọc mã phân nhóm", () => {
 });
 
 describe("đội bay", () => {
-  it("máy bay cùng một lệnh không dồn cục: mỗi chiếc một điểm đến, bay tới nơi vẫn cách xa nhau", () => {
+  // 18/11/2026: mũi tên chặt lại (cách 6 m thay vì 18 m, người dùng duyệt) để phi đội dồn được hỏa lực: không dồn cục nhưng cũng
+  // không xòe rộng (trước đó 6 Falcon rộng 90–110 m)
+  it("máy bay cùng một lệnh không dồn cục mà cũng không xòe rộng: mỗi chiếc một điểm đến, bay tới nơi vẫn tách nhau, đội gọn", () => {
     const w = new World(1, { sandbox: true });
     w.step([{ side: 0, order: { t: "sbFuel", on: true } }]);
     const [ax, az] = arenaPoint(-30);
@@ -265,10 +267,48 @@ describe("đội bay", () => {
     expect(new Set(us.map((u) => `${u.mx},${u.mz}`)).size).toBe(6);
     for (let i = 0; i < sec(12); i++) w.step([]);
     let min = Infinity;
+    let max = 0;
     for (let i = 0; i < us.length; i++)
-      for (let j = i + 1; j < us.length; j++) min = Math.min(min, Math.sqrt((us[i].x - us[j].x) ** 2 + (us[i].z - us[j].z) ** 2));
-    expect(min).toBeGreaterThan(6);
+      for (let j = i + 1; j < us.length; j++) {
+        const d = Math.sqrt((us[i].x - us[j].x) ** 2 + (us[i].z - us[j].z) ** 2);
+        min = Math.min(min, d);
+        max = Math.max(max, d);
+      }
+    expect(min, "không dồn cục").toBeGreaterThan(2);
+    expect(max, "đội bay gọn").toBeLessThan(45);
   });
+});
+
+describe("phi đội (18/11/2026)", () => {
+  for (const side of [0, 1] as const) {
+    it(`6 Falcon đánh đội 5 Titan: chiếc nào cũng vào trận, dồn hỏa lực vào ít mục tiêu (phe ${side})`, () => {
+      const w = new World(1, { sandbox: true });
+      const foe = (1 - side) as 0 | 1;
+      const sg = side === 0 ? 1 : -1;
+      const [ax, az] = arenaPoint(-60 * sg);
+      const [bx, bz] = arenaPoint(40 * sg);
+      for (let i = 0; i < 5; i++) w.step([{ side: foe, order: { t: "sbSpawn", kind: "titan", side: foe, x: bx + (i - 2) * 5 * sg, z: bz } }]);
+      for (let i = 0; i < 6; i++) w.step([{ side, order: { t: "sbSpawn", kind: "falcon", side, x: ax + (i - 3) * 4 * sg, z: az } }]);
+      const air = w.units.filter((u) => u.side === side && u.kind === "falcon");
+      w.step([{ side, order: { t: "move", ids: air.map((u) => u.id), x: bx, z: bz } }]);
+      let sum = 0;
+      let samples = 0;
+      let idleWhileFight = 0;
+      for (let t = 0; t < sec(14); t++) {
+        w.step([]);
+        if (t < sec(6) || t % 5) continue;
+        const tg = air.map((u) => u.targetId || u.autoTarget);
+        if (tg.some((x) => x)) {
+          sum += new Set(tg.filter((x) => x)).size;
+          samples++;
+          idleWhileFight += tg.filter((x) => !x).length;
+        }
+      }
+      expect(samples, "phi đội đã vào trận").toBeGreaterThan(0);
+      expect(idleWhileFight, "không chiếc nào lượn ngoài cuộc khi cả đội đang đánh").toBe(0);
+      expect(sum / samples, "trung bình số mục tiêu cùng lúc").toBeLessThanOrEqual(2);
+    });
+  }
 });
 
 describe("tốc độ chung của khối", () => {
