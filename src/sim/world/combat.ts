@@ -3,7 +3,7 @@ import { BUILDINGS, RULES, UNITS, valueOf, type Side, type WeaponSpec } from "..
 import { clamp, dist2, turnToward } from "../fmath";
 import { MAX_TIER, TERRAIN } from "../maps";
 import type { Building, Shot, Target, Unit } from "../types";
-import { TICK_RATE, DT, sec, AIRBORNE_ALT, SHOT_SPEED, IDLE_ACQUIRE_BONUS, LEASH, ALIGNED_COS, DRIVE_LAT_TOL, TMP, traverseStep, AIM_COS, MISSILE_PYLON, BARREL_GAP, BOMB_FALL, cosDeg, dirToCenter } from "./shared";
+import { TICK_RATE, DT, sec, AIRBORNE_ALT, SHOT_SPEED, IDLE_ACQUIRE_BONUS, LEASH, ALIGNED_COS, TMP, traverseStep, AIM_COS, MISSILE_PYLON, BARREL_GAP, BOMB_FALL, cosDeg, dirToCenter, bodyRadius } from "./shared";
 import { World } from "./core";
 
 
@@ -89,16 +89,26 @@ function acquire(this: World, u: Unit, w: WeaponSpec, range: number): Target | n
   return t;
 }
 
+/** Xe đứng bị đẩy lệch ô quá chừng này (m) thì chờ HOME_DELAY rồi tự lái về; xa quá HOME_FAR thì tìm đường về. */
+const HOME_SLACK = 1;
+const HOME_DELAY = sec(1);
+const HOME_FAR = 6;
+/** Ô đang bị xe khác đứng đè quá chừng này thì nhận chỗ đang đứng làm ô mới (không húc vào nó). */
+const HOME_GIVE_UP = sec(6);
+/** Lái về ô mà bị chặn (không tiến) chừng này thì nhận chỗ đang đứng làm ô mới. */
+const HOME_STUCK = sec(3);
+
 function updateGround(this: World, u: Unit): void {
   if (u.cooldown > 0) u.cooldown--;
   if (u.kind === "hauler") {
     this.updateHauler(u);
+    if (u.driveT !== this.tick) this.coast(u);
     return;
   }
   const w = UNITS[u.kind].weapon;
   const range = w ? this.reach(u, w) : 0;
   let fireAt: Target | null = null;
-  if (u.squad) fireAt = this.squadMember(u, w, range);
+  if (u.group) fireAt = this.groupMember(u, w, range);
   else
   switch (u.order) {
     case "attack": {
@@ -125,12 +135,12 @@ function updateGround(this: World, u: Unit): void {
           u.chasing = false;
           this.setPath(u, u.tx, u.tz);
         }
-        if (this.goalTaken(u) || this.follow(u)) this.arrive(u);
+        if (this.follow(u)) this.setIdle(u);
       }
       break;
     }
     case "move": {
-      if (this.goalTaken(u) || this.follow(u)) this.arrive(u);
+      if (this.follow(u)) this.setIdle(u);
       if (w) fireAt = this.acquire(u, w, range);
       break;
     }
@@ -157,59 +167,26 @@ function updateGround(this: World, u: Unit): void {
       // xe sư đoàn đang báo động: bắn mục tiêu tướng giao (`divisionTargets`); không có thì tự chọn như xe lẻ
       const dt = w ? this.divisionTargetOf(u) : null;
       const t = w ? (dt ?? this.acquire(u, w, range + IDLE_ACQUIRE_BONUS)) : null;
-      if (u.yieldAway && !u.squad) {
-        // NHƯỜNG ĐƯỜNG (`world/yield.ts`): dạt tới chỗ được yêu cầu, hết hạn thì về ô nhà; chạy theo xích. Vẫn bắn mục tiêu
-        // trong tầm (tháp pháo quay), không bỏ chỗ đi đuổi
-        if (t && w && this.inRange(u.x, u.z, w, t, range)) fireAt = t;
-        const going = this.tick < u.yieldUntil;
-        const gx = going ? u.yieldX : u.tx;
-        const gz = going ? u.yieldZ : u.tz;
-        const d = Math.sqrt(dist2(u.x, u.z, gx, gz));
-        if (!going && this.spotTaken(u, u.tx, u.tz)) {
-          // ô nhà đã có xe khác đứng vào (xe vừa đi qua dừng đúng chỗ): nhận chỗ đang đứng làm ô mới
-          u.tx = u.x;
-          u.tz = u.z;
-          u.yieldAway = false;
-        } else if (d > DRIVE_LAT_TOL + 0.05) this.driveTo(u, gx, gz, d, true);
-        else if (!going) u.yieldAway = false;
-        break;
-      }
       // sư đoàn vừa xoay về phía địch: đi về ô mới, vừa đi vừa bắn (tháp pháo quay), không dừng lại đánh giữa đường
       if (this.divisionReform(u)) {
         if (t && w && this.inRange(u.x, u.z, w, t, range)) fireAt = t;
-        if (u.path.length === 0 || this.tick >= u.repathAt) {
-          this.setPath(u, u.tx, u.tz);
-          u.repathAt = this.tick + sec(1);
+        if (u.path.length === 0) this.setPath(u, u.tx, u.tz);
+        if (this.follow(u)) {
+          u.path = [];
+          // dừng lại vì ô bị xe khác đứng chiếm (tới gần là tới): hai xe đứng nhầm ô của nhau thì đổi ô
+          if (dist2(u.x, u.z, u.tx, u.tz) > 1) this.swapHome(u);
         }
-        if (this.follow(u)) u.path = [];
         break;
       }
       if (t && w) {
         fireAt = t;
+        u.homeT = 0;
         if (this.inRange(u.x, u.z, w, t, range)) this.halt(u);
         // quân cố định (SkyGuard, Pháo, Tên Lửa Loạt) giữ chỗ đứng: không tự bỏ vị trí đuổi theo mục tiêu
         // xe lẻ đuổi trong LEASH quanh ô; xe sư đoàn tiến lên trong VÙNG PHẢN CÔNG quanh tâm sư đoàn (D4), ra tới mép thì dừng
         else if (!w.deploy && (dt ? this.divisionInZone(u) : dist2(u.x, u.z, u.tx, u.tz) < LEASH * LEASH)) this.chase(u, t);
         else this.halt(u);
-      } else if (dist2(u.x, u.z, u.tx, u.tz) > 16 && this.spotTaken(u, u.tx, u.tz)) {
-        // ô nhà đã có quân khác đứng chiếm (bị đẩy dọc thân ra xa khỏi chỗ đè lên quân hạ bệ…): nhận chỗ đang đứng làm ô mới, không
-        // lái về đè lên nó rồi bị đẩy ra mãi (17/11/2026)
-        u.tx = u.x;
-        u.tz = u.z;
-      } else if (dist2(u.x, u.z, u.tx, u.tz) > 16) {
-        if (u.chasing || u.path.length === 0) {
-          u.chasing = false;
-          this.setPath(u, u.tx, u.tz);
-        }
-        if (this.follow(u)) {
-          u.tx = u.x;
-          u.tz = u.z;
-          u.path = [];
-        }
-      } else if (u.chasing) {
-        u.chasing = false;
-        this.halt(u);
-      }
+      } else this.returnHome(u);
       break;
     }
   }
@@ -220,13 +197,173 @@ function updateGround(this: World, u: Unit): void {
     else this.aim(u, w, null, 0);
   }
   if (fireAt && w) this.tryFire(u, w, fireAt);
+  // không được lái tick này: hãm dần theo quán tính (xe nặng trôi thêm một quãng ngắn)
+  if (u.driveT !== this.tick) this.coast(u);
   // đứng chờ: thân xoay dần về hướng được giao (hướng đội hình khi tới nơi); đang bắn thì thôi
   // sư đoàn báo động gần: xe đứng bắn vẫn quay thân về hướng sư đoàn (giáp trước ra đón địch, tháp pháo bắn độc lập)
-  if (u.order === "idle" && !u.squad && !u.moved && (!fireAt || this.divisionAlert(u)) && (u.faceX !== 0 || u.faceZ !== 0) && u.hx * u.faceX + u.hz * u.faceZ < ALIGNED_COS)
+  if (u.order === "idle" && !u.group && u.speed === 0 && u.driveT !== this.tick && (!fireAt || this.divisionAlert(u)) && (u.faceX !== 0 || u.faceZ !== 0) && u.hx * u.faceX + u.hz * u.faceZ < ALIGNED_COS)
     this.turnHull(u, u.faceX, u.faceZ);
-  // Lockdown: đếm thời gian đứng yên (chạy là mất triển khai; đang thu bệ thì follow() đã trừ dần)
+  // Lockdown: đếm thời gian đứng yên (chạy là mất triển khai; đang thu bệ thì drive() đã trừ dần)
   if (!u.packing) u.still = u.moved ? 0 : Math.min(u.still + 1, 100000);
   this.rechargePd(u);
+}
+
+/**
+ * VỀ Ô (lõi di chuyển mới 20/11/2026): xe đứng bị đẩy lệch khỏi ô (tx, tz) quá HOME_SLACK thì chờ HOME_DELAY rồi tự lái thẳng về
+ * (dừng đúng ô, quay lại hướng mặt); xa quá HOME_FAR (vừa đuổi địch, bị xô xa) thì tìm đường về. Ô đang bị xe khác đứng đè thì chờ,
+ * chờ quá lâu thì nhận chỗ đang đứng làm ô mới.
+ */
+function returnHome(this: World, u: Unit): void {
+  if (u.chasing) {
+    u.chasing = false;
+    u.path = [];
+    u.pathI = 0;
+  }
+  // DẠT SANG (phản xạ, không lập kế hoạch): xe cùng phe đang lăn vào làn của mình thì chạy dạt sang một bên vừa đủ, xe kia qua rồi
+  // thì về ô (homeT giữ ≥ HOME_DELAY để về ngay khi lối trống)
+  if (this.makeWay(u)) {
+    u.homeT = HOME_DELAY;
+    return;
+  }
+  const d2 = dist2(u.x, u.z, u.tx, u.tz);
+  if (d2 > HOME_FAR * HOME_FAR || u.path.length) {
+    if (u.path.length === 0) this.setPath(u, u.tx, u.tz);
+    if (this.follow(u)) {
+      u.path = [];
+      u.homeT = 0;
+      // không tới được ô (kẹt): nhận chỗ đang đứng
+      if (dist2(u.x, u.z, u.tx, u.tz) > 4) {
+        u.tx = u.x;
+        u.tz = u.z;
+      }
+    }
+    return;
+  }
+  if (d2 <= HOME_SLACK * HOME_SLACK && u.homeT < HOME_DELAY) {
+    u.homeT = 0;
+    return;
+  }
+  if (u.homeT < HOME_DELAY) {
+    u.homeT++;
+    return;
+  }
+  if (this.spotBusy(u, u.tx, u.tz)) {
+    if (this.swapHome(u)) return;
+    if (++u.homeT > HOME_DELAY + HOME_GIVE_UP) {
+      u.tx = u.x;
+      u.tz = u.z;
+      u.homeT = 0;
+    }
+    return;
+  }
+  if (this.drive(u, u.tx, u.tz, true)) u.homeT = 0;
+  // vách / đá chặn không vào lại được ô: nhận chỗ đang đứng (không húc mãi tại chỗ)
+  else if (u.stuck >= HOME_STUCK) {
+    u.tx = u.x;
+    u.tz = u.z;
+    u.homeT = 0;
+    u.stuck = 0;
+  }
+}
+
+/** Xe đứng dạt cho xe đang chạy: nhìn trước chừng này giây theo tốc độ xe kia (tối thiểu MAKE_WAY_MIN m) để dạt kịp. */
+const MAKE_WAY_T = 1.2;
+const MAKE_WAY_MIN = 2.5;
+/**
+ * Xe đứng (không lệnh) nằm trong làn của một xe cùng phe đang chạy tới (sắp chạm theo hướng chạy của nó): chạy dạt sang phía xa đường
+ * xe kia vừa đủ (tổng hai thân + khe), chỗ dạt phải đứng được; phía đó bí thì thử phía kia. Trả về true nếu đang dạt.
+ */
+function makeWay(this: World, u: Unit): boolean {
+  if (this.anchored(u) || u.air !== "none") return false;
+  const ru = bodyRadius(u.kind);
+  const reach = ru + 14;
+  const near = this.nearGround(u.x, u.z, reach);
+  let best: Unit | null = null;
+  let bestAlong = Infinity;
+  for (let i = 0; i < near.length; i++) {
+    const v = near[i];
+    if (dist2(u.x, u.z, v.x, v.z) > reach * reach) continue;
+    // dạt cho xe đang đi thật: có lệnh, trong khối, hoặc đang theo đường về ô (vừa phản công xa / sư đoàn xoay). Không dạt cho xe
+    // đứng đang tự dạt hay nhích về ô gần (không có đường): hai xe dạt qua lại cho nhau mãi
+    const going = v.order !== "idle" || v.group !== 0 || (v.path.length > 0 && v.pathI * 2 < v.path.length);
+    if (v === u || v.side !== u.side || v.speed < 0.3 || !going || (v.group !== 0 && v.group === u.group)) continue;
+    const ex = u.x - v.x;
+    const ez = u.z - v.z;
+    const along = ex * v.hx + ez * v.hz;
+    const look = Math.max(MAKE_WAY_MIN, v.speed * MAKE_WAY_T) + ru + bodyRadius(v.kind);
+    if (along <= 0 || along > look) continue;
+    const lat = ex * v.hz - ez * v.hx;
+    const need = ru + bodyRadius(v.kind) + 0.4;
+    if ((lat < 0 ? -lat : lat) >= need || along >= bestAlong) continue;
+    best = v;
+    bestAlong = along;
+  }
+  if (!best) return false;
+  const ex = u.x - best.x;
+  const ez = u.z - best.z;
+  const lat = ex * best.hz - ez * best.hx;
+  const need = ru + bodyRadius(best.kind) + 0.4;
+  // dạt về phía mình đang lệch (thẳng hàng thì sang phải xe kia), phía đó bí thì phía kia
+  let side = lat > 0.05 ? 1 : lat < -0.05 ? -1 : 1;
+  for (let k = 0; k < 2; k++) {
+    const shift = side * need - lat;
+    const px = u.x + best.hz * shift;
+    const pz = u.z - best.hx * shift;
+    if (this.bodyFits(u, px, pz)) {
+      this.drive(u, px, pz, true);
+      return true;
+    }
+    side = -side;
+  }
+  return false;
+}
+
+/**
+ * HAI XE ĐỨNG NHẦM Ô CỦA NHAU (vừa xoay đội hình, xe cắt đường nhau rồi cùng dừng vì "tới gần là tới"): ô của u bị một xe cùng phe
+ * đang đứng chiếm, mà ô của xe đó lại nằm ngay chỗ u đứng. Hai xe chờ nhau thì không bao giờ xong: đổi ô (và hướng mặt) cho nhau.
+ * Đổi theo cặp nên ai xét trước cũng ra cùng kết quả (hai phe đối xứng). Trả về true nếu đã đổi.
+ */
+function swapHome(this: World, u: Unit): boolean {
+  if (this.anchored(u)) return false;
+  const ru = bodyRadius(u.kind);
+  const near = this.nearGround(u.tx, u.tz, ru + 4);
+  for (let i = 0; i < near.length; i++) {
+    const v = near[i];
+    if (v === u || v.side !== u.side || v.order !== "idle" || v.group !== 0 || v.air !== "none" || this.anchored(v) || v.speed > 0.3 || v.speed < -0.3) continue;
+    const lim = ru + bodyRadius(v.kind) - 0.3;
+    if (dist2(u.tx, u.tz, v.x, v.z) >= lim * lim || dist2(v.tx, v.tz, u.x, u.z) >= lim * lim) continue;
+    const tx = u.tx;
+    const tz = u.tz;
+    const fx = u.faceX;
+    const fz = u.faceZ;
+    u.tx = v.tx;
+    u.tz = v.tz;
+    u.faceX = v.faceX;
+    u.faceZ = v.faceZ;
+    v.tx = tx;
+    v.tz = tz;
+    v.faceX = fx;
+    v.faceZ = fz;
+    u.homeT = v.homeT = 0;
+    u.path = [];
+    v.path = [];
+    u.pathI = v.pathI = 0;
+    return true;
+  }
+  return false;
+}
+
+/** Có xe mặt đất khác đang đè lên chỗ (x, z) (thân lồng vào vòng thân của u đặt ở đó) không. */
+function spotBusy(this: World, u: Unit, x: number, z: number): boolean {
+  const r = bodyRadius(u.kind);
+  const near = this.nearGround(x, z, r + 4);
+  for (let i = 0; i < near.length; i++) {
+    const v = near[i];
+    if (v === u) continue;
+    const lim = r + bodyRadius(v.kind) - 0.3;
+    if (lim > 0 && dist2(x, z, v.x, v.z) < lim * lim) return true;
+  }
+  return false;
 }
 
 /**
@@ -590,7 +727,7 @@ function resolveShots(this: World): void {
   this.shots = keep;
 }
 
-const methods = { inRange, deployed, reach, groundTier, sightOf, acquireFrom, acquire, updateGround, aim, rechargePd, randDisc, nextCooldown, auraFactor, mobilized, tryFire, pushShot, fireSecondary, dropBomb, damage, commanderRetreat, gainXp, veteranRegen, resolveShots };
+const methods = { inRange, deployed, reach, groundTier, sightOf, acquireFrom, acquire, updateGround, returnHome, makeWay, swapHome, spotBusy, aim, rechargePd, randDisc, nextCooldown, auraFactor, mobilized, tryFire, pushShot, fireSecondary, dropBomb, damage, commanderRetreat, gainXp, veteranRegen, resolveShots };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

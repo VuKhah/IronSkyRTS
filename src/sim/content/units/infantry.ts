@@ -21,6 +21,8 @@ export const INFANTRY_UNITS: Record<"sniper", UnitSpec> = {
     hp: 300,
     armorClass: "inf",
     speed: 3.2,
+    accel: 8,
+    brake: 10,
     mobility: "foot",
     sight: 30,
     radius: 2.2,

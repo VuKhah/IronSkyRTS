@@ -10,6 +10,7 @@
 import type { Side, UnitId } from "./content";
 import type { Command } from "./types";
 import { TICK_RATE, type World } from "./world";
+import { BENCH, benchScenario } from "./bench";
 
 /**
  * Bãi thử trên "Thung Lũng Sông Sắt": vùng đất bằng bên bờ Liên Minh Lam, cách tâm bản đồ ARENA_U mét về phía
@@ -72,6 +73,9 @@ export interface Verdict {
 export interface Scenario {
   id: string;
   name: string;
+  /** Bản đồ của kịch bản (mặc định SCENARIO_MAP) và chỗ đặt camera khi mở (mặc định giữa bãi thử). */
+  map?: string;
+  focus?: [number, number];
   /** Ý đồ thiết kế (trích từ ARMY_DESIGN.md). */
   intent: string;
   /** Giới hạn thời gian (giây). */
@@ -229,6 +233,9 @@ export const SCENARIOS: Record<string, () => Scenario> = {
     };
   }
 };
+
+// cảnh của bàn đo di chuyển (`bench.ts`): xem được trong Phòng Thử Nghiệm trên bản đồ của chúng
+for (const id of Object.keys(BENCH)) SCENARIOS[id] = () => benchScenario(id);
 
 /** Một lượt chạy kịch bản: gom lệnh từng tick và chấm điểm khi ngã ngũ hoặc hết giờ. */
 export class ScenarioRun {

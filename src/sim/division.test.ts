@@ -6,10 +6,11 @@ import { describe, expect, it } from "vitest";
 import { FORMATIONS, lotCost, RULES, UNITS, type FormationId, type GroupCode, type Side, type UnitId } from "./content";
 import { Rng } from "./fmath";
 import { arenaPoint } from "./scenarios";
-import type { Building, Squad, Unit } from "./types";
+import type { Building, Group, Unit } from "./types";
 import { hashWorld, sec, World } from "./world";
 import { spaceRadius } from "./world/shared";
 import { DIV_ZONE } from "./world/division";
+import { BLOCK_K } from "./world/group";
 
 function spawn(w: World, kind: UnitId, x: number, z: number, side: 0 | 1 = 0): Unit {
   w.step([{ side, order: { t: "sbSpawn", kind, side, x, z } }]);
@@ -32,6 +33,9 @@ function go(w: World, us: Unit[], v: number, t: "move" | "amove" = "move", forma
 function finish(w: World, us: Unit[], seconds = 90): void {
   for (let i = 0; i < sec(seconds) && us.some((u) => u.order !== "idle"); i++) w.step([]);
 }
+
+/** Khối đang dịch nguyên khối (đội đã vào hàng, quãng ngắn): đi thẳng tới ô và không dựng mẫu mới. */
+const shift = (g: Group): boolean => g.mode === "direct" && g.lat0.length === 0;
 
 /** Vị trí theo hướng đội hình: f = phía trước, l = lệch ngang. */
 function frame(us: Unit[]): (u: Unit) => { f: number; l: number } {
@@ -97,12 +101,12 @@ describe("đúc và điều theo lô", () => {
     const us = group(w, Array<UnitId>(9).fill("lynx"));
     us.forEach((u, i) => (u.lot = 1000 + Math.floor(i / 3)));
     go(w, us, 30);
-    const sq: Squad = w.squads[0];
+    const sq: Group = w.groups[0];
     // mỗi xe có ít nhất một xe cùng lô ngay bên cạnh (kể cả lô vắt qua hai hàng)
     const reach = (2 * spaceRadius("lynx") + 1.4) * 1.5;
     sq.ids.forEach((id, i) => {
       const lot = (w.byId.get(id) as Unit).lot;
-      const near = sq.ids.some((o, j) => j !== i && (w.byId.get(o) as Unit).lot === lot && Math.sqrt((sq.offLat[i] - sq.offLat[j]) ** 2 + (sq.offBack[i] - sq.offBack[j]) ** 2) <= reach);
+      const near = sq.ids.some((o, j) => j !== i && (w.byId.get(o) as Unit).lot === lot && Math.sqrt((sq.lat0[i] - sq.lat0[j]) ** 2 + (sq.back0[i] - sq.back0[j]) ** 2) <= reach);
       expect(near, `xe ${id} lô ${lot}`).toBe(true);
     });
   });
@@ -114,8 +118,8 @@ describe("Pháo và Tên Lửa Loạt là hai tầng khác nhau (người dùng 
       const w = new World(1, { sandbox: true });
       const us = group(w, ["titan", "titan", "rocket", "rocket", "artillery", "artillery"]);
       go(w, us, 22, "move", f);
-      const sq: Squad = w.squads[0];
-      const back = (k: UnitId): number[] => sq.ids.map((id, i) => ((w.byId.get(id) as Unit).kind === k ? sq.offBack[i] : NaN)).filter((v) => !Number.isNaN(v));
+      const sq: Group = w.groups[0];
+      const back = (k: UnitId): number[] => sq.ids.map((id, i) => ((w.byId.get(id) as Unit).kind === k ? sq.back0[i] : NaN)).filter((v) => !Number.isNaN(v));
       const rocketMax = Math.max(...back("rocket"));
       const artMin = Math.min(...back("artillery"));
       expect(artMin, "Pháo lùi sau Tên Lửa Loạt ít nhất một hàng").toBeGreaterThan(rocketMax + 1);
@@ -168,7 +172,7 @@ describe("đội hình chỉ đọc mã phân nhóm", () => {
       const w = new World(1, { sandbox: true });
       const us = group(w, Array<UnitId>(12).fill("lynx"));
       go(w, us, 22, "move", f);
-      return w.squads[0].colsMax;
+      return w.groups[0].colsMax;
     };
     expect(FORMATIONS.pin.wide).toBeGreaterThan(FORMATIONS.march.wide);
     expect(widthOf("pin")).toBeGreaterThan(widthOf("march"));
@@ -207,14 +211,14 @@ describe("đội hình chỉ đọc mã phân nhóm", () => {
     const w = new World(1, { sandbox: true });
     const us = group(w, ["titan", "titan", "lynx", "lynx", "lynx"]);
     go(w, us, 12);
-    expect(w.squads[0].formation, "chưa từng chọn").toBe("hold");
+    expect(w.groups[0].formation, "chưa từng chọn").toBe("hold");
     expect(us[0].formation, "mặc định không ghi đè lựa chọn").toBeNull();
     finish(w, us);
     go(w, us, 30, "move", "attack");
     expect(us.every((u) => u.formation === "attack")).toBe(true);
     finish(w, us);
     go(w, us, 15);
-    expect(w.squads[0].formation, "từ B sang C không chọn").toBe("attack");
+    expect(w.groups[0].formation, "từ B sang C không chọn").toBe("attack");
     expect(us.every((u) => u.formation === "attack")).toBe(true);
   });
 
@@ -224,11 +228,11 @@ describe("đội hình chỉ đọc mã phân nhóm", () => {
     go(w, us, 12, "move", "attack");
     finish(w, us);
     go(w, us, 24, "move", "attack");
-    expect(w.squads[0].rigid, "cùng kiểu: dịch nguyên khối").toBe(true);
+    expect(shift(w.groups[0]), "cùng kiểu: dịch nguyên khối").toBe(true);
     finish(w, us);
     go(w, us, 8, "move", "pin");
-    expect(w.squads[0].formation).toBe("pin");
-    expect(w.squads[0].rigid, "đổi kiểu: dựng lại").toBe(false);
+    expect(w.groups[0].formation).toBe("pin");
+    expect(shift(w.groups[0]), "đổi kiểu: dựng lại").toBe(false);
   });
 
   it("ghép hai nhóm khác kiểu: cả nhóm theo kiểu của bên đông hơn", () => {
@@ -237,7 +241,7 @@ describe("đội hình chỉ đọc mã phân nhóm", () => {
     us.slice(0, 3).forEach((u) => (u.formation = "march"));
     us.slice(3).forEach((u) => (u.formation = "pin"));
     go(w, us, 15);
-    expect(w.squads[0].formation).toBe("march");
+    expect(w.groups[0].formation).toBe("march");
     expect(us.every((u) => u.formation === "march")).toBe(true);
   });
 
@@ -312,10 +316,11 @@ describe("phi đội (18/11/2026)", () => {
 });
 
 describe("tốc độ chung của khối", () => {
+  // tốc độ chuẩn của khối (trước hệ số BLOCK_K chừa sức cho xe đuổi ô, lõi di chuyển mới 20/11/2026)
   const speedOf = (kinds: UnitId[]): number => {
     const w = new World(1, { sandbox: true });
     go(w, group(w, kinds), 30);
-    return w.squads[0].speed;
+    return w.groups[0].speed / BLOCK_K;
   };
 
   it("xe chậm được hộ tống thì cả khối đi nhanh hơn xe chậm nhất, nhưng có trần", () => {
@@ -358,7 +363,7 @@ describe("sư đoàn bền vững (A2 bước D1, người dùng duyệt 17/11/2
     expect(d.mode).toBe("auto");
     finish(w, us);
     for (let i = 0; i < 5; i++) w.step([]);
-    expect(us.every((u) => u.squad === 0 && u.division === d.id)).toBe(true);
+    expect(us.every((u) => u.group === 0 && u.division === d.id)).toBe(true);
     expect(d.directive).toBe("station");
     // ô đóng quân là chỗ xe đứng khi tới nơi; hướng mặt là hướng đội
     for (const u of us) expect(Math.hypot(d.homeX[u.id] - u.x, d.homeZ[u.id] - u.z)).toBeLessThan(0.5);
@@ -494,24 +499,21 @@ describe("tướng sư đoàn: báo động và quay mặt (A2 D3, người dùn
     expect(fired, "Pháo bắn địch ở xa").toBe(true);
   });
 
-  it("quân đã hạ bệ khi sư đoàn xoay: ô mới trong 10 m thì đứng nguyên, xa hơn thì thu bệ đi tới ô mới", () => {
+  it("sư đoàn xoay TẠI CHỖ (thiết kế 5.3, 20/11/2026): không xe nào đổi ô; xe quay thân về hướng mới; quân đã hạ bệ giữ thân, chỉ quay mâm", () => {
     const { w, us, d } = stationed(["titan", "titan", "titan", "titan", "artillery"]);
     const art = us.find((u) => u.kind === "artillery")!;
     // tới nơi Pháo còn xoay thân về hướng đội (~2,6 s) rồi mới hạ bệ (2 s)
     for (let i = 0; i < sec(6); i++) w.step([]);
     expect(w.anchored(art), "Pháo đã hạ bệ").toBe(true);
-    const [ax, az] = [art.x, art.z];
-    const off = Math.hypot(d.homeX[art.id] - d.cx, d.homeZ[art.id] - d.cz);
-    // xoay 30°: ô mới cách chỗ cũ 2·off·sin 15° (nhỏ) → đứng nguyên
-    const c30 = Math.cos(Math.PI / 6);
-    const s30 = Math.sin(Math.PI / 6);
-    w.divisionFace(d, d.hx * c30 - d.hz * s30, d.hx * s30 + d.hz * c30);
-    expect(Math.hypot(art.tx - ax, art.tz - az)).toBeLessThan(0.01);
-    // quay đầu 180°: ô mới cách 2·off (> 10 m nếu Pháo đứng xa tâm hơn 5 m) → đi tới ô mới
+    const slots = us.map((u) => [u.tx, u.tz]);
+    const artFace = [art.faceX, art.faceZ];
+    // quay đầu 180°
     w.divisionFace(d, -d.hx, -d.hz);
-    // (dải sát ngưỡng 9,5–10,5 m không kiểm: ô mới có thể bị dời tới ô trống gần nhất)
-    if (2 * off > 10.5) expect(Math.hypot(art.tx - ax, art.tz - az)).toBeGreaterThan(10);
-    else if (2 * off < 9.5) expect(Math.hypot(art.tx - ax, art.tz - az)).toBeLessThan(0.01);
+    us.forEach((u, i) => expect(Math.hypot(u.tx - slots[i][0], u.tz - slots[i][1]), `${u.kind} ${u.id} giữ ô`).toBe(0));
+    expect([art.faceX, art.faceZ], "Pháo hạ bệ giữ hướng thân").toEqual(artFace);
+    for (let i = 0; i < sec(6); i++) w.step([]);
+    expect(w.anchored(art), "Pháo vẫn hạ bệ").toBe(true);
+    for (const u of us.filter((v) => v.kind === "titan")) expect(u.hx * -d.hx + u.hz * -d.hz, `Titan ${u.id} quay thân`).toBeGreaterThan(0.95);
   });
 
   it("Drone Khiên của sư đoàn bay theo tâm sư đoàn", () => {
@@ -606,9 +608,9 @@ describe("chế độ trực tiếp (A2 D5)", () => {
     const w = new World(1, { sandbox: true });
     const us = group(w, ["titan", "titan", "lynx", "lynx"]);
     go(w, us, 10);
-    const sq = us[0].squad;
+    const sq = us[0].group;
     w.step([{ side: 0, order: { t: "divMode", ids: us.map((u) => u.id), mode: "direct" } }]);
-    expect(us.every((u) => u.squad === sq)).toBe(true);
+    expect(us.every((u) => u.group === sq)).toBe(true);
     go(w, us, -10);
     expect(w.divisions.find((x) => x.id === us[0].division)!.mode).toBe("direct");
   });

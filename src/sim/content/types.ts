@@ -150,6 +150,12 @@ export interface UnitSpec {
   armorClass: ArmorClass;
   /** m/s trên cỏ, đất bằng; máy bay có thêm tốc độ tối thiểu. */
   speed: number;
+  /**
+   * QUÁN TÍNH xe mặt đất (lõi di chuyển mới 20/11/2026): gia tốc và hãm (m/s²). Xe nặng tăng tốc chậm, hãm cũng mất một quãng,
+   * nên nhìn thấy được sức nặng của cơ giới. Bỏ trống thì tính theo kiểu xe (`accelOf` / `brakeOf` trong world/shared.ts).
+   */
+  accel?: number;
+  brake?: number;
   /** Xe mặt đất: bánh hay xích (hệ số tốc độ theo loại địa hình, terrain.ts). Máy bay bỏ trống. */
   mobility?: Mobility;
   /** Kháng làm chậm: bỏ qua phần làm chậm của bùn, cát, tuyết, rừng, bãi cạn (Xe Tư Lệnh). Độ dốc vẫn làm chậm. */

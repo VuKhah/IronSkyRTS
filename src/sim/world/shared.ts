@@ -67,6 +67,18 @@ export function wallRadius(kind: keyof typeof UNITS): number {
   return bodyRadius(kind) * (isSquad(kind) ? SQUAD_WALL : WALL_PROBE);
 }
 /**
+ * QUÁN TÍNH (lõi di chuyển mới 20/11/2026): gia tốc và hãm của xe mặt đất (m/s²). Bỏ trống trong dữ liệu thì: bộ binh lên hết
+ * tốc trong 0,4 s, xe bánh 1,4 s, xe xích 2,2 s; hãm nhanh hơn tăng tốc khoảng 1,6 lần.
+ */
+export function accelOf(kind: keyof typeof UNITS): number {
+  const s = UNITS[kind];
+  return s.accel ?? s.speed / (s.troops ? 0.4 : s.mobility === "track" ? 2.2 : 1.4);
+}
+export function brakeOf(kind: keyof typeof UNITS): number {
+  const s = UNITS[kind];
+  return s.brake ?? accelOf(kind) * 1.6;
+}
+/**
  * Hai quân mặt đất được lồng vào nhau tối đa chừng này mét: tiểu đội với xe chạm MỀM, chồng tới nửa đế (bán kính đế tiểu đội,
  * người dùng chốt 15/11/2026); hai xe hoặc hai tiểu đội thì 0 (vòng giãn cứng).
  */
@@ -86,10 +98,10 @@ export const SQUAD_RESHAPE_EXTRA = 8;
 /** Va chạm giữa xe đang chạy và xe đứng yên: phần lực đẩy xe chạy phải chịu (xe đứng chịu phần còn lại). */
 export const MOVER_SHARE = 0.85;
 /**
- * Đẩy khỏi vách (địa hình bậc thang, 11/11/2026): thân xe lấn vào vách / đá / sông thì bị đẩy ra tối đa chừng này (m) mỗi lần
- * (`keepOffWalls`, lặp trong tick). Điểm dò quanh thân: `probesOf` / `wallNormal` trong movement.ts (elip theo thân xe).
+ * Đẩy khỏi vách: thân xe lấn vào vách / đá / sông thì bị đẩy ra tối đa chừng này (m) mỗi lần (`keepOffWalls` trong contact.ts,
+ * lặp 2 lần mỗi tick: tối đa 0,3 m/tick, gỡ dần chứ không hất xe đi). Điểm dò quanh thân: `probesOf` / `bodyContact` (movement.ts).
  */
-export const WALL_PUSH = 0.3;
+export const WALL_PUSH = 0.15;
 /** Đích sát vách được dời ra xa nhất chừng này (m) cho vừa thân xe (World.clearGoal). */
 export const GOAL_SHIFT = 3;
 /** cos / sin 22,5° và 45° viết sẵn thành hằng số (không gọi Math.cos trong sim). */

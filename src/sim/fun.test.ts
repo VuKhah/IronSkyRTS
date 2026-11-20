@@ -254,15 +254,23 @@ describe("Kỹ năng của binh chủng (không có điểm chỉ huy: kỹ năn
 
   it("Tổng động viên: quân quanh Xe Tư Lệnh chạy nhanh hơn đúng hệ số, rồi phải chờ hồi", () => {
     const M = RULES.abilities.mobilize;
+    // đo ở TỐC ĐỘ ỔN ĐỊNH (xe có quán tính, lõi di chuyển mới 20/11/2026): Lynx chạy đà từ sau lưng Xe Tư Lệnh, đo 1 giây lúc đã
+    // hết tăng tốc, cả quãng vẫn nằm trong vòng hào quang
     const speedOver = (on: boolean): number => {
       const w = new World(1, { sandbox: true });
-      spawn(w, "commander", 0, -2);
+      const c = spawn(w, "commander", 0, -2);
       const u = spawn(w, "lynx", 0, 2);
+      u.x = u.px = c.x - 12;
+      u.z = u.pz = c.z;
+      u.hx = u.phx = 1;
+      u.hz = u.phz = 0;
       if (on) w.step([{ side: 0, order: { t: "mobilize" } }]);
-      w.step([{ side: 0, order: { t: "move", ids: [u.id], x: u.x + 30, z: u.z } }]);
+      w.step([{ side: 0, order: { t: "move", ids: [u.id], x: c.x + 60, z: c.z } }]);
+      run(w, 2);
       const x0 = u.x;
       const z0 = u.z;
       run(w, 1);
+      expect(Math.abs(u.x - c.x), "Lynx vẫn trong vòng hào quang").toBeLessThan(UNITS.commander.aura!.radius);
       if (on) expect(w.mobilizeError(0)).toMatch(/giây/);
       return Math.sqrt((u.x - x0) ** 2 + (u.z - z0) ** 2);
     };

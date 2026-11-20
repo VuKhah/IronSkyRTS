@@ -5,7 +5,7 @@
  *
  * Mỗi lần gọi step(lệnh) là trận đấu tiến thêm đúng 1 tick (0.1 giây). Thứ tự trong một tick luôn cố định:
  *   1. lưu vị trí cũ (để phần vẽ nội suy)   2. áp dụng lệnh   3. kinh tế   4. công trình (xây, đúc quân, tháp bắn)
- *   5. chiếm mỏ   6. quân (đi, nhắm, bắn; máy bay bay và đốt dầu)   7. đẩy xe không chồng lên nhau
+ *   5. chiếm mỏ   6. khối hành quân, sư đoàn, phi đội   7. quân (lái, nhắm, bắn; máy bay bay và đốt dầu)   8. tách xe chồng thân
  *   8. đạn tới đích → trừ máu   9. dọn xác   10. sương mù   11. kiểm tra thắng thua
  * Không có gì phụ thuộc thời gian thật hay số ngẫu nhiên không seed, nên cùng seed + cùng lệnh thì ra cùng trận.
  */
@@ -13,7 +13,7 @@ import { BUILDINGS, RULES, UNITS, type Side, type WeaponSpec } from "../content"
 import { Rng } from "../fmath";
 import { Grid } from "../grid";
 import { GameMap, getMap, TERRAIN, TERRAIN_KINDS } from "../maps";
-import type { Division, Squad, AlertKind, Building, Command, Entity, Mine, Shot, SideState, SimEvent, Target, Unit, Uplink, WinReason, Wreck } from "../types";
+import type { Division, Group, AlertKind, Building, Command, Entity, Mine, Shot, SideState, SimEvent, Target, Unit, Uplink, WinReason, Wreck } from "../types";
 import { DT, sec, AIRBORNE_ALT, dirToCenter, newSide, type WorldOptions, type SandboxState, SANDBOX_RES } from "./shared";
 
 
@@ -25,21 +25,19 @@ export class World {
   readonly grid: Grid;
   /** Bảng ô đỗ dỡ hàng quanh Tổng Hành Dinh (tính một lần, xem `dockSlots`). */
   docks: (readonly [number, number, number, number])[] | null = null;
-  /**
-   * Lớp xe đứng (xem `standLayer`), dựng lười: chỉ số = phe × 2 + (người tìm đường là tiểu đội bộ binh ? 1 : 0); 4 + phe là lớp
-   * "đi vòng" (tính cả xe đứng biết nhường, 18/11/2026). Tick dựng gần nhất và hai mảng của mỗi lớp.
-   */
-  standTick: number[] = [-1, -1, -1, -1, -1, -1];
-  standClear: (Float32Array | null)[] = [null, null, null, null, null, null];
-  standOwner: (Int32Array | null)[] = [null, null, null, null, null, null];
-  /** Vòng in của từng xe đứng [x, z, r, mã] theo lớp (xem `StandLayer.discs`), dựng cùng lúc với `standClear`. */
-  standDiscs: Float64Array[] = [new Float64Array(0), new Float64Array(0), new Float64Array(0), new Float64Array(0), new Float64Array(0), new Float64Array(0)];
+  /** Lưới băm các xe mặt đất (`world/contact.ts`): đầu danh sách theo ô, phần tử kế, mảng xe, cỡ lưới. */
+  // −1 = ô rỗng: lệnh tới ngay tick đầu (trước lần dựng lưới đầu tiên) tra lưới rỗng chứ không đi vòng 0 → 0 mãi
+  nearHead = new Int32Array(1).fill(-1);
+  nearNext = new Int32Array(64);
+  nearArr: Unit[] = [];
+  nearCols = 1;
+  nearRows = 1;
   /** Độ cao mặt đất ở tâm từng ô lưới (m), tính một lần lúc tạo trận (địa hình không đổi). */
   /** Vật che tầm nhìn đứng trên mặt đất từng ô (m): rừng cao 4 m, còn lại 0 (TERRAIN.losHeight). */
   readonly cellLos: Float64Array;
   units: Unit[] = [];
-  /** Các đội hình đang hành quân (lệnh di chuyển cho từ 2 xe chiến đấu trở lên). */
-  squads: Squad[] = [];
+  /** Các khối đang hành quân (lệnh đi cho từ 2 xe mặt đất chiến đấu trở lên, `world/group.ts`). */
+  groups: Group[] = [];
   /** Các sư đoàn (bền vững, `world/division.ts`). Mã riêng, không lấy từ `nextId` để không đổi mã thực thể. */
   divisions: Division[] = [];
   nextDivId = 1;
@@ -193,9 +191,6 @@ export class World {
       u.phx = u.hx;
       u.phz = u.hz;
       u.moved = false;
-      u.prefX = 0;
-      u.prefZ = 0;
-      u.slotOff = 0;
       u.packing = false;
     }
     if (this.sandbox)
@@ -208,18 +203,17 @@ export class World {
     for (const s of [0, 1] as Side[]) if (this.hqOf(s)?.built) this.sides[s].iron += RULES.hqTrickle * DT;
     this.updateBuildings();
     this.updateMines();
-    this.updateSquads();
+    this.updateGroups();
     this.updateDivisions();
     this.updateWings();
+    // lưới băm xe mặt đất cho tầng lái (né xe), rồi từng xe lái / bắn; cuối cùng tách các cặp còn chồng thân (`world/contact.ts`)
+    this.buildNear();
     for (const u of this.units) {
       if (u.hp <= 0) continue;
       if (u.air !== "none") this.updateAir(u);
       else this.updateGround(u);
     }
-    this.separate();
-    this.keepOffWalls();
-    // nhường đường: đọc đường đi / vận tốc thật của tick này, xe đứng dạt từ tick sau (`world/yield.ts`)
-    this.yieldPass();
+    this.resolveContacts();
     this.resolveShots();
     this.veteranRegen();
     this.commanderRetreat();

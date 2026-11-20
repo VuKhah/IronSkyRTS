@@ -1,7 +1,7 @@
 /**
  * SƯ ĐOÀN BỀN VỮNG (A2 bước D1, thiết kế `Docs/plans/2026-11-17-A2-tuong-su-doan-thiet-ke.md`, người dùng duyệt 17/11/2026).
  *
- * `Squad` chỉ sống trong lúc hành quân và tan khi tới nơi; sau đó không còn ai "chỉ huy" các xe nữa (gốc của lỗi 8: bị đánh
+ * Khối (`Group`) chỉ sống trong lúc hành quân và tan khi tới nơi; sau đó không còn ai "chỉ huy" các xe nữa (gốc của lỗi 8: bị đánh
  * sườn thì chỉ xe bị bắn bắn trả). Sư đoàn là lớp bền hơn đặt trên đó: nhớ quân, chế độ (tự chủ / trực tiếp), chỉ thị, và
  * chỗ đóng quân khi tới nơi. Bước D1 chỉ dựng vòng đời; chưa luật nào đọc sư đoàn nên đường đi của xe giữ nguyên.
  *
@@ -14,10 +14,9 @@
  *  - mọi xe mặt đất đã đứng (hết đội hình hành quân) thì sư đoàn đóng quân: ghi tâm, hướng mặt, ô từng xe.
  */
 import { RULES, UNITS, type Side } from "../content";
-import { assignMin } from "../assign";
 import { dist2 } from "../fmath";
 import type { Division, Unit } from "../types";
-import { bodyRadius, sec } from "./shared";
+import { sec } from "./shared";
 import { World } from "./core";
 
 /** Số xe mặt đất tối thiểu để lập sư đoàn (người dùng chốt 17/11/2026). */
@@ -31,8 +30,6 @@ const PIVOT_COS = 0.5;
 const PIVOT_COOL = sec(3);
 /** Sau khi xoay, xe đi về ô mới (vừa đi vừa bắn, không dừng lại đánh) tối đa chừng này. */
 const REFORM_MAX = sec(10);
-/** Quân đã hạ bệ mà ô mới cách chỗ đứng không quá chừng này (m) thì đứng nguyên, chỉ quay mâm (người dùng chốt 17/11/2026). */
-const DEPLOY_STAY = 10;
 
 /** Xe được tính là quân mặt đất của sư đoàn. */
 function isDivGround(u: Unit): boolean {
@@ -173,7 +170,7 @@ function stationDivision(this: World, d: Division): void {
   }
   d.cx = cx / n;
   d.cz = cz / n;
-  // hướng đội: hướng mặt `disbandSquad` đặt cho từng xe; không có thì hướng thân trung bình
+  // hướng đội: hướng mặt khối đặt cho từng xe lúc tới nơi (`finishGroup`); không có thì hướng thân trung bình
   let l = Math.sqrt(fx * fx + fz * fz);
   if (l < 1e-6) {
     fx = bx;
@@ -200,7 +197,7 @@ function stationDivision(this: World, d: Division): void {
 }
 
 /**
- * BỘ NÃO TƯỚNG (D3): báo động và quay mặt. Chỉ khi tự chủ và đang đóng quân (đang đi thì `Squad` lo: tấn công-di chuyển đã
+ * BỘ NÃO TƯỚNG (D3): báo động và quay mặt. Chỉ khi tự chủ và đang đóng quân (đang đi thì khối lo: tấn công-di chuyển đã
  * dừng lại bắn, lệnh đi thì không dừng). Chỉ dùng thông tin phe mình thấy (`visibleTo`, luật bắt buộc số 2).
  */
 function divisionBrain(this: World, d: Division): void {
@@ -283,41 +280,18 @@ function divisionBrain(this: World, d: Division): void {
 }
 
 /**
- * Xoay cả sư đoàn về hướng (fx, fz): xoay hình ô lúc đóng quân quanh tâm, rồi chia ô mới bằng phân công tối ưu (bình phương
- * quãng, chỉ đổi giữa xe cùng mã phân nhóm) để xe đi ít nhất và không cắt đường nhau. Giáp vẫn ra trước về phía địch vì ô của
- * hàng đầu xoay theo. Quân đã hạ bệ mà ô mới cách không quá DEPLOY_STAY thì đứng nguyên (quay mâm), xa hơn thì thu bệ đi theo.
+ * Xoay cả sư đoàn về hướng (fx, fz): XOAY TẠI CHỖ, KHÔNG AI ĐỔI CHỖ (thiết kế A2 mục 5.3, người dùng duyệt 17/11/2026). Mỗi xe giữ ô,
+ * chỉ quay thân về hướng mới (xe đứng chờ tự xoay thân dần, `updateGround`); quân đã hạ bệ giữ thân, chỉ quay mâm. Bản làm D3 từng
+ * xoay cả hình ô quanh tâm rồi chia ô lại cho "giáp ra trước": xe băng chéo qua khối, tắc 12–24 s mỗi lần quay (bỏ 20/11/2026).
+ * Bị đánh sườn thì sườn đó hứng đạn: đó là cái giá của việc bị đánh sườn (người chơi có lý do để đánh vòng). Xe đang lệch ô (vừa
+ * tiến lên đánh trong vùng) thì về ô trong REFORM_MAX, vừa đi vừa bắn.
  */
 function divisionFace(this: World, d: Division, fx: number, fz: number): void {
-  const c = d.hx * fx + d.hz * fz;
-  const s = d.hx * fz - d.hz * fx;
-  const ground: Unit[] = [];
   for (const id of d.ids) {
     const u = this.byId.get(id) as Unit;
-    if (isDivGround(u) && d.homeX[id] !== undefined) ground.push(u);
-  }
-  const slots = ground.map((g): [number, number] => {
-    const ox = d.homeX[g.id] - d.cx;
-    const oz = d.homeZ[g.id] - d.cz;
-    return [d.cx + c * ox - s * oz, d.cz + s * ox + c * oz];
-  });
-  const cost = slots.map(([px, pz], k) => ground.map((u) => (UNITS[u.kind].group === UNITS[ground[k].kind].group ? dist2(u.x, u.z, px, pz) : 1e9)));
-  const a = assignMin(cost);
-  for (let k = 0; k < slots.length; k++) {
-    const u = ground[a[k]];
-    let [px, pz] = slots[k];
-    const r = bodyRadius(u.kind);
-    if (this.grid.blockedAt(px, pz) || this.grid.clearanceAt(px, pz) < r * 0.95)
-      [px, pz] = this.grid.nearestFree(px, pz, 6, (x, z) => this.grid.clearanceAt(x, z) >= r * 0.95) ?? [u.x, u.z];
-    if (this.anchored(u) && dist2(u.x, u.z, px, pz) <= DEPLOY_STAY * DEPLOY_STAY) {
-      px = u.x;
-      pz = u.z;
-    }
-    u.tx = px;
-    u.tz = pz;
+    if (!isDivGround(u) || d.homeX[id] === undefined || this.anchored(u)) continue;
     u.faceX = fx;
     u.faceZ = fz;
-    u.path = [];
-    u.pathI = 0;
   }
   d.fx = fx;
   d.fz = fz;
@@ -399,7 +373,7 @@ function divisionAlert(this: World, u: Unit): boolean {
   return !!u.division && this.divisionById(u.division)?.alarm === "near";
 }
 
-/** Mỗi tick, sau `updateSquads`: dọn xe đã mất, tan sư đoàn còn một xe, đóng quân khi mọi xe mặt đất đã đứng. */
+/** Mỗi tick, sau `updateGroups`: dọn xe đã mất, tan sư đoàn còn một xe, đóng quân khi mọi xe mặt đất đã đứng. */
 function updateDivisions(this: World): void {
   if (!this.divisions.length) return;
   for (const d of this.divisions) {
@@ -416,7 +390,7 @@ function updateDivisions(this: World): void {
       let settled = true;
       for (const id of d.ids) {
         const u = this.byId.get(id) as Unit;
-        if (isDivGround(u) && (u.order !== "idle" || u.squad !== 0)) {
+        if (isDivGround(u) && (u.order !== "idle" || u.group !== 0)) {
           settled = false;
           break;
         }

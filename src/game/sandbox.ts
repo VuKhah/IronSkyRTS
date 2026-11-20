@@ -6,7 +6,7 @@
  * thì ra cùng kết quả, và lõi sim không cần biết có giao diện nào đang điều khiển nó.
  */
 import { BUILDINGS, SIDE_NAME, UNITS, type BuildingId, type Side, type UnitId } from "../sim/content";
-import { ARENA_CENTER, arenaPoint, formation, SCENARIOS, ScenarioRun } from "../sim/scenarios";
+import { ARENA_CENTER, arenaPoint, formation, SCENARIO_MAP, SCENARIOS, ScenarioRun } from "../sim/scenarios";
 import type { Order } from "../sim/types";
 import { TICK_RATE } from "../sim/world";
 import type { RtsCamera } from "./camera/camera";
@@ -88,7 +88,7 @@ export class Sandbox {
         <div class="sb-line"><span>Cách nhau</span><input data-duel="d" type="number" min="10" max="90" value="44" /><span>m</span>
           <button class="sb-chip primary" data-sb="duel">Bắt đầu</button></div>
         <h4>Kịch bản thiết kế <small>ý đồ trong ARMY_DESIGN</small></h4>
-        <div class="sb-scen">${SCENARIO_IDS.map((id) => {
+        <div class="sb-scen">${SCENARIO_IDS.filter((id) => (SCENARIOS[id]().map ?? SCENARIO_MAP) === match.world.map.id).map((id) => {
           const sc = SCENARIOS[id]();
           return `<button class="sb-chip" data-sb="scen:${id}" title="${esc(sc.intent)}">${esc(sc.name)}</button>`;
         }).join("")}</div>
@@ -129,8 +129,17 @@ export class Sandbox {
   private startScenario(id: string): void {
     this.match.director = new ScenarioRun(id);
     this.resetStats(true);
-    this.cam.focus(ARENA_CENTER[0], ARENA_CENTER[1]);
-    this.cam.dist = Math.max(this.cam.dist, 80);
+    // ?cam=x,z,dist trên URL (chụp ảnh một mốc của cảnh) thì giữ camera theo URL
+    const cam = new URLSearchParams(location.search).get("cam");
+    if (cam) {
+      const [cx, cz, cd] = cam.split(",").map(Number);
+      this.cam.focus(cx, cz);
+      if (cd) this.cam.dist = cd;
+    } else {
+      const f = this.match.director.scenario.focus ?? ARENA_CENTER;
+      this.cam.focus(f[0], f[1]);
+      this.cam.dist = Math.max(this.cam.dist, 80);
+    }
     this.hud.alert(`Kịch bản: ${this.match.director.scenario.name}`);
   }
 

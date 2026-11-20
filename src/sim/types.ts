@@ -69,44 +69,31 @@ export interface Unit {
   path: number[];
   pathI: number;
   repathAt: number;
-  /** Tick tìm lại đường định kỳ tiếp theo khi đi đường dài (`follow`, bước 2 kế hoạch đế: xe đứng chắn đường thay đổi). */
-  replanAt: number;
+  /** Số tick liền xe muốn đi mà gần như không tiến (`follow`): đủ ngưỡng thì tìm đường lại, rồi bỏ cuộc gần đích. */
   stuck: number;
+  /** Tiến độ tới đích đường đi: gần nhất từng tới (m) và tick lần cuối lại gần thêm PROGRESS_STEP. Đang tiến thì không bỏ cuộc. */
+  progD: number;
+  progT: number;
   moved: boolean;
-  /**
-   * Né xe (ORCA, 12/11/2026): độ lệch hướng (vector đơn vị hướng ORCA chọn − hướng muốn đi, cộng vào hướng muốn đi) và hệ số
-   * tốc độ (1 = không phanh) tính ở cuối tick trước (`separate` → `orcaPass`), dùng ở tick này khi xe đi theo đường / tới ô.
-   */
-  avX: number;
-  avZ: number;
-  brake: number;
-  /** Vận tốc muốn đi trong tick này (m/s, trước khi né), ghi khi xe đi theo đường / tới ô xa từ 3 m; 0 = không tự đi. */
-  prefX: number;
-  prefZ: number;
-  /** Xe trong đội hình: cách ô của mình bao xa (m) ở tick này; 0 khi không trong đội. Xe cùng đội: xe đúng ô nhường xe lệch ô. */
-  slotOff: number;
-  /** Số tick liền ORCA giữ xe gần như đứng (phanh < 25%); đủ ORCA_HOLD_MAX thì thôi né xe đứng yên, để luật chạm lách qua. */
-  orcaHeld: number;
   /** Đang đuổi theo mục tiêu (đường đi đang trỏ tới mục tiêu, không phải tới đích lệnh). */
   chasing: boolean;
   /** Hướng quay mặt khi tới đích / khi về lại chỗ đứng (0, 0 = giữ hướng đang đi). */
   faceX: number;
   faceZ: number;
+  /** Đang đi trong khối nào (`Group.id`, 0 = đi riêng) và ô thứ mấy trong khối. */
+  group: number;
+  slot: number;
   /**
-   * NHƯỜNG ĐƯỜNG (T2, 16/11/2026, `yieldPass`): xe đứng dạt tới (yieldX, yieldZ) cho xe cùng phe đi qua, giữ tới tick `yieldUntil`;
-   * `yieldAway` = đang ở ngoài ô nhà (tx, tz), hết hạn nhường thì chạy theo xích về ô.
+   * NÉ XE (`avoid`, lõi mới 20/11/2026): xe đang lách quanh xe nào (mã, 0 = không) và về phía nào (+1 phải, −1 trái). Nhớ phía
+   * đã chọn tới khi qua hẳn xe đó, để không lắc qua lại.
    */
-  yieldX: number;
-  yieldZ: number;
-  yieldUntil: number;
-  yieldAway: boolean;
-  /** Tới tick này xe không nhường được (đã chờ dọn lối quá lâu mà kẹt): là vật cản cứng, xe khác tìm đường vòng. */
-  yieldBlock: number;
-  /** Xe đang đi đứng chờ xe phía trước dạt nhường xong (số tick liền); quá lâu thì coi xe chắn là vật cản và tìm đường vòng. */
-  laneWait: number;
-  /** Đang hành quân trong đội hình nào (`Squad.id`, 0 = đi riêng). */
-  squad: number;
-  /** Thuộc sư đoàn nào (`Division.id`, 0 = xe lẻ). Bền hơn `squad`: còn giữ sau khi tới nơi. */
+  avoidId: number;
+  avoidSide: number;
+  /** Số tick liền xe đứng (không lệnh) bị đẩy lệch ô quá `HOME_SLACK`: đủ `HOME_DELAY` thì tự lái về ô. */
+  homeT: number;
+  /** Tick gần nhất xe được lái (`drive`): tick nào không được lái thì xe hãm dần theo quán tính (`coast`). */
+  driveT: number;
+  /** Thuộc sư đoàn nào (`Division.id`, 0 = xe lẻ). Bền hơn `group`: còn giữ sau khi tới nơi. */
   division: number;
   /** Gốc phát của phát đạn trúng xe gần nhất (`lastHit`): tướng sư đoàn biết bị bắn từ đâu. */
   hitX: number;
@@ -118,14 +105,9 @@ export interface Unit {
   /** Chỗ trong mũi tên phi đội so với chiếc dẫn đầu (m): ngang (dương = bên phải hướng bay) và lùi sau. */
   wingLat: number;
   wingBack: number;
-  /** Tới tick này đồng đội đã vào ô dạt nhường cho xe (ô của nó bị đồng đội vây kín, không còn đường vòng). */
-  squeezeUntil: number;
-  /** Điểm đầu đoạn đường đang đi (chỗ đứng lúc tìm đường, rồi điểm vừa qua): xe xích bám ĐOẠN đường, không chỉ nhắm đỉnh kế tiếp. */
+  /** Điểm đầu đoạn đường đang đi (chỗ đứng lúc tìm đường, rồi điểm vừa qua): xe bám ĐOẠN đường, không chỉ nhắm đỉnh kế tiếp. */
   pathFromX: number;
   pathFromZ: number;
-  /** Chiều xe muốn chạy dọc thân ở lần gần nhất (+1 tiến, −1 lùi) và tick đó: luật hai xe chặn lẫn nhau xét đúng chiều xe kia muốn đi. */
-  driveDir: number;
-  driveTick: number;
   // Xe Vận Tải
   hState: HaulState;
   mineId: number;
@@ -141,6 +123,10 @@ export interface Unit {
   fuel: number;
   padB: number;
   padI: number;
+  /**
+   * Tốc độ hiện tại (m/s). Máy bay: dọc hướng bay. Xe mặt đất (lõi mới 20/11/2026): dọc trục thân, âm = đang lùi; chỉ `drive()`
+   * đổi số này, theo gia tốc / hãm của xe (`UnitSpec.accel`, `brake`) nên xe có quán tính.
+   */
   speed: number;
   airT: number;
   mission: AirMission;
@@ -433,7 +419,7 @@ export interface SideState {
 /**
  * SƯ ĐOÀN (A2, người dùng duyệt 17/11/2026, `Docs/plans/2026-11-17-A2-tuong-su-doan-thiet-ke.md`): nhóm quân bền vững có
  * "tướng dưới trướng". Sinh ra từ lệnh đi / tấn công-di chuyển cho từ 3 xe mặt đất; không tan khi tới nơi mà đóng quân.
- * Lúc đang đi, phần hành quân vẫn do `Squad` lo; sư đoàn nhớ những gì còn lại sau khi đội hình hành quân xong việc.
+ * Lúc đang đi, phần hành quân do khối (`Group`) lo; sư đoàn nhớ những gì còn lại sau khi khối tới nơi.
  */
 export interface Division {
   id: number;
@@ -471,86 +457,85 @@ export interface Division {
 }
 
 /**
- * Đội hình hành quân (người dùng 06/11/2026: giữ đội hình khi di chuyển, qua cầu / chỗ hẹp, quay hướng như cánh cửa).
- * Một "người dẫn đầu ảo" (giữa hàng đầu) đi theo đường A*; mỗi xe giữ một ô phía sau nó. Đi thẳng thì cả đội là một khối;
- * qua khúc cua thì các hàng nối nhau đi theo đúng vệt của người dẫn đầu (như đoàn tàu); chỗ hẹp thì co bớt số xe mỗi hàng.
+ * KHỐI (lõi di chuyển mới 20/11/2026, `world/group.ts`, thiết kế `Docs/plans/2026-11-20-loi-di-chuyen-moi-thiet-ke.md`): các xe
+ * mặt đất nhận chung một lệnh đi. Một "neo" ảo chạy trên MỘT đường A* chung; mỗi xe giữ một ô (lệch ngang `lat`, lùi `back` so
+ * với neo, đo dọc vệt đường nên qua cua các hàng nối nhau như đoàn xe). Cả khối cùng tốc độ, cùng lăn bánh, cùng dừng.
+ * Quãng ngắn (`direct`): mỗi xe chạy thẳng tới ô cuối, tốc độ chia để cả khối tới cùng lúc.
  */
-export interface Squad {
+export interface Group {
   id: number;
   side: Side;
   kind: "move" | "amove";
-  /** Kiểu đội hình đang dùng (bảng FORMATIONS trong content.ts). */
   formation: FormationId;
-  /** Tuyến của từng xe theo id, tính lúc dựng đội hình (đoạn hậu là tuyến riêng). */
-  rankOf: Record<number, number>;
-  /** Tốc độ chung của cả khối (m/s), xem `RULES.escortBoost`. */
-  speed: number;
-  /** Đội đã vào hàng dịch nguyên khối quãng ngắn: mọi xe chờ nhau thu bệ, xoay thân xong rồi mới cùng lăn bánh, cùng một tốc độ. */
-  rigid: boolean;
-  /** Đội `rigid` đã bắt đầu lăn bánh. */
-  rolling: boolean;
-  /** Thứ tự xe trong đội hình (vai trò → hàng → trái sang phải), giữ nguyên suốt lệnh: co / giãn hàng vẫn theo thứ tự này. */
+  mode: "direct" | "march";
+  /** Xe của từng ô (ô thứ i là của ids[i]); thứ tự đọc của mẫu đầy đủ: tuyến trước → sau, trái → phải. */
   ids: number[];
-  /** Ô của từng xe (cùng chỉ số với `ids`): lệch ngang (m, + = bên phải) và lùi sau người dẫn đầu (m). */
-  offLat: number[];
-  offBack: number[];
-  /** Số xe mỗi hàng đang dùng / khi rộng rãi. */
-  cols: number;
+  /** Mẫu đang dùng: lệch ngang (m, + = bên phải) và lùi sau neo (m, + = phía sau) của từng ô. */
+  lat: number[];
+  back: number[];
+  /** Lệch ngang / lùi ĐANG ÁP của từng ô: đổi dần tới `lat` / `back` (khối biến hình êm khi co / giãn cột). */
+  latS: number[];
+  backS: number[];
+  /** Mẫu đầy đủ (rộng rãi, xếp theo vai lúc lập khối): lệch ngang và lùi của từng ô. */
+  lat0: number[];
+  back0: number[];
+  /** Số cột khi rộng rãi / đang dùng (co qua lối hẹp). */
   colsMax: number;
-  width: number;
-  depth: number;
-  /** Bán kính xe lớn nhất trong đội (m). */
-  rMax: number;
-  /** Người dẫn đầu ảo: vị trí, hướng đội hình. */
-  x: number;
-  z: number;
-  hx: number;
-  hz: number;
-  /** Hướng muốn đi (lúc ra lệnh) và đích (tâm khối khi tới nơi). */
-  wantX: number;
-  wantZ: number;
+  cols: number;
+  /** Nửa bề ngang (tới mép thân xe ngoài cùng) của mẫu đang dùng (m), và của mẫu c cột (chỉ số c − 1). */
+  halfW: number;
+  halfWFor: number[];
+  /** Đường chung của neo [x, z, …], điểm đầu là chỗ neo xuất phát; quãng cộng dồn tới từng điểm (m). */
+  path: number[];
+  cum: number[];
+  /** Neo: quãng đã đi trên đường (m) và tốc độ (m/s). */
+  s: number;
+  v: number;
+  /** Tốc độ khối tối đa (m/s); gia tốc / hãm của neo (m/s², theo xe ì nhất). */
+  speed: number;
+  accel: number;
+  brake: number;
+  /** Hình cuối: tâm, hướng mặt chung; ô cuối của từng ô. */
   goalX: number;
   goalZ: number;
-  path: number[];
-  pathI: number;
-  /** Vệt người dẫn đầu: mỗi điểm 6 số (x, z, hx, hz, quãng đường, độ cong 1/m). */
-  trail: number[];
-  /** Quãng đường người dẫn đầu đã đi (m). */
-  s: number;
-  phase: "form" | "direct" | "pivot" | "march" | "settle";
-  phaseT: number;
+  faceX: number;
+  faceZ: number;
+  endX: number[];
+  endZ: number[];
+  /** Ô tick này của từng ô, và chỗ ô đó ở tick trước theo đúng mẫu đang dùng (để đo tốc độ và hướng ô). */
+  sx: number[];
+  sz: number[];
+  psx: number[];
+  psz: number[];
   /**
-   * Xếp hàng theo vai trò (đầu / giữa / sau). Sau khi cả đội xoay tại chỗ thì tắt: giữ nguyên chỗ đứng, không ai đổi chỗ
-   * (người dùng chốt 06/11/2026: quay đầu 180° thì hàng sau thành hàng đầu).
+   * Hàng chưa tới lượt vào đường (lùi sau hàng đầu, vệt kéo dài ra sau chỗ xuất phát): `wait` = xe đứng chờ tại chỗ xuất phát của nó
+   * (wx0, wz0) tới lượt mới vào đường (sau lưng vướng vách / nhà); false = bám vệt kéo dài. Quyết định một lần lúc lập khối.
    */
-  byRank: boolean;
-  /** Có xe đang bắn mục tiêu trong tầm (đi-và-đánh): cả khối dừng lại. Xe đặt trong tick, khối đọc ở tick sau. */
+  wait: boolean[];
+  wx0: number[];
+  wz0: number[];
+  /** Số tick liền xe của từng ô tụt khỏi ô quá LAG_OK (quá lâu thì neo thôi chờ xe đó); hệ số chậm của neo vì xe tụt (làm mượt). */
+  lagT: number[];
+  lagK: number;
+  /** Mẫu đang dùng là mẫu theo vai (true) hay theo thứ tự xe đang đi (đã qua lối hẹp); đã dựng lại hình cuối chưa. */
+  role: boolean;
+  endFit: boolean;
+  /** Tốc độ (m/s) và hướng chạy của từng ô, làm mượt: xe bám ô theo số này. */
+  vs: number[];
+  dx: number[];
+  dz: number[];
+  /** Thẳng tới ô: tốc độ riêng từng xe (m/s) để cả khối tới cùng lúc; lùi tối đa bao xa (m). */
+  pace: number[];
+  revMax: number;
+  /** Tấn công-di chuyển: cả khối đang dừng đánh; tick cuối cùng còn xe có địch trong tầm. */
   hold: boolean;
-  /** Đang dừng bắn (giá trị `hold` của tick trước): xe trong pha "đi thẳng tới ô" cũng đứng lại. */
-  holding: boolean;
-  /** Cả khối dạt ngang khỏi đường của người dẫn đầu (m, + = phải) để né vật cản một bên; dạt dần tới `shiftWant`. */
-  shift: number;
-  shiftWant: number;
-  /** Số lần đo liên tiếp thấy đủ rộng để giãn thêm hàng (giãn phải chờ ổn định, co thì co ngay). */
+  holdT: number;
+  /** Tick bắt đầu đợt dừng đánh hiện tại; dừng mà không bắn được thì tới tick `noHold` mới được dừng lại (đi tiếp, vừa đi vừa bắn). */
+  holdFrom: number;
+  noHold: number;
+  /** Số tick từ lúc lập khối; tick neo tới cuối đường (−1 = chưa tới). */
+  t: number;
+  doneT: number;
+  /** Số lần đo liền thấy lối phía trước đủ rộng để giãn thêm cột (giãn phải chờ ổn định, co thì co ngay). */
   wideFor: number;
-  /** Ổn định chỗ khi tới nơi tối đa bao nhiêu tick (theo độ dài cột lúc tới). */
-  settleMax: number;
-  /** GỠ KẸT Ở ĐÍCH (`squadUnjam`): khoảng cách tới ô ở lần đo trước, theo mã xe. */
-  prog: Record<number, number>;
-  /** Số lần đo liền xe không tiến gần ô được (kẹt), theo mã xe. */
-  stuck: Record<number, number>;
-  /** Tick sớm nhất được đổi ô lần nữa (chống đổi qua lại). */
-  swapAt: number;
-  /** XE LẠC (A2 D2): số tick liền xe tụt khỏi ô quá `SQUAD_LAG`, theo mã xe. Quá `STRAY_AFTER` thì khối thôi chờ nó. */
-  lagT: Record<number, number>;
-  /** Số tick liền xe đứng cách ô dưới SETTLE_NEAR (pha `settle`): đủ SETTLE_NEAR_T thì coi là đã tới ("tới gần là tới"). */
-  nearT: Record<number, number>;
-  /** Tốc độ thật của người dẫn đầu ở tick vừa rồi (m/s, 0 khi đứng / không hành quân): xe bám ô chỉnh tốc độ theo nó. */
-  v: number;
-  /** Phía làn ngoài (+1 phải, −1 trái) xe đang dùng để vượt / chờ, giữ nguyên tới khi về ngang hàng (không đổi phía giữa chừng). */
-  laneSide: Record<number, number>;
-  /** Chỗ và tick xe bắt đầu đứng quanh quẩn (chưa đi xa quá 0,5 m), theo mã xe: đo "không tới được" ở đích (`squadGaveUp`). */
-  moveRef: Record<number, [number, number, number]>;
-  /** Ở đích: độ lùi (`offBack`) của tuyến trước nhất còn xe chưa vào ô; tuyến sau nó chưa tới lượt (xe biết nhường). */
-  admitBack: number;
 }

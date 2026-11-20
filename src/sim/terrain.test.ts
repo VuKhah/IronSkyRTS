@@ -10,6 +10,7 @@ import { RULES, UNITS, type Side, type UnitId } from "./content";
 import { GameMap, TERRAIN, type MapDef } from "./maps";
 import type { Unit } from "./types";
 import { DT, sec, World } from "./world";
+import { accelOf, brakeOf } from "./world/shared";
 
 /** Bản đồ thử 160 × 160 m phẳng: nửa trái là bùn, góc trên phải là đường, góc dưới phải là cỏ. */
 const PATCHES: MapDef = {
@@ -100,10 +101,15 @@ function face(u: Unit, tx: number, tz: number): void {
   u.hz = u.phz = dz / l;
 }
 
-/** Quãng đường xe đi được trong `ticks` tick khi được lệnh chạy thẳng về (tx, tz). */
+/**
+ * Quãng đường xe đi được trong `ticks` tick ở TỐC ĐỘ ỔN ĐỊNH khi được lệnh chạy thẳng về (tx, tz). Xe có quán tính (lõi di chuyển
+ * mới 20/11/2026: tăng tốc theo `accel`), nên cho chạy đà WARM tick rồi mới đo: bài kiểm hệ số tốc độ theo địa hình, không kiểm gia tốc.
+ */
+const WARM = 25;
 function distanceIn(w: World, u: Unit, tx: number, tz: number, ticks: number): number {
   face(u, tx, tz);
   w.step([{ side: u.side, order: { t: "move", ids: [u.id], x: tx, z: tz } }]);
+  for (let i = 0; i < WARM; i++) w.step([]);
   const x0 = u.x;
   const z0 = u.z;
   for (let i = 0; i < ticks; i++) w.step([]);
@@ -170,9 +176,11 @@ describe("B3a: tốc độ theo địa hình", () => {
     const down = world(HILL);
     const b = spawn(down, "lynx", 0, 0);
     const tDown = ticksTo(down, b, 40, 0);
-    const flat = (40 / UNITS.lynx.speed) * 10;
+    // đất bằng: chạy thẳng hết tốc, cộng thời gian tăng tốc lúc đầu và hãm lúc cuối (quán tính, mỗi đoạn mất nửa thời gian ở tốc độ đủ)
+    const v = UNITS.lynx.speed;
+    const flat = (40 / v + v / accelOf("lynx") / 2 + v / brakeOf("lynx") / 2) * 10;
     expect(tUp).toBeGreaterThan(tDown * 1.15);
-    expect(tDown).toBeLessThanOrEqual(Math.ceil(flat) + 1);
+    expect(tDown).toBeLessThanOrEqual(Math.ceil(flat) + 2);
     // khối dốc dốc 0,5 → chậm ~×0,65 trên 16 m dốc: lên dốc không chậm quá mức sàn
     expect(tUp).toBeLessThan(flat / RULES.terrain.slopeMin);
   });
@@ -232,8 +240,9 @@ describe("B3b: tìm đường nhanh nhất theo địa hình", () => {
     const w = world(DETOUR);
     const u = spawn(w, "lynx", -24, -30);
     const { ticks, trail } = drive(w, u, 24, -30);
-    // không bánh xe nào lăn vào bùn
-    for (const [x, z] of trail) expect(w.grid.kindAt(x, z), `(${x.toFixed(1)}, ${z.toFixed(1)})`).not.toBe("mud");
+    // không lội bùn: đường A* đi sát mép vũng, xe chạy theo quán tính ôm cua được chạm mép tối đa 2 tick (lõi mới 20/11/2026)
+    const inMud = trail.filter(([x, z]) => w.grid.kindAt(x, z) === "mud").length;
+    expect(inMud, "số tick tâm xe nằm trong bùn").toBeLessThanOrEqual(2);
     // lội thẳng: 24 m bùn + 24 m cỏ
     const straight = ((24 / TERRAIN.mud.speed.wheel + 24) / UNITS.lynx.speed) * 10;
     expect(ticks).toBeLessThan(straight * 0.9);

@@ -40,13 +40,16 @@ export function hashWorld(w: World): number {
     num(u.still);
     num(u.faceX);
     num(u.faceZ);
-    num(u.yieldX);
-    num(u.yieldZ);
-    num(u.yieldUntil);
-    num(u.yieldAway ? 1 : 0);
-    num(u.yieldBlock);
-    num(u.laneWait);
-    num(u.squad);
+    num(u.hx);
+    num(u.hz);
+    num(u.speed);
+    num(u.group);
+    num(u.slot);
+    num(u.avoidId);
+    num(u.avoidSide);
+    num(u.homeT);
+    num(u.progD);
+    num(u.progT);
     num(u.division);
     num(u.hitX);
     num(u.hitZ);
@@ -54,7 +57,6 @@ export function hashWorld(w: World): number {
     num(u.wing);
     num(u.wingLat);
     num(u.wingBack);
-    num(u.squeezeUntil);
     num(u.lot);
     num(u.formation === null ? -1 : Object.keys(FORMATIONS).indexOf(u.formation));
     num(u.aimX);
@@ -89,17 +91,17 @@ export function hashWorld(w: World): number {
     num(d.pivotAt);
     num(d.reformUntil);
   }
-  for (const sq of w.squads) {
-    num(sq.id);
-    num(sq.ids.length);
-    num(sq.cols);
-    num(sq.x);
-    num(sq.z);
-    num(sq.hx);
-    num(sq.hz);
-    num(sq.s);
-    num(sq.phaseT);
-    num(sq.rolling ? 1 : 0);
+  for (const g of w.groups) {
+    num(g.id);
+    num(g.mode === "march" ? 1 : 0);
+    for (const id of g.ids) num(id);
+    num(g.cols);
+    num(g.s);
+    num(g.v);
+    num(g.hold ? 1 : 0);
+    num(g.holdFrom);
+    num(g.noHold);
+    num(g.t);
   }
   for (const b of w.buildings) {
     num(b.id);
