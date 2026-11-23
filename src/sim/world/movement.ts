@@ -571,7 +571,7 @@ function setPath(this: World, u: Unit, x: number, z: number): boolean {
   const spec = UNITS[u.kind];
   [x, z] = this.clearGoal(u, x, z);
   const field = this.grid.field(spec.mobility ?? "wheel", !!spec.slowResist);
-  const layer = u.air === "none" ? this.anchorLayer(u.id) : undefined;
+  const layer = u.air === "none" ? this.anchorLayer(u.id, undefined, u.x, u.z, x, z) : undefined;
   let p = this.grid.findPath(u.x, u.z, x, z, field, pathHalf(u), layer);
   // quân hạ bệ vây kín đích / lối duy nhất: đi đường thường (va chạm lo phần còn lại)
   if (!p && layer) p = this.grid.findPath(u.x, u.z, x, z, field, pathHalf(u));
@@ -587,6 +587,8 @@ function setPath(this: World, u: Unit, x: number, z: number): boolean {
 
 /** In vật cản quân hạ bệ ra thêm chừng này mét quanh vòng thân (A* đi vòng chừa khoảng, ô gần thì tính chậm). */
 const ANCHOR_PAD = 4;
+/** Quân hạ bệ xa hình chữ nhật bao đoạn đường cần tìm hơn chừng này (m) thì không tính (đường vòng hiếm khi ra xa thế). */
+const ANCHOR_NEAR = 24;
 /** Khe chừa thêm giữa thân xe tìm đường và vòng thân quân hạ bệ (m). */
 const ANCHOR_MARGIN = 0.3;
 let ANC_CLEAR = new Float32Array(0);
@@ -603,7 +605,7 @@ let ANC_IGNORE: ReadonlySet<number> | null = null;
  * lệnh, không trong khối) là vật cản như nhà. Dựng một lần mỗi tick (`ignore` = các xe sắp cùng đi, dựng riêng). Không có quân nào
  * hạ bệ thì trả về undefined (tìm đường như thường). `self` = xe đang tìm đường (thân mình không chắn mình).
  */
-function anchorLayer(this: World, self: number, ignore?: ReadonlySet<number>): import("../grid").StandLayer | undefined {
+function anchorLayer(this: World, self: number, ignore?: ReadonlySet<number>, ax?: number, az?: number, bx?: number, bz?: number): import("../grid").StandLayer | undefined {
   const g = this.grid;
   if (ANC_WORLD !== this || ANC_TICK !== this.tick || ignore || ANC_IGNORE) {
     ANC_WORLD = this;
@@ -646,9 +648,26 @@ function anchorLayer(this: World, self: number, ignore?: ReadonlySet<number>): i
     ANC_DISCS = new Float64Array(discs);
   }
   if (!ANC_DISCS.length) return undefined;
+  // có cho đoạn A → B: chỉ giữ quân hạ bệ trong hình chữ nhật bao quanh (nới ANCHOR_NEAR m); không còn quân nào thì khỏi gắn lớp. Mỗi
+  // phép kiểm tầm nhìn khi nắn đường duyệt hết danh sách vòng in: gửi cả bản đồ thì A* chậm gấp 4 (AI hạ bệ rất nhiều Pháo)
+  let discs = ANC_DISCS;
+  if (ax !== undefined && az !== undefined && bx !== undefined && bz !== undefined) {
+    const x0 = Math.min(ax, bx) - ANCHOR_NEAR;
+    const x1 = Math.max(ax, bx) + ANCHOR_NEAR;
+    const z0 = Math.min(az, bz) - ANCHOR_NEAR;
+    const z1 = Math.max(az, bz) + ANCHOR_NEAR;
+    const keep: number[] = [];
+    for (let i = 0; i < ANC_DISCS.length; i += 4) {
+      const x = ANC_DISCS[i];
+      const z = ANC_DISCS[i + 1];
+      if (x >= x0 && x <= x1 && z >= z0 && z <= z1 && ANC_DISCS[i + 3] !== self) keep.push(x, z, ANC_DISCS[i + 2], ANC_DISCS[i + 3]);
+    }
+    if (!keep.length) return undefined;
+    discs = new Float64Array(keep);
+  }
   const u = this.byId.get(self);
   const need = (u && u.cat === "unit" ? bodyRadius(u.kind) : 0.71) + ANCHOR_MARGIN;
-  return { clear: ANC_CLEAR, owner: ANC_OWNER, self, need, discs: ANC_DISCS, maxExpand: Infinity };
+  return { clear: ANC_CLEAR, owner: ANC_OWNER, self, need, discs, maxExpand: Infinity };
 }
 
 /** Hướng lái theo đường: điểm phía trước trên ĐOẠN đang đi; gần khúc cua thì cắt sang đoạn sau chỉ khi đoạn cắt đủ rộng cho thân. */
@@ -789,6 +808,11 @@ function follow(this: World, u: Unit, vCap = Infinity): boolean {
 function unstick(this: World, u: Unit, gx: number, gz: number): boolean {
   if (u.stuck < STUCK_REPLAN || this.tick < u.repathAt) return false;
   u.repathAt = this.tick + sec(2);
+  // đường chỉ xét địa hình và quân hạ bệ: bị XE chắn thì đường mới y như cũ (tìm lại phí công, mỗi lần vài ms trên bản đồ lớn). Chỉ tìm
+  // lại khi mũi / đuôi xe chạm vách, hoặc có quân hạ bệ ở gần (lớp vật cản đã đổi)
+  const sg = u.speed < 0 ? -1 : 1;
+  const wall = this.bodyContact(u, u.x + u.hx * sg * 0.5, u.z + u.hz * sg * 0.5)[2] > 0;
+  if (!wall && !this.anchorLayer(u.id, undefined, u.x - 8, u.z - 8, u.x + 8, u.z + 8)) return false;
   // giữ bộ đếm kẹt và tiến độ: tìm lại đường không phải là đã tiến (không thì xe đối đầu trong khe tìm lại mãi, không bao giờ bỏ cuộc)
   const s = u.stuck;
   const pd = u.progD;

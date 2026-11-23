@@ -747,16 +747,18 @@ function createGroup(this: World, side: Side, units: readonly Unit[], x: number,
     gza = gx[1];
   }
   const field = this.grid.field(mob, false);
-  const layer = this.anchorLayer(-1, ignore);
+  const layer = this.anchorLayer(-1, ignore, sx0, sz0, gxa, gza);
   let p = this.grid.findPath(sx0, sz0, gxa, gza, field, half, layer);
-  // mép sau đám xe rơi vào TÚI (vài xe đứng trong hốc đá / sát mép bản đồ): đường từ đó phải vòng ra cửa túi. Thử thêm tâm và mép
-  // trước đám xe; lấy chỗ có tổng quãng nhỏ nhất = độ dài đường + phần xuất phát lên trước mép sau (xe sau phải đi bù phần đó), hơn
-  // POCKET_MARGIN m mới đổi (người dùng 17/11/2026: "đường đi ra bãi trống, không vòng qua túi")
-  if (p) {
-    let ahead = -Infinity;
-    for (const u of units) ahead = Math.max(ahead, (u.x - cx) * fx + (u.z - cz) * fz);
+  // mép sau đám xe rơi vào TÚI (vài xe đứng trong hốc đá / sát mép bản đồ): đường từ đó phải vòng ra cửa túi. Thử thêm mép trước đám
+  // xe; lấy chỗ có tổng quãng nhỏ hơn = độ dài đường + phần xuất phát lên trước mép sau (xe sau phải đi bù phần đó), hơn POCKET_MARGIN m
+  // mới đổi (người dùng 17/11/2026: "đường đi ra bãi trống, không vòng qua túi"). Chỉ thử khi đường từ mép sau đã VÒNG RÕ (dài hơn
+  // POCKET_DETOUR lần đường chim bay) VÀ mép sau, mép trước không nhìn thẳng thấy nhau theo bề ngang xe to nhất (có vách / đá chen giữa):
+  // bãi trống thì khỏi tìm đường thêm (AI ra lệnh đi liên tục, mỗi lần tìm đường gần 1 ms)
+  let ahead = -Infinity;
+  for (const u of units) ahead = Math.max(ahead, (u.x - cx) * fx + (u.z - cz) * fz);
+  if (p && polyLen(sx0, sz0, p) > POCKET_DETOUR * Math.sqrt(dist2(sx0, sz0, gxa, gza)) && !this.grid.los(sx0, sz0, cx + fx * ahead, cz + fz * ahead, half)) {
     let bestCost = polyLen(sx0, sz0, p);
-    for (const k of [0, ahead]) {
+    for (const k of [ahead]) {
       let px = cx + fx * k;
       let pz = cz + fz * k;
       if (this.grid.blockedAt(px, pz) || this.grid.clearanceAt(px, pz) < half) {
@@ -1023,6 +1025,8 @@ function goalCenter(this: World, ex: readonly number[], ez: readonly number[]): 
 
 /** Đường từ tâm đám xe phải ngắn hơn đường từ mép sau (đã trừ phần lùi) ít nhất chừng này (m) mới đổi chỗ xuất phát. */
 const POCKET_MARGIN = 5;
+/** Đường từ mép sau dài hơn chừng này lần đường chim bay thì mới thử chỗ xuất phát khác. */
+const POCKET_DETOUR = 1.08;
 
 /** Chiều dài đường gấp khúc từ (x, z) qua các điểm `p`. */
 function polyLen(x: number, z: number, p: readonly number[]): number {
@@ -1665,13 +1669,13 @@ function toSlot(this: World, g: Group, u: Unit, i: number): void {
   const ex = sx - u.x;
   const ez = sz - u.z;
   const d2 = ex * ex + ez * ez;
-  // không nhìn thẳng thấy ô (vách, khúc cua) mà ô xa, hoặc ô ĐỨNG YÊN (ô cuối, ô chờ: ô sau vách thềm cách 7 m cũng phải đi vòng, lái
-  // thẳng là húc vách mãi): tìm đường A* tới ô, mỗi giây tìm lại; không tìm được thì lái thẳng (trượt dọc vách) chờ lần tìm sau. Ô đang
-  // chạy ở gần khuất sau góc thì sắp ló ra, khỏi tìm
-  if ((d2 > SLOT_FAR * SLOT_FAR || g.doneT >= 0 || g.vs[i] < 0.15) && d2 > 1 && !this.grid.los(u.x, u.z, sx, sz, wallRadius(u.kind))) {
+  // không nhìn thẳng thấy ô (vách, khúc cua) mà ô xa, hoặc là Ô CUỐI (neo đã tới: ô sau vách thềm cách 7 m cũng phải đi vòng, lái thẳng
+  // là húc vách mãi): tìm đường A* tới ô, mỗi giây tìm lại (không tìm được thì 3 s); không có đường thì lái thẳng (trượt dọc vách) chờ
+  // lần tìm sau. Ô đang chạy ở gần khuất sau góc thì sắp ló ra, khỏi tìm
+  if ((d2 > SLOT_FAR * SLOT_FAR || g.doneT >= 0) && d2 > 1 && !this.grid.los(u.x, u.z, sx, sz, wallRadius(u.kind))) {
     if (this.tick >= u.repathAt) {
-      this.setPath(u, sx, sz);
-      u.repathAt = this.tick + sec(1);
+      const ok = this.setPath(u, sx, sz);
+      u.repathAt = this.tick + sec(ok ? 1 : 3);
     }
     if (u.path.length && u.pathI * 2 < u.path.length) this.follow(u);
     else this.drive(u, sx, sz, false);
