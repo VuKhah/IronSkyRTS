@@ -45,9 +45,14 @@ export function hashWorld(w: World): number {
     num(u.speed);
     num(u.group);
     num(u.slot);
+    num(u.gprio);
     num(u.avoidId);
     num(u.avoidSide);
+    num(u.avX);
+    num(u.avZ);
+    num(u.avT);
     num(u.homeT);
+    num(u.going ? 1 : 0);
     num(u.progD);
     num(u.progT);
     num(u.division);

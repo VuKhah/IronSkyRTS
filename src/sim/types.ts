@@ -84,15 +84,31 @@ export interface Unit {
   group: number;
   slot: number;
   /**
+   * Ưu tiên trong khối (0 = cao nhất): ô nào đang ở TRƯỚC trên đường đi của khối thì ưu tiên hơn (hành quân: theo độ lùi của ô trong
+   * mẫu đang dùng; tới đích: theo hàng của ô cuối). Xe ưu tiên hơn đang đi được đẩy dạt đồng đội ưu tiên thấp (`contact.ts`).
+   */
+  gprio: number;
+  /**
    * NÉ XE (`avoid`, lõi mới 20/11/2026): xe đang lách quanh xe nào (mã, 0 = không) và về phía nào (+1 phải, −1 trái). Nhớ phía
    * đã chọn tới khi qua hẳn xe đó, để không lắc qua lại.
    */
   avoidId: number;
   avoidSide: number;
+  /** Hướng lái ra của tầng né tick trước (`avoid`) và tick đó: hướng mới trộn với hướng cũ (không lắc theo từng tick). */
+  avX: number;
+  avZ: number;
+  avT: number;
   /** Số tick liền xe đứng (không lệnh) bị đẩy lệch ô quá `HOME_SLACK`: đủ `HOME_DELAY` thì tự lái về ô. */
   homeT: number;
   /** Tick gần nhất xe được lái (`drive`): tick nào không được lái thì xe hãm dần theo quán tính (`coast`). */
   driveT: number;
+  /**
+   * XE ĐANG ĐI (lõi 23/11/2026, kế hoạch "di chuyển như mọi người" B1): tick này xe được lái và muốn tiến tới (không chỉ đứng
+   * đúng ô / quay mặt). `wasGoing` = trạng thái đó ở tick trước (tầng lái đọc số này: không phụ thuộc thứ tự duyệt xe). Xe cùng phe
+   * KHÔNG đi (và không hạ bệ) là xe đứng: xe đi không né, không phanh vì nó, chạm thì nó dạt hẳn sang (`contact.ts`).
+   */
+  going: boolean;
+  wasGoing: boolean;
   /** Thuộc sư đoàn nào (`Division.id`, 0 = xe lẻ). Bền hơn `group`: còn giữ sau khi tới nơi. */
   division: number;
   /** Gốc phát của phát đạn trúng xe gần nhất (`lastHit`): tướng sư đoàn biết bị bắn từ đâu. */
@@ -538,4 +554,6 @@ export interface Group {
   doneT: number;
   /** Số lần đo liền thấy lối phía trước đủ rộng để giãn thêm cột (giãn phải chờ ổn định, co thì co ngay). */
   wideFor: number;
+  /** Tick lần đổi số cột gần nhất (giãn phải cách lần đổi trước ít nhất COLS_DWELL). */
+  colsT: number;
 }

@@ -33,6 +33,24 @@ export function dcos(x: number): number {
   return dsin(x + HALF_PI);
 }
 
+/**
+ * Góc (rad, 0…π) giữa hai hướng đơn vị a, b: atan2(|a × b|, a · b) tự viết (thu gọn về [0, 1] rồi đa thức xấp xỉ atan, sai số
+ * ~4e-4 rad). Chỉ dùng để ƯỚC thời gian quay (lùi hay tiến), không dùng để quay thân.
+ */
+export function dangle(ax: number, az: number, bx: number, bz: number): number {
+  const c = ax * bx + az * bz;
+  let s = ax * bz - az * bx;
+  if (s < 0) s = -s;
+  const ac = c < 0 ? -c : c;
+  // atan(y / x) với 0 ≤ y / x ≤ 1, đổi chỗ khi y > x
+  const swap = s > ac;
+  const t = swap ? (s > 1e-12 ? ac / s : 0) : ac > 1e-12 ? s / ac : 0;
+  const t2 = t * t;
+  let r = t * (0.9998660 + t2 * (-0.3302995 + t2 * (0.1801410 + t2 * (-0.0851330 + t2 * 0.0208351))));
+  if (swap) r = HALF_PI - r;
+  return c < 0 ? PI - r : r;
+}
+
 export function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }

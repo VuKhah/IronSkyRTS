@@ -129,10 +129,8 @@ describe("tiểu đội bộ binh chạm mềm (16/11/2026)", () => {
     spawn(w, "sniper", x, z - 3.5);
     for (let k = 0; k < sec(2); k++) w.step([]);
     const t = spawn(w, "titan", x - 20, z);
-    // hai tiểu đội cách nhau 7 m: hai Titan đứng thế thì phải đi vòng, hai tiểu đội thì Titan đi thẳng giữa (lõi mới 20/11/2026:
-    // đường xuyên đội đứng chỉ tính chồng mềm với bộ binh, `crossesStanding`)
+    // hai tiểu đội cách nhau 7 m: Titan đi thẳng giữa (B3 23/11/2026: tìm đường không xét xe đứng, chỉ quân hạ bệ)
     expect(w.setPath(t, x + 20, z)).toBe(true);
-    expect(w.crossesStanding(t, t.path)).toBe(false);
     expect(Math.max(...t.path.filter((_, i) => i % 2 === 1).map((v) => Math.abs(v - z)))).toBeLessThan(3);
   });
 });

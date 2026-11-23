@@ -589,7 +589,8 @@ function createGroup(this: World, side: Side, units: readonly Unit[], x: number,
     noHold: -1000,
     t: 0,
     doneT: -1,
-    wideFor: 0
+    wideFor: 0,
+    colsT: -1000
   };
   // tốc độ khối và quán tính của neo
   let slowest = Infinity;
@@ -705,7 +706,7 @@ function createGroup(this: World, side: Side, units: readonly Unit[], x: number,
     gxa = gx[0];
     gza = gx[1];
   }
-  const p = this.grid.findPath(sx0, sz0, gxa, gza, this.grid.field(mob, false), half);
+  const p = this.grid.findPath(sx0, sz0, gxa, gza, this.grid.field(mob, false), half, this.anchorLayer(-1, ignore));
   if (!p) {
     // không có đường chung cho xe to nhất: mỗi xe tự tìm đường tới ô cuối
     const perm = this.assignSlots(unitsInOrder, ex, ez);
@@ -1072,8 +1073,34 @@ function memberAt(w: World, g: Group, i: number): Unit | null {
   return u && u.cat === "unit" && u.hp > 0 && u.group === g.id ? u : null;
 }
 
+/** Tính lại ưu tiên trong khối mỗi chừng này tick. */
+const PRIO_EVERY = 5;
+const PRIO_KEY: number[] = [];
+const PRIO_IDX: number[] = [];
+/**
+ * Ưu tiên trong khối (`Unit.gprio`): ô ở trước trên đường đi của khối thì ưu tiên hơn. Hành quân (neo chưa tới cuối): theo độ lùi
+ * của ô trong mẫu đang dùng (`backS`; co hàng qua lối hẹp thì theo đúng thứ tự cột); đi thẳng tới ô / neo đã tới: theo hàng của ô
+ * cuối (hàng trước trước). Bằng nhau thì theo số ô (tất định, hai phe soi gương như nhau).
+ */
+function groupPriority(this: World, g: Group): void {
+  const n = g.ids.length;
+  PRIO_KEY.length = 0;
+  PRIO_IDX.length = 0;
+  const end = g.mode === "direct" || g.doneT >= 0;
+  for (let i = 0; i < n; i++) {
+    PRIO_IDX.push(i);
+    PRIO_KEY.push(end ? -((g.endX[i] - g.goalX) * g.faceX + (g.endZ[i] - g.goalZ) * g.faceZ) : g.backS[i]);
+  }
+  PRIO_IDX.sort((a, b) => PRIO_KEY[a] - PRIO_KEY[b] || a - b);
+  for (let r = 0; r < n; r++) {
+    const u = memberAt(this, g, PRIO_IDX[r]);
+    if (u) u.gprio = r;
+  }
+}
+
 function stepGroup(this: World, g: Group): void {
   g.t++;
+  if ((g.t - 1) % PRIO_EVERY === 0) this.groupPriority(g);
   let alive = 0;
   for (let i = 0; i < g.ids.length; i++) if (memberAt(this, g, i)) alive++;
   if (alive === 0) {
@@ -1118,7 +1145,8 @@ function stepGroup(this: World, g: Group): void {
 /** Neo một tick: co / giãn cột, tốc độ (khối, đích, xe tụt, ô ở mép cua), rồi đặt ô mới của từng xe. */
 function marchAnchor(this: World, g: Group): void {
   const L = g.cum[g.cum.length - 1];
-  if ((g.t + g.id) % 3 === 0 && g.s < L) this.fitWidth(g);
+  // khối đã bắt đầu mở ra thành hình cuối (`refitEnd`) thì thôi co / giãn: hình cuối tự chọn số cột vừa chỗ (`fitEnd`)
+  if ((g.t + g.id) % 3 === 0 && g.s < L && !g.endFit) this.fitWidth(g);
   // lệch ngang / lùi của từng ô đổi dần tới mẫu mới (co / giãn cột, co sát vách): khối biến hình êm, ô không nhảy cóc. Ô chỉ biến
   // hình bằng PHẦN TỐC ĐỘ CÒN DƯ của xe nó (xe đang chạy hết sức thì ô dịch chậm lại, tối thiểu MORPH_MIN): ô dịch nhanh hơn sức xe thì
   // bộ giới hạn bên dưới phải phanh gấp cả khối, xe đuổi ô lao quá ô rồi hãm tụt, cả khối tăng–hãm liên tục
@@ -1234,7 +1262,33 @@ function marchAnchor(this: World, g: Group): void {
   }
 }
 
-/** Co / giãn số cột theo bề rộng lối trên vệt phía trước (co ngay, giãn khi đủ rộng một lúc, cả quãng khối đang chiếm cũng đủ rộng). */
+/** Giãn cột: lối phải rộng hơn bề ngang mẫu mới thêm chừng này (m), và cách lần đổi cột trước ít nhất COLS_DWELL (chống bật tắt). */
+const WIDEN_HYST = 1;
+const COLS_DWELL = sec(2);
+
+/**
+ * Nửa bề ngang ƯỚC của khối c cột: c xe to nhất của khối đứng cạnh nhau (cận trên của mọi hàng c xe; ổn định, chỉ phụ thuộc khối
+ * gồm những xe nào: đo theo mẫu sắp lại từng lần thì số đo nhảy, khối giãn rồi co ngay 0,3 s sau).
+ */
+const HW_R: number[] = [];
+function halfWOf(this: World, g: Group, c: number): number {
+  HW_R.length = 0;
+  for (let i = 0; i < g.ids.length; i++) {
+    const u = memberAt(this, g, i);
+    if (u) HW_R.push(bodyRadius(u.kind));
+  }
+  HW_R.sort((a, b) => b - a);
+  let w = 0;
+  const k = Math.min(c, HW_R.length);
+  for (let i = 0; i < k; i++) w += 2 * HW_R[i];
+  return (w + (k - 1) * COL_GAP) / 2;
+}
+
+/**
+ * Co / giãn số cột theo bề rộng lối trên vệt phía trước. CO NGAY khi bề ngang ước của số cột đang dùng không lọt lối phía trước;
+ * GIÃN chậm và có độ trễ: lối phía trước và cả quãng khối đang chiếm phải rộng hơn bề ngang mẫu mới WIDEN_HYST m, đo liền
+ * WIDEN_CHECKS lần, cách lần đổi trước COLS_DWELL (bộ điều khiển hai ngưỡng: không bật tắt qua lại ở mép lối).
+ */
 function fitWidth(this: World, g: Group): void {
   let front = Infinity;
   let rear = -Infinity;
@@ -1244,9 +1298,10 @@ function fitWidth(this: World, g: Group): void {
   }
   const L = g.cum[g.cum.length - 1];
   const sf = g.s - front;
+  // lấy mẫu ở các mốc CỐ ĐỊNH trên đường (bội số 2 m): mốc trượt theo cửa sổ thì số đo cạnh vách nhảy hơn 1 m giữa hai lần đo
   const minClear = (a: number, b: number): number => {
     let m = Infinity;
-    for (let s = Math.max(0, a); s <= Math.min(L, b); s += 2) {
+    for (let s = Math.ceil(Math.max(0, a) / 2) * 2; s <= Math.min(L, b); s += 2) {
       const [px, pz] = pathPoint(g, s);
       const c = this.grid.clearanceAt(px, pz);
       if (c < m) m = c;
@@ -1256,28 +1311,35 @@ function fitWidth(this: World, g: Group): void {
   const ahead = minClear(sf - 2, sf + LOOK_AHEAD);
   let fit = 1;
   for (let c = g.colsMax; c >= 1; c--)
-    if (this.widthFor(g, c) + WIDTH_MARGIN <= ahead) {
+    if (this.halfWOf(g, c) + WIDTH_MARGIN <= ahead) {
       fit = c;
       break;
     }
   if (fit < g.cols) {
     this.relayout(g, fit, false);
     g.wideFor = 0;
-  } else if (fit > g.cols) {
-    // giãn: quãng hàng đầu vừa đi qua (BODY_CHECK m) cũng phải đủ rộng; đuôi đoàn còn trong lối hẹp thì ô tự co lệch ngang theo vách
-    const body = minClear(Math.max(g.s - rear - 2, sf - BODY_CHECK), sf);
-    let fitB = 1;
-    for (let c = fit; c >= 1; c--)
-      if (this.widthFor(g, c) + WIDTH_MARGIN <= body) {
-        fitB = c;
-        break;
-      }
-    if (fitB > g.cols && ++g.wideFor >= WIDEN_CHECKS) {
-      // giãn hết cỡ mà còn đủ đường thì xếp lại theo vai; gần đích thì giữ thứ tự đang đi (không xáo đội ngay trước khi dừng)
-      this.relayout(g, fitB, L - g.s > REFORM_DIST);
-      g.wideFor = 0;
+    g.colsT = g.t;
+    return;
+  }
+  if (fit === g.cols || g.t - g.colsT < COLS_DWELL) {
+    g.wideFor = 0;
+    return;
+  }
+  // giãn: quãng hàng đầu vừa đi qua (BODY_CHECK m) và phía trước đều phải dư WIDEN_HYST; đuôi đoàn còn trong lối hẹp thì ô tự co
+  // lệch ngang theo vách
+  const room = Math.min(ahead, minClear(Math.max(g.s - rear - 2, sf - BODY_CHECK), sf));
+  let fitB = g.cols;
+  for (let c = fit; c > g.cols; c--)
+    if (this.halfWOf(g, c) + WIDTH_MARGIN + WIDEN_HYST <= room) {
+      fitB = c;
+      break;
     }
-  } else g.wideFor = 0;
+  if (fitB > g.cols && ++g.wideFor >= WIDEN_CHECKS) {
+    // giãn hết cỡ mà còn đủ đường thì xếp lại theo vai; gần đích thì giữ thứ tự đang đi (không xáo đội ngay trước khi dừng)
+    this.relayout(g, fitB, L - g.s > REFORM_DIST);
+    g.wideFor = 0;
+    g.colsT = g.t;
+  } else if (fitB <= g.cols) g.wideFor = 0;
 }
 
 /**
@@ -1500,8 +1562,10 @@ const methods = {
   slotAt,
   updateGroups,
   stepGroup,
+  groupPriority,
   marchAnchor,
   fitWidth,
+  halfWOf,
   refitEnd,
   finishGroup,
   leaveGroup,

@@ -192,6 +192,8 @@ export class World {
       u.phz = u.hz;
       u.moved = false;
       u.packing = false;
+      u.wasGoing = u.going;
+      u.going = false;
     }
     if (this.sandbox)
       for (const st of this.sides) {

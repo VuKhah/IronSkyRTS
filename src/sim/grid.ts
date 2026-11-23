@@ -48,6 +48,8 @@ export interface StandLayer {
    * 1,6 m). Bỏ trống = tra theo ô như cũ.
    */
   discs?: Float64Array;
+  /** Số ô A* được duyệt tối đa (mặc định STAND_SEARCH_MAX). Lớp quân hạ bệ toàn bản đồ (`World.anchorLayer`) không giới hạn. */
+  maxExpand?: number;
 }
 
 /** A* có lớp xe đứng mà duyệt quá chừng này ô thì thôi (đích bị xe đứng vây kín): người gọi tìm lại không có lớp này. */
@@ -710,7 +712,7 @@ export class Grid {
       const cur = this.pop();
       if (this.closedGen[cur] === gen) continue;
       this.closedGen[cur] = gen;
-      if (SC && ++expanded > STAND_SEARCH_MAX) return null;
+      if (SC && ++expanded > (stand?.maxExpand ?? STAND_SEARCH_MAX)) return null;
       if (cur === t) {
         found = true;
         break;

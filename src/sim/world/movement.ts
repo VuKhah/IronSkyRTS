@@ -8,7 +8,7 @@
  * Trên `drive()`: bám đường A* (`follow`), đuổi mục tiêu (`chase`). Tầng khối (`group.ts`) đặt đích là ô của xe.
  */
 import { RULES, UNITS } from "../content";
-import { clamp, dcos, dist2, dsin, TAU, turnToward } from "../fmath";
+import { clamp, dangle, dcos, DEG, dist2, dsin, PI, TAU, turnToward } from "../fmath";
 import type { Target, Unit } from "../types";
 import { DT, sec, accelOf, brakeOf, bodyRadius, wallRadius, isSquad, softOverlap, GOAL_SHIFT, PIVOT_COS, ALIGNED_COS, TMP, traverseStep } from "./shared";
 import { World } from "./core";
@@ -18,9 +18,16 @@ const ARRIVE_R = 0.3;
 /** Gần đích chừng này (m), lệch dọc thân không quá NEAR_ALONG và đã gần như đứng thì cũng là tới (khỏi xoay vì vài tấc lệch ngang). */
 const NEAR_R = 0.8;
 const NEAR_ALONG = 0.3;
-/** Đích ở sau lưng và gần hơn chừng này (m) thì lùi thay vì quay đầu, tốc độ × REVERSE_SPEED. */
+/**
+ * LÙI (B6, 23/11/2026; Spring `WantReverse`): đích gần hơn chừng này (m) thì so THỜI GIAN tới đích bằng lùi và bằng tiến (quay thân
+ * theo `turnRate` + chạy, lùi chạy × REVERSE_SPEED, cộng thời gian quay về hướng mặt được giao khi tới), lùi nếu nhanh hơn rõ
+ * (REV_PICK; đang lùi thì giữ lùi tới khi tiến nhanh hơn rõ, REV_KEEP: không đổi chiều qua lại). Xe bị đẩy lệch ô vài mét về phía
+ * sau thì lùi về, giữ mặt hướng về phía địch; lệnh đi ngược chiều thì quay đầu (hướng mặt mới là hướng đi).
+ */
 export const REVERSE_MAX = 8;
 const REVERSE_SPEED = 0.5;
+const REV_PICK = 0.85;
+const REV_KEEP = 1.25;
 /** Lệch hướng ≤ 20° thì chạy hết tốc; ≥ 65° thì đứng xoay tại chỗ (không nhích tới: nhích mà lệch nhiều là đâm vào vách / xe bên cạnh); ở giữa thì vừa chạy chậm vừa quay (cua). */
 const FULL_COS = 0.9396926207859084;
 const STOP_COS = 0.42261826174069944;
@@ -44,8 +51,8 @@ const FOLLOW_GAP = 0.8;
 const FOLLOW_T = 0.8;
 /** Gặp vật cản trong làn: dừng cách thân nó chừng này (m) nếu chưa lách được. */
 const STOP_GAP = 0.3;
-/** Xe đứng cùng phe chắn làn mà chưa lách được: bò tới đẩy nhẹ nó dạt sang (m/s), không đứng chờ nhau mãi. */
-const NUDGE_V = 0.8;
+/** Xe cùng phe chậm hơn chừng này (m/s) là đang đứng ì: không né, không phanh vì nó (va chạm đẩy nó dạt, `contact.ts`). */
+export const STALL_V = 0.3;
 /** Xe phía trước đi cùng chiều mà chậm hơn chừng này phần tốc độ mình muốn thì được vượt (lách như vật cản). */
 const OVERTAKE_K = 0.7;
 /** Hai xe ngược chiều lệch nhau quá chừng này (m) về phía trái của nhau thì lách theo phía đó thay vì giữ phải. */
@@ -122,13 +129,25 @@ function drive(this: World, u: Unit, gx: number, gz: number, stop: boolean, vCap
     u.still = Math.min(u.still, sec(dep.time)) - 1;
     u.packing = true;
     u.speed = 0;
+    u.going = true;
     return false;
   }
   const dx = d > 1e-6 ? ex / d : u.hx;
   const dz = d > 1e-6 ? ez / d : u.hz;
-  const fwd = dx * u.hx + dz * u.hz;
-  // LÙI: đích sau lưng (lệch > ~115°) và gần; đang lùi thì giữ lùi tới khi đích lệch < ~70° (không đổi chiều qua lại)
-  const rev = stop && d < revMax && (u.speed < -0.05 ? fwd < 0.35 : fwd < -0.42);
+  // LÙI hay TIẾN: theo thời gian tới đích (xem REVERSE_MAX)
+  let rev = false;
+  if (stop && d < revMax && d > 0.05) {
+    const om = (spec.turnRate ?? 90) * DEG;
+    const vf = this.speedOf(u);
+    const af = dangle(u.hx, u.hz, dx, dz);
+    let tf = af / om + d / vf;
+    let tr = (PI - af) / om + d / (vf * REVERSE_SPEED);
+    if (u.faceX !== 0 || u.faceZ !== 0) {
+      tf += dangle(dx, dz, u.faceX, u.faceZ) / om;
+      tr += dangle(-dx, -dz, u.faceX, u.faceZ) / om;
+    }
+    rev = u.speed < -0.05 ? tr < tf * REV_KEEP : tr < tf * REV_PICK;
+  }
   const sg = rev ? -1 : 1;
   let wx = dx * sg;
   let wz = dz * sg;
@@ -180,6 +199,8 @@ function drive(this: World, u: Unit, gx: number, gz: number, stop: boolean, vCap
   if (vCap < vt) vt = vCap;
   // tốc độ tầng trên giao (trước khi né xe kìm lại): đo "kẹt" so với số này
   const want = vt;
+  // muốn tiến tới (không chỉ đứng ô / quay mặt): là XE ĐI, xe cùng phe đang đứng phải dạt cho nó (`contact.ts`)
+  if (want > 0.05) u.going = true;
   if (cap < vt) vt = cap;
   if (stop) {
     const dd = d - 0.05 > 0 ? d - 0.05 : 0;
@@ -295,7 +316,33 @@ function gateLat(n: number, end: number, margin: number, side: number, maxShift:
  * Đích "dừng" gần hơn xe kia thì không né (xe tới ô cạnh xe khác không phải phanh vì xe đứng sau ô).
  * Ghi hướng lái vào `AV`, trả về trần tốc độ (m/s).
  */
+/** Hướng lái của tầng né trộn chừng này phần hướng tick trước (Spring trộn 70%; Pottinger: "đừng quyết lại mỗi tick"). */
+const STEER_KEEP = 0.6;
+
+/**
+ * NÉ XE (tầng 2): `avoidRaw` chọn hướng lách / trần tốc độ cho tick này, rồi hướng lái được LÀM MƯỢT với hướng tick trước (xe
+ * không lắc mũi theo từng tick khi xe chắn đổi qua lại trong đám đông). Ghi hướng lái vào `AV`, trả về trần tốc độ (m/s).
+ */
 function avoid(this: World, u: Unit, wx: number, wz: number, dGoal: number, stop: boolean, vWant: number): number {
+  const cap = this.avoidRaw(u, wx, wz, dGoal, stop, vWant);
+  if (u.avT === this.tick - 1 && u.avX * AV.x + u.avZ * AV.z > 0) {
+    let mx = u.avX * STEER_KEEP + AV.x * (1 - STEER_KEEP);
+    let mz = u.avZ * STEER_KEEP + AV.z * (1 - STEER_KEEP);
+    const l = Math.sqrt(mx * mx + mz * mz);
+    if (l > 1e-6) {
+      mx /= l;
+      mz /= l;
+      AV.x = mx;
+      AV.z = mz;
+    }
+  }
+  u.avX = AV.x;
+  u.avZ = AV.z;
+  u.avT = this.tick;
+  return cap;
+}
+
+function avoidRaw(this: World, u: Unit, wx: number, wz: number, dGoal: number, stop: boolean, vWant: number): number {
   AV.x = wx;
   AV.z = wz;
   const ru = bodyRadius(u.kind);
@@ -320,6 +367,12 @@ function avoid(this: World, u: Unit, wx: number, wz: number, dGoal: number, stop
   for (let i = 0; i < near.length; i++) {
     const v = near[i];
     if (v === u) continue;
+    // XE ĐỨNG CÙNG PHE (tick trước không đi, hoặc muốn đi mà đang đứng ì < STALL_V; không hạ bệ): không né, không phanh: chạm thì nó
+    // dạt sang (`contact.ts`; Spring `GetObstacleAvoidanceDir` cũng bỏ qua xe cùng phe đứng yên). Phanh chờ cả xe muốn đi mà đang
+    // đứng là cả đám đứng chờ nhau mãi. Bộ binh vẫn né xe đứng (tiểu đội không xô được xe)
+    if (v.side === u.side && (!v.wasGoing || (v.speed < STALL_V && v.speed > -STALL_V)) && (v.group !== 0 || !this.anchored(v)) && (!softU || isSquad(v.kind))) continue;
+    // cùng khối, ô của nó sau ô mình (ưu tiên thấp hơn): nó dạt cho mình (`contact.ts`), không né, không phanh vì nó
+    if (u.group !== 0 && v.group === u.group && v.gprio > u.gprio && (!softU || isSquad(v.kind))) continue;
     const rv = bodyRadius(v.kind);
     const ex = v.x - u.x;
     const ez = v.z - u.z;
@@ -346,9 +399,7 @@ function avoid(this: World, u: Unit, wx: number, wz: number, dGoal: number, stop
           if (c < cap) cap = c > 0 ? c : 0;
         } else {
           const room = gap - STOP_GAP;
-          let c = room > 0 ? Math.sqrt(2 * brakeOf(u.kind) * room) : 0;
-          // xe đứng cùng phe (không hạ bệ đóng quân): bò tới đẩy nhẹ cho nó dạt sang
-          if (c < NUDGE_V && v.side === u.side && (v.speed < 0 ? -v.speed : v.speed) < 0.3 && !(v.order === "idle" && !v.group && this.anchored(v))) c = NUDGE_V;
+          const c = room > 0 ? Math.sqrt(2 * brakeOf(u.kind) * room) : 0;
           if (c < cap) cap = c;
         }
       }
@@ -391,11 +442,6 @@ function avoid(this: World, u: Unit, wx: number, wz: number, dGoal: number, stop
   }
   if (!best) {
     u.avoidId = 0;
-    return cap;
-  }
-  // ĐÃ KẸT mà đường vòng quá xa (`unstick` đặt avoidSide = 0): xe đứng cùng phe chắn lối thì không lách nữa, đi thẳng đẩy nhẹ qua
-  if (u.stuck >= STUCK_REPLAN && u.avoidSide === 0 && best.side === u.side && (best.speed < 0 ? -best.speed : best.speed) < 0.3 && !this.anchored(best)) {
-    u.avoidId = best.id;
     return cap;
   }
   // phía lách: XE NGƯỢC CHIỀU thì cả hai cùng GIỮ BÊN PHẢI (cùng một luật nên luôn tự tránh nhau, đối xứng hai phe), trừ khi xe kia
@@ -504,17 +550,15 @@ function halt(this: World, u: Unit): void {
 
 function setPath(this: World, u: Unit, x: number, z: number): boolean {
   // tìm đường nhanh nhất theo kiểu xe (bánh / xích) và địa hình, đúng bề ngang thân (bảng khoảng trống của lưới); đích sát vách
-  // thì dời ra cho vừa thân
+  // thì dời ra cho vừa thân. Xe với xe là việc cục bộ (né, đẩy dạt: B3 23/11/2026, "mọi người" đều vậy): tìm đường chỉ xét địa hình,
+  // nhà và QUÂN ĐÃ HẠ BỆ (không đẩy được, như vật cản tĩnh; Spring: quân "pushResistant" đứng yên dùng mặt nạ công trình)
   const spec = UNITS[u.kind];
   [x, z] = this.clearGoal(u, x, z);
   const field = this.grid.field(spec.mobility ?? "wheel", !!spec.slowResist);
-  let p = this.grid.findPath(u.x, u.z, x, z, field, pathHalf(u));
-  // ĐI VÒNG ĐỘI ĐANG ĐỨNG (người dùng duyệt 18/11/2026): đường xuyên qua xe đứng thì thử đường coi chúng là vật cản; vòng không dài
-  // hơn DETOUR_MAX lần thì đi vòng (không húc qua đội hình). Vòng quá xa (cầu, khe hẹp) thì giữ đường thẳng, xe đứng bị đẩy nhẹ
-  if (p && u.air === "none" && this.crossesStanding(u, p)) {
-    const q = this.detourPath(u, x, z);
-    if (q && pathLen(u.x, u.z, q) <= DETOUR_MAX * pathLen(u.x, u.z, p)) p = q;
-  }
+  const layer = u.air === "none" ? this.anchorLayer(u.id) : undefined;
+  let p = this.grid.findPath(u.x, u.z, x, z, field, pathHalf(u), layer);
+  // quân hạ bệ vây kín đích / lối duy nhất: đi đường thường (va chạm lo phần còn lại)
+  if (!p && layer) p = this.grid.findPath(u.x, u.z, x, z, field, pathHalf(u));
   u.path = p ?? [];
   u.pathFromX = u.x;
   u.pathFromZ = u.z;
@@ -525,118 +569,67 @@ function setPath(this: World, u: Unit, x: number, z: number): boolean {
   return p !== null;
 }
 
-/** Đường vòng qua đội đang đứng dài tối đa chừng này lần đường xuyên thì đi vòng (người dùng chốt 18/11/2026: < 1,75). */
-const DETOUR_MAX = 1.75;
-/** Đường vòng: xe đứng trong chừng này mét quanh xe tính là vật cản; in vật cản ra thêm DETOUR_PAD m quanh thân. */
-const DETOUR_R = 30;
-const DETOUR_PAD = 4;
-let DET_CLEAR = new Float32Array(0);
-let DET_OWNER = new Int32Array(0);
-const DET_TOUCHED: number[] = [];
+/** In vật cản quân hạ bệ ra thêm chừng này mét quanh vòng thân (A* đi vòng chừa khoảng, ô gần thì tính chậm). */
+const ANCHOR_PAD = 4;
+/** Khe chừa thêm giữa thân xe tìm đường và vòng thân quân hạ bệ (m). */
+const ANCHOR_MARGIN = 0.3;
+let ANC_CLEAR = new Float32Array(0);
+let ANC_OWNER = new Int32Array(0);
+const ANC_TOUCHED: number[] = [];
+let ANC_TICK = -1;
+let ANC_DISCS = new Float64Array(0);
+let ANC_IGNORE: ReadonlySet<number> | null = null;
 
 /**
- * ĐƯỜNG VÒNG QUA XE ĐỨNG (gọi khi xe bị chắn quá lâu, không chạy mỗi tick): tìm đường A* tới (gx, gz) coi các xe mặt đất đang
- * đứng gần (tốc độ ≈ 0) là vật cản, chừa đúng bán kính thân + khe. Không tìm được (đích bị vây kín) thì giữ đường cũ, trả về false.
+ * LỚP QUÂN ĐÃ HẠ BỆ cho tìm đường (B3): mọi quân mặt đất đã hạ bệ xong ở chỗ đóng quân (Pháo, Tên Lửa Loạt, SkyGuard đứng đủ lâu, không
+ * lệnh, không trong khối) là vật cản như nhà. Dựng một lần mỗi tick (`ignore` = các xe sắp cùng đi, dựng riêng). Không có quân nào
+ * hạ bệ thì trả về undefined (tìm đường như thường). `self` = xe đang tìm đường (thân mình không chắn mình).
  */
-function detour(this: World, u: Unit, gx: number, gz: number): boolean {
-  const p = this.detourPath(u, gx, gz);
-  if (!p) return false;
-  u.path = p;
-  u.pathFromX = u.x;
-  u.pathFromZ = u.z;
-  u.pathI = 0;
-  return true;
-}
-
-/** Đường A* tới (gx, gz) coi các xe đang đứng gần là vật cản (xem `detour`); null nếu không có xe đứng nào hoặc không tìm được. */
-function detourPath(this: World, u: Unit, gx: number, gz: number): number[] | null {
+function anchorLayer(this: World, self: number, ignore?: ReadonlySet<number>): import("../grid").StandLayer | undefined {
   const g = this.grid;
-  if (DET_CLEAR.length !== g.size) {
-    DET_CLEAR = new Float32Array(g.size).fill(Infinity);
-    DET_OWNER = new Int32Array(g.size).fill(-1);
-    DET_TOUCHED.length = 0;
-  }
-  for (const i of DET_TOUCHED) {
-    DET_CLEAR[i] = Infinity;
-    DET_OWNER[i] = -1;
-  }
-  DET_TOUCHED.length = 0;
-  const discs: number[] = [];
-  const near = this.nearGround(u.x, u.z, DETOUR_R);
-  for (let k = 0; k < near.length; k++) {
-    const v = near[k];
-    if (v === u || (v.speed < 0 ? -v.speed : v.speed) > 0.3) continue;
-    if (dist2(u.x, u.z, v.x, v.z) > DETOUR_R * DETOUR_R) continue;
-    // tiểu đội bộ binh với xe chạm mềm: vòng in nhỏ đi phần được chồng
-    const r = bodyRadius(v.kind) - softOverlap(u.kind, v.kind);
-    if (r <= 0.2) continue;
-    discs.push(v.x, v.z, r, v.id);
-    const R = r + DETOUR_PAD;
-    const c0 = g.colOf(v.x - R, v.z);
-    const c1 = g.colOf(v.x + R, v.z);
-    const r0 = g.rowOf(v.x, v.z - R);
-    const r1 = g.rowOf(v.x, v.z + R);
-    for (let cz = r0; cz <= r1; cz++)
-      for (let cx = c0; cx <= c1; cx++) {
-        const dx = g.centerX(cx) - v.x;
-        const dz = g.centerZ(cz) - v.z;
-        const d = Math.sqrt(dx * dx + dz * dz) - r;
-        if (d > DETOUR_PAD) continue;
-        const i = cz * g.cols + cx;
-        if (DET_CLEAR[i] === Infinity) DET_TOUCHED.push(i);
-        if (d < DET_CLEAR[i]) {
-          DET_CLEAR[i] = d;
-          DET_OWNER[i] = v.id;
-        }
-      }
-  }
-  if (!discs.length) return null;
-  const spec = UNITS[u.kind];
-  const field = this.grid.field(spec.mobility ?? "wheel", !!spec.slowResist);
-  return g.findPath(u.x, u.z, gx, gz, field, pathHalf(u), { clear: DET_CLEAR, owner: DET_OWNER, self: u.id, need: bodyRadius(u.kind) + 0.3, discs: new Float64Array(discs) });
-}
-
-/** Chiều dài đường `p` tính từ (x, z). */
-function pathLen(x: number, z: number, p: readonly number[]): number {
-  let s = 0;
-  for (let k = 0; k + 1 < p.length; k += 2) {
-    const dx = p[k] - x;
-    const dz = p[k + 1] - z;
-    s += Math.sqrt(dx * dx + dz * dz);
-    x = p[k];
-    z = p[k + 1];
-  }
-  return s;
-}
-
-/** Đường `p` (từ chỗ xe u) đi xuyên qua thân một xe mặt đất đang đứng (không cùng khối với u) không. */
-function crossesStanding(this: World, u: Unit, p: readonly number[]): boolean {
-  const ru = bodyRadius(u.kind);
-  let ax = u.x;
-  let az = u.z;
-  for (let k = 0; k + 1 < p.length; k += 2) {
-    const bx = p[k];
-    const bz = p[k + 1];
-    const ex = bx - ax;
-    const ez = bz - az;
-    const l2 = ex * ex + ez * ez;
-    const mx = (ax + bx) / 2;
-    const mz = (az + bz) / 2;
-    const near = this.nearGround(mx, mz, Math.sqrt(l2) / 2 + 8);
-    for (let i = 0; i < near.length; i++) {
-      const v = near[i];
-      if (v === u || (v.speed < 0 ? -v.speed : v.speed) > 0.3 || (u.group !== 0 && v.group === u.group)) continue;
-      let t = l2 > 1e-9 ? ((v.x - ax) * ex + (v.z - az) * ez) / l2 : 0;
-      t = t < 0 ? 0 : t > 1 ? 1 : t;
-      const dx = v.x - ax - ex * t;
-      const dz = v.z - az - ez * t;
-      const need = ru + bodyRadius(v.kind) + 0.3 - softOverlap(u.kind, v.kind);
-      if (dx * dx + dz * dz < need * need) return true;
+  if (ANC_TICK !== this.tick || ignore || ANC_IGNORE) {
+    ANC_TICK = this.tick;
+    ANC_IGNORE = ignore ?? null;
+    if (ANC_CLEAR.length !== g.size) {
+      ANC_CLEAR = new Float32Array(g.size).fill(Infinity);
+      ANC_OWNER = new Int32Array(g.size).fill(-1);
+      ANC_TOUCHED.length = 0;
     }
-    ax = bx;
-    az = bz;
+    for (const i of ANC_TOUCHED) {
+      ANC_CLEAR[i] = Infinity;
+      ANC_OWNER[i] = -1;
+    }
+    ANC_TOUCHED.length = 0;
+    const discs: number[] = [];
+    for (const v of this.units) {
+      if (v.hp <= 0 || v.air !== "none" || v.order !== "idle" || v.group !== 0 || !this.anchored(v) || ignore?.has(v.id)) continue;
+      const r = bodyRadius(v.kind);
+      discs.push(v.x, v.z, r, v.id);
+      const R = r + ANCHOR_PAD;
+      const c0 = g.colOf(v.x - R, v.z);
+      const c1 = g.colOf(v.x + R, v.z);
+      const r0 = g.rowOf(v.x, v.z - R);
+      const r1 = g.rowOf(v.x, v.z + R);
+      for (let cz = r0; cz <= r1; cz++)
+        for (let cx = c0; cx <= c1; cx++) {
+          const dx = g.centerX(cx) - v.x;
+          const dz = g.centerZ(cz) - v.z;
+          const d = Math.sqrt(dx * dx + dz * dz) - r;
+          if (d > ANCHOR_PAD) continue;
+          const i = cz * g.cols + cx;
+          if (ANC_CLEAR[i] === Infinity) ANC_TOUCHED.push(i);
+          if (d < ANC_CLEAR[i]) {
+            ANC_CLEAR[i] = d;
+            ANC_OWNER[i] = v.id;
+          }
+        }
+    }
+    ANC_DISCS = new Float64Array(discs);
   }
-  return false;
+  if (!ANC_DISCS.length) return undefined;
+  const u = this.byId.get(self);
+  const need = (u && u.cat === "unit" ? bodyRadius(u.kind) : 0.71) + ANCHOR_MARGIN;
+  return { clear: ANC_CLEAR, owner: ANC_OWNER, self, need, discs: ANC_DISCS, maxExpand: Infinity };
 }
 
 /** Hướng lái theo đường: điểm phía trước trên ĐOẠN đang đi; gần khúc cua thì cắt sang đoạn sau chỉ khi đoạn cắt đủ rộng cho thân. */
@@ -770,25 +763,21 @@ function follow(this: World, u: Unit, vCap = Infinity): boolean {
 }
 
 /**
- * Xe muốn đi mà bị chắn quá STUCK_REPLAN: tìm đường vòng coi các xe đang đứng gần là vật cản (`detour`), tối đa mỗi 2 giây một
- * lần; không vòng được thì tìm lại đường thường. Trả về true nếu xe vừa có đường mới.
+ * Xe muốn đi mà bị chắn quá STUCK_REPLAN (vách, xe địch, quân hạ bệ, xe đang đi đối đầu; xe đứng cùng phe thì bị đẩy dạt nên không
+ * tính): tìm lại đường tới (gx, gz), THƯA (tối đa mỗi 2 giây một lần: tìm lại dày sinh va chạm mới, SupCom 1 "đứng hình"). Trả về
+ * true nếu xe vừa có đường mới.
  */
 function unstick(this: World, u: Unit, gx: number, gz: number): boolean {
   if (u.stuck < STUCK_REPLAN || this.tick < u.repathAt) return false;
   u.repathAt = this.tick + sec(2);
+  // giữ bộ đếm kẹt và tiến độ: tìm lại đường không phải là đã tiến (không thì xe đối đầu trong khe tìm lại mãi, không bao giờ bỏ cuộc)
   const s = u.stuck;
-  // đường vòng dài quá DETOUR_MAX lần đường thẳng (hàng dài chắn ngang) thì thôi vòng: đi thẳng đẩy nhẹ qua khe (`avoid` thôi lách)
-  const q = this.detourPath(u, gx, gz);
-  const straight = Math.sqrt(dist2(u.x, u.z, gx, gz));
-  let ok = false;
-  if (q && pathLen(u.x, u.z, q) <= DETOUR_MAX * Math.max(straight, 4)) {
-    u.path = q;
-    u.pathFromX = u.x;
-    u.pathFromZ = u.z;
-    u.pathI = 0;
-    ok = true;
-  } else u.avoidSide = 0;
+  const pd = u.progD;
+  const pt = u.progT;
+  const ok = this.setPath(u, gx, gz);
   u.stuck = s;
+  u.progD = pd;
+  u.progT = pt;
   return ok;
 }
 
@@ -1015,7 +1004,7 @@ function moveFactor(this: World, u: Unit, dx: number, dz: number): number {
   return k;
 }
 
-const methods = { speedOf, turnHull, drive, arrivedAt, avoid, wallTurn, coast, setIdle, halt, setPath, detour, detourPath, crossesStanding, unstick, pathAim, follow, goalTaken, chase, bodyContact, bodyFits, wallNormal, clearGoal, tryMove, terrainFactor, moveFactor };
+const methods = { speedOf, turnHull, drive, arrivedAt, avoid, avoidRaw, wallTurn, coast, setIdle, halt, setPath, anchorLayer, unstick, pathAim, follow, goalTaken, chase, bodyContact, bodyFits, wallNormal, clearGoal, tryMove, terrainFactor, moveFactor };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

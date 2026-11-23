@@ -3,8 +3,8 @@
  * vá. Thay cho yield.test.ts / standgap.test.ts / standing.test.ts (nhường đường có kế hoạch, lớp xe đứng: đã bỏ).
  *  - bàn đo (`bench.ts`): các cảnh nhanh phải xong, không chồng thân lâu, không kẹt, xếp đúng ô, soi gương hai phe khớp tuyệt đối;
  *  - quán tính: xe tăng tốc / hãm dần, dừng đúng đích không vượt; xe tự chạy không trượt ngang;
- *  - xe đứng: hàng ngắn thì xe đi vòng (hàng không xê dịch), hàng dài thì xe đi xuyên, xe đứng bị đẩy nhẹ rồi tự về ô; quân hạ bệ không
- *    bị xô.
+ *  - xe đứng (B1–B3, 23/11/2026, kế hoạch "di chuyển như mọi người" người dùng duyệt 20/11): tìm đường không xét xe đứng; xe đi qua
+ *    hàng xe đứng thì xe đứng dạt sang vừa đủ rồi tự về ô (thay luật "hàng ngắn thì đi vòng" 18/11); quân hạ bệ không bị xô, xe đi vòng.
  * Cả hai phe (bản đồ đối xứng (x, z) → (−x, −z)).
  */
 import { describe, expect, it } from "vitest";
@@ -80,7 +80,8 @@ function watch(w: World, ticks: number, stand: Unit[], all: Unit[]) {
 
 describe("xe đi qua xe đang đứng", () => {
   for (const side of [0, 1] as const) {
-    it(`hàng ngắn 3 Titan đứng: Titan đi vòng qua đầu hàng (vòng < 1,75 lần), hàng không xê dịch (phe ${side})`, () => {
+    // B3 (23/11/2026): tìm đường không còn đi vòng xe đứng (luật "vòng < 1,75 lần" 18/11 đã thay): xe đi thẳng, xe đứng dạt vừa đủ
+    it(`hàng ngắn 3 Titan đứng: Titan đi qua, xe đứng dạt vừa đủ rồi về ô (phe ${side})`, () => {
       const { w, spawn, face, move, at } = arena(side);
       const sp = 2 * bodyRadius("titan") + 0.8;
       const row = [-1, 0, 1].map((k) => spawn("titan", k * sp, 0));
@@ -92,8 +93,9 @@ describe("xe đi qua xe đang đứng", () => {
       const r = watch(w, sec(40), row, [...row, mover]);
       expect(mover.order, "xe đi phải tới nơi").toBe("idle");
       expect(gap(mover, at(0.5, 16))).toBeLessThan(2);
-      expect(r.farthest, "hàng đứng không phải dạt").toBeLessThan(0.3);
-      expect(r.overlap).toBeLessThan(0.5);
+      expect(r.farthest, "xe đứng dạt vừa đủ").toBeLessThan(4.5);
+      expect(r.back, "xe đứng về lại ô").toBeLessThan(1.2);
+      expect(r.overlap, "giây chồng thân").toBeLessThan(1);
     });
 
     it(`hàng dài 9 Titan đứng (vòng quá xa): Titan đi xuyên, xe đứng bị đẩy nhẹ rồi tự về ô (phe ${side})`, () => {

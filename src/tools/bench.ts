@@ -9,6 +9,11 @@ import { World } from "../sim/world";
 
 const filter = process.argv[2] ?? "";
 const ids = Object.keys(BENCH).filter((id) => id.includes(filter));
+// tổng S4–S12 (mốc so sánh của kế hoạch 20/11/2026): thời gian xong, giật quay, giật tốc
+let sumT = 0;
+let sumTurn = 0;
+let sumSpeed = 0;
+let sumN = 0;
 for (const id of ids) {
   const t0 = performance.now();
   const a = runBench(id, 0, () => new World(1, { sandbox: true, map: BENCH_MAP }));
@@ -20,4 +25,12 @@ for (const id of ids) {
   if (a.trace.length !== b.trace.length) mirror = Infinity;
   for (const wn of a.warnings) console.log(`  ⚠ ${id}: ${wn}`);
   console.log(`${id.padEnd(18)} ${formatMetrics(a)} · gương ${mirror === Infinity ? "LỆCH SỐ MẪU" : mirror.toExponential(1)} · ${ms.toFixed(0)} ms`);
+  const k = Number(/^mv-s(\d+)/.exec(id)?.[1] ?? 0);
+  if (k >= 4) {
+    sumT += a.time;
+    sumTurn += a.turnJitter;
+    sumSpeed += a.speedJitter;
+    sumN++;
+  }
 }
+if (sumN > 1) console.log(`TỔNG S4–S12 (${sumN} cảnh): xong ${sumT.toFixed(1)} s · giật quay ${sumTurn.toFixed(1)} · giật tốc ${sumSpeed.toFixed(1)}`);

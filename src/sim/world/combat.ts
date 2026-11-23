@@ -219,12 +219,6 @@ function returnHome(this: World, u: Unit): void {
     u.path = [];
     u.pathI = 0;
   }
-  // DẠT SANG (phản xạ, không lập kế hoạch): xe cùng phe đang lăn vào làn của mình thì chạy dạt sang một bên vừa đủ, xe kia qua rồi
-  // thì về ô (homeT giữ ≥ HOME_DELAY để về ngay khi lối trống)
-  if (this.makeWay(u)) {
-    u.homeT = HOME_DELAY;
-    return;
-  }
   const d2 = dist2(u.x, u.z, u.tx, u.tz);
   if (d2 > HOME_FAR * HOME_FAR || u.path.length) {
     if (u.path.length === 0) this.setPath(u, u.tx, u.tz);
@@ -264,58 +258,6 @@ function returnHome(this: World, u: Unit): void {
     u.homeT = 0;
     u.stuck = 0;
   }
-}
-
-/** Xe đứng dạt cho xe đang chạy: nhìn trước chừng này giây theo tốc độ xe kia (tối thiểu MAKE_WAY_MIN m) để dạt kịp. */
-const MAKE_WAY_T = 1.2;
-const MAKE_WAY_MIN = 2.5;
-/**
- * Xe đứng (không lệnh) nằm trong làn của một xe cùng phe đang chạy tới (sắp chạm theo hướng chạy của nó): chạy dạt sang phía xa đường
- * xe kia vừa đủ (tổng hai thân + khe), chỗ dạt phải đứng được; phía đó bí thì thử phía kia. Trả về true nếu đang dạt.
- */
-function makeWay(this: World, u: Unit): boolean {
-  if (this.anchored(u) || u.air !== "none") return false;
-  const ru = bodyRadius(u.kind);
-  const reach = ru + 14;
-  const near = this.nearGround(u.x, u.z, reach);
-  let best: Unit | null = null;
-  let bestAlong = Infinity;
-  for (let i = 0; i < near.length; i++) {
-    const v = near[i];
-    if (dist2(u.x, u.z, v.x, v.z) > reach * reach) continue;
-    // dạt cho xe đang đi thật: có lệnh, trong khối, hoặc đang theo đường về ô (vừa phản công xa / sư đoàn xoay). Không dạt cho xe
-    // đứng đang tự dạt hay nhích về ô gần (không có đường): hai xe dạt qua lại cho nhau mãi
-    const going = v.order !== "idle" || v.group !== 0 || (v.path.length > 0 && v.pathI * 2 < v.path.length);
-    if (v === u || v.side !== u.side || v.speed < 0.3 || !going || (v.group !== 0 && v.group === u.group)) continue;
-    const ex = u.x - v.x;
-    const ez = u.z - v.z;
-    const along = ex * v.hx + ez * v.hz;
-    const look = Math.max(MAKE_WAY_MIN, v.speed * MAKE_WAY_T) + ru + bodyRadius(v.kind);
-    if (along <= 0 || along > look) continue;
-    const lat = ex * v.hz - ez * v.hx;
-    const need = ru + bodyRadius(v.kind) + 0.4;
-    if ((lat < 0 ? -lat : lat) >= need || along >= bestAlong) continue;
-    best = v;
-    bestAlong = along;
-  }
-  if (!best) return false;
-  const ex = u.x - best.x;
-  const ez = u.z - best.z;
-  const lat = ex * best.hz - ez * best.hx;
-  const need = ru + bodyRadius(best.kind) + 0.4;
-  // dạt về phía mình đang lệch (thẳng hàng thì sang phải xe kia), phía đó bí thì phía kia
-  let side = lat > 0.05 ? 1 : lat < -0.05 ? -1 : 1;
-  for (let k = 0; k < 2; k++) {
-    const shift = side * need - lat;
-    const px = u.x + best.hz * shift;
-    const pz = u.z - best.hx * shift;
-    if (this.bodyFits(u, px, pz)) {
-      this.drive(u, px, pz, true);
-      return true;
-    }
-    side = -side;
-  }
-  return false;
 }
 
 /**
@@ -727,7 +669,7 @@ function resolveShots(this: World): void {
   this.shots = keep;
 }
 
-const methods = { inRange, deployed, reach, groundTier, sightOf, acquireFrom, acquire, updateGround, returnHome, makeWay, swapHome, spotBusy, aim, rechargePd, randDisc, nextCooldown, auraFactor, mobilized, tryFire, pushShot, fireSecondary, dropBomb, damage, commanderRetreat, gainXp, veteranRegen, resolveShots };
+const methods = { inRange, deployed, reach, groundTier, sightOf, acquireFrom, acquire, updateGround, returnHome, swapHome, spotBusy, aim, rechargePd, randDisc, nextCooldown, auraFactor, mobilized, tryFire, pushShot, fireSecondary, dropBomb, damage, commanderRetreat, gainXp, veteranRegen, resolveShots };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
