@@ -19,6 +19,12 @@ const DIRS4: readonly [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 import { buildField, buildModel, disposeRig, type NodeRig, type Rig } from "../../render/models";
 import { bakeObject, bakeStatic } from "../../render/models/bake";
 
+/** Dáng nặng (B8): tần số lò xo (rad/s; ~0,3 s lắng), lệch quá chừng này (m) thì đặt thẳng, chúi / nghiêng tối đa (rad). */
+const HEAVY_W = 7;
+const HEAVY_SNAP = 3;
+const HEAVY_PITCH = 0.055;
+const HEAVY_ROLL = 0.035;
+
 const wrap = (a: number): number => {
   a = (a + Math.PI) % (Math.PI * 2);
   if (a < 0) a += Math.PI * 2;
@@ -29,6 +35,17 @@ interface View {
   rig: Rig;
   yaw: number;
   prevYaw: number;
+  /**
+   * DÁNG NẶNG của xe mặt đất (B8, 23/11/2026; chỉ phần vẽ, sim không đổi): vị trí và vận tốc HIỂN THỊ bám vị trí sim qua lò xo tắt
+   * dần tới hạn có bù trước bằng vận tốc sim (chạy đều thì không trễ, cú khựng ngắn được làm mượt); gia tốc dọc thân đã làm mượt
+   * (chúi khi hãm, ngóc khi tăng tốc); NaN = chưa có (lần vẽ đầu).
+   */
+  hx?: number;
+  hz?: number;
+  hvx?: number;
+  hvz?: number;
+  hacc?: number;
+  hroll?: number;
   roll: number;
   /** Máy bay: góc chúc mũi (dương = chúc xuống) theo tốc độ hạ độ cao. */
   pitch: number;
@@ -445,7 +462,42 @@ export class Views {
       if (spec.repair && u.targetId) a.add("repair");
       this.drawBeam(world, u, v, x, this.map.groundY(x, z) + alt, z, time);
     } else {
+      const yaw0 = v.yaw;
       v.yaw += wrap(target - v.yaw) * Math.min(1, dt * 10);
+      // DÁNG NẶNG (xem `View.hx`): lò xo tắt dần tới hạn bám vị trí sim, bù trước bằng vận tốc sim
+      const svx = (u.x - u.px) / DT;
+      const svz = (u.z - u.pz) / DT;
+      if (v.hx === undefined || v.hz === undefined || v.hvx === undefined || v.hvz === undefined || (v.hx - x) ** 2 + (v.hz - z) ** 2 > HEAVY_SNAP * HEAVY_SNAP) {
+        v.hx = x;
+        v.hz = z;
+        v.hvx = svx;
+        v.hvz = svz;
+        v.hacc = 0;
+        v.hroll = 0;
+      } else {
+        // chia bước nhỏ cho ổn định khi khung hình dài
+        let left = Math.min(dt, 0.25);
+        let along = 0;
+        while (left > 1e-6) {
+          const h = Math.min(left, 1 / 60);
+          const ax = HEAVY_W * HEAVY_W * (x - v.hx) + 2 * HEAVY_W * (svx - v.hvx);
+          const az = HEAVY_W * HEAVY_W * (z - v.hz) + 2 * HEAVY_W * (svz - v.hvz);
+          v.hvx += ax * h;
+          v.hvz += az * h;
+          v.hx += v.hvx * h;
+          v.hz += v.hvz * h;
+          along = ax * Math.sin(v.yaw) + az * Math.cos(v.yaw);
+          left -= h;
+        }
+        v.hacc = (v.hacc ?? 0) + (along - (v.hacc ?? 0)) * Math.min(1, dt * 6);
+        // nghiêng ra ngoài khi cua: theo tốc độ quay thân × tốc độ chạy
+        const rate = dt > 1e-4 ? wrap(v.yaw - yaw0) / dt : 0;
+        const speed = Math.sqrt(v.hvx * v.hvx + v.hvz * v.hvz);
+        const rollT = Math.max(-HEAVY_ROLL, Math.min(HEAVY_ROLL, rate * speed * 0.0125));
+        v.hroll = (v.hroll ?? 0) + (rollT - (v.hroll ?? 0)) * Math.min(1, dt * 6);
+      }
+      x = v.hx;
+      z = v.hz;
       const y = this.map.groundY(x, z);
       // nghiêng thân theo dốc: lấy độ cao trước/sau và trái/phải
       const fx = Math.sin(v.yaw);
@@ -461,7 +513,9 @@ export class Views {
       const pitch = Math.atan2(h(x - fx * L, z - fz * L) - h(x + fx * L, z + fz * L), L * 2);
       const roll = Math.atan2(h(x + fz * L, z - fx * L) - h(x - fz * L, z + fx * L), L * 2);
       root.position.set(x, y, z);
-      root.rotation.set(pitch, v.yaw, roll, "YXZ");
+      // chúi mũi khi hãm (gia tốc âm → mũi xuống), ngóc khi tăng tốc; nghiêng ra ngoài khi cua
+      const lean = Math.max(-HEAVY_PITCH, Math.min(HEAVY_PITCH, -(v.hacc ?? 0) * 0.022));
+      root.rotation.set(pitch + lean, v.yaw, roll + (v.hroll ?? 0), "YXZ");
       if (u.moved || u.px !== u.x || u.pz !== u.z) a.add("move");
       if (world.mobilized(u)) a.add("hurry");
       // vài giây đầu của Tổng động viên: quân có hào quang tung chiêu
