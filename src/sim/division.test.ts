@@ -96,7 +96,8 @@ describe("đúc và điều theo lô", () => {
     }
   });
 
-  it("xe cùng lô đứng liền nhau trong đội hình", () => {
+  // TẠM TẮT 23/11/2026: di chuyển kiểu Battle Drones, khối hành quân / sư đoàn tắt (bản đầy đủ: nhánh `luu/quan-doi-nhom-2026-11-23`). Bật lại khi làm lại hệ thống nhóm.
+  it.skip("xe cùng lô đứng liền nhau trong đội hình", () => {
     const w = new World(1, { sandbox: true });
     const us = group(w, Array<UnitId>(9).fill("lynx"));
     us.forEach((u, i) => (u.lot = 1000 + Math.floor(i / 3)));
@@ -114,7 +115,7 @@ describe("đúc và điều theo lô", () => {
 
 describe("Pháo và Tên Lửa Loạt là hai tầng khác nhau (người dùng 16/11/2026)", () => {
   for (const f of Object.keys(FORMATIONS) as FormationId[])
-    it(`đội hình ${FORMATIONS[f].name}: Pháo đứng hàng riêng, sau hàng Tên Lửa Loạt`, () => {
+    it.skip(`đội hình ${FORMATIONS[f].name}: Pháo đứng hàng riêng, sau hàng Tên Lửa Loạt`, () => {
       const w = new World(1, { sandbox: true });
       const us = group(w, ["titan", "titan", "rocket", "rocket", "artillery", "artillery"]);
       go(w, us, 22, "move", f);
@@ -150,7 +151,8 @@ describe("đội hình chỉ đọc mã phân nhóm", () => {
     }
   });
 
-  it("hộ tống Pháo: giáp phía trước và đoạn hậu, Pháo ở giữa, phòng không hai bên", () => {
+  // TẠM TẮT 23/11/2026: di chuyển kiểu Battle Drones, khối hành quân / sư đoàn tắt (bản đầy đủ: nhánh `luu/quan-doi-nhom-2026-11-23`). Bật lại khi làm lại hệ thống nhóm.
+  it.skip("hộ tống Pháo: giáp phía trước và đoạn hậu, Pháo ở giữa, phòng không hai bên", () => {
     const w = new World(1, { sandbox: true });
     const us = group(w, ["titan", "titan", "titan", "titan", "titan", "titan", "artillery", "artillery", "skyguard", "skyguard"]);
     go(w, us, 18, "move", "escort"); // quãng ngắn, đích trống: đội giãn hết cỡ
@@ -167,7 +169,8 @@ describe("đội hình chỉ đọc mã phân nhóm", () => {
     expect(sky[0].l * sky[1].l, "mỗi bên một xe").toBeLessThan(0);
   });
 
-  it("kiểu đội hình quyết định hình dạng: kìm chân rộng hơn hành quân", () => {
+  // TẠM TẮT 23/11/2026: di chuyển kiểu Battle Drones, khối hành quân / sư đoàn tắt (bản đầy đủ: nhánh `luu/quan-doi-nhom-2026-11-23`). Bật lại khi làm lại hệ thống nhóm.
+  it.skip("kiểu đội hình quyết định hình dạng: kìm chân rộng hơn hành quân", () => {
     const widthOf = (f: FormationId): number => {
       const w = new World(1, { sandbox: true });
       const us = group(w, Array<UnitId>(12).fill("lynx"));
@@ -178,7 +181,8 @@ describe("đội hình chỉ đọc mã phân nhóm", () => {
     expect(widthOf("pin")).toBeGreaterThan(widthOf("march"));
   });
 
-  it("lệnh tấn công phải quay đầu thì giáp ra trước; lệnh đi thường giữ nguyên chỗ", () => {
+  // TẠM TẮT 23/11/2026: di chuyển kiểu Battle Drones, khối hành quân / sư đoàn tắt (bản đầy đủ: nhánh `luu/quan-doi-nhom-2026-11-23`). Bật lại khi làm lại hệ thống nhóm.
+  it.skip("lệnh tấn công phải quay đầu thì giáp ra trước; lệnh đi thường giữ nguyên chỗ", () => {
     const run = (t: "move" | "amove"): number => {
       const w = new World(1, { sandbox: true });
       const us = group(w, ["titan", "titan", "titan", "artillery", "artillery"]);
@@ -207,7 +211,8 @@ describe("đội hình chỉ đọc mã phân nhóm", () => {
     for (const u of us) expect(Math.sqrt((u.x - u.tx) ** 2 + (u.z - u.tz) ** 2), `${u.kind} ${u.id}`).toBeLessThan(1.5);
   });
 
-  it("Tư lệnh không chọn thì mặc định Giữ; đã chọn thì lệnh sau không chọn vẫn giữ kiểu đó", () => {
+  // TẠM TẮT 23/11/2026: di chuyển kiểu Battle Drones, khối hành quân / sư đoàn tắt (bản đầy đủ: nhánh `luu/quan-doi-nhom-2026-11-23`). Bật lại khi làm lại hệ thống nhóm.
+  it.skip("Tư lệnh không chọn thì mặc định Giữ; đã chọn thì lệnh sau không chọn vẫn giữ kiểu đó", () => {
     const w = new World(1, { sandbox: true });
     const us = group(w, ["titan", "titan", "lynx", "lynx", "lynx"]);
     go(w, us, 12);
@@ -222,7 +227,8 @@ describe("đội hình chỉ đọc mã phân nhóm", () => {
     expect(us.every((u) => u.formation === "attack")).toBe(true);
   });
 
-  it("lệnh sau chọn kiểu khác thì đổi kiểu và dựng lại; chọn đúng kiểu đang dùng thì không xếp lại", () => {
+  // TẠM TẮT 23/11/2026: di chuyển kiểu Battle Drones, khối hành quân / sư đoàn tắt (bản đầy đủ: nhánh `luu/quan-doi-nhom-2026-11-23`). Bật lại khi làm lại hệ thống nhóm.
+  it.skip("lệnh sau chọn kiểu khác thì đổi kiểu và dựng lại; chọn đúng kiểu đang dùng thì không xếp lại", () => {
     const w = new World(1, { sandbox: true });
     const us = group(w, ["titan", "titan", "titan", "lynx", "lynx", "lynx"]);
     go(w, us, 12, "move", "attack");
@@ -235,7 +241,8 @@ describe("đội hình chỉ đọc mã phân nhóm", () => {
     expect(shift(w.groups[0]), "đổi kiểu: dựng lại").toBe(false);
   });
 
-  it("ghép hai nhóm khác kiểu: cả nhóm theo kiểu của bên đông hơn", () => {
+  // TẠM TẮT 23/11/2026: di chuyển kiểu Battle Drones, khối hành quân / sư đoàn tắt (bản đầy đủ: nhánh `luu/quan-doi-nhom-2026-11-23`). Bật lại khi làm lại hệ thống nhóm.
+  it.skip("ghép hai nhóm khác kiểu: cả nhóm theo kiểu của bên đông hơn", () => {
     const w = new World(1, { sandbox: true });
     const us = group(w, ["lynx", "lynx", "lynx", "titan", "titan"]);
     us.slice(0, 3).forEach((u) => (u.formation = "march"));
@@ -323,14 +330,16 @@ describe("tốc độ chung của khối", () => {
     return w.groups[0].speed / BLOCK_K;
   };
 
-  it("xe chậm được hộ tống thì cả khối đi nhanh hơn xe chậm nhất, nhưng có trần", () => {
+  // TẠM TẮT 23/11/2026: di chuyển kiểu Battle Drones, khối hành quân / sư đoàn tắt (bản đầy đủ: nhánh `luu/quan-doi-nhom-2026-11-23`). Bật lại khi làm lại hệ thống nhóm.
+  it.skip("xe chậm được hộ tống thì cả khối đi nhanh hơn xe chậm nhất, nhưng có trần", () => {
     const slow = UNITS.artillery.speed;
     const v = speedOf(["lynx", "lynx", "lynx", "lynx", "artillery"]);
     expect(v).toBeGreaterThan(slow);
     expect(v).toBeLessThanOrEqual(slow * RULES.escortBoost + 1e-9);
   });
 
-  it("toàn xe chậm thì không được cộng gì", () => {
+  // TẠM TẮT 23/11/2026: di chuyển kiểu Battle Drones, khối hành quân / sư đoàn tắt (bản đầy đủ: nhánh `luu/quan-doi-nhom-2026-11-23`). Bật lại khi làm lại hệ thống nhóm.
+  it.skip("toàn xe chậm thì không được cộng gì", () => {
     expect(speedOf(["artillery", "artillery", "artillery"])).toBeCloseTo(UNITS.artillery.speed, 6);
   });
 
@@ -352,7 +361,8 @@ describe("tốc độ chung của khối", () => {
 describe("sư đoàn bền vững (A2 bước D1, người dùng duyệt 17/11/2026)", () => {
   const divOf = (w: World, u: Unit) => w.divisions.find((d) => d.id === u.division);
 
-  it("lệnh cho từ 3 xe mặt đất lập một sư đoàn; tới nơi không tan mà đóng quân", () => {
+  // TẠM TẮT 23/11/2026: di chuyển kiểu Battle Drones, khối hành quân / sư đoàn tắt (bản đầy đủ: nhánh `luu/quan-doi-nhom-2026-11-23`). Bật lại khi làm lại hệ thống nhóm.
+  it.skip("lệnh cho từ 3 xe mặt đất lập một sư đoàn; tới nơi không tan mà đóng quân", () => {
     const w = new World(1, { sandbox: true });
     const us = group(w, ["titan", "titan", "lynx", "lynx"]);
     go(w, us, 10);
@@ -378,7 +388,8 @@ describe("sư đoàn bền vững (A2 bước D1, người dùng duyệt 17/11/2
     expect(w.divisions.length).toBe(0);
   });
 
-  it("Drone Khiên đi cùng lệnh thì vào sư đoàn, Drone Sửa Chữa thì không; drone không tính vào ngưỡng 3 xe", () => {
+  // TẠM TẮT 23/11/2026: di chuyển kiểu Battle Drones, khối hành quân / sư đoàn tắt (bản đầy đủ: nhánh `luu/quan-doi-nhom-2026-11-23`). Bật lại khi làm lại hệ thống nhóm.
+  it.skip("Drone Khiên đi cùng lệnh thì vào sư đoàn, Drone Sửa Chữa thì không; drone không tính vào ngưỡng 3 xe", () => {
     const w = new World(1, { sandbox: true });
     const us = group(w, ["titan", "titan", "lynx", "shield", "repair"]);
     go(w, us, 10);
@@ -393,7 +404,8 @@ describe("sư đoàn bền vững (A2 bước D1, người dùng duyệt 17/11/2
     expect(w2.divisions.length).toBe(0);
   });
 
-  it("ra lệnh riêng cho một xe thì xe đó rời sư đoàn; còn 2 xe vẫn giữ, còn 1 thì tan", () => {
+  // TẠM TẮT 23/11/2026: di chuyển kiểu Battle Drones, khối hành quân / sư đoàn tắt (bản đầy đủ: nhánh `luu/quan-doi-nhom-2026-11-23`). Bật lại khi làm lại hệ thống nhóm.
+  it.skip("ra lệnh riêng cho một xe thì xe đó rời sư đoàn; còn 2 xe vẫn giữ, còn 1 thì tan", () => {
     const w = new World(1, { sandbox: true });
     const us = group(w, ["titan", "titan", "lynx"]);
     go(w, us, 10);
@@ -409,7 +421,8 @@ describe("sư đoàn bền vững (A2 bước D1, người dùng duyệt 17/11/2
     expect(us[0].division).toBe(0);
   });
 
-  it("ra lệnh lại cho cả sư đoàn thì giữ nguyên sư đoàn (mã, chế độ); xe bị hạ thì rời sư đoàn", () => {
+  // TẠM TẮT 23/11/2026: di chuyển kiểu Battle Drones, khối hành quân / sư đoàn tắt (bản đầy đủ: nhánh `luu/quan-doi-nhom-2026-11-23`). Bật lại khi làm lại hệ thống nhóm.
+  it.skip("ra lệnh lại cho cả sư đoàn thì giữ nguyên sư đoàn (mã, chế độ); xe bị hạ thì rời sư đoàn", () => {
     const w = new World(1, { sandbox: true });
     const us = group(w, ["titan", "titan", "lynx", "lynx"]);
     go(w, us, 10);
@@ -448,7 +461,8 @@ describe("tướng sư đoàn: báo động và quay mặt (A2 D3, người dùn
   }
   const center = (us: Unit[]): [number, number] => [us.reduce((s, u) => s + u.x, 0) / us.length, us.reduce((s, u) => s + u.z, 0) / us.length];
 
-  it("bị đánh sườn 90°: cả sư đoàn báo động trong 1 s, xoay về phía địch trong 4 s; xe quay thân về phía địch", () => {
+  // TẠM TẮT 23/11/2026: di chuyển kiểu Battle Drones, khối hành quân / sư đoàn tắt (bản đầy đủ: nhánh `luu/quan-doi-nhom-2026-11-23`). Bật lại khi làm lại hệ thống nhóm.
+  it.skip("bị đánh sườn 90°: cả sư đoàn báo động trong 1 s, xoay về phía địch trong 4 s; xe quay thân về phía địch", () => {
     const { w, us, d } = stationed(Array<UnitId>(8).fill("titan"));
     expect(d.directive).toBe("station");
     const [cx, cz] = center(us);
@@ -474,7 +488,8 @@ describe("tướng sư đoàn: báo động và quay mặt (A2 D3, người dùn
     expect(facing, "số Titan quay thân về phía địch").toBeGreaterThanOrEqual(6);
   });
 
-  it("địch xa (drone trinh sát thấy, chỉ Pháo bắn tới): quân khác đứng yên ở ô, sư đoàn không xoay", () => {
+  // TẠM TẮT 23/11/2026: di chuyển kiểu Battle Drones, khối hành quân / sư đoàn tắt (bản đầy đủ: nhánh `luu/quan-doi-nhom-2026-11-23`). Bật lại khi làm lại hệ thống nhóm.
+  it.skip("địch xa (drone trinh sát thấy, chỉ Pháo bắn tới): quân khác đứng yên ở ô, sư đoàn không xoay", () => {
     const { w, us, d } = stationed(["titan", "titan", "titan", "titan", "artillery"]);
     const [cx, cz] = center(us);
     const fx0 = d.fx;
@@ -499,7 +514,8 @@ describe("tướng sư đoàn: báo động và quay mặt (A2 D3, người dùn
     expect(fired, "Pháo bắn địch ở xa").toBe(true);
   });
 
-  it("sư đoàn xoay TẠI CHỖ (thiết kế 5.3, 20/11/2026): không xe nào đổi ô; xe quay thân về hướng mới; quân đã hạ bệ giữ thân, chỉ quay mâm", () => {
+  // TẠM TẮT 23/11/2026: di chuyển kiểu Battle Drones, khối hành quân / sư đoàn tắt (bản đầy đủ: nhánh `luu/quan-doi-nhom-2026-11-23`). Bật lại khi làm lại hệ thống nhóm.
+  it.skip("sư đoàn xoay TẠI CHỖ (thiết kế 5.3, 20/11/2026): không xe nào đổi ô; xe quay thân về hướng mới; quân đã hạ bệ giữ thân, chỉ quay mâm", () => {
     const { w, us, d } = stationed(["titan", "titan", "titan", "titan", "artillery"]);
     const art = us.find((u) => u.kind === "artillery")!;
     // tới nơi Pháo còn xoay thân về hướng đội (~2,6 s) rồi mới hạ bệ (2 s)
@@ -539,7 +555,8 @@ describe("tướng sư đoàn: cùng bắn, vùng phản công, về ô (A2 D4)"
     return { w, us, d: w.divisions.find((x) => x.id === us[0].division)! };
   }
 
-  it("địch trước mặt trong tầm với: mọi Titan vào cuộc, không xe nào ra khỏi vùng 20 m; hết địch thì về ô lệch dưới 1 m", () => {
+  // TẠM TẮT 23/11/2026: di chuyển kiểu Battle Drones, khối hành quân / sư đoàn tắt (bản đầy đủ: nhánh `luu/quan-doi-nhom-2026-11-23`). Bật lại khi làm lại hệ thống nhóm.
+  it.skip("địch trước mặt trong tầm với: mọi Titan vào cuộc, không xe nào ra khỏi vùng 20 m; hết địch thì về ô lệch dưới 1 m", () => {
     const { w, us, d } = stationed(Array<UnitId>(8).fill("titan"));
     const home = new Map(us.map((u) => [u.id, [u.x, u.z] as const]));
     const foes = [-6, 0, 6].map((k) => spawn(w, "lynx", d.cx + d.hx * 23 + d.hz * k, d.cz + d.hz * 23 - d.hx * k, 1));
@@ -559,7 +576,8 @@ describe("tướng sư đoàn: cùng bắn, vùng phản công, về ô (A2 D4)"
     for (const u of us) expect(Math.hypot(u.x - home.get(u.id)![0], u.z - home.get(u.id)![1]), `Titan #${u.id} cách ô`).toBeLessThan(1);
   });
 
-  it("không bắn dồn quá tay: 10 Titan, hai Lynx trong tầm: sư đoàn chia hỏa lực cho cả hai (mỗi Lynx chỉ cần ~5 Titan trong 2 s)", () => {
+  // TẠM TẮT 23/11/2026: di chuyển kiểu Battle Drones, khối hành quân / sư đoàn tắt (bản đầy đủ: nhánh `luu/quan-doi-nhom-2026-11-23`). Bật lại khi làm lại hệ thống nhóm.
+  it.skip("không bắn dồn quá tay: 10 Titan, hai Lynx trong tầm: sư đoàn chia hỏa lực cho cả hai (mỗi Lynx chỉ cần ~5 Titan trong 2 s)", () => {
     const { w, us, d } = stationed(Array<UnitId>(10).fill("titan"));
     const foes = [-5, 5].map((k) => spawn(w, "lynx", d.cx + d.hx * 18 + d.hz * k, d.cz + d.hz * 18 - d.hx * k, 1));
     w.step([{ side: 1, order: { t: "sbHold", side: 1, on: true } }]);
@@ -574,7 +592,8 @@ describe("tướng sư đoàn: cùng bắn, vùng phản công, về ô (A2 D4)"
 
 
 describe("chế độ trực tiếp (A2 D5)", () => {
-  it("bị đánh sườn ở chế độ trực tiếp: không báo động chung, không xoay, không tiến; chỉ xe trong tầm bắn", () => {
+  // TẠM TẮT 23/11/2026: di chuyển kiểu Battle Drones, khối hành quân / sư đoàn tắt (bản đầy đủ: nhánh `luu/quan-doi-nhom-2026-11-23`). Bật lại khi làm lại hệ thống nhóm.
+  it.skip("bị đánh sườn ở chế độ trực tiếp: không báo động chung, không xoay, không tiến; chỉ xe trong tầm bắn", () => {
     const w = new World(1, { sandbox: true });
     const us = group(w, Array<UnitId>(8).fill("titan"));
     go(w, us, 10);
@@ -604,7 +623,8 @@ describe("chế độ trực tiếp (A2 D5)", () => {
     expect(d.alarm).toBe("near");
   });
 
-  it("đổi chế độ lúc đang hành quân không làm xe rời đội hình; chế độ nhớ qua lệnh sau", () => {
+  // TẠM TẮT 23/11/2026: di chuyển kiểu Battle Drones, khối hành quân / sư đoàn tắt (bản đầy đủ: nhánh `luu/quan-doi-nhom-2026-11-23`). Bật lại khi làm lại hệ thống nhóm.
+  it.skip("đổi chế độ lúc đang hành quân không làm xe rời đội hình; chế độ nhớ qua lệnh sau", () => {
     const w = new World(1, { sandbox: true });
     const us = group(w, ["titan", "titan", "lynx", "lynx"]);
     go(w, us, 10);
@@ -647,7 +667,8 @@ describe("tướng sư đoàn công bằng hai phe (A2 D6, soi gương qua tâm 
     return { trace, alarms, fx: d.fx * sg, fz: d.fz * sg, targets: us.map((u) => foes.findIndex((f) => f.id === u.divTarget)) };
   }
 
-  it("cùng tình huống, hai phe soi gương: báo động, hướng xoay, mục tiêu giao, đường đi từng xe trùng khớp", () => {
+  // TẠM TẮT 23/11/2026: di chuyển kiểu Battle Drones, khối hành quân / sư đoàn tắt (bản đầy đủ: nhánh `luu/quan-doi-nhom-2026-11-23`). Bật lại khi làm lại hệ thống nhóm.
+  it.skip("cùng tình huống, hai phe soi gương: báo động, hướng xoay, mục tiêu giao, đường đi từng xe trùng khớp", () => {
     const a = run(0);
     const b = run(1);
     expect(b.alarms).toEqual(a.alarms);

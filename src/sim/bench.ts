@@ -144,8 +144,8 @@ export const BENCH: Record<string, () => BenchScene> = {
     script: (c) => {
       const out: Command[] = [];
       if (c.t === 0.5) out.push(c.move(range(0, 10), 40, -16));
-      const d = c.w.divisions.find((x) => x.side === c.side);
-      if (!c.memo.sent && d && d.directive === "station" && c.t > 2) {
+      // địch vào khi cả đội đã đứng ở chỗ (23/11/2026: không còn sư đoàn để đợi "đóng quân")
+      if (!c.memo.sent && c.t > 2 && allIdle(c)) {
         c.memo.sent = c.t;
         for (const k of [-6, -2, 2, 6]) {
           const [x, z] = c.P(40 + k, -46);

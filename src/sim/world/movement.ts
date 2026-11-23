@@ -13,6 +13,8 @@ import type { Target, Unit } from "../types";
 import { DT, sec, accelOf, brakeOf, bodyRadius, wallRadius, isSquad, softOverlap, GOAL_SHIFT, PIVOT_COS, ALIGNED_COS, TMP, traverseStep } from "./shared";
 import { World } from "./core";
 
+/** Trần tốc độ (phanh / bám đuôi) của tầng né: tắt từ 23/11/2026 (di chuyển kiểu Battle Drones), chỉ giữ phần lái lách. */
+const AVOID_BRAKE = false;
 /** Tới đích "dừng": cách đích không quá chừng này (m) là tới. */
 const ARRIVE_R = 0.3;
 /** Gần đích chừng này (m), lệch dọc thân không quá NEAR_ALONG và đã gần như đứng thì cũng là tới (khỏi xoay vì vài tấc lệch ngang). */
@@ -60,11 +62,20 @@ const ONCOMING_KEEP = 1;
 /** Độ lệch hướng lớn nhất khi lách (≈ 40°, tính theo tan). */
 const STEER_MAX = 0.85;
 
-/** Kẹt: muốn đi mà gần như không tiến chừng này tick thì tìm đường vòng; gần đích (< GIVE_UP_NEAR m) mà kẹt GIVE_UP tick thì coi như tới. */
+/**
+ * Kẹt: muốn đi mà gần như không tiến chừng này tick thì tìm đường vòng; gần đích (< GIVE_UP_NEAR m) mà kẹt GIVE_UP tick (và chừng ấy
+ * không lại gần thêm) thì coi như tới, đứng luôn ở đó. TỚI NƠI THEO ĐÁM ĐÔNG kiểu Battle Drones (23/11/2026): quanh đích đã có xe cùng
+ * phe đỗ thì bán kính đó nới tới GIVE_UP_CROWD (xe to tới sau không phải chen cả phút vào giữa đám xe đã đỗ); đích trống thì vẫn cố
+ * tới tận nơi (hai xe đối đầu giữa dốc không dừng luôn ở đó).
+ */
 const STUCK_REPLAN = sec(1.2);
 const GIVE_UP = sec(6);
 const GIVE_UP_FAR = sec(12);
 const GIVE_UP_NEAR = 8;
+/** Quanh đích đã có từ CROWD_N xe cùng phe đứng đỗ (trong CROWD_R m) thì bán kính "kẹt là tới" nới tới chừng này (m). */
+const GIVE_UP_CROWD = 24;
+const CROWD_N = 2;
+const CROWD_R = 14;
 /** Lại gần đích thêm chừng này (m) là "còn tiến" (`follow`): chưa đủ GIVE_UP giây không tiến thì chưa bỏ cuộc. */
 const PROGRESS_STEP = 0.5;
 
@@ -155,16 +166,15 @@ function drive(this: World, u: Unit, gx: number, gz: number, stop: boolean, vCap
   let wx = dx * sg;
   let wz = dz * sg;
   let cap = vCap;
-  // bị kìm vì bám đuôi xe đang chạy phía trước (xếp hàng): không tính là kẹt
-  let queued = false;
+  // KIỂU BATTLE DRONES (23/11/2026): xe KHÔNG phanh, KHÔNG bám đuôi vì xe khác (phanh / bám đuôi là nguồn chạy–khựng–chạy lớn nhất);
+  // chạm nhau thì đẩy dạt (`contact.ts`). Chỉ giữ phần LÁI LÁCH của tầng né (rẽ nhẹ tránh xe đang chạy khác, có làm mượt): đổi hướng,
+  // không đổi tốc độ. Trần tốc độ của tầng né bỏ qua (`AVOID_BRAKE` tắt, code còn để làm lại)
+  const queued = false;
   if (!rev && d > 0.5) {
     const a = this.avoid(u, wx, wz, d, stop, Math.min(vCap, this.speedOf(u)));
     wx = AV.x;
     wz = AV.z;
-    if (a < cap) {
-      cap = a;
-      queued = AV.q;
-    }
+    if (AVOID_BRAKE && a < cap) cap = a;
   }
   // TRƯỢT THEO VÁCH: thân đang chạm vách / đá mà hướng muốn đi đâm vào nó thì lái theo hướng dọc vách (bỏ phần đâm vào): xe tự
   // trượt qua góc vách. Không có bước này thì mỗi tick xe quay mũi về hướng muốn đi (đâm vào góc) rồi luật chạm vách lại quay
@@ -788,7 +798,7 @@ function follow(this: World, u: Unit, vCap = Infinity): boolean {
   }
   // KẸT: tìm đường vòng qua xe đứng; vẫn kẹt lâu gần đích (hoặc rất lâu) và mấy giây liền không lại gần thêm thì coi như tới
   if (u.stuck >= STUCK_REPLAN) {
-    const near = dg < GIVE_UP_NEAR;
+    const near = dg < GIVE_UP_NEAR || (dg < GIVE_UP_CROWD && this.goalCrowded(u, gx, gz));
     if (((near && u.stuck >= GIVE_UP) || u.stuck >= GIVE_UP_FAR) && this.tick - u.progT >= GIVE_UP) {
       u.path = [];
       u.pathI = 0;
@@ -848,6 +858,18 @@ function goalTaken(this: World, u: Unit, gx: number, gz: number): boolean {
     if (dist2(gx, gz, v.x, v.z) >= (lim - 0.3) * (lim - 0.3)) continue;
     const touch = lim + GOAL_NEAR;
     if (dist2(u.x, u.z, v.x, v.z) <= touch * touch) return true;
+  }
+  return false;
+}
+
+/** Quanh đích (gx, gz) đã có từ CROWD_N xe mặt đất cùng phe đứng đỗ (không đi) trong CROWD_R m. */
+function goalCrowded(this: World, u: Unit, gx: number, gz: number): boolean {
+  const near = this.nearGround(gx, gz, CROWD_R);
+  let n = 0;
+  for (let i = 0; i < near.length; i++) {
+    const v = near[i];
+    if (v === u || v.side !== u.side || v.going || v.order !== "idle" || dist2(gx, gz, v.x, v.z) > CROWD_R * CROWD_R) continue;
+    if (++n >= CROWD_N) return true;
   }
   return false;
 }
@@ -1047,7 +1069,7 @@ function moveFactor(this: World, u: Unit, dx: number, dz: number): number {
   return k;
 }
 
-const methods = { speedOf, turnHull, drive, arrivedAt, avoid, avoidRaw, wallTurn, coast, setIdle, halt, setPath, anchorLayer, unstick, pathAim, follow, goalTaken, chase, bodyContact, bodyFits, wallNormal, clearGoal, tryMove, terrainFactor, moveFactor };
+const methods = { speedOf, turnHull, drive, arrivedAt, avoid, avoidRaw, wallTurn, coast, setIdle, halt, setPath, anchorLayer, unstick, pathAim, follow, goalTaken, goalCrowded, chase, bodyContact, bodyFits, wallNormal, clearGoal, tryMove, terrainFactor, moveFactor };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

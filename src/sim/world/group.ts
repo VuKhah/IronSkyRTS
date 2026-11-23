@@ -152,18 +152,15 @@ function airSlots(this: World, units: readonly Unit[], x: number, z: number): Ma
 
 function orderMove(this: World, side: Side, ids: readonly number[], x: number, z: number, kind: "move" | "amove", formation?: FormationId): void {
   const units = this.ownUnits(side, ids);
-  // từ 3 xe mặt đất: lập / giữ sư đoàn bền vững (`world/division.ts`)
-  this.formDivision(side, units, kind);
-  // từ 2 xe chiến đấu trở lên: đi thành khối (Xe Vận Tải đi riêng, vì còn việc hậu cần)
-  const fighters = units.filter((u) => u.air === "none" && u.kind !== "hauler");
-  const grouped = fighters.length > 1 ? new Set(fighters.map((u) => u.id)) : null;
-  if (grouped) this.createGroup(side, fighters, x, z, kind, formation);
+  // DI CHUYỂN KIỂU BATTLE DRONES (người dùng 23/11/2026: "bê từ BattleDrone qua cho nó chạy được mượt mà trước rồi làm lại sau"):
+  // KHÔNG lập khối hành quân, KHÔNG lập sư đoàn. Mỗi xe mặt đất nhận một chỗ đứng quanh điểm bấm (`formation`), tự tìm đường và chạy
+  // bằng tốc độ của chính nó; chạm nhau thì đẩy dạt (`contact.ts`). Khối (`createGroup`…) và sư đoàn (`formDivision`…) TẠM TẮT, code
+  // còn để làm lại; bản đầy đủ ở nhánh git `luu/quan-doi-nhom-2026-11-23`.
   if (formation) for (const u of units) u.formation = formation;
-  const ground = units.filter((u) => u.air === "none" && !grouped?.has(u.id));
+  const ground = units.filter((u) => u.air === "none");
   const plan = this.formation(ground, x, z);
   const air = this.airSlots(units, x, z);
   for (const u of units) {
-    if (grouped?.has(u.id)) continue;
     if (u.air !== "none") {
       const [ax, az] = air.get(u.id) ?? [x, z];
       if (!air.has(u.id)) u.wing = 0;
@@ -196,8 +193,9 @@ function orderMove(this: World, side: Side, ids: readonly number[], x: number, z
 }
 
 /**
- * Chỗ đến cho các xe đi RIÊNG cùng một lệnh (một xe chiến đấu lẻ, Xe Vận Tải): hàng ngang quay theo hướng đi, tâm ở điểm bấm,
- * ô vướng thì dịch sang ô trống gần nhất; ô không được đè xe đứng khác (xe lẻ không dừng giữa khe).
+ * Chỗ đến cho các xe cùng một lệnh (mọi xe mặt đất từ 23/11/2026, di chuyển kiểu Battle Drones): hàng ngang quay theo hướng đi, tâm
+ * ở điểm bấm, khoảng theo xe to nhất, ô vướng thì dịch sang ô trống gần nhất; rồi PHÂN CHỖ TỐI ƯU theo bình phương quãng (đường các
+ * xe không cắt nhau: xe ở trước nhận chỗ ở trước).
  */
 function formation(this: World, units: readonly Unit[], x: number, z: number): { slots: Map<number, [number, number]>; fx: number; fz: number } {
   const slots = new Map<number, [number, number]>();
@@ -230,21 +228,31 @@ function formation(this: World, units: readonly Unit[], x: number, z: number): {
   fz /= l;
   const rx = fz;
   const rz = -fx;
-  const order = [...units].sort((a, b) => (a.x - cx) * rx + (a.z - cz) * rz - ((b.x - cx) * rx + (b.z - cz) * rz) || a.id - b.id);
+  // xe to nhất làm chuẩn khoảng và kiểm chỗ (chỗ nào cũng vừa mọi xe của lệnh)
+  let big = units[0];
+  for (const u of units) if (bodyRadius(u.kind) > bodyRadius(big.kind) || (bodyRadius(u.kind) === bodyRadius(big.kind) && u.id < big.id)) big = u;
+  const sp = 2 * bodyRadius(big.kind) + COL_GAP;
   const cols = Math.min(n, Math.ceil(Math.sqrt(n * 2.5)));
+  // nhiều xe: chỗ cùng tầng với điểm bấm, không đỗ chắn dốc, tới được từ điểm bấm; một xe lẻ thì tới đúng điểm bấm như cũ
+  const tier = n > 1 ? this.map.tierAt(x, z) : -1;
   const used = new Set<number>();
   const taken: Taken = { x: [], z: [], r: [] };
-  order.forEach((u, i) => {
+  const sx: number[] = [];
+  const sz: number[] = [];
+  for (let i = 0; i < n; i++) {
     const row = Math.floor(i / cols);
     const inRow = Math.min(cols, n - row * cols);
     const col = (i % cols) - (inRow - 1) / 2;
-    const sp = 2 * bodyRadius(u.kind) + COL_GAP;
-    const px = x + rx * col * sp - fx * row * sp;
-    const pz = z + rz * col * sp - fz * row * sp;
     // xe đứng ở chỗ đến lúc ra lệnh có thể sắp đi (lệnh cùng tick): không né lúc này, tới nơi mà chỗ còn bị chiếm thì "tới gần là
     // tới" (`follow` → `goalTaken`)
-    slots.set(u.id, this.freeSpot(u, px, pz, used, ALL_UNITS, -1, fx, fz, taken));
-  });
+    // chỗ dự phòng cùng tầng với điểm bấm và tới được từ điểm bấm với cỡ xe to nhất (không rơi xuống chân vách / vào hốc: xe phải
+    // chạy vòng đường dốc mãi)
+    const [px, pz] = this.freeSpot(big, x + rx * col * sp - fx * row * sp, z + rz * col * sp - fz * row * sp, used, ALL_UNITS, tier, fx, fz, taken, n > 1 ? [x, z] : undefined);
+    sx.push(px);
+    sz.push(pz);
+  }
+  const perm = assignMin(sx.map((px, k) => units.map((u) => dist2(u.x, u.z, px, sz[k]))));
+  perm.forEach((j, k) => slots.set(units[j].id, [sx[k], sz[k]]));
   return { slots, fx, fz };
 }
 
