@@ -75,6 +75,9 @@ const LEAD_MAX = 6;
 const SLOT_FAR = 12;
 /** Tấn công-di chuyển: hết địch chừng này thì cả khối đi tiếp. */
 const HOLD_RESUME = sec(1.5);
+/** Phần số xe có vũ khí phải vào cuộc để cả khối dừng đánh / để giữ dừng (một xe tầm xa thấy địch thì khối vẫn áp sát). */
+const HOLD_QUORUM = 1 / 3;
+const HOLD_KEEP = 1 / 6;
 /** Ô biến hình (co / giãn cột, khép hàng) tối thiểu chừng này m/s kể cả khi xe đang chạy hết sức. */
 const MORPH_MIN = 0.6;
 /** Neo nhìn trước khúc cua ở chừng này giây đường phía trước (theo tốc độ neo) để hãm dần. */
@@ -625,7 +628,9 @@ function createGroup(this: World, side: Side, units: readonly Unit[], x: number,
     wideFor: 0,
     colsT: -1000,
     bestD: [],
-    progT: 0
+    progT: 0,
+    engagedNow: 0,
+    engagedPrev: 0
   };
   // tốc độ khối và quán tính của neo
   let slowest = Infinity;
@@ -1188,6 +1193,22 @@ function stepGroup(this: World, g: Group): void {
     g.ids = [];
     return;
   }
+  // ĐỦ QUÂN MỚI DỪNG ĐÁNH: đếm theo tick trước (không phụ thuộc thứ tự duyệt xe)
+  g.engagedPrev = g.engagedNow;
+  g.engagedNow = 0;
+  if (g.kind === "amove") {
+    let armed = 0;
+    for (let i = 0; i < g.ids.length; i++) {
+      const u = memberAt(this, g, i);
+      if (u && UNITS[u.kind].weapon) armed++;
+    }
+    const need = Math.max(1, Math.ceil(armed * (g.hold ? HOLD_KEEP : HOLD_QUORUM)));
+    if (g.engagedPrev >= need && this.tick >= g.noHold) {
+      if (!g.hold) g.holdFrom = this.tick;
+      g.hold = true;
+      g.holdT = this.tick;
+    }
+  }
   if (g.hold && this.tick - g.holdT > HOLD_RESUME) g.hold = false;
   // DỪNG ĐÁNH VÔ ÍCH: địch nấp sau vách / mép rừng chỉ thoáng hiện, cả khối đứng chờ mà không xe nào bắn được: quá HOLD_FUTILE thì đi
   // tiếp một quãng (vừa đi vừa bắn, đổi chỗ đứng là đổi tầm nhìn), không đứng chờ bóng ma
@@ -1585,17 +1606,20 @@ function groupMember(this: World, u: Unit, w: WeaponSpec | undefined, range: num
           // vừa thôi dừng đánh vô ích: đi tiếp, tháp pháo vẫn bắn mục tiêu trong tầm
           if (inR) fireAt = t;
         } else if (inR || (!w.deploy && dist2(u.x, u.z, sx, sz) < LEASH * LEASH)) {
-          if (!g.hold) g.holdFrom = this.tick;
-          g.hold = true;
-          g.holdT = this.tick;
-          fireAt = t;
-          if (inR) {
-            this.halt(u);
-            return fireAt;
-          }
-          if (!w.deploy) {
-            this.chase(u, t);
-            return fireAt;
+          // vào cuộc: góp một phiếu dừng đánh (`stepGroup`); cả khối đang dừng thì đứng bắn / tiến lên đánh trong vòng LEASH, chưa dừng
+          // thì vừa đi theo khối vừa bắn
+          g.engagedNow++;
+          if (inR) fireAt = t;
+          if (g.hold) {
+            fireAt = t;
+            if (inR) {
+              this.halt(u);
+              return fireAt;
+            }
+            if (!w.deploy) {
+              this.chase(u, t);
+              return fireAt;
+            }
           }
         }
       }

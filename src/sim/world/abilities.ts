@@ -75,7 +75,7 @@ function tryFireGround(this: World, u: Unit, w: WeaponSpec, x: number, z: number
   const ticks = Math.max(1, Math.ceil((d / (w.shotSpeed ?? SHOT_SPEED[w.visual])) * TICK_RATE));
   // mỗi nhịp bắn ra `barrels` viên cùng lúc, mỗi viên tản riêng
   for (let i = 0, n = w.barrels ?? 1; i < n; i++) {
-    const [ox, oz] = this.randDisc();
+    const [ox, oz] = this.aimDisc(u.x, u.z, x, z);
     this.pushShot(u, w, 0, x + ox * s, z + oz * s, 0, deployed ? w.dmgGround * (1 + w.deploy!.dmg) : w.dmgGround, false, ticks);
   }
   // quân cố định giữ nguyên thân, chỉ mâm phóng quay về điểm bắn

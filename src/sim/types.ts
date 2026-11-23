@@ -564,4 +564,11 @@ export interface Group {
    */
   bestD: number[];
   progT: number;
+  /**
+   * Tấn công-di chuyển (23/11/2026): số xe của khối có địch trong tầm (hoặc trong tầm đuổi quanh ô) ở tick đang chạy / tick trước. Cả
+   * khối DỪNG ĐÁNH khi đủ HOLD_QUORUM số xe có vũ khí vào cuộc (một Pháo bắn xa thấy địch thì khối vẫn áp sát), giữ dừng khi còn đủ
+   * HOLD_KEEP.
+   */
+  engagedNow: number;
+  engagedPrev: number;
 }

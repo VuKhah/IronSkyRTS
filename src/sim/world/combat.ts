@@ -354,6 +354,22 @@ function randDisc(this: World): [number, number] {
   return [0, 0];
 }
 
+/**
+ * Điểm ngẫu nhiên trong vòng tròn đơn vị, XOAY THEO HƯỚNG BẮN từ (sx, sz) tới (tx, tz): thành phần thứ nhất dọc đường ngắm, thứ hai
+ * sang ngang (luật công bằng số 4, 23/11/2026: lệch theo trục bản đồ thì trận soi gương nhận cùng một vector lệch, phát trúng thành
+ * trượt). Bắn tại chỗ thì theo trục bản đồ.
+ */
+function aimDisc(this: World, sx: number, sz: number, tx: number, tz: number): [number, number] {
+  const [a, b] = this.randDisc();
+  const dx = tx - sx;
+  const dz = tz - sz;
+  const d = Math.sqrt(dx * dx + dz * dz);
+  if (d < 1e-6) return [a, b];
+  const fx = dx / d;
+  const fz = dz / d;
+  return [a * fx + b * fz, a * fz - b * fx];
+}
+
 /** Nhịp bắn: hết loạt thì nạp lại `cooldown`, đang giữa loạt thì chờ `burst.interval`. */
 function nextCooldown(this: World, src: Unit | Building, w: WeaponSpec): number {
   if (!w.burst) return w.cooldown;
@@ -424,14 +440,14 @@ function tryFire(this: World, src: Unit | Building, w: WeaponSpec, t: Target): b
     let tx = t.x;
     let tz = t.z;
     if (miss) {
-      const [ox, oz] = this.randDisc();
+      const [ox, oz] = this.aimDisc(src.x, src.z, t.x, t.z);
       const l = Math.sqrt(ox * ox + oz * oz) || 1;
       const off = this.radiusOf(t) + 2.5;
       tx += (ox / l) * off;
       tz += (oz / l) * off;
       target = 0;
     } else if (w.scatter) {
-      const [ox, oz] = this.randDisc();
+      const [ox, oz] = this.aimDisc(src.x, src.z, t.x, t.z);
       tx += ox * w.scatter;
       tz += oz * w.scatter;
       target = 0;
@@ -669,7 +685,7 @@ function resolveShots(this: World): void {
   this.shots = keep;
 }
 
-const methods = { inRange, deployed, reach, groundTier, sightOf, acquireFrom, acquire, updateGround, returnHome, swapHome, spotBusy, aim, rechargePd, randDisc, nextCooldown, auraFactor, mobilized, tryFire, pushShot, fireSecondary, dropBomb, damage, commanderRetreat, gainXp, veteranRegen, resolveShots };
+const methods = { inRange, deployed, reach, groundTier, sightOf, acquireFrom, acquire, updateGround, returnHome, swapHome, spotBusy, aim, rechargePd, randDisc, aimDisc, nextCooldown, auraFactor, mobilized, tryFire, pushShot, fireSecondary, dropBomb, damage, commanderRetreat, gainXp, veteranRegen, resolveShots };
 type Methods = typeof methods;
 declare module "./core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
