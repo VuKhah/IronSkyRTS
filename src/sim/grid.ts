@@ -603,6 +603,41 @@ export class Grid {
    * 1 ô quanh đích, nên lấy mọi nhãn trong 3 ô quanh s và 2 ô quanh t: không chung nhãn nào thì A* chắc chắn thất bại. Hai ô
    * gần nhau (vùng ngoại lệ chạm nhau) thì không kết luận.
    */
+  /**
+   * Xe nửa bề ngang `half` từ (x0, z0) CÓ THỂ tới (x1, z1) không (kiểm nhanh theo vùng liên thông, không chạy A*; xem `mayReach`).
+   * Xe mảnh (≤ 0,7 m) luôn đúng. Dùng khi chọn ô cuối: ô trong hốc mà xe to không lọt thì không giao cho xe đó.
+   */
+  reachable(x0: number, z0: number, x1: number, z1: number, half: number): boolean {
+    if (half <= 0.7) return true;
+    // so thẳng nhãn vùng (không có lối tắt "gần nhau thì không kết luận" của `mayReach`: hốc kín sát thềm chính cũng phải bị loại):
+    // nhãn trong 2 ô quanh điểm đầu và 1 ô quanh điểm cuối có chung một nhãn là tới được
+    const lab = this.regions(half);
+    const C = this.cols;
+    const s = this.index(x0, z0);
+    const t = this.index(x1, z1);
+    const a: number[] = [];
+    const sx = s % C;
+    const sz = (s - sx) / C;
+    for (let dz = -2; dz <= 2; dz++)
+      for (let dx = -2; dx <= 2; dx++) {
+        const x = sx + dx;
+        const z = sz + dz;
+        if (x < 0 || z < 0 || x >= C || z >= this.rows) continue;
+        const l = lab[z * C + x];
+        if (l >= 0 && !a.includes(l)) a.push(l);
+      }
+    const tx = t % C;
+    const tz = (t - tx) / C;
+    for (let dz = -1; dz <= 1; dz++)
+      for (let dx = -1; dx <= 1; dx++) {
+        const x = tx + dx;
+        const z = tz + dz;
+        if (x < 0 || z < 0 || x >= C || z >= this.rows) continue;
+        if (a.includes(lab[z * C + x])) return true;
+      }
+    return false;
+  }
+
   private mayReach(s: number, t: number, half: number): boolean {
     const C = this.cols;
     const sx = s % C;

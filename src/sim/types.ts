@@ -109,6 +109,8 @@ export interface Unit {
    */
   going: boolean;
   wasGoing: boolean;
+  /** Lần lái "dừng" gần nhất chọn lùi (B6): xe đứng gần đích giữ chiều đã chọn, không đổi tiến / lùi theo từng tick khi hai cách gần bằng nhau. */
+  revPick: boolean;
   /** Thuộc sư đoàn nào (`Division.id`, 0 = xe lẻ). Bền hơn `group`: còn giữ sau khi tới nơi. */
   division: number;
   /** Gốc phát của phát đạn trúng xe gần nhất (`lastHit`): tướng sư đoàn biết bị bắn từ đâu. */
@@ -556,4 +558,10 @@ export interface Group {
   wideFor: number;
   /** Tick lần đổi số cột gần nhất (giãn phải cách lần đổi trước ít nhất COLS_DWELL). */
   colsT: number;
+  /**
+   * Tiến độ vào ô cuối (`endProgress`): quãng gần nhất từng tới ô cuối của từng ô và tick lần cuối có xe lại gần ô thêm END_STEP m.
+   * Khối tan khi mọi xe đã vào ô, hoặc END_STALL liền không xe nào tiến (không theo một mốc giờ cố định: đoàn dài qua cầu cần lâu hơn).
+   */
+  bestD: number[];
+  progT: number;
 }

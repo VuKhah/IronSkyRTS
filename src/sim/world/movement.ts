@@ -17,14 +17,14 @@ import { World } from "./core";
 const ARRIVE_R = 0.3;
 /** Gần đích chừng này (m), lệch dọc thân không quá NEAR_ALONG và đã gần như đứng thì cũng là tới (khỏi xoay vì vài tấc lệch ngang). */
 const NEAR_R = 0.8;
-const NEAR_ALONG = 0.3;
+const NEAR_ALONG = 0.45;
 /**
  * LÙI (B6, 23/11/2026; Spring `WantReverse`): đích gần hơn chừng này (m) thì so THỜI GIAN tới đích bằng lùi và bằng tiến (quay thân
  * theo `turnRate` + chạy, lùi chạy × REVERSE_SPEED, cộng thời gian quay về hướng mặt được giao khi tới), lùi nếu nhanh hơn rõ
  * (REV_PICK; đang lùi thì giữ lùi tới khi tiến nhanh hơn rõ, REV_KEEP: không đổi chiều qua lại). Xe bị đẩy lệch ô vài mét về phía
  * sau thì lùi về, giữ mặt hướng về phía địch; lệnh đi ngược chiều thì quay đầu (hướng mặt mới là hướng đi).
  */
-export const REVERSE_MAX = 8;
+export const REVERSE_MAX = 16;
 const REVERSE_SPEED = 0.5;
 const REV_PICK = 0.85;
 const REV_KEEP = 1.25;
@@ -146,17 +146,25 @@ function drive(this: World, u: Unit, gx: number, gz: number, stop: boolean, vCap
       tf += dangle(dx, dz, u.faceX, u.faceZ) / om;
       tr += dangle(-dx, -dz, u.faceX, u.faceZ) / om;
     }
-    rev = u.speed < -0.05 ? tr < tf * REV_KEEP : tr < tf * REV_PICK;
+    // đang lùi (hoặc vừa chọn lùi mà còn đứng: sát đích hai cách gần bằng nhau) thì giữ lùi tới khi tiến nhanh hơn rõ
+    const keep = u.speed < -0.05 || (u.revPick && u.speed <= 0.05);
+    rev = keep ? tr < tf * REV_KEEP : tr < tf * REV_PICK;
   }
+  if (stop) u.revPick = rev;
   const sg = rev ? -1 : 1;
   let wx = dx * sg;
   let wz = dz * sg;
   let cap = vCap;
+  // bị kìm vì bám đuôi xe đang chạy phía trước (xếp hàng): không tính là kẹt
+  let queued = false;
   if (!rev && d > 0.5) {
     const a = this.avoid(u, wx, wz, d, stop, Math.min(vCap, this.speedOf(u)));
     wx = AV.x;
     wz = AV.z;
-    if (a < cap) cap = a;
+    if (a < cap) {
+      cap = a;
+      queued = AV.q;
+    }
   }
   // TRƯỢT THEO VÁCH: thân đang chạm vách / đá mà hướng muốn đi đâm vào nó thì lái theo hướng dọc vách (bỏ phần đâm vào): xe tự
   // trượt qua góc vách. Không có bước này thì mỗi tick xe quay mũi về hướng muốn đi (đâm vào góc) rồi luật chạm vách lại quay
@@ -197,8 +205,9 @@ function drive(this: World, u: Unit, gx: number, gz: number, stop: boolean, vCap
   const rally = this.mobilized(u) ? 1 + RULES.abilities.mobilize.speed : 1;
   let vt = this.speedOf(u) * rally * this.moveFactor(u, u.hx * sg, u.hz * sg) * (rev ? REVERSE_SPEED : 1);
   if (vCap < vt) vt = vCap;
-  // tốc độ tầng trên giao (trước khi né xe kìm lại): đo "kẹt" so với số này
+  // tốc độ tầng trên giao (trước khi né xe kìm lại): đo "kẹt" so với số này; đang xếp hàng sau xe chạy thì đo so với tốc độ bám đuôi
   const want = vt;
+  const wantStuck = queued && cap < vt ? cap : vt;
   // muốn tiến tới (không chỉ đứng ô / quay mặt): là XE ĐI, xe cùng phe đang đứng phải dạt cho nó (`contact.ts`)
   if (want > 0.05) u.going = true;
   if (cap < vt) vt = cap;
@@ -238,7 +247,7 @@ function drive(this: World, u: Unit, gx: number, gz: number, stop: boolean, vCap
   // chắn lối; chỉ hạ bệ khi thật sự dừng (tới ô, dừng lại bắn)
   if (moved > 1e-8 || want * k > 0.05) u.moved = true;
   // KẸT: muốn đi (theo địa hình, trước khi bị né xe kìm) mà gần như không tiến
-  const wantStep = want * k * DT;
+  const wantStep = wantStuck * k * DT;
   if (wantStep > 0.04 && moved < wantStep * wantStep * 0.09) u.stuck++;
   else if (u.stuck > 0) u.stuck--;
   return stop && this.arrivedAt(u, gx - u.x, gz - u.z, Math.sqrt(dist2(u.x, u.z, gx, gz)));
@@ -252,8 +261,12 @@ function arrivedAt(this: World, u: Unit, ex: number, ez: number, d: number): boo
   return (along < 0 ? -along : along) <= NEAR_ALONG && (u.speed < 0 ? -u.speed : u.speed) < 0.4;
 }
 
-/** Kết quả hướng lái của lần gọi `avoid` gần nhất (tránh cấp phát mảng mỗi tick). */
-const AV = { x: 0, z: 0 };
+/**
+ * Kết quả của lần gọi `avoid` gần nhất (tránh cấp phát mảng mỗi tick): hướng lái, và `q` = trần tốc độ đang áp là do BÁM ĐUÔI một xe
+ * đang chạy (xếp hàng: chờ trong hàng không phải là kẹt).
+ */
+const AV = { x: 0, z: 0, q: false };
+let FOLLOW_CAP = Infinity;
 /** Các xe chắn phía trước (lệch ngang, bán kính chạm, quãng dọc) để chọn KHE lách (`avoid`); bộ đệm dùng lại mỗi tick. */
 const GATE_N = 24;
 const G_LAT = new Float64Array(GATE_N);
@@ -324,7 +337,9 @@ const STEER_KEEP = 0.6;
  * không lắc mũi theo từng tick khi xe chắn đổi qua lại trong đám đông). Ghi hướng lái vào `AV`, trả về trần tốc độ (m/s).
  */
 function avoid(this: World, u: Unit, wx: number, wz: number, dGoal: number, stop: boolean, vWant: number): number {
+  FOLLOW_CAP = Infinity;
   const cap = this.avoidRaw(u, wx, wz, dGoal, stop, vWant);
+  AV.q = cap < Infinity && FOLLOW_CAP <= cap + 1e-9;
   if (u.avT === this.tick - 1 && u.avX * AV.x + u.avZ * AV.z > 0) {
     let mx = u.avX * STEER_KEEP + AV.x * (1 - STEER_KEEP);
     let mz = u.avZ * STEER_KEEP + AV.z * (1 - STEER_KEEP);
@@ -397,6 +412,7 @@ function avoidRaw(this: World, u: Unit, wx: number, wz: number, dGoal: number, s
         if (vAlong > 0.4 && v.hx * hx + v.hz * hz > 0.5) {
           const c = vAlong + (gap - FOLLOW_GAP) / FOLLOW_T;
           if (c < cap) cap = c > 0 ? c : 0;
+          if (c < FOLLOW_CAP) FOLLOW_CAP = c > 0 ? c : 0;
         } else {
           const room = gap - STOP_GAP;
           const c = room > 0 ? Math.sqrt(2 * brakeOf(u.kind) * room) : 0;
@@ -577,6 +593,8 @@ let ANC_CLEAR = new Float32Array(0);
 let ANC_OWNER = new Int32Array(0);
 const ANC_TOUCHED: number[] = [];
 let ANC_TICK = -1;
+/** Thế giới đã dựng bộ đệm (hai trận chạy nối nhau mà trùng số tick không được dùng nhầm lớp của nhau). */
+let ANC_WORLD: World | null = null;
 let ANC_DISCS = new Float64Array(0);
 let ANC_IGNORE: ReadonlySet<number> | null = null;
 
@@ -587,7 +605,8 @@ let ANC_IGNORE: ReadonlySet<number> | null = null;
  */
 function anchorLayer(this: World, self: number, ignore?: ReadonlySet<number>): import("../grid").StandLayer | undefined {
   const g = this.grid;
-  if (ANC_TICK !== this.tick || ignore || ANC_IGNORE) {
+  if (ANC_WORLD !== this || ANC_TICK !== this.tick || ignore || ANC_IGNORE) {
+    ANC_WORLD = this;
     ANC_TICK = this.tick;
     ANC_IGNORE = ignore ?? null;
     if (ANC_CLEAR.length !== g.size) {

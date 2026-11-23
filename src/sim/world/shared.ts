@@ -230,6 +230,11 @@ export interface Rays {
   start: Int32Array;
 }
 export const RAYS = new Map<number, Rays>();
+/** Làm tròn nửa ra xa số 0 (đối xứng: roundSym(−v) = −roundSym(v)). */
+function roundSym(v: number): number {
+  return v < 0 ? -Math.round(-v) : Math.round(v);
+}
+
 export function rays(r: number): Rays {
   let R = RAYS.get(r);
   if (!R) {
@@ -243,8 +248,10 @@ export function rays(r: number): Rays {
         if (!inside(x, z) || (inside(x + 1, z) && inside(x - 1, z) && inside(x, z + 1) && inside(x, z - 1))) continue;
         const n = Math.max(Math.abs(x), Math.abs(z));
         for (let i = 1; i <= n; i++) {
-          const ox = Math.round((x * i) / n);
-          const oz = Math.round((z * i) / n);
+          // làm tròn ĐỐI XỨNG (nửa ra xa số 0): Math.round làm tròn 0,5 lên phía dương, tia tới (x, z) và tia tới (−x, −z) đi qua các ô
+          // không soi gương nhau, hai phe nhìn khác nhau (luật công bằng số 4; 23/11/2026)
+          const ox = roundSym((x * i) / n);
+          const oz = roundSym((z * i) / n);
           if (!inside(ox, oz)) break;
           off.push(ox, oz);
           inv.push(1 / (Math.sqrt(ox * ox + oz * oz) * CELL));

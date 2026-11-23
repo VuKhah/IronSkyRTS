@@ -71,6 +71,7 @@ function spawnUnit(this: World, kind: UnitId, side: Side, x: number, z: number):
     driveT: -1,
     going: false,
     wasGoing: false,
+    revPick: false,
     division: 0,
     hitX: 0,
     hitZ: 0,

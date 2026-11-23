@@ -53,6 +53,7 @@ export function hashWorld(w: World): number {
     num(u.avT);
     num(u.homeT);
     num(u.going ? 1 : 0);
+    num(u.revPick ? 1 : 0);
     num(u.progD);
     num(u.progT);
     num(u.division);

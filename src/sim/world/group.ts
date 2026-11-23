@@ -16,6 +16,7 @@ import { CELL, TIER_H } from "../maps";
 import type { Group, Target, Unit } from "../types";
 import { DT, sec, accelOf, brakeOf, bodyRadius, wallRadius, AIR_FORMATION_GAP, SLOT_NUDGE, IDLE_ACQUIRE_BONUS, LEASH } from "./shared";
 import { World } from "./core";
+import { REVERSE_MAX } from "./movement";
 
 /** Khe giữa hai thân xe cạnh nhau trong một hàng / giữa hai hàng (m). */
 export const COL_GAP = 0.8;
@@ -55,10 +56,14 @@ const BODY_CHECK = 20;
 const WIDTH_MARGIN = 0.4;
 /** Ô chuyển dần từ vệt sang hình cuối trong chừng này mét cuối của neo (tối thiểu; thêm nửa bề ngang khối). */
 const END_BLEND = 10;
+/** Dựng lại hình cuối sớm hơn lúc ô bắt đầu chuyển chừng này mét. */
+const REFIT_LEAD = 10;
 /** Giãn hết cỡ mà còn hơn chừng này mét đường thì mới xếp lại theo vai (gần đích thì giữ thứ tự đang đi). */
 const REFORM_DIST = 60;
-/** Neo tới cuối đường rồi mà còn xe chưa vào ô sau chừng này thì khối tan (xe tự về ô của nó). */
-const END_WAIT = sec(15);
+/** Khối tan khi chừng này liền không xe nào lại gần ô cuối thêm END_STEP m (xe còn lại tự về ô của nó); tối đa END_MAX sau khi neo tới. */
+const END_STALL = sec(6);
+const END_STEP = 0.5;
+const END_MAX = sec(90);
 /** Đi thẳng tới ô: hết thời gian dự kiến cộng chừng này mà chưa xong thì khối tan. */
 const DIRECT_WAIT = sec(10);
 /** Bám ô đang chạy: hệ số đuổi theo phần tụt (1/s), độ dài nhắm trước (m). */
@@ -253,7 +258,7 @@ function clashes(t: Taken, x: number, z: number, r: number): boolean {
 }
 
 /** Ô đứng được gần (x, z) nhất cho xe u: vừa thân (khoảng trống), không đè ô xe khác đã nhận (`taken`), không đè xe đứng ngoài lệnh. */
-function freeSpot(this: World, u: Unit, x: number, z: number, used: Set<number>, ignore: ReadonlySet<number>, tier: number, fx: number, fz: number, taken?: Taken): [number, number] {
+function freeSpot(this: World, u: Unit, x: number, z: number, used: Set<number>, ignore: ReadonlySet<number>, tier: number, fx: number, fz: number, taken?: Taken, from?: readonly [number, number]): [number, number] {
   const r = bodyRadius(u.kind);
   const take = (px: number, pz: number): [number, number] => {
     used.add(this.grid.index(px, pz));
@@ -265,8 +270,10 @@ function freeSpot(this: World, u: Unit, x: number, z: number, used: Set<number>,
     return [px, pz];
   };
   const wr = wallRadius(u.kind);
-  // ô dự phòng phải cùng tầng (không rơi xuống chân vách / lên thềm khác) và không nằm trên dốc
-  const okTier = (px: number, pz: number): boolean => tier < 0 || (this.map.tierAt(px, pz) === tier && !this.nearRamp(px, pz));
+  // ô dự phòng phải cùng tầng (không rơi xuống chân vách / lên thềm khác), không nằm trên dốc, và (có `from`) tới được từ tâm hình cuối
+  // với đúng cỡ xe (không rơi vào hốc xe không lọt)
+  const half = Math.max(0.71, wr);
+  const okTier = (px: number, pz: number): boolean => (tier < 0 || (this.map.tierAt(px, pz) === tier && !this.nearRamp(px, pz))) && (!from || this.grid.reachable(from[0], from[1], px, pz, half));
   // dịch theo khung hướng mặt (phải, trước) chứ không theo trục bản đồ: hai phe soi gương chọn ô soi gương (luật công bằng số 4)
   const rx = fz;
   const rz = -fx;
@@ -582,7 +589,7 @@ function createGroup(this: World, side: Side, units: readonly Unit[], x: number,
     dx: [],
     dz: [],
     pace: [],
-    revMax: 8,
+    revMax: REVERSE_MAX,
     hold: false,
     holdT: -1000,
     holdFrom: -1000,
@@ -590,7 +597,9 @@ function createGroup(this: World, side: Side, units: readonly Unit[], x: number,
     t: 0,
     doneT: -1,
     wideFor: 0,
-    colsT: -1000
+    colsT: -1000,
+    bestD: [],
+    progT: 0
   };
   // tốc độ khối và quán tính của neo
   let slowest = Infinity;
@@ -837,6 +846,8 @@ function slotOk(this: World, u: Unit, px: number, pz: number, ox: number, oz: nu
   if (!this.map.fits(px, pz, 1, 1) || !this.bodyFits(u, px, pz)) return false;
   if (this.nearRamp(px, pz) || this.map.tierAt(px, pz) !== this.map.tierAt(ox, oz)) return false;
   if (!this.grid.los(ox, oz, px, pz)) return false;
+  // tới được từ tâm hình cuối với ĐÚNG CỠ xe đó (ô trong hốc thềm mà xe to không lọt: Tên Lửa Loạt húc vách mãi)
+  if (!this.grid.reachable(ox, oz, px, pz, Math.max(0.71, wallRadius(u.kind)))) return false;
   return !this.standingAt(px, pz, bodyRadius(u.kind), ignore);
 }
 
@@ -935,7 +946,7 @@ function fitEnd(this: World, us: readonly Unit[], lat: readonly number[], back: 
       taken.r.push(bodyRadius(us[i].kind));
     }
   }
-  for (let i = 0; i < us.length; i++) if (!okI[i]) [ex[i], ez[i]] = this.freeSpot(us[i], ex[i], ez[i], used, ignore, this.map.tierAt(ox, oz), fx, fz, taken);
+  for (let i = 0; i < us.length; i++) if (!okI[i]) [ex[i], ez[i]] = this.freeSpot(us[i], ex[i], ez[i], used, ignore, this.map.tierAt(ox, oz), fx, fz, taken, [ox, oz]);
   return [ex, ez];
 }
 
@@ -1100,6 +1111,7 @@ function groupPriority(this: World, g: Group): void {
 
 function stepGroup(this: World, g: Group): void {
   g.t++;
+  if (g.t % SWAP_EVERY === 0) this.swapSlots(g);
   if ((g.t - 1) % PRIO_EVERY === 0) this.groupPriority(g);
   let alive = 0;
   for (let i = 0; i < g.ids.length; i++) if (memberAt(this, g, i)) alive++;
@@ -1122,23 +1134,71 @@ function stepGroup(this: World, g: Group): void {
     }
   }
   if (g.mode === "direct") {
-    // xong khi mọi xe đã tới ô và đứng; quá giờ thì tan (xe còn lại tự về ô của nó)
-    let all = true;
-    for (let i = 0; i < g.ids.length; i++) {
-      const u = memberAt(this, g, i);
-      if (u && (dist2(u.x, u.z, g.endX[i], g.endZ[i]) > 0.81 || u.speed !== 0)) all = false;
-    }
-    if (all || g.t > g.doneT) this.finishGroup(g);
+    // xong khi mọi xe đã tới ô và đứng; hết giờ dự kiến mà không còn xe nào tiến thì tan (xe còn lại tự về ô của nó)
+    if (this.endProgress(g) || (g.t > g.doneT && g.t - g.progT > END_STALL)) this.finishGroup(g);
     return;
   }
   this.marchAnchor(g);
-  if (g.doneT >= 0) {
-    let all = true;
-    for (let i = 0; i < g.ids.length; i++) {
-      const u = memberAt(this, g, i);
-      if (u && (dist2(u.x, u.z, g.endX[i], g.endZ[i]) > 0.81 || u.speed !== 0)) all = false;
+  // neo đã tới: tan khi mọi xe vào ô, hoặc END_STALL liền không xe nào lại gần ô thêm (đoàn dài qua cầu cần lâu hơn một mốc cố định)
+  if (g.doneT >= 0 && (this.endProgress(g) || g.t - Math.max(g.progT, g.doneT) > END_STALL || g.t - g.doneT > END_MAX)) this.finishGroup(g);
+}
+
+/** Mọi xe đã vào ô cuối và đứng chưa; ghi tiến độ (`bestD`, `progT`): có xe lại gần ô thêm END_STEP m là còn tiến. */
+function endProgress(this: World, g: Group): boolean {
+  let all = true;
+  for (let i = 0; i < g.ids.length; i++) {
+    const u = memberAt(this, g, i);
+    if (!u) continue;
+    const d2 = dist2(u.x, u.z, g.endX[i], g.endZ[i]);
+    if (d2 > 0.81 || u.speed !== 0) all = false;
+    const d = Math.sqrt(d2);
+    if (g.bestD[i] === undefined || d < g.bestD[i] - END_STEP) {
+      g.bestD[i] = d;
+      g.progT = g.t;
     }
-    if (all || g.t - g.doneT > END_WAIT) this.finishGroup(g);
+  }
+  return all;
+}
+
+/** Lượt đổi ô mỗi chừng này tick; đổi khi tổng bình phương quãng giảm hơn SWAP_GAIN m² và hơn SWAP_K phần. */
+const SWAP_EVERY = 5;
+const SWAP_GAIN = 1;
+const SWAP_K = 0.15;
+
+/**
+ * ĐỔI Ô Ở ĐÍCH (GAP2 ch. 20; Pottinger): neo đã tới, hai xe CÙNG LOẠI, CÙNG LÔ mà đổi ô cuối cho nhau thì tổng bình phương quãng giảm
+ * rõ thì đổi (ô phân theo bình phương quãng không cắt đường nhau). Thứ tự trong cột đổi trên đường (hai khối cắt nhau, đoàn qua cầu
+ * hàng một, xe bị đẩy dạt) thì ô cuối theo kịp: xe tới trước nhận ô gần nó, không băng ngang trước mũi xe tới sau, không đối đầu
+ * đổi chỗ ở đích.
+ */
+function swapSlots(this: World, g: Group): void {
+  if (g.mode !== "march" || g.doneT < 0) return;
+  const n = g.ids.length;
+  for (let i = 0; i < n; i++) {
+    const a = memberAt(this, g, i);
+    if (!a) continue;
+    for (let j = i + 1; j < n; j++) {
+      const b = memberAt(this, g, j);
+      if (!b || b.kind !== a.kind || b.lot !== a.lot) continue;
+      const now = dist2(a.x, a.z, g.endX[i], g.endZ[i]) + dist2(b.x, b.z, g.endX[j], g.endZ[j]);
+      const swp = dist2(a.x, a.z, g.endX[j], g.endZ[j]) + dist2(b.x, b.z, g.endX[i], g.endZ[i]);
+      if (now - swp <= SWAP_GAIN || swp > now * (1 - SWAP_K)) continue;
+      g.ids[i] = b.id;
+      g.ids[j] = a.id;
+      a.slot = j;
+      b.slot = i;
+      a.tx = g.endX[j];
+      a.tz = g.endZ[j];
+      b.tx = g.endX[i];
+      b.tz = g.endZ[i];
+      a.path = [];
+      a.pathI = 0;
+      b.path = [];
+      b.pathI = 0;
+      g.bestD[i] = Infinity;
+      g.bestD[j] = Infinity;
+      break;
+    }
   }
 }
 
@@ -1209,8 +1269,9 @@ function marchAnchor(this: World, g: Group): void {
   let v = g.v + clamp(vt - g.v, -rate, rate);
   if (v < 0) v = 0;
   let ds = Math.min(v * DT, L - g.s);
-  // vào đoạn cuối: dựng lại hình cuối theo đúng thứ tự xe đang đi (khối đã qua lối hẹp thì không xáo lại ngay trước khi dừng)
-  if (!g.endFit && g.s > L - (END_BLEND + g.halfW)) this.refitEnd(g);
+  // sắp vào đoạn cuối (sớm hơn REFIT_LEAD m, trước khi ô nào bắt đầu chuyển sang ô cuối cũ: ô không nhảy): dựng lại hình cuối theo đúng
+  // thứ tự xe đang đi (khối đã qua lối hẹp thì không xáo lại ngay trước khi dừng)
+  if (!g.endFit && g.s > L - (END_BLEND + g.halfW + REFIT_LEAD)) this.refitEnd(g);
   // ô ở chỗ neo hiện tại theo mẫu đang dùng (vừa co / giãn cột thì ô nhảy chỗ: không tính là ô chạy nhanh)
   for (let i = 0; i < g.ids.length; i++) {
     const [px, pz] = this.slotAt(g, i, g.s);
@@ -1474,6 +1535,24 @@ function groupMember(this: World, u: Unit, w: WeaponSpec | undefined, range: num
   return fireAt;
 }
 
+/** Tới nơi theo đám đông: gần ô cuối không quá SETTLE_NEAR m mà bị chắn SETTLE_STUCK thì nhận chỗ đang đứng. */
+const SETTLE_NEAR = 3;
+const SETTLE_STUCK = sec(2);
+
+/**
+ * TỚI NƠI THEO ĐÁM ĐÔNG (B4, 23/11/2026; Spring `HandleUnitCollisionsAux`, Battle Drones `arrivalRadius`): xe đã ở gần ô cuối (≤
+ * SETTLE_NEAR m) mà bị đồng đội / vách chắn không vào nốt được SETTLE_STUCK thì ô cuối của nó thành chỗ đang đứng (khối đông trên thềm
+ * chật không chen nhau từng tấc mãi). Trả về true khi vừa nhận chỗ.
+ */
+function settleSlot(this: World, g: Group, u: Unit, i: number): boolean {
+  if (u.stuck < SETTLE_STUCK || dist2(u.x, u.z, g.endX[i], g.endZ[i]) > SETTLE_NEAR * SETTLE_NEAR) return false;
+  g.endX[i] = g.sx[i] = u.tx = u.x;
+  g.endZ[i] = g.sz[i] = u.tz = u.z;
+  u.stuck = 0;
+  u.speed = 0;
+  return true;
+}
+
 /** Lái xe thứ i của khối tới ô của nó (xem chú thích đầu file). */
 function toSlot(this: World, g: Group, u: Unit, i: number): void {
   const sx = g.sx[i];
@@ -1483,17 +1562,18 @@ function toSlot(this: World, g: Group, u: Unit, i: number): void {
       if (this.follow(u, g.pace[i])) u.path = [];
       return;
     }
-    if (this.drive(u, sx, sz, true, g.pace[i], g.revMax)) this.turnHull(u, g.faceX, g.faceZ);
-    // bị xe đứng chắn quá lâu: đường vòng tới ô
+    if (this.settleSlot(g, u, i) || this.drive(u, g.sx[i], g.sz[i], true, g.pace[i], g.revMax)) this.turnHull(u, g.faceX, g.faceZ);
+    // bị chắn quá lâu: tìm lại đường tới ô
     else this.unstick(u, sx, sz);
     return;
   }
   const ex = sx - u.x;
   const ez = sz - u.z;
   const d2 = ex * ex + ez * ez;
-  // xa ô mà không nhìn thẳng thấy ô (vách, khúc cua): tìm đường A* tới ô, mỗi giây tìm lại; không tìm được thì lái thẳng
-  // (trượt dọc vách) chờ lần tìm sau
-  if (d2 > SLOT_FAR * SLOT_FAR && !this.grid.los(u.x, u.z, sx, sz, wallRadius(u.kind))) {
+  // không nhìn thẳng thấy ô (vách, khúc cua) mà ô xa, hoặc ô ĐỨNG YÊN (ô cuối, ô chờ: ô sau vách thềm cách 7 m cũng phải đi vòng, lái
+  // thẳng là húc vách mãi): tìm đường A* tới ô, mỗi giây tìm lại; không tìm được thì lái thẳng (trượt dọc vách) chờ lần tìm sau. Ô đang
+  // chạy ở gần khuất sau góc thì sắp ló ra, khỏi tìm
+  if ((d2 > SLOT_FAR * SLOT_FAR || g.doneT >= 0 || g.vs[i] < 0.15) && d2 > 1 && !this.grid.los(u.x, u.z, sx, sz, wallRadius(u.kind))) {
     if (this.tick >= u.repathAt) {
       this.setPath(u, sx, sz);
       u.repathAt = this.tick + sec(1);
@@ -1522,8 +1602,8 @@ function toSlot(this: World, g: Group, u: Unit, i: number): void {
       const la = ex * vz - ez * vx;
       if (al < 0.5 && al > -4 && la < 1.5 && la > -1.5) return;
     }
-    // đã tới nơi: đỗ đúng ô rồi quay về hướng chung; bị chắn lâu thì đường vòng tới ô
-    if (this.drive(u, sx, sz, true)) this.turnHull(u, g.doneT >= 0 ? g.faceX : u.hx, g.doneT >= 0 ? g.faceZ : u.hz);
+    // đã tới nơi: đỗ đúng ô rồi quay về hướng chung (gần ô mà bị chắn lâu thì nhận chỗ đang đứng); bị chắn lâu thì tìm lại đường tới ô
+    if ((g.doneT >= 0 && this.settleSlot(g, u, i)) || this.drive(u, sx, sz, true)) this.turnHull(u, g.doneT >= 0 ? g.faceX : u.hx, g.doneT >= 0 ? g.faceZ : u.hz);
     else this.unstick(u, sx, sz);
     return;
   }
@@ -1562,6 +1642,8 @@ const methods = {
   slotAt,
   updateGroups,
   stepGroup,
+  endProgress,
+  swapSlots,
   groupPriority,
   marchAnchor,
   fitWidth,
@@ -1570,7 +1652,8 @@ const methods = {
   finishGroup,
   leaveGroup,
   groupMember,
-  toSlot
+  toSlot,
+  settleSlot
 };
 type Methods = typeof methods;
 declare module "./core" {
