@@ -350,7 +350,11 @@ function rowsFor(units: readonly Unit[], cx: number, cz: number, fx: number, fz:
     const k = lotKey(u) * 16 + rank.get(u.id)!;
     return lotFwd.get(k)! / lotN.get(k)!;
   };
-  const order = [...units].sort((a, b) => rank.get(a.id)! - rank.get(b.id)! || lf(b) - lf(a) || lotKey(a) - lotKey(b) || fwd(b) - fwd(a) || a.id - b.id);
+  // CÁNH (`flank`, vd. phòng không của đội hình Giữ / Hộ tống Pháo): rút ra khỏi các tuyến, lát nữa đứng hai đầu hàng giữa
+  const flankCode = byRole ? FORMATIONS[f].flank : undefined;
+  const flankers = flankCode ? units.filter((u) => UNITS[u.kind].group === flankCode && rank.get(u.id) !== REAR_RANK) : [];
+  const onFlank = new Set(flankers.map((u) => u.id));
+  const order = units.filter((u) => !onFlank.has(u.id)).sort((a, b) => rank.get(a.id)! - rank.get(b.id)! || lf(b) - lf(a) || lotKey(a) - lotKey(b) || fwd(b) - fwd(a) || a.id - b.id);
   const rows: Unit[][] = [];
   const ranks: number[] = [];
   for (let i = 0; i < order.length; ) {
@@ -373,6 +377,28 @@ function rowsFor(units: readonly Unit[], cx: number, cz: number, fx: number, fz:
       p += cnt;
     }
     i = j;
+  }
+  // xe cánh đứng HAI ĐẦU HÀNG GIỮA (hàng không phải tuyến đầu, không phải đoạn hậu; hàng giữa nhất trước), lần lượt trái rồi phải, xe
+  // đang lệch trái hơn sang trái: che sườn cho tuyến giữa (Pháo của đội Hộ tống). Đội toàn xe cánh thì xếp như thường
+  if (flankers.length && rows.length) {
+    const cand: number[] = [];
+    for (let r = 0; r < rows.length; r++) if (ranks[r] !== ranks[0] && ranks[r] !== REAR_RANK) cand.push(r);
+    if (!cand.length) for (let r = 0; r < rows.length; r++) cand.push(r);
+    // hàng giữa nhất trước, rồi lan ra hai phía
+    const mid = (cand.length - 1) / 2;
+    cand.sort((a, b) => Math.abs(cand.indexOf(a) - mid) - Math.abs(cand.indexOf(b) - mid) || a - b);
+    const fl = [...flankers].sort((a, b) => lat(a) - lat(b) || a.id - b.id);
+    // trái lấy từ đầu danh sách (lệch trái nhất), phải lấy từ cuối
+    let lo = 0;
+    let hi = fl.length - 1;
+    for (let k = 0; lo <= hi; k++) {
+      const row = rows[cand[Math.floor(k / 2) % cand.length]];
+      if (k % 2 === 0) row.unshift(fl[lo++]);
+      else row.push(fl[hi--]);
+    }
+  } else if (flankers.length) {
+    rows.push(flankers);
+    ranks.push(0);
   }
   return { rows, ranks };
 }
@@ -715,7 +741,36 @@ function createGroup(this: World, side: Side, units: readonly Unit[], x: number,
     gxa = gx[0];
     gza = gx[1];
   }
-  const p = this.grid.findPath(sx0, sz0, gxa, gza, this.grid.field(mob, false), half, this.anchorLayer(-1, ignore));
+  const field = this.grid.field(mob, false);
+  const layer = this.anchorLayer(-1, ignore);
+  let p = this.grid.findPath(sx0, sz0, gxa, gza, field, half, layer);
+  // mép sau đám xe rơi vào TÚI (vài xe đứng trong hốc đá / sát mép bản đồ): đường từ đó phải vòng ra cửa túi. Thử thêm tâm và mép
+  // trước đám xe; lấy chỗ có tổng quãng nhỏ nhất = độ dài đường + phần xuất phát lên trước mép sau (xe sau phải đi bù phần đó), hơn
+  // POCKET_MARGIN m mới đổi (người dùng 17/11/2026: "đường đi ra bãi trống, không vòng qua túi")
+  if (p) {
+    let ahead = -Infinity;
+    for (const u of units) ahead = Math.max(ahead, (u.x - cx) * fx + (u.z - cz) * fz);
+    let bestCost = polyLen(sx0, sz0, p);
+    for (const k of [0, ahead]) {
+      let px = cx + fx * k;
+      let pz = cz + fz * k;
+      if (this.grid.blockedAt(px, pz) || this.grid.clearanceAt(px, pz) < half) {
+        const f = this.grid.nearestFree(px, pz, 6, (qx, qz) => this.grid.clearanceAt(qx, qz) >= half);
+        if (!f) continue;
+        [px, pz] = f;
+      }
+      const q = this.grid.findPath(px, pz, gxa, gza, field, half, layer);
+      if (!q) continue;
+      const lead = (px - sx0) * fx + (pz - sz0) * fz;
+      const cost = polyLen(px, pz, q) + (lead > 0 ? lead : 0);
+      if (cost + POCKET_MARGIN < bestCost) {
+        bestCost = cost;
+        sx0 = px;
+        sz0 = pz;
+        p = q;
+      }
+    }
+  }
   if (!p) {
     // không có đường chung cho xe to nhất: mỗi xe tự tìm đường tới ô cuối
     const perm = this.assignSlots(unitsInOrder, ex, ez);
@@ -959,6 +1014,20 @@ function goalCenter(this: World, ex: readonly number[], ez: readonly number[]): 
     z += ez[i] / ex.length;
   }
   return [x, z];
+}
+
+/** Đường từ tâm đám xe phải ngắn hơn đường từ mép sau (đã trừ phần lùi) ít nhất chừng này (m) mới đổi chỗ xuất phát. */
+const POCKET_MARGIN = 5;
+
+/** Chiều dài đường gấp khúc từ (x, z) qua các điểm `p`. */
+function polyLen(x: number, z: number, p: readonly number[]): number {
+  let s = 0;
+  for (let k = 0; k + 1 < p.length; k += 2) {
+    s += Math.sqrt(dist2(x, z, p[k], p[k + 1]));
+    x = p[k];
+    z = p[k + 1];
+  }
+  return s;
 }
 
 // ------------------------------------------------------------------ vệt đường của neo
@@ -1369,7 +1438,9 @@ function fitWidth(this: World, g: Group): void {
     }
     return m;
   };
-  const ahead = minClear(sf - 2, sf + LOOK_AHEAD);
+  // nhìn trước tới LOOK_AHEAD m nhưng dừng trước ĐOẠN CUỐI của đường (END_BLEND + REFIT_LEAD m): ở đó hình cuối tự chọn số cột vừa chỗ
+  // (`fitEnd`), đích giữa bãi đá không bắt cả đoàn co hàng từ xa
+  const ahead = minClear(sf - 2, Math.max(sf, Math.min(sf + LOOK_AHEAD, L - END_BLEND - REFIT_LEAD)));
   let fit = 1;
   for (let c = g.colsMax; c >= 1; c--)
     if (this.halfWOf(g, c) + WIDTH_MARGIN <= ahead) {
