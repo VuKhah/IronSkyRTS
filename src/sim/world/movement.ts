@@ -265,7 +265,7 @@ function arrivedAt(this: World, u: Unit, ex: number, ez: number, d: number): boo
  * Kết quả của lần gọi `avoid` gần nhất (tránh cấp phát mảng mỗi tick): hướng lái, và `q` = trần tốc độ đang áp là do BÁM ĐUÔI một xe
  * đang chạy (xếp hàng: chờ trong hàng không phải là kẹt).
  */
-const AV = { x: 0, z: 0, q: false };
+export const AV = { x: 0, z: 0, q: false };
 let FOLLOW_CAP = Infinity;
 /** Các xe chắn phía trước (lệch ngang, bán kính chạm, quãng dọc) để chọn KHE lách (`avoid`); bộ đệm dùng lại mỗi tick. */
 const GATE_N = 24;

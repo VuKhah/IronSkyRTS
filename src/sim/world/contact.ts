@@ -127,6 +127,12 @@ let YIELDED = new Uint8Array(64);
 let PUSHED = new Uint8Array(64);
 /** Xe đứng bị đẩy mà không nhích được (kẹt vách): coi như vật cứng ở các lượt sau. */
 let PINNED = new Uint8Array(64);
+/** Quãng mỗi xe đã bị đẩy DẠT trong tick này (m): cả tick tối đa TICK_PUSH (các lượt cộng lại, không chỉ mỗi lượt). */
+let MOVED = new Float64Array(64);
+/** Xe đã mất đà vì bị đẩy lùi trong tick này chưa. */
+let LOST = new Uint8Array(64);
+/** Một xe bị đẩy tối đa chừng này mét mỗi TICK (3,5 m/s): xe đứng dạt nhanh mà không bị hất văng sang ngang. */
+const TICK_PUSH = 0.35;
 
 /** Tách các cặp xe mặt đất chồng thân (xem chú thích đầu file và YIELD_SHARE). */
 function resolveContacts(this: World): void {
@@ -139,9 +145,13 @@ function resolveContacts(this: World): void {
     YIELDED = new Uint8Array(n * 2);
     PUSHED = new Uint8Array(n * 2);
     PINNED = new Uint8Array(n * 2);
+    MOVED = new Float64Array(n * 2);
+    LOST = new Uint8Array(n * 2);
   }
   PUSHED.fill(0, 0, n);
   PINNED.fill(0, 0, n);
+  MOVED.fill(0, 0, n);
+  LOST.fill(0, 0, n);
   // xe đang lăn thật (muốn đi và có tốc độ)
   const rolling = (u: Unit): boolean => u.going && (u.speed >= STALL_V || u.speed <= -STALL_V);
   // xe j phải dạt cho xe i: (i đang đi / vừa bị đẩy dạt trong tick này mà j không đi) hoặc (i đang lăn mà j đứng ì); j không hạ bệ,
@@ -255,7 +265,14 @@ function resolveContacts(this: World): void {
       let pz = PUSH_Z[i];
       const l2 = px * px + pz * pz;
       if (l2 < 1e-10) continue;
-      const lim = YIELDED[i] ? YIELD_MAX : PUSH_MAX;
+      // trần mỗi lượt; cú đẩy DẠT còn bị trần cả tick (xe đứng không bị hất văng sang ngang), hết trần thì xe đứng thành vật cứng ở các
+      // lượt sau và xe đi chịu phần chồng (cú đẩy lùi xe đi không bị trần cả tick: không thì xe đi lún vào xe đứng)
+      const room = YIELDED[i] ? TICK_PUSH - MOVED[i] : Infinity;
+      if (room <= 1e-4) {
+        PINNED[i] = 1;
+        continue;
+      }
+      const lim = Math.min(YIELDED[i] ? YIELD_MAX : PUSH_MAX, room);
       if (l2 > lim * lim) {
         const k = lim / Math.sqrt(l2);
         px *= k;
@@ -266,14 +283,19 @@ function resolveContacts(this: World): void {
       const oz = u.z;
       this.tryMove(u, u.x + px, u.z + pz, true);
       const got = (u.x - ox) * (u.x - ox) + (u.z - oz) * (u.z - oz);
+      if (YIELDED[i]) MOVED[i] += Math.sqrt(got);
       if (YIELDED[i]) {
         // bị đẩy mà nhích chưa tới một nửa (vách chặn): vật cứng ở các lượt sau
         if (got < (px * px + pz * pz) * 0.25) PINNED[i] = 1;
         else PUSHED[i] = 1;
       }
-      // bị đẩy ngược chiều đang chạy thì mất đà (không cố húc xuyên xe khác)
-      const along = px * u.hx + pz * u.hz;
-      if ((u.speed > 0 && along < -0.02) || (u.speed < 0 && along > 0.02)) u.speed *= 0.8;
+      // bị đẩy ngược chiều đang chạy thì mất đà (không cố húc xuyên xe khác), TỐI ĐA MỘT LẦN MỖI TICK: mỗi lượt một lần thì có khi mất
+      // gần nửa tốc độ trong 0,1 s rồi tăng tốc lại, chạy–khựng–chạy (23/11/2026)
+      const along = (u.x - ox) * u.hx + (u.z - oz) * u.hz;
+      if (LOST[i] === 0 && ((u.speed > 0 && along < -0.02) || (u.speed < 0 && along > 0.02))) {
+        u.speed *= 0.8;
+        LOST[i] = 1;
+      }
       // bị xô lệch đủ xa thì tính là đã nhúc nhích (mất trạng thái cố định)
       if (got > 0.0025) u.moved = true;
     }

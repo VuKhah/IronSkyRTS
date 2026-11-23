@@ -399,11 +399,19 @@ export class BenchRun {
   readonly warnings: string[] = [];
   constructor(
     id: string,
-    readonly side: Side
+    readonly side: Side,
+    /** Lượt lệch (0 = đúng cảnh gốc): k > 0 dời mỗi quân thả một chút (≤ 0,5 m, tất định theo k và số thứ tự) để đo trung bình nhiều lượt. */
+    readonly jitter = 0
   ) {
     const make = BENCH[id];
     if (!make) throw new Error(`Không có cảnh "${id}"`);
     this.scene = make();
+    if (jitter > 0)
+      this.scene.spawn = this.scene.spawn.map((s, i) => ({
+        ...s,
+        x: s.x + ((((i + 1) * 7919 * jitter) % 101) / 101 - 0.5),
+        z: s.z + ((((i + 3) * 104729 * jitter) % 97) / 97 - 0.5)
+      }));
   }
 
   private get sg(): number {
@@ -501,8 +509,8 @@ export class BenchRun {
 }
 
 /** Chạy một cảnh không giao diện cho phe `side`; trả về số đo. */
-export function runBench(id: string, side: Side, make: () => World): Metrics {
-  const run = new BenchRun(id, side);
+export function runBench(id: string, side: Side, make: () => World, jitter = 0): Metrics {
+  const run = new BenchRun(id, side, jitter);
   const w = make();
   w.step(run.setup());
   for (let i = 0; i < run.scene.seconds * TICK_RATE; i++) {

@@ -7,7 +7,10 @@
 import { BENCH, BENCH_MAP, formatMetrics, runBench } from "../sim/bench";
 import { World } from "../sim/world";
 
-const filter = process.argv[2] ?? "";
+const filter = process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : "";
+/** `--luot N`: thêm N lượt lệch nhẹ chỗ thả quân, in trung bình tổng S4–S12 (bàn đo rất nhạy: một lượt là chưa đủ để so hai bản). */
+const li = process.argv.indexOf("--luot");
+const extra = li >= 0 ? Number(process.argv[li + 1] ?? 3) : 0;
 const ids = Object.keys(BENCH).filter((id) => id.includes(filter));
 // tổng S4–S12 (mốc so sánh của kế hoạch 20/11/2026): thời gian xong, giật quay, giật tốc
 let sumT = 0;
@@ -34,3 +37,28 @@ for (const id of ids) {
   }
 }
 if (sumN > 1) console.log(`TỔNG S4–S12 (${sumN} cảnh): xong ${sumT.toFixed(1)} s · giật quay ${sumTurn.toFixed(1)} · giật tốc ${sumSpeed.toFixed(1)}`);
+if (extra > 0) {
+  let T = sumT;
+  let Q = sumTurn;
+  let V = sumSpeed;
+  let unfinished = 0;
+  for (let k = 1; k <= extra; k++) {
+    let t = 0;
+    let q = 0;
+    let v = 0;
+    for (const id of ids) {
+      if (Number(/^mv-s(\d+)/.exec(id)?.[1] ?? 0) < 4) continue;
+      const m = runBench(id, 0, () => new World(1, { sandbox: true, map: BENCH_MAP }), k);
+      if (m.time === Infinity) unfinished++;
+      t += m.time === Infinity ? 150 : m.time;
+      q += m.turnJitter;
+      v += m.speedJitter;
+    }
+    console.log(`  lượt lệch ${k}: xong ${t.toFixed(1)} s · giật quay ${q.toFixed(1)} · giật tốc ${v.toFixed(1)}`);
+    T += t;
+    Q += q;
+    V += v;
+  }
+  const n = extra + 1;
+  console.log(`TRUNG BÌNH ${n} lượt: xong ${(T / n).toFixed(1)} s · giật quay ${(Q / n).toFixed(1)} · giật tốc ${(V / n).toFixed(1)}${unfinished ? ` · ${unfinished} cảnh không xong (tính 150 s)` : ""}`);
+}
