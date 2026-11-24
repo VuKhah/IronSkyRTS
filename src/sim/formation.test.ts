@@ -1,6 +1,6 @@
 /**
  * Kiểm thử đội hình (người dùng 06/11/2026: "dàn quân thông minh: xếp hàng ngay ngắn, không dính cục"):
- * hàng ngang quay theo hướng hành quân, khoảng cách theo kích cỡ xe, hàng đầu / giữa / sau theo vai trò,
+ * khối tròn kiểu tổ ong quay theo hướng hành quân (24/11/2026, trước là hàng ngang), khoảng cách theo kích cỡ xe, hàng đầu / giữa / sau theo vai trò,
  * tới nơi quay cùng một hướng; xe đang chạy nhường xe đã đứng yên (lách qua, không xô lệch hàng).
  * Chỉ kiểm HÀNH VI, không khóa con số (khe hở, tỉ lệ bề ngang có thể chỉnh).
  */
@@ -62,7 +62,27 @@ describe("xe đã vào hàng không bị xe đến sau ủi ra (người dùng 1
 });
 
 describe("đội hình khi ra lệnh cho cả nhóm", () => {
-  it("10 Titan: hàng ngang ngay ngắn quanh điểm đích, không xe nào chạm nhau, cùng quay một hướng", () => {
+  // người dùng 24/11/2026: "quân xếp có xu hướng tròn" (không phải số hàng cố định); cách cũ ra hàng dài 25 = 8v8v8v1
+  it.each([2, 5, 8, 12, 20, 25, 40])("%i Titan tập kết thành khối tròn: mọi chỗ nằm trong vòng cùng diện tích + nửa khoảng xe, không chỗ nào chồng nhau", (n) => {
+    const w = new World(1, { sandbox: true });
+    const [ax, az] = arenaPoint(-30);
+    for (let i = 0; i < n; i++) spawn(w, "titan", ax + (i % 6) * 5, az + Math.floor(i / 6) * 5);
+    const us = w.units.filter((u) => u.side === 0);
+    const [tx, tz] = arenaPoint(20);
+    const plan = (w as unknown as { formation(us: Unit[], x: number, z: number): { slots: Map<number, [number, number]> } }).formation(us, tx, tz);
+    const pts = [...plan.slots.values()];
+    const cx = pts.reduce((s, p) => s + p[0], 0) / n;
+    const cz = pts.reduce((s, p) => s + p[1], 0) / n;
+    expect(Math.sqrt((cx - tx) ** 2 + (cz - tz) ** 2), "tâm khối ở điểm bấm").toBeLessThan(0.5);
+    const sp = 2 * UNITS.titan.radius;
+    // khối tổ ong n xe chiếm diện tích n × (√3/2) × khoảng²: bán kính vòng cùng diện tích
+    const gap = Math.min(...pts.flatMap((p, i) => pts.slice(i + 1).map((q) => Math.sqrt((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2))));
+    const disc = gap * Math.sqrt((n * Math.sqrt(3)) / 2 / Math.PI);
+    for (const [x, z] of pts) expect(Math.sqrt((x - cx) ** 2 + (z - cz) ** 2)).toBeLessThanOrEqual(disc + gap / 2);
+    expect(gap).toBeGreaterThanOrEqual(sp);
+  });
+
+  it("10 Titan: khối tròn quanh điểm đích, không xe nào chạm nhau, cùng quay một hướng", () => {
     const { w, us, tx, tz } = march(Array<UnitId>(10).fill("titan"));
     expect(us.every((u) => u.order === "idle")).toBe(true);
     // tới ô rồi thân xe mới xoay dần về hướng đội hình
@@ -75,14 +95,12 @@ describe("đội hình khi ra lệnh cho cả nhóm", () => {
       for (let j = i + 1; j < us.length; j++) expect(Math.sqrt((us[i].x - us[j].x) ** 2 + (us[i].z - us[j].z) ** 2)).toBeGreaterThanOrEqual(2 * r);
     // cùng hướng = hướng hành quân
     for (const u of us) expect(u.hx * fx + u.hz * fz).toBeGreaterThan(0.99);
-    // hàng ngang: vị trí theo chiều sâu chỉ có vài mức (mỗi hàng một mức), bề ngang rộng hơn bề sâu
+    // khối tròn: bề ngang và bề sâu không chênh quá 2 lần (hàng dài cũ 10 = 5v5: ngang gấp 4 sâu)
     const fwd = us.map((u) => (u.x - tx) * fx + (u.z - tz) * fz);
     const lat = us.map((u) => (u.x - tx) * fz - (u.z - tz) * fx);
-    // số hàng: gom các xe lệch nhau dưới 1 m theo chiều sâu vào cùng một hàng (làm tròn số nguyên thì −7,4 và −7,6 thành hai hàng)
-    const levels = [...fwd].sort((p, q) => p - q);
-    const rows = levels.filter((v, i) => i === 0 || v - levels[i - 1] >= 1);
-    expect(rows.length).toBeLessThanOrEqual(3);
-    expect(Math.max(...lat) - Math.min(...lat)).toBeGreaterThan(Math.max(...fwd) - Math.min(...fwd));
+    const wide = Math.max(...lat) - Math.min(...lat);
+    const deep = Math.max(...fwd) - Math.min(...fwd);
+    expect(Math.max(wide, deep) / Math.min(wide, deep)).toBeLessThan(2);
     // tâm khối ở điểm đích
     const cx = us.reduce((s, u) => s + u.x, 0) / us.length;
     const cz = us.reduce((s, u) => s + u.z, 0) / us.length;

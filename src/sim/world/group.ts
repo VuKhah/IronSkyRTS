@@ -192,12 +192,71 @@ function orderMove(this: World, side: Side, ids: readonly number[], x: number, z
   }
 }
 
+const PACK = new Map<number, readonly [number, number][]>();
+const SQ3_6 = Math.sqrt(3) / 6;
 /**
- * Chỗ đến cho các xe cùng một lệnh (mọi xe mặt đất từ 23/11/2026, di chuyển kiểu Battle Drones): hàng ngang quay theo hướng đi, tâm
- * ở điểm bấm, khoảng theo xe to nhất, ô vướng thì dịch sang ô trống gần nhất; rồi PHÂN CHỖ TỐI ƯU theo bình phương quãng (đường các
- * xe không cắt nhau: xe ở trước nhận chỗ ở trước).
+ * Chỗ đứng KHỐI TRÒN cho n xe (người dùng 24/11/2026): n ô gần tâm nhất của lưới tổ ong (hàng so le nửa ô, hàng cách nhau √3/2 ô,
+ * ô kề nhau cách đúng 1 ô) — cách xếp các vòng tròn bằng nhau chặt nhất, nên với số xe nào khối cũng tự ra gần tròn, không có số hàng
+ * cố định. Thử ba tâm (đúng một ô / giữa hai ô / giữa ba ô) và giữ cách có mômen quanh trọng tâm nhỏ nhất (gọn nhất: 2 xe đứng cạnh
+ * nhau, 3 xe tam giác, 4 xe hình thoi, 7 xe lục giác), bằng nhau thì cách cân trái / phải hơn. Trả [ngang, tiến] theo đơn vị khoảng
+ * xe, trọng tâm khối ở (0, 0), xếp từ trong ra ngoài (ô trong được giữ chỗ trước). Tính bằng số nguyên (A = 2 × ngang,
+ * B = 3 × hàng − jo; 12 × bình phương quãng = 3A² + B²) nên so chính xác tuyệt đối; hàm thuần theo n nên nhớ sẵn.
  */
-function formation(this: World, units: readonly Unit[], x: number, z: number): { slots: Map<number, [number, number]>; fx: number; fz: number } {
+function roundPack(n: number): readonly [number, number][] {
+  const hit = PACK.get(n);
+  if (hit) return hit;
+  const m = Math.ceil(Math.sqrt(n)) + 2;
+  let best: { A: number; B: number }[] = [];
+  let bestM = Infinity;
+  let bestSA = Infinity;
+  for (const [io, jo] of [
+    [0, 0],
+    [1, 0],
+    [1, 1],
+  ]) {
+    const pts: { A: number; B: number; K: number }[] = [];
+    for (let j = -m; j <= m; j++)
+      for (let i2 = -2 * m - 2; i2 <= 2 * m + 2; i2++) {
+        if (((i2 - j) & 1) !== 0) continue; // hàng lẻ lệch nửa ô
+        const A = i2 - io;
+        const B = 3 * j - jo;
+        pts.push({ A, B, K: 3 * A * A + B * B });
+      }
+    // gần tâm trước; cùng quãng thì phía trước trước, giữa trước, trái trước (thứ tự trong khung của đội: soi gương qua tâm bản đồ giữ
+    // nguyên khung nên hai phe ra đúng ảnh gương)
+    pts.sort((p, q) => p.K - q.K || q.B - p.B || Math.abs(p.A) - Math.abs(q.A) || p.A - q.A);
+    const pick = pts.slice(0, n);
+    let sA = 0;
+    let sB = 0;
+    let sK = 0;
+    for (const p of pick) {
+      sA += p.A;
+      sB += p.B;
+      sK += p.K;
+    }
+    const M = n * sK - 3 * sA * sA - sB * sB; // 12n × mômen quanh trọng tâm, số nguyên
+    if (M < bestM || (M === bestM && Math.abs(sA) < bestSA)) {
+      bestM = M;
+      bestSA = Math.abs(sA);
+      best = pick;
+    }
+  }
+  let mA = 0;
+  let mB = 0;
+  for (const p of best) {
+    mA += p.A / n;
+    mB += p.B / n;
+  }
+  const out = best.map((p): [number, number] => [(p.A - mA) / 2, (p.B - mB) * SQ3_6]);
+  PACK.set(n, out);
+  return out;
+}
+
+/**
+ * Chỗ đến cho các xe cùng một lệnh (mọi xe mặt đất từ 23/11/2026, di chuyển kiểu Battle Drones): khối tròn kiểu tổ ong (`roundPack`)
+ * quay theo hướng đi, tâm ở điểm bấm, khoảng theo xe to nhất, ô vướng thì dịch sang ô trống gần nhất; rồi PHÂN CHỖ TỐI ƯU theo bình
+ * phương quãng (đường các xe không cắt nhau: xe ở trước nhận chỗ ở trước).
+ */function formation(this: World, units: readonly Unit[], x: number, z: number): { slots: Map<number, [number, number]>; fx: number; fz: number } {
   const slots = new Map<number, [number, number]>();
   const n = units.length;
   if (n === 0) return { slots, fx: 0, fz: 0 };
@@ -232,22 +291,19 @@ function formation(this: World, units: readonly Unit[], x: number, z: number): {
   let big = units[0];
   for (const u of units) if (bodyRadius(u.kind) > bodyRadius(big.kind) || (bodyRadius(u.kind) === bodyRadius(big.kind) && u.id < big.id)) big = u;
   const sp = 2 * bodyRadius(big.kind) + COL_GAP;
-  const cols = Math.min(n, Math.ceil(Math.sqrt(n * 2.5)));
   // nhiều xe: chỗ cùng tầng với điểm bấm, không đỗ chắn dốc, tới được từ điểm bấm; một xe lẻ thì tới đúng điểm bấm như cũ
   const tier = n > 1 ? this.map.tierAt(x, z) : -1;
   const used = new Set<number>();
   const taken: Taken = { x: [], z: [], r: [] };
   const sx: number[] = [];
   const sz: number[] = [];
-  for (let i = 0; i < n; i++) {
-    const row = Math.floor(i / cols);
-    const inRow = Math.min(cols, n - row * cols);
-    const col = (i % cols) - (inRow - 1) / 2;
+  // KHỐI TRÒN (người dùng 24/11/2026: "quân xếp có xu hướng tròn", không phải số hàng cố định; cách cũ √(n × 2,5) cột ra hàng dài)
+  for (const [a, b] of roundPack(n)) {
     // xe đứng ở chỗ đến lúc ra lệnh có thể sắp đi (lệnh cùng tick): không né lúc này, tới nơi mà chỗ còn bị chiếm thì "tới gần là
     // tới" (`follow` → `goalTaken`)
     // chỗ dự phòng cùng tầng với điểm bấm và tới được từ điểm bấm với cỡ xe to nhất (không rơi xuống chân vách / vào hốc: xe phải
     // chạy vòng đường dốc mãi)
-    const [px, pz] = this.freeSpot(big, x + rx * col * sp - fx * row * sp, z + rz * col * sp - fz * row * sp, used, ALL_UNITS, tier, fx, fz, taken, n > 1 ? [x, z] : undefined);
+    const [px, pz] = this.freeSpot(big, x + (rx * a + fx * b) * sp, z + (rz * a + fz * b) * sp, used, ALL_UNITS, tier, fx, fz, taken, n > 1 ? [x, z] : undefined);
     sx.push(px);
     sz.push(pz);
   }
