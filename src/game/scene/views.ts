@@ -24,6 +24,14 @@ const HEAVY_W = 7;
 const HEAVY_SNAP = 3;
 const HEAVY_PITCH = 0.055;
 const HEAVY_ROLL = 0.035;
+/**
+ * Thân quay theo hướng đang dời đi khi bị đẩy (chỉ hình ảnh): dời chậm hơn DRIVE_V0 m/s thì giữ hướng sim, nhanh hơn DRIVE_V0 + DRIVE_V1
+ * thì quay hẳn theo hướng dời; hướng dời lệch hướng thân quá DRIVE_REV rad (~100°) thì trông như lùi (đuôi đi trước).
+ */
+const DRIVE_V0 = 0.4;
+const DRIVE_V1 = 1;
+const DRIVE_REV = 1.75;
+const DRIVE_TURN = 1.5;
 
 const wrap = (a: number): number => {
   a = (a + Math.PI) % (Math.PI * 2);
@@ -463,7 +471,6 @@ export class Views {
       this.drawBeam(world, u, v, x, this.map.groundY(x, z) + alt, z, time);
     } else {
       const yaw0 = v.yaw;
-      v.yaw += wrap(target - v.yaw) * Math.min(1, dt * 10);
       // DÁNG NẶNG (xem `View.hx`): lò xo tắt dần tới hạn bám vị trí sim, bù trước bằng vận tốc sim
       const svx = (u.x - u.px) / DT;
       const svz = (u.z - u.pz) / DT;
@@ -490,12 +497,25 @@ export class Views {
           left -= h;
         }
         v.hacc = (v.hacc ?? 0) + (along - (v.hacc ?? 0)) * Math.min(1, dt * 6);
-        // nghiêng ra ngoài khi cua: theo tốc độ quay thân × tốc độ chạy
-        const rate = dt > 1e-4 ? wrap(v.yaw - yaw0) / dt : 0;
-        const speed = Math.sqrt(v.hvx * v.hvx + v.hvz * v.hvz);
-        const rollT = Math.max(-HEAVY_ROLL, Math.min(HEAVY_ROLL, rate * speed * 0.0125));
-        v.hroll = (v.hroll ?? 0) + (rollT - (v.hroll ?? 0)) * Math.min(1, dt * 6);
       }
+      // THÂN QUAY THEO HƯỚNG ĐANG DI CHUYỂN (24/11/2026, chỉ hình ảnh; người dùng: "thay vì làm nó trông như bị đẩy thì làm nó trông
+      // như chạy ra"): trong sim xe bị va chạm đẩy dạt ngang thân; trên màn hình thân quay về hướng nó đang dời đi, như tự lái tránh
+      // ra (dời về phía sau thì trông như lùi). Chạy bình thường thì hướng dời trùng hướng thân, không đổi gì; đứng yên thì về hướng sim
+      const spd = Math.sqrt(v.hvx * v.hvx + v.hvz * v.hvz);
+      let yawT = target;
+      if (spd > DRIVE_V0) {
+        const mv = Math.atan2(v.hvx, v.hvz);
+        const drive = Math.abs(wrap(mv - target)) <= DRIVE_REV ? mv : wrap(mv + Math.PI);
+        const k = Math.min(1, (spd - DRIVE_V0) / DRIVE_V1);
+        yawT = target + wrap(drive - target) * k;
+      }
+      // quay mượt, và không nhanh hơn DRIVE_TURN lần tốc độ quay thân của xe (cú xô ngắn chỉ làm xe hơi xoay mũi, không giật quay 90°)
+      const maxTurn = (((spec.turnRate ?? 90) * DRIVE_TURN * Math.PI) / 180) * dt;
+      v.yaw += Math.max(-maxTurn, Math.min(maxTurn, wrap(yawT - v.yaw) * Math.min(1, dt * 8)));
+      // nghiêng ra ngoài khi cua: theo tốc độ quay thân × tốc độ chạy
+      const rate = dt > 1e-4 ? wrap(v.yaw - yaw0) / dt : 0;
+      const rollT = Math.max(-HEAVY_ROLL, Math.min(HEAVY_ROLL, rate * spd * 0.0125));
+      v.hroll = (v.hroll ?? 0) + (rollT - (v.hroll ?? 0)) * Math.min(1, dt * 6);
       x = v.hx;
       z = v.hz;
       const y = this.map.groundY(x, z);
