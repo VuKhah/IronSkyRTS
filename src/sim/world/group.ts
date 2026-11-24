@@ -193,67 +193,95 @@ function orderMove(this: World, side: Side, ids: readonly number[], x: number, z
 }
 
 const PACK = new Map<number, readonly [number, number][]>();
-const SQ3_6 = Math.sqrt(3) / 6;
+const SQ3_2 = Math.sqrt(3) / 2;
 /**
- * Chỗ đứng KHỐI TRÒN cho n xe (người dùng 24/11/2026): n ô gần tâm nhất của lưới tổ ong (hàng so le nửa ô, hàng cách nhau √3/2 ô,
- * ô kề nhau cách đúng 1 ô) — cách xếp các vòng tròn bằng nhau chặt nhất, nên với số xe nào khối cũng tự ra gần tròn, không có số hàng
- * cố định. Thử ba tâm (đúng một ô / giữa hai ô / giữa ba ô) và giữ cách có mômen quanh trọng tâm nhỏ nhất (gọn nhất: 2 xe đứng cạnh
- * nhau, 3 xe tam giác, 4 xe hình thoi, 7 xe lục giác), bằng nhau thì cách cân trái / phải hơn. Trả [ngang, tiến] theo đơn vị khoảng
- * xe, trọng tâm khối ở (0, 0), xếp từ trong ra ngoài (ô trong được giữ chỗ trước). Tính bằng số nguyên (A = 2 × ngang,
- * B = 3 × hàng − jo; 12 × bình phương quãng = 3A² + B²) nên so chính xác tuyệt đối; hàm thuần theo n nên nhớ sẵn.
+ * Chỗ đứng KHỐI TRÒN cho n xe (người dùng 24/11/2026: "quân xếp có xu hướng tròn"; rồi "xếp hình Benzen là khá tốt, song cứ bị dư
+ * ra một hai xe làm cái đuôi"). Khối dựng theo SỐ XE MỖI HÀNG (hàng ngang vuông góc hướng đi, hàng 0 ở trước):
+ *  - hàng kề nhau lệch nửa ô (tổ ong: xe kề nhau cách đúng 1 khoảng xe, hàng cách nhau √3/2), hai hàng bằng nhau thì lệch luân phiên
+ *    phải / trái (cạnh bên thẳng, không xiên dần);
+ *  - hai hàng kề hơn kém nhau tối đa 1 xe, hàng tăng dần rồi giảm dần (không rãnh), hàng đầu / cuối ≥ 2 xe (từ 4 xe): viền luôn lồi,
+ *    KHÔNG có xe chìa ra làm đuôi (cách cũ "n ô gần tâm nhất" để vòng ngoài thiếu xe dồn một phía: 8 = lục giác 7 + 1 chỏm);
+ *  - trong mọi khối như thế chọn khối GỌN NHẤT (mômen quanh trọng tâm nhỏ nhất = tròn nhất), bằng nhau thì cân trái / phải hơn.
+ * Tìm: tăng đúng +1 mỗi hàng, rồi đỉnh giữ nguyên bao nhiêu hàng cũng được, rồi giảm 1 mỗi hàng xen tối đa 2 hàng giữ nguyên (đo
+ * 24/11/2026: khớp vét cạn mọi n ≤ 80; 200 xe ~25 ms, một lần cho mỗi n rồi nhớ). Mômen tính theo hàng bằng số nguyên
+ * (A = 2 × ngang, k = số hàng; 4n × mômen = n·Σ(A² + 3k²) − (ΣA)² − 3(Σk)²) nên so chính xác; khung riêng của đội, soi gương qua tâm
+ * bản đồ giữ nguyên khung nên hai phe ra đúng ảnh gương. Trả [ngang, tiến] theo đơn vị khoảng xe, trọng tâm ở (0, 0), xếp từ trong
+ * ra ngoài (ô trong được giữ chỗ trước). 8 = 2v3v3 · 13 = 3v4v3v3 · 19 = 3v4v5v4v3 · 20 = 3v4v5v4v4 · 40 = 3v4v5v6v7v6v5v4
  */
 function roundPack(n: number): readonly [number, number][] {
   const hit = PACK.get(n);
   if (hit) return hit;
-  const m = Math.ceil(Math.sqrt(n)) + 2;
-  let best: { A: number; B: number }[] = [];
+  const minEnd = n <= 3 ? 1 : 2;
+  const maxZeros = n > 300 ? 1 : 2; // đội cực đông: tìm hẹp hơn cho nhanh (lệch tối ưu < 1%)
+  let best: number[] = [n];
   let bestM = Infinity;
-  let bestSA = Infinity;
-  for (const [io, jo] of [
-    [0, 0],
-    [1, 0],
-    [1, 1],
-  ]) {
-    const pts: { A: number; B: number; K: number }[] = [];
-    for (let j = -m; j <= m; j++)
-      for (let i2 = -2 * m - 2; i2 <= 2 * m + 2; i2++) {
-        if (((i2 - j) & 1) !== 0) continue; // hàng lẻ lệch nửa ô
-        const A = i2 - io;
-        const B = 3 * j - jo;
-        pts.push({ A, B, K: 3 * A * A + B * B });
+  let bestA = Infinity;
+  const rows: number[] = [];
+  // pha 0 tăng · 1 đỉnh giữ nguyên · 2 giảm; c2 = 2 × tâm hàng, zig = chiều lệch kế tiếp khi hai hàng bằng nhau; sA, sQ, sk cộng dồn
+  const dfs = (sum: number, phase: number, zeros: number, c2: number, zig: number, sA: number, sQ: number, sk: number): void => {
+    const last = rows[rows.length - 1];
+    if (sum === n) {
+      if (last < minEnd) return;
+      const M = n * sQ - sA * sA - 3 * sk * sk;
+      if (M < bestM || (M === bestM && Math.abs(sA) < bestA)) {
+        bestM = M;
+        bestA = Math.abs(sA);
+        best = rows.slice();
       }
-    // gần tâm trước; cùng quãng thì phía trước trước, giữa trước, trái trước (thứ tự trong khung của đội: soi gương qua tâm bản đồ giữ
-    // nguyên khung nên hai phe ra đúng ảnh gương)
-    pts.sort((p, q) => p.K - q.K || q.B - p.B || Math.abs(p.A) - Math.abs(q.A) || p.A - q.A);
-    const pick = pts.slice(0, n);
-    let sA = 0;
-    let sB = 0;
-    let sK = 0;
-    for (const p of pick) {
-      sA += p.A;
-      sB += p.B;
-      sK += p.K;
+      return;
     }
-    const M = n * sK - 3 * sA * sA - sB * sB; // 12n × mômen quanh trọng tâm, số nguyên
-    if (M < bestM || (M === bestM && Math.abs(sA) < bestSA)) {
-      bestM = M;
-      bestSA = Math.abs(sA);
-      best = pick;
+    for (const v of [last + 1, last, last - 1]) {
+      if (v < 1 || sum + v > n) continue;
+      let next = 2;
+      let z = zeros;
+      if (v > last) {
+        if (phase !== 0) continue;
+        next = 0;
+      } else if (v === last) {
+        if (phase === 2) {
+          if (zeros >= maxZeros) continue;
+          z++;
+        } else next = 1;
+      }
+      const k = rows.length;
+      const nc = v === last ? c2 + zig : c2;
+      rows.push(v);
+      // hàng v xe tâm nc: ΣA = v·nc, ΣA² = v·nc² + (v³ − v)/3
+      dfs(sum + v, next, z, nc, v === last ? -zig : zig, sA + v * nc, sQ + v * nc * nc + (v * v * v - v) / 3 + 3 * k * k * v, sk + k * v);
+      rows.pop();
     }
+  };
+  for (let l1 = minEnd; l1 <= n; l1++) {
+    rows.push(l1);
+    dfs(l1, 0, 0, 0, 1, 0, (l1 * l1 * l1 - l1) / 3, 0);
+    rows.pop();
   }
-  let mA = 0;
-  let mB = 0;
-  for (const p of best) {
-    mA += p.A / n;
-    mB += p.B / n;
+  const pts: { A: number; k: number }[] = [];
+  let c2 = 0;
+  let zig = 1;
+  for (let k = 0; k < best.length; k++) {
+    if (k > 0 && best[k] === best[k - 1]) {
+      c2 += zig;
+      zig = -zig;
+    }
+    for (let i = 0; i < best[k]; i++) pts.push({ A: c2 + 2 * i - (best[k] - 1), k });
   }
-  const out = best.map((p): [number, number] => [(p.A - mA) / 2, (p.B - mB) * SQ3_6]);
+  let sA = 0;
+  let sk = 0;
+  for (const p of pts) {
+    sA += p.A;
+    sk += p.k;
+  }
+  // trong ra ngoài: 4n² × bình phương quãng tới trọng tâm = (nA − ΣA)² + 3(nk − Σk)²; bằng nhau thì hàng trước, rồi bên trái
+  const d2 = (p: { A: number; k: number }): number => (n * p.A - sA) ** 2 + 3 * (n * p.k - sk) ** 2;
+  pts.sort((p, q) => d2(p) - d2(q) || p.k - q.k || p.A - q.A);
+  const out = pts.map((p): [number, number] => [(p.A - sA / n) / 2, (sk / n - p.k) * SQ3_2]);
   PACK.set(n, out);
   return out;
 }
 
 /**
- * Chỗ đến cho các xe cùng một lệnh (mọi xe mặt đất từ 23/11/2026, di chuyển kiểu Battle Drones): khối tròn kiểu tổ ong (`roundPack`)
+ * Chỗ đến cho các xe cùng một lệnh (mọi xe mặt đất từ 23/11/2026, di chuyển kiểu Battle Drones): khối tròn tổ ong không đuôi (`roundPack`)
  * quay theo hướng đi, tâm ở điểm bấm, khoảng theo xe to nhất, ô vướng thì dịch sang ô trống gần nhất; rồi PHÂN CHỖ TỐI ƯU theo bình
  * phương quãng (đường các xe không cắt nhau: xe ở trước nhận chỗ ở trước).
  */function formation(this: World, units: readonly Unit[], x: number, z: number): { slots: Map<number, [number, number]>; fx: number; fz: number } {

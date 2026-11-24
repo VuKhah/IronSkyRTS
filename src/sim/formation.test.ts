@@ -62,15 +62,25 @@ describe("xe đã vào hàng không bị xe đến sau ủi ra (người dùng 1
 });
 
 describe("đội hình khi ra lệnh cho cả nhóm", () => {
-  // người dùng 24/11/2026: "quân xếp có xu hướng tròn" (không phải số hàng cố định); cách cũ ra hàng dài 25 = 8v8v8v1
-  it.each([2, 5, 8, 12, 20, 25, 40])("%i Titan tập kết thành khối tròn: mọi chỗ nằm trong vòng cùng diện tích + nửa khoảng xe, không chỗ nào chồng nhau", (n) => {
+  // người dùng 24/11/2026: "quân xếp có xu hướng tròn" (không phải số hàng cố định); cách cũ ra hàng dài 25 = 8v8v8v1. Rồi "xếp hình
+  // Benzen là khá tốt, song cứ bị dư ra một hai xe làm cái đuôi" (lục giác 7 + 1 chỏm = 1v2v3v2, 19 + 1 = 1v3v4v5v4v3)
+  it.each([2, 5, 7, 8, 9, 12, 13, 20, 25, 40])("%i Titan tập kết thành khối tròn không đuôi: hàng đầu / cuối ≥ 2 xe, hàng kề hơn kém ≤ 1, mọi chỗ trong vòng cùng diện tích + nửa khoảng xe", (n) => {
     const w = new World(1, { sandbox: true });
     const [ax, az] = arenaPoint(-30);
     for (let i = 0; i < n; i++) spawn(w, "titan", ax + (i % 6) * 5, az + Math.floor(i / 6) * 5);
     const us = w.units.filter((u) => u.side === 0);
     const [tx, tz] = arenaPoint(20);
-    const plan = (w as unknown as { formation(us: Unit[], x: number, z: number): { slots: Map<number, [number, number]> } }).formation(us, tx, tz);
+    const plan = (w as unknown as { formation(us: Unit[], x: number, z: number): { slots: Map<number, [number, number]>; fx: number; fz: number } }).formation(us, tx, tz);
     const pts = [...plan.slots.values()];
+    // số xe mỗi hàng (hàng = cùng mức theo hướng đi, lệch < 1 m)
+    const fwd = pts.map(([x, z]) => (x - tx) * plan.fx + (z - tz) * plan.fz).sort((p, q) => q - p);
+    const rows: number[] = [];
+    fwd.forEach((v, i) => (i > 0 && fwd[i - 1] - v < 1 ? rows[rows.length - 1]++ : rows.push(1)));
+    if (n >= 4) {
+      expect(rows[0], `hàng đầu ${rows.join("v")}`).toBeGreaterThanOrEqual(2);
+      expect(rows[rows.length - 1], `hàng cuối ${rows.join("v")}`).toBeGreaterThanOrEqual(2);
+    }
+    for (let i = 1; i < rows.length; i++) expect(Math.abs(rows[i] - rows[i - 1]), `hàng kề ${rows.join("v")}`).toBeLessThanOrEqual(1);
     const cx = pts.reduce((s, p) => s + p[0], 0) / n;
     const cz = pts.reduce((s, p) => s + p[1], 0) / n;
     expect(Math.sqrt((cx - tx) ** 2 + (cz - tz) ** 2), "tâm khối ở điểm bấm").toBeLessThan(0.5);

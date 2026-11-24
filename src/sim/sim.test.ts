@@ -527,7 +527,9 @@ describe("lõi mô phỏng", () => {
       `Trận seed 7: ${world.winner === 2 ? "hòa" : world.winner === -1 ? "chưa xong" : `phe ${world.winner} thắng`} (${world.winReason}) sau ${(world.tick / 600).toFixed(1)} phút; ` +
         `quân đúc ${world.sides[0].stats.unitsBuilt}/${world.sides[1].stats.unitsBuilt}, hạ ${world.sides[0].stats.kills}/${world.sides[1].stats.kills}`
     );
-  });
+    // trận kéo tới trần 25 phút (15 000 tick) mất ~30 s chạy riêng, ~65 s khi cả bộ kiểm thử chạy song song: giới hạn chung 60 s không đủ
+    // (24/11/2026: đổi cách xếp chỗ làm trận seed 7 từ 11 phút thành hòa 25 phút; diễn biến trận AI không phải thứ kiểm ở đây)
+  }, 180_000);
 });
 
 describe("Phòng Thử Nghiệm", () => {
